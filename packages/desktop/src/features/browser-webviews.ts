@@ -45,11 +45,11 @@ function ensureOwnerFoundInPageListener(ownerContents: WebContents): void {
 export function registerPaseoBrowserWebContents(
   contents: WebContents,
   browserId: string,
-  ownerContents?: WebContents,
+  ownerContents: WebContents,
 ): void {
   browserIdsByWebContentsId.set(contents.id, browserId);
   webContentsIdsByBrowserId.set(browserId, contents.id);
-  if (ownerContents && !ownerContents.isDestroyed()) {
+  if (!ownerContents.isDestroyed()) {
     ownerWebContentsIdsByBrowserId.set(browserId, ownerContents.id);
     ensureOwnerFoundInPageListener(ownerContents);
   }
@@ -92,18 +92,17 @@ export function getPaseoBrowserWebContents(browserId: string): WebContents | nul
   return contents && !contents.isDestroyed() ? contents : null;
 }
 
-export function setActivePaseoBrowserFind(browserId: string): boolean {
+export function setActivePaseoBrowserFind(browserId: string): void {
   const ownerContentsId = ownerWebContentsIdsByBrowserId.get(browserId);
   if (!ownerContentsId) {
-    return false;
+    return;
   }
   const ownerContents = allWebContents.fromId(ownerContentsId);
   if (!ownerContents || ownerContents.isDestroyed()) {
-    return false;
+    return;
   }
   ensureOwnerFoundInPageListener(ownerContents);
   activeFindBrowserIdsByOwnerWebContentsId.set(ownerContents.id, browserId);
-  return true;
 }
 
 export function clearActivePaseoBrowserFind(browserId: string): void {

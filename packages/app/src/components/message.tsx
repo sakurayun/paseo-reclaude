@@ -241,7 +241,7 @@ function normalizeFindHighlights(
     .sort((left, right) => left.start - right.start || left.end - right.end);
 }
 
-export function createMessageFindTextSegments(
+function createMessageFindTextSegments(
   text: string,
   highlights: MessageFindHighlight[] | undefined,
 ): MessageFindTextSegment[] {
@@ -283,7 +283,7 @@ interface MarkdownBlockWithOffset {
   startOffset: number;
 }
 
-export function createMarkdownBlocksWithOffsets(message: string): MarkdownBlockWithOffset[] {
+function createMarkdownBlocksWithOffsets(message: string): MarkdownBlockWithOffset[] {
   let cursor = 0;
   return splitMarkdownBlocks(message).map((block, index) => {
     const startOffset = Math.max(cursor, message.indexOf(block, cursor));

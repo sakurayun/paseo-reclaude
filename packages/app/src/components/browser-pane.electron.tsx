@@ -28,12 +28,6 @@ import { isDev } from "@/constants/platform";
 import { FindBar, usePaneFind, type PaneFindMatchState } from "@/panels/pane-find";
 import { useBrowserStore, normalizeWorkspaceBrowserUrl } from "@/stores/browser-store";
 
-interface ElectronFindOptions {
-  forward?: boolean;
-  findNext?: boolean;
-  matchCase?: boolean;
-}
-
 type ElectronWebview = HTMLElement & {
   canGoBack?: () => boolean;
   canGoForward?: () => boolean;
@@ -44,19 +38,10 @@ type ElectronWebview = HTMLElement & {
   loadURL?: (url: string) => Promise<void>;
   getURL?: () => string;
   executeJavaScript?: (code: string) => Promise<unknown>;
-  findInPage?: (text: string, options?: ElectronFindOptions) => number;
-  stopFindInPage?: (action: "clearSelection" | "keepSelection" | "activateSelection") => void;
   focus?: () => void;
   addEventListener: (type: string, listener: EventListenerOrEventListenerObject) => void;
   removeEventListener: (type: string, listener: EventListenerOrEventListenerObject) => void;
 };
-
-interface ElectronFoundInPageResult extends DesktopBrowserFoundInPageResult {
-  requestId?: number;
-  activeMatchOrdinal?: number;
-  matches?: number;
-  finalUpdate?: boolean;
-}
 
 type WebTextInput = TextInput & {
   getNativeRef?: () => unknown;
@@ -261,25 +246,16 @@ function isDesktopBrowserShortcutEvent(payload: unknown): payload is DesktopBrow
   return event.action === "focus-url";
 }
 
-function getFoundInPageResult(event: Event): ElectronFoundInPageResult | null {
-  const result = (event as Event & { result?: unknown }).result;
-  if (!result || typeof result !== "object") {
-    return null;
-  }
-  return result as ElectronFoundInPageResult;
-}
-
 function stopBrowserFindInPage(input: {
   browserId: string;
-  webview: ElectronWebview | null;
   action: DesktopBrowserFindAction;
 }): void {
   const bridge = getDesktopHost()?.browser;
-  if (bridge?.stopFindInPage) {
-    void bridge.stopFindInPage(input.browserId, input.action);
+  if (!bridge?.stopFindInPage) {
+    console.warn("Electron browser find bridge is unavailable; cannot stop find-in-page.");
     return;
   }
-  input.webview?.stopFindInPage?.(input.action);
+  void bridge.stopFindInPage(input.browserId, input.action);
 }
 
 function startSelectorResultPolling(input: {
@@ -436,7 +412,6 @@ export function BrowserPane({
     if (domReadyRef.current) {
       stopBrowserFindInPage({
         browserId: browserIdRef.current,
-        webview: webviewRef.current,
         action: "clearSelection",
       });
     }
@@ -450,13 +425,13 @@ export function BrowserPane({
         return;
       }
 
-      const webview = webviewRef.current;
       if (!domReadyRef.current) {
         setBrowserFindMatchState(PENDING_FIND_MATCH_STATE);
         return;
       }
       const bridgeFindInPage = getDesktopHost()?.browser?.findInPage;
-      if (!bridgeFindInPage && !webview?.findInPage) {
+      if (!bridgeFindInPage) {
+        console.warn("Electron browser find bridge is unavailable; cannot start find-in-page.");
         setBrowserFindMatchState(NO_FIND_MATCH_STATE);
         return;
       }
@@ -474,9 +449,7 @@ export function BrowserPane({
         findNext: !input?.reset,
         matchCase: false,
       };
-      const requestIdResult = bridgeFindInPage
-        ? bridgeFindInPage(browserIdRef.current, query, options)
-        : webview?.findInPage?.(query, options);
+      const requestIdResult = bridgeFindInPage(browserIdRef.current, query, options);
       if (typeof requestIdResult === "number") {
         activeBrowserFindRef.current = {
           generation,
@@ -504,7 +477,7 @@ export function BrowserPane({
     [clearBrowserFindSelection],
   );
 
-  const handleFoundInPageResult = useCallback((result: ElectronFoundInPageResult) => {
+  const handleFoundInPageResult = useCallback((result: DesktopBrowserFoundInPageResult) => {
     const activeFind = activeBrowserFindRef.current;
     if (
       !activeFind ||
@@ -513,12 +486,11 @@ export function BrowserPane({
     ) {
       return;
     }
-    const eventRequestId = typeof result.requestId === "number" ? result.requestId : null;
-    if (typeof activeFind.requestId === "number") {
-      if (eventRequestId !== activeFind.requestId) {
-        return;
-      }
-    } else if (eventRequestId !== null) {
+    const requestId = result.requestId;
+    if (typeof requestId !== "number") {
+      return;
+    }
+    if (typeof activeFind.requestId !== "number" || requestId !== activeFind.requestId) {
       return;
     }
 
@@ -538,17 +510,6 @@ export function BrowserPane({
       total,
     });
   }, []);
-
-  const handleFoundInPage = useCallback(
-    (event: Event) => {
-      const result = getFoundInPageResult(event);
-      if (!result) {
-        return;
-      }
-      handleFoundInPageResult(result);
-    },
-    [handleFoundInPageResult],
-  );
 
   useEffect(() => {
     if (!isElectronRuntime()) {
@@ -691,7 +652,7 @@ export function BrowserPane({
         });
       }
     } else {
-      webview.addEventListener("found-in-page", handleFoundInPage);
+      console.warn("Electron browser find bridge is unavailable; found-in-page events disabled.");
     }
 
     host.appendChild(webview);
@@ -714,15 +675,11 @@ export function BrowserPane({
       webview.removeEventListener("dom-ready", handleDomReady);
       didCleanupFoundInPage = true;
       unsubscribeFoundInPage?.();
-      if (!foundInPageBridge) {
-        webview.removeEventListener("found-in-page", handleFoundInPage);
-      }
       webview.removeEventListener("focus", handleWebviewFocus);
       webview.removeEventListener("mousedown", handleWebviewFocus);
       if (domReadyRef.current) {
         stopBrowserFindInPage({
           browserId: browserIdRef.current,
-          webview,
           action: "clearSelection",
         });
       }
