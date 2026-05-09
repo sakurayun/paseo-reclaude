@@ -103,6 +103,13 @@ export function ProjectPickerModal() {
       }),
     [query, directorySuggestionsQuery.data, recommendedPaths],
   );
+  const visibleOptions = useMemo(() => {
+    const trimmedQuery = query.trim();
+    if (!trimmedQuery || options.includes(trimmedQuery)) {
+      return options;
+    }
+    return [trimmedQuery, ...options];
+  }, [options, query]);
 
   const handleClose = useCallback(() => {
     setOpen(false);
@@ -150,10 +157,10 @@ export function ProjectPickerModal() {
   // Clamp active index
   useEffect(() => {
     if (!open) return;
-    if (activeIndex >= options.length) {
-      setActiveIndex(options.length > 0 ? options.length - 1 : 0);
+    if (activeIndex >= visibleOptions.length) {
+      setActiveIndex(visibleOptions.length > 0 ? visibleOptions.length - 1 : 0);
     }
-  }, [activeIndex, options.length, open]);
+  }, [activeIndex, open, visibleOptions.length]);
 
   // Keyboard navigation
   useEffect(() => {
@@ -171,8 +178,8 @@ export function ProjectPickerModal() {
 
       if (key === "Enter") {
         event.preventDefault();
-        if (options.length > 0 && activeIndex < options.length) {
-          void handleSelectPath(options[activeIndex]);
+        if (visibleOptions.length > 0 && activeIndex < visibleOptions.length) {
+          void handleSelectPath(visibleOptions[activeIndex]);
         } else if (query.trim()) {
           handleSubmitCustom();
         }
@@ -180,13 +187,13 @@ export function ProjectPickerModal() {
       }
 
       if (key === "ArrowDown" || key === "ArrowUp") {
-        if (options.length === 0) return;
+        if (visibleOptions.length === 0) return;
         event.preventDefault();
         setActiveIndex((current) => {
           const delta = key === "ArrowDown" ? 1 : -1;
           const next = current + delta;
-          if (next < 0) return options.length - 1;
-          if (next >= options.length) return 0;
+          if (next < 0) return visibleOptions.length - 1;
+          if (next >= visibleOptions.length) return 0;
           return next;
         });
       }
@@ -194,7 +201,7 @@ export function ProjectPickerModal() {
 
     window.addEventListener("keydown", handler, true);
     return () => window.removeEventListener("keydown", handler, true);
-  }, [activeIndex, handleSelectPath, handleSubmitCustom, open, options, query, setOpen]);
+  }, [activeIndex, handleSelectPath, handleSubmitCustom, open, query, setOpen, visibleOptions]);
 
   const panelStyle = useMemo(
     () => [
@@ -239,6 +246,10 @@ export function ProjectPickerModal() {
               autoCorrect={false}
               autoFocus
               editable={!isSubmitting}
+              onSubmitEditing={handleSubmitCustom}
+              returnKeyType="go"
+              submitBehavior="submit"
+              testID="project-picker-path-input"
             />
           </View>
 
@@ -249,12 +260,12 @@ export function ProjectPickerModal() {
             showsVerticalScrollIndicator={false}
           >
             {isSubmitting ? <Text style={emptyTextStyle}>Opening project...</Text> : null}
-            {!isSubmitting && options.length === 0 && !query.trim() ? (
+            {!isSubmitting && visibleOptions.length === 0 && !query.trim() ? (
               <Text style={emptyTextStyle}>Start typing a path</Text>
             ) : null}
-            {!isSubmitting && !(options.length === 0 && !query.trim()) ? (
+            {!isSubmitting && !(visibleOptions.length === 0 && !query.trim()) ? (
               <>
-                {options.map((path, index) => (
+                {visibleOptions.map((path, index) => (
                   <PathRow
                     key={path}
                     path={path}
