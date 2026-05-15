@@ -60,6 +60,22 @@ function parseOrderedListStart(node: MarkdownNode): number {
   return 1;
 }
 
+export function getMarkdownNextSiblingType(
+  node: MarkdownNode,
+  parent: unknown,
+): string | undefined {
+  const ancestors = toParentNodes(parent);
+  for (let i = ancestors.length - 1; i >= 0; i--) {
+    const ancestor = ancestors[i];
+    if (!Array.isArray(ancestor?.children)) continue;
+    const idx = ancestor.children.indexOf(node);
+    if (idx >= 0) {
+      return ancestor.children[idx + 1]?.type;
+    }
+  }
+  return undefined;
+}
+
 export function getMarkdownListMarker(
   node: MarkdownNode,
   parent: unknown,

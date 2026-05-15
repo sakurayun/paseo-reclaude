@@ -252,13 +252,11 @@ export function createMarkdownStyles(theme: Theme) {
     // =========================================================================
 
     bullet_list: {
-      marginVertical: theme.spacing[2],
       paddingLeft: 0,
       width: "100%" as const,
     },
 
     ordered_list: {
-      marginVertical: theme.spacing[2],
       paddingLeft: 0,
       width: "100%" as const,
     },

@@ -49,7 +49,7 @@ import {
   FileSymlink,
 } from "lucide-react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
-import type { Theme } from "@/styles/theme";
+import { SPACING, type Theme } from "@/styles/theme";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import Animated, {
   Easing,
@@ -69,7 +69,7 @@ import type { ToolCallDetail } from "@server/server/agent/agent-sdk-types";
 import { buildToolCallPresentation } from "@/tool-calls/presentation";
 import { resolveToolCallIcon } from "@/utils/tool-call-icon";
 import { parseInlinePathToken, type InlinePathTarget } from "@/utils/inline-path";
-import { getMarkdownListMarker } from "@/utils/markdown-list";
+import { getMarkdownListMarker, getMarkdownNextSiblingType } from "@/utils/markdown-list";
 import { type AssistantFileLinkSource } from "@/utils/assistant-file-link-resolver";
 import { useAssistantFileLinkResolver } from "@/hooks/use-assistant-file-link-resolver";
 import type { ToastApi } from "@/components/toast-host";
@@ -1651,6 +1651,42 @@ function MarkdownParagraphView({ paragraphStyle, children }: MarkdownParagraphVi
   return <View style={style}>{children}</View>;
 }
 
+// List spacing in markdown:
+//   - p -> list and list -> p use a slightly larger gap than p -> p, so lists
+//     read as their own section against surrounding prose.
+//   - list -> list keeps the normal p-to-p gap; back-to-back lists are
+//     continuous content, not section breaks.
+//
+// Paragraph's marginBottom is SPACING[3] = 12 (and marginTop is 0). To produce
+// 16px gaps on p<->list transitions and 12px on list<->list, we add a constant
+// marginTop on lists (4) and switch marginBottom by next-sibling type:
+//   p -> list      = p.marginBottom(12) + list.marginTop(4)        = 16
+//   list -> p      = list.marginBottom(16) + p.marginTop(0)        = 16
+//   list -> list   = list.marginBottom(8) + list.marginTop(4)      = 12
+const MARKDOWN_LIST_MARGIN_TOP = SPACING[1]; // 4
+const MARKDOWN_LIST_MARGIN_BOTTOM_TO_PROSE = SPACING[4]; // 16
+const MARKDOWN_LIST_MARGIN_BOTTOM_TO_LIST = SPACING[2]; // 8
+
+function getMarkdownListContextMarginBottom(node: ASTNode, parent: ASTNode[]): number {
+  const nextType = getMarkdownNextSiblingType(node, parent);
+  const nextIsList = nextType === "bullet_list" || nextType === "ordered_list";
+  return nextIsList ? MARKDOWN_LIST_MARGIN_BOTTOM_TO_LIST : MARKDOWN_LIST_MARGIN_BOTTOM_TO_PROSE;
+}
+
+interface MarkdownListViewProps {
+  baseStyle: ViewStyle;
+  marginBottom: number;
+  children: ReactNode;
+}
+
+function MarkdownListView({ baseStyle, marginBottom, children }: MarkdownListViewProps) {
+  const style = useMemo(
+    () => [baseStyle, { marginTop: MARKDOWN_LIST_MARGIN_TOP, marginBottom }],
+    [baseStyle, marginBottom],
+  );
+  return <View style={style}>{children}</View>;
+}
+
 export const AssistantMessage = memo(function AssistantMessage({
   message,
   timestamp: _timestamp,
@@ -1823,22 +1859,30 @@ export const AssistantMessage = memo(function AssistantMessage({
       bullet_list: (
         node: ASTNode,
         children: ReactNode[],
-        _parent: ASTNode[],
+        parent: ASTNode[],
         styles: MarkdownStyles,
       ) => (
-        <View key={node.key} style={styles.bullet_list}>
+        <MarkdownListView
+          key={node.key}
+          baseStyle={styles.bullet_list}
+          marginBottom={getMarkdownListContextMarginBottom(node, parent)}
+        >
           {children}
-        </View>
+        </MarkdownListView>
       ),
       ordered_list: (
         node: ASTNode,
         children: ReactNode[],
-        _parent: ASTNode[],
+        parent: ASTNode[],
         styles: MarkdownStyles,
       ) => (
-        <View key={node.key} style={styles.ordered_list}>
+        <MarkdownListView
+          key={node.key}
+          baseStyle={styles.ordered_list}
+          marginBottom={getMarkdownListContextMarginBottom(node, parent)}
+        >
           {children}
-        </View>
+        </MarkdownListView>
       ),
       list_item: (
         node: ASTNode,
@@ -2567,6 +2611,26 @@ function ExpandableBadgeLabelRow({
   );
 }
 
+// HACK: lucide ships every icon inside a 24×24 viewBox where the path
+// doesn't touch the edges — there's per-icon internal padding. The layout
+// already places the SVG element's box on the rail, but the visible glyph
+// inside the SVG sits inset by a few pixels (and the inset amount differs
+// per icon — chevron-right paints only in the right half of its viewBox,
+// regular tool icons paint roughly the full viewBox minus ~1 unit margin).
+//
+// Lucide has no viewBox knob, so the only way to nudge the visible glyph
+// flush with the rail is a per-icon negative margin. Cosmetic; not exact —
+// every lucide icon has slightly different padding and we're not measuring
+// each one. Two buckets is the compromise:
+//   - LUCIDE_TOOL_ICON_NUDGE_LEFT: regular tool icons (path mostly fills
+//     the viewBox); needs ~1px left shift.
+//   - LUCIDE_CHEVRON_NUDGE_LEFT: chevron-right (path in right half of
+//     viewBox, and we scale it 1.3×); needs ~4px left shift.
+// If we ever want this exact, the principled fix is a custom <Svg> wrapper
+// with a tight viewBox per icon — see option (2) in the design discussion.
+const LUCIDE_TOOL_ICON_NUDGE_LEFT: ViewStyle = { marginLeft: -1 };
+const LUCIDE_CHEVRON_NUDGE_LEFT: ViewStyle = { marginLeft: -4 };
+
 function renderExpandableBadgeIcon({
   isError,
   isActive,
@@ -2577,14 +2641,20 @@ function renderExpandableBadgeIcon({
   ThemedIcon: ComponentType<{ size?: number; uniProps?: typeof foregroundColorMapping }> | null;
 }): ReactNode {
   if (isError) {
-    return <ThemedTriangleAlertIcon size={12} opacity={0.8} uniProps={destructiveColorMapping} />;
+    return (
+      <View style={LUCIDE_TOOL_ICON_NUDGE_LEFT}>
+        <ThemedTriangleAlertIcon size={12} opacity={0.8} uniProps={destructiveColorMapping} />
+      </View>
+    );
   }
   if (ThemedIcon) {
     return (
-      <ThemedIcon
-        size={12}
-        uniProps={isActive ? foregroundColorMapping : mutedForegroundColorMapping}
-      />
+      <View style={LUCIDE_TOOL_ICON_NUDGE_LEFT}>
+        <ThemedIcon
+          size={12}
+          uniProps={isActive ? foregroundColorMapping : mutedForegroundColorMapping}
+        />
+      </View>
     );
   }
   return null;
@@ -2942,6 +3012,7 @@ const ExpandableBadge = memo(function ExpandableBadge({
     () => [
       expandableBadgeStylesheet.chevron,
       isExpanded && expandableBadgeStylesheet.chevronExpanded,
+      LUCIDE_CHEVRON_NUDGE_LEFT,
     ],
     [isExpanded],
   );
