@@ -62,7 +62,7 @@ import { useToast } from "@/contexts/toast-context";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Shortcut } from "@/components/ui/shortcut";
 import { useShortcutKeys } from "@/hooks/use-shortcut-keys";
-import { Autocomplete } from "@/components/ui/autocomplete";
+import { AutocompletePopover } from "@/components/ui/autocomplete-popover";
 import { useAgentAutocomplete } from "@/hooks/use-agent-autocomplete";
 import {
   useHostRuntimeAgentDirectoryStatus,
@@ -252,25 +252,6 @@ function renderQueueList(args: RenderQueueListArgs): ReactElement | null {
           onSendNow={handleSendQueuedNow}
         />
       ))}
-    </View>
-  );
-}
-
-function renderAutocompletePopover(
-  autocomplete: ReturnType<typeof useAgentAutocomplete>,
-): ReactElement | null {
-  if (!autocomplete.isVisible) return null;
-  return (
-    <View style={styles.autocompletePopover} pointerEvents="box-none">
-      <Autocomplete
-        options={autocomplete.options}
-        selectedIndex={autocomplete.selectedIndex}
-        isLoading={autocomplete.isLoading}
-        errorMessage={autocomplete.errorMessage}
-        loadingText={autocomplete.loadingText}
-        emptyText={autocomplete.emptyText}
-        onSelect={autocomplete.onSelectOption}
-      />
     </View>
   );
 }
@@ -1589,10 +1570,7 @@ export function Composer({
     [handleEditQueuedMessage, handleSendQueuedNow, queuedMessages],
   );
 
-  const autocompletePopover = useMemo(
-    () => renderAutocompletePopover(autocomplete),
-    [autocomplete],
-  );
+  const messageInputContainerRef = useRef<View>(null);
 
   const isSubmitBusy = isProcessing || isSubmitLoading;
   const messageInputAutoFocus = autoFocus && isDesktopWebBreakpoint;
@@ -1614,8 +1592,18 @@ export function Composer({
           {queueList}
           {sendErrorNode}
 
-          <View style={styles.messageInputContainer}>
-            {autocompletePopover}
+          <View ref={messageInputContainerRef} style={styles.messageInputContainer}>
+            <AutocompletePopover
+              visible={autocomplete.isVisible && isPaneFocused}
+              anchorRef={messageInputContainerRef}
+              options={autocomplete.options}
+              selectedIndex={autocomplete.selectedIndex}
+              onSelect={autocomplete.onSelectOption}
+              isLoading={autocomplete.isLoading}
+              errorMessage={autocomplete.errorMessage}
+              loadingText={autocomplete.loadingText}
+              emptyText={autocomplete.emptyText}
+            />
 
             {/* MessageInput handles everything: text, dictation, attachments, all buttons */}
             <StableMessageInput
@@ -1711,14 +1699,6 @@ const styles = StyleSheet.create((theme: Theme) => ({
     position: "relative",
     width: "100%",
     gap: theme.spacing[3],
-  },
-  autocompletePopover: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    bottom: "100%",
-    marginBottom: theme.spacing[3],
-    zIndex: 30,
   },
   cancelButton: {
     width: 28,
