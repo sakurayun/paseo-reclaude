@@ -10,6 +10,11 @@ describe("workspace-draft-agent-config", () => {
         modeId: "auto",
         model: "gpt-5.4",
         thinkingOptionId: "high",
+        modelGateway: {
+          type: "openai-compatible",
+          label: "9Router local",
+          baseUrl: "http://localhost:20128/v1",
+        },
       }),
     ).toEqual({
       provider: "codex",
@@ -17,6 +22,11 @@ describe("workspace-draft-agent-config", () => {
       modeId: "auto",
       model: "gpt-5.4",
       thinkingOptionId: "high",
+      modelGateway: {
+        type: "openai-compatible",
+        label: "9Router local",
+        baseUrl: "http://localhost:20128/v1",
+      },
     });
   });
 });

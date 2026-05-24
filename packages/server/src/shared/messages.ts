@@ -105,6 +105,25 @@ const MutableDaemonProviderConfigSchema = z
   })
   .passthrough();
 
+const ModelGatewayConfigSchema = z.discriminatedUnion("type", [
+  z
+    .object({
+      type: z.literal("native"),
+      id: z.string().optional(),
+      label: z.string().optional(),
+    })
+    .passthrough(),
+  z
+    .object({
+      type: z.literal("openai-compatible"),
+      id: z.string().optional(),
+      label: z.string().optional(),
+      baseUrl: z.string().trim().min(1),
+      apiKey: z.string().optional(),
+    })
+    .passthrough(),
+]);
+
 export const MutableDaemonConfigSchema = z
   .object({
     mcp: z
@@ -113,6 +132,7 @@ export const MutableDaemonConfigSchema = z
       })
       .passthrough(),
     providers: z.record(z.string(), MutableDaemonProviderConfigSchema).default({}),
+    modelGateways: z.record(z.string(), ModelGatewayConfigSchema).default({}),
     autoArchiveAfterMerge: z.boolean().default(false),
     appendSystemPrompt: z.string().default(""),
   })
@@ -124,6 +144,7 @@ export const MutableDaemonConfigPatchSchema = z
     providers: z
       .record(z.string(), MutableDaemonProviderConfigSchema.partial().passthrough())
       .optional(),
+    modelGateways: z.record(z.string(), ModelGatewayConfigSchema).optional(),
     autoArchiveAfterMerge: z.boolean().optional(),
     appendSystemPrompt: z.string().optional(),
   })
@@ -286,6 +307,7 @@ const AgentSessionConfigSchema = z.object({
   sandboxMode: z.string().optional(),
   networkAccess: z.boolean().optional(),
   webSearch: z.boolean().optional(),
+  modelGateway: ModelGatewayConfigSchema.optional(),
   extra: z
     .object({
       codex: z.record(z.unknown()).optional(),
@@ -2124,6 +2146,8 @@ export const ServerInfoStatusPayloadSchema = z
         "terminal-restore-modes": z.boolean().optional(),
         // COMPAT(rewind): added in v0.1.X, drop the gate when floor >= v0.1.X.
         rewind: z.boolean().optional(),
+        // COMPAT(modelGateways): added in v0.1.82, remove gate after 2026-11-24.
+        modelGateways: z.boolean().optional(),
       })
       .optional(),
   })

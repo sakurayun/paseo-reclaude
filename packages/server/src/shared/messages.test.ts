@@ -1,5 +1,11 @@
 import { describe, expect, test } from "vitest";
-import { FileExplorerRequestSchema, SessionOutboundMessageSchema } from "./messages.js";
+import {
+  CreateAgentRequestMessageSchema,
+  FileExplorerRequestSchema,
+  MutableDaemonConfigPatchSchema,
+  MutableDaemonConfigSchema,
+  SessionOutboundMessageSchema,
+} from "./messages.js";
 
 function workspaceDescriptor(overrides: Record<string, unknown> = {}) {
   return {
@@ -123,6 +129,74 @@ describe("workspace descriptor message compatibility", () => {
       workspaceDirectory: "/repo/app",
       gitRuntime: null,
       githubRuntime: null,
+    });
+  });
+});
+
+describe("model gateway message compatibility", () => {
+  test("daemon config accepts model gateway registry entries", () => {
+    const parsed = MutableDaemonConfigSchema.parse({
+      mcp: { injectIntoAgents: true },
+      providers: {},
+      modelGateways: {
+        "9router-local": {
+          type: "openai-compatible",
+          label: "9Router local",
+          baseUrl: "http://localhost:20128/v1",
+        },
+      },
+    });
+
+    expect(parsed.modelGateways["9router-local"]).toMatchObject({
+      type: "openai-compatible",
+      baseUrl: "http://localhost:20128/v1",
+    });
+  });
+
+  test("daemon config patches accept model gateway updates", () => {
+    expect(
+      MutableDaemonConfigPatchSchema.parse({
+        modelGateways: {
+          "custom-gateway": {
+            type: "openai-compatible",
+            baseUrl: "https://gateway.example.com/v1",
+            apiKey: "sk-test",
+          },
+        },
+      }),
+    ).toMatchObject({
+      modelGateways: {
+        "custom-gateway": {
+          type: "openai-compatible",
+          baseUrl: "https://gateway.example.com/v1",
+        },
+      },
+    });
+  });
+
+  test("create agent requests accept per-session model gateway selection", () => {
+    const parsed = CreateAgentRequestMessageSchema.parse({
+      type: "create_agent_request",
+      requestId: "req-1",
+      config: {
+        provider: "codex",
+        cwd: "/workspace/project",
+        model: "premium-coding",
+        modelGateway: {
+          type: "openai-compatible",
+          label: "9Router remote",
+          baseUrl: "https://router.example.com/v1",
+          apiKey: "sk-router",
+        },
+      },
+      workspaceId: "ws-1",
+      clientMessageId: "client-1",
+      attachments: [],
+    });
+
+    expect(parsed.config.modelGateway).toMatchObject({
+      type: "openai-compatible",
+      baseUrl: "https://router.example.com/v1",
     });
   });
 });

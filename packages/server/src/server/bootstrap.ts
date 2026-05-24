@@ -290,6 +290,7 @@ export async function createPaseoDaemon(
           },
         ]),
       ),
+      modelGateways: {},
       autoArchiveAfterMerge: config.autoArchiveAfterMerge ?? false,
       appendSystemPrompt: config.appendSystemPrompt ?? "",
     },

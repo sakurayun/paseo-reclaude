@@ -190,6 +190,8 @@ const CODEX_MODES: AgentMode[] = [
 ];
 
 const DEFAULT_CODEX_MODE_ID = "auto";
+const MODEL_GATEWAY_CODEX_PROVIDER_ID = "paseo_model_gateway";
+const MODEL_GATEWAY_API_KEY_ENV = "PASEO_MODEL_GATEWAY_API_KEY";
 
 interface CodexAppServerClientLike {
   request(method: string, params?: unknown): Promise<unknown>;
@@ -2845,6 +2847,43 @@ function buildCodexCustomProviderConfig(
   };
 }
 
+function buildCodexModelGatewayConfig(
+  modelGateway: AgentSessionConfig["modelGateway"] | undefined,
+): Record<string, unknown> | null {
+  if (!modelGateway || modelGateway.type === "native") {
+    return null;
+  }
+  const normalizedBaseUrl = normalizeOpenAICompatibleBaseUrl(modelGateway.baseUrl);
+  if (!normalizedBaseUrl) {
+    throw new Error("Model gateway base URL must be an http(s) URL");
+  }
+  const providerConfig: Record<string, unknown> = {
+    name: modelGateway.label?.trim() || "Model Gateway",
+    base_url: normalizedBaseUrl,
+    wire_api: "responses",
+  };
+  if (modelGateway.apiKey?.trim()) {
+    providerConfig.env_key = MODEL_GATEWAY_API_KEY_ENV;
+    providerConfig.requires_openai_auth = false;
+  }
+  return {
+    model_provider: MODEL_GATEWAY_CODEX_PROVIDER_ID,
+    model_providers: {
+      [MODEL_GATEWAY_CODEX_PROVIDER_ID]: providerConfig,
+    },
+  };
+}
+
+function buildModelGatewayLaunchEnv(
+  modelGateway: AgentSessionConfig["modelGateway"] | undefined,
+): Record<string, string> | undefined {
+  if (modelGateway?.type !== "openai-compatible") {
+    return undefined;
+  }
+  const apiKey = modelGateway.apiKey?.trim();
+  return apiKey ? { [MODEL_GATEWAY_API_KEY_ENV]: apiKey } : undefined;
+}
+
 interface CodexSubAgentCallState {
   callId: string;
   toolCall: ToolCallTimelineItem;
@@ -5299,13 +5338,12 @@ export class CodexAppServerAgentClient implements AgentClient {
     private readonly deps: CodexAppServerAgentDeps = {},
   ) {}
 
-  private sessionDeps(): CodexAppServerAgentDeps {
+  private sessionDeps(config: AgentSessionConfig): CodexAppServerAgentDeps {
     return {
       ...this.deps,
-      customCodexConfig: buildCodexCustomProviderConfig(
-        this.runtimeSettings,
-        this.deps.customProvider,
-      ),
+      customCodexConfig:
+        buildCodexModelGatewayConfig(config.modelGateway) ??
+        buildCodexCustomProviderConfig(this.runtimeSettings, this.deps.customProvider),
     };
   }
 
@@ -5402,6 +5440,7 @@ export class CodexAppServerAgentClient implements AgentClient {
       // utility generations through `codex exec --ephemeral` in a larger change.
     }
     const sessionConfig: AgentSessionConfig = { ...config, provider: CODEX_PROVIDER };
+    const gatewayLaunchEnv = buildModelGatewayLaunchEnv(sessionConfig.modelGateway);
     const goalsEnabled = await this.resolveGoalsEnabled();
     const autoReviewEnabled = await this.resolveAutoReviewEnabled();
     const session = new CodexAppServerAgentSession(
@@ -5409,8 +5448,11 @@ export class CodexAppServerAgentClient implements AgentClient {
       null,
       this.logger,
       () =>
-        this.spawnAppServer(launchContext?.env, { goalsEnabled, agentId: launchContext?.agentId }),
-      this.sessionDeps(),
+        this.spawnAppServer(
+          { ...launchContext?.env, ...gatewayLaunchEnv },
+          { goalsEnabled, agentId: launchContext?.agentId },
+        ),
+      this.sessionDeps(sessionConfig),
       options?.persistSession === false,
       goalsEnabled,
       autoReviewEnabled,
@@ -5434,13 +5476,17 @@ export class CodexAppServerAgentClient implements AgentClient {
     };
     const goalsEnabled = await this.resolveGoalsEnabled();
     const autoReviewEnabled = await this.resolveAutoReviewEnabled();
+    const gatewayLaunchEnv = buildModelGatewayLaunchEnv(merged.modelGateway);
     const session = new CodexAppServerAgentSession(
       merged,
       handle,
       this.logger,
       () =>
-        this.spawnAppServer(launchContext?.env, { goalsEnabled, agentId: launchContext?.agentId }),
-      this.sessionDeps(),
+        this.spawnAppServer(
+          { ...launchContext?.env, ...gatewayLaunchEnv },
+          { goalsEnabled, agentId: launchContext?.agentId },
+        ),
+      this.sessionDeps(merged),
       false,
       goalsEnabled,
       autoReviewEnabled,
