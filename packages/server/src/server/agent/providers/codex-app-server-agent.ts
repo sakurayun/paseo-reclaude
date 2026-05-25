@@ -82,6 +82,7 @@ import {
   toDiagnosticErrorMessage,
 } from "./diagnostic-utils.js";
 import { runProviderTurn } from "./provider-runner.js";
+import { resolvePaseoHome } from "../../paseo-home.js";
 import type { WorkspaceGitService } from "../../workspace-git-service.js";
 
 function assertChildWithPipes(
@@ -190,8 +191,7 @@ const CODEX_MODES: AgentMode[] = [
 ];
 
 const DEFAULT_CODEX_MODE_ID = "auto";
-const MODEL_GATEWAY_CODEX_PROVIDER_ID = "paseo_model_gateway";
-const MODEL_GATEWAY_API_KEY_ENV = "PASEO_MODEL_GATEWAY_API_KEY";
+const MODEL_GATEWAY_API_KEY_ENV = "OPENAI_API_KEY";
 
 interface CodexAppServerClientLike {
   request(method: string, params?: unknown): Promise<unknown>;
@@ -460,8 +460,20 @@ async function resolveCodexLaunchPrefix(runtimeSettings?: ProviderRuntimeSetting
   return resolveProviderCommandPrefix(runtimeSettings?.command, resolveCodexBinary);
 }
 
-function resolveCodexHomeDir(): string {
-  return process.env.CODEX_HOME ?? path.join(os.homedir(), ".codex");
+function expandHomePath(input: string): string {
+  if (input === "~") {
+    return os.homedir();
+  }
+  if (input.startsWith("~/")) {
+    return path.join(os.homedir(), input.slice(2));
+  }
+  return input;
+}
+
+function resolveCodexHomeDir(runtimeSettings?: ProviderRuntimeSettings): string {
+  return path.resolve(
+    expandHomePath(runtimeSettings?.env?.CODEX_HOME ?? process.env.CODEX_HOME ?? "~/.codex"),
+  );
 }
 
 function decodeEscapedChar(next: string): string {
@@ -2867,12 +2879,34 @@ function buildCodexModelGatewayConfig(
   if (envKey) {
     providerConfig.env_key = envKey;
   }
+  const providerId = resolveModelGatewayProviderId(modelGateway);
+  const gatewayModel = resolveModelGatewayModel(modelGateway);
   return {
-    model_provider: MODEL_GATEWAY_CODEX_PROVIDER_ID,
+    model_provider: providerId,
     model_providers: {
-      [MODEL_GATEWAY_CODEX_PROVIDER_ID]: providerConfig,
+      [providerId]: providerConfig,
+    },
+    agents: {
+      subagent: {
+        model: gatewayModel ?? "",
+      },
     },
   };
+}
+
+function resolveModelGatewayProviderId(
+  modelGateway: AgentSessionConfig["modelGateway"] | undefined,
+): string {
+  if (modelGateway?.type !== "openai-compatible") {
+    return "model-gateway";
+  }
+  const rawId = modelGateway.id?.trim() || modelGateway.label?.trim() || "model-gateway";
+  return (
+    rawId
+      .toLowerCase()
+      .replace(/[^a-z0-9_-]+/g, "-")
+      .replace(/^-+|-+$/g, "") || "model-gateway"
+  );
 }
 
 function resolveModelGatewayModel(
@@ -2884,15 +2918,49 @@ function resolveModelGatewayModel(
   return modelGateway.model?.trim() || undefined;
 }
 
+function resolveCodexRuntimeModel(config: AgentSessionConfig): string | undefined {
+  return resolveModelGatewayModel(config.modelGateway) ?? config.model ?? undefined;
+}
+
+function resolveEffectiveCodexSessionConfig(config: AgentSessionConfig): AgentSessionConfig {
+  const runtimeModel = resolveCodexRuntimeModel(config);
+  if (!runtimeModel || runtimeModel === config.model) {
+    return config;
+  }
+  return {
+    ...config,
+    model: runtimeModel,
+  };
+}
+
+function buildModelGatewayRuntimeMetadata(
+  modelGateway: AgentSessionConfig["modelGateway"] | undefined,
+): Record<string, unknown> | undefined {
+  if (modelGateway?.type !== "openai-compatible") {
+    return undefined;
+  }
+  const metadata: Record<string, unknown> = {
+    type: modelGateway.type,
+    id: resolveModelGatewayProviderId(modelGateway),
+  };
+  if (modelGateway.label?.trim()) {
+    metadata.label = modelGateway.label.trim();
+  }
+  if (modelGateway.provider) {
+    metadata.provider = modelGateway.provider;
+  }
+  const model = resolveModelGatewayModel(modelGateway);
+  if (model) {
+    metadata.model = model;
+  }
+  return metadata;
+}
+
 function resolveModelGatewayApiKeyEnv(
   modelGateway: AgentSessionConfig["modelGateway"] | undefined,
 ): string | undefined {
   if (modelGateway?.type !== "openai-compatible") {
     return undefined;
-  }
-  const configuredEnvKey = modelGateway.apiKeyEnvVar?.trim();
-  if (configuredEnvKey) {
-    return configuredEnvKey;
   }
   return modelGateway.apiKey?.trim() ? MODEL_GATEWAY_API_KEY_ENV : undefined;
 }
@@ -2906,6 +2974,184 @@ function buildModelGatewayLaunchEnv(
   const apiKey = modelGateway.apiKey?.trim();
   const envKey = resolveModelGatewayApiKeyEnv(modelGateway) ?? MODEL_GATEWAY_API_KEY_ENV;
   return apiKey ? { [envKey]: apiKey } : undefined;
+}
+
+function resolveCodexModelGatewayRoot(
+  modelGateway: AgentSessionConfig["modelGateway"] | undefined,
+): string {
+  return path.join(
+    resolvePaseoHome(),
+    "providers",
+    CODEX_PROVIDER,
+    "model-gateways",
+    resolveModelGatewayProviderId(modelGateway),
+  );
+}
+
+async function copyCodexHomeEntryIfExists(
+  sourceDir: string,
+  targetDir: string,
+  entry: string,
+): Promise<void> {
+  const source = path.join(sourceDir, entry);
+  const target = path.join(targetDir, entry);
+  await fs.rm(target, { recursive: true, force: true });
+  if (!fsSync.existsSync(source)) {
+    return;
+  }
+  await fs.cp(source, target, { recursive: true });
+}
+
+async function syncCodexGatewayHomeSource(
+  sourceHome: string,
+  baseHome: string,
+  gatewayHome: string,
+): Promise<void> {
+  await fs.mkdir(baseHome, { recursive: true });
+  await fs.mkdir(gatewayHome, { recursive: true });
+  const copiedEntries = ["config.toml", "auth.json", "AGENTS.md", "skills", "plugins"];
+  for (const entry of copiedEntries) {
+    await copyCodexHomeEntryIfExists(sourceHome, baseHome, entry);
+    await copyCodexHomeEntryIfExists(baseHome, gatewayHome, entry);
+  }
+}
+
+async function readTextFileIfExists(filePath: string): Promise<string> {
+  try {
+    return await fs.readFile(filePath, "utf8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return "";
+    }
+    throw error;
+  }
+}
+
+function quoteTomlString(value: string): string {
+  return JSON.stringify(value);
+}
+
+function removeTopLevelTomlKeys(source: string, keys: string[]): string {
+  const lines = source.split(/\r?\n/);
+  let inTopLevel = true;
+  return lines
+    .filter((line) => {
+      const trimmed = line.trim();
+      if (/^\[[^\]]+]\s*$/.test(trimmed)) {
+        inTopLevel = false;
+      }
+      if (!inTopLevel) {
+        return true;
+      }
+      return !keys.some((key) => new RegExp(`^${key}\\s*=`).test(trimmed));
+    })
+    .join("\n");
+}
+
+function removeTomlSection(source: string, sectionName: string): string {
+  const lines = source.split(/\r?\n/);
+  const sectionHeader = `[${sectionName}]`;
+  let skipping = false;
+  const kept: string[] = [];
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (trimmed === sectionHeader) {
+      skipping = true;
+      continue;
+    }
+    if (skipping && /^\[[^\]]+]\s*$/.test(trimmed)) {
+      skipping = false;
+    }
+    if (!skipping) {
+      kept.push(line);
+    }
+  }
+  return kept.join("\n");
+}
+
+function patchCodexGatewayConfigToml(
+  baseToml: string,
+  modelGateway: AgentSessionConfig["modelGateway"],
+): string {
+  if (modelGateway?.type !== "openai-compatible") {
+    return baseToml;
+  }
+  const providerId = resolveModelGatewayProviderId(modelGateway);
+  const gatewayModel = resolveModelGatewayModel(modelGateway) ?? "";
+  let nextToml = baseToml;
+  nextToml = removeTopLevelTomlKeys(nextToml, ["model", "model_provider"]);
+  nextToml = removeTomlSection(nextToml, `model_providers.${providerId}`);
+  nextToml = removeTomlSection(nextToml, "agents.subagent").trimEnd();
+  const rootToml = [
+    `model = ${quoteTomlString(gatewayModel)}`,
+    `model_provider = ${quoteTomlString(providerId)}`,
+  ].join("\n");
+  const gatewayToml = [
+    "",
+    `[model_providers.${providerId}]`,
+    `name = ${quoteTomlString(modelGateway.label?.trim() || "Model Gateway")}`,
+    `base_url = ${quoteTomlString(normalizeOpenAICompatibleBaseUrl(modelGateway.baseUrl) ?? "")}`,
+    'wire_api = "responses"',
+    "requires_openai_auth = false",
+    "",
+    "[agents.subagent]",
+    `model = ${quoteTomlString(gatewayModel)}`,
+  ].join("\n");
+  return `${rootToml}${nextToml ? `\n\n${nextToml}` : ""}\n${gatewayToml}\n`;
+}
+
+async function writeCodexGatewayAuthJson(
+  gatewayHome: string,
+  modelGateway: AgentSessionConfig["modelGateway"],
+): Promise<void> {
+  if (modelGateway?.type !== "openai-compatible") {
+    return;
+  }
+  const apiKey = modelGateway.apiKey?.trim();
+  if (!apiKey) {
+    return;
+  }
+  await fs.writeFile(
+    path.join(gatewayHome, "auth.json"),
+    `${JSON.stringify({ auth_mode: "apikey", OPENAI_API_KEY: apiKey }, null, 2)}\n`,
+    "utf8",
+  );
+}
+
+async function prepareCodexModelGatewayLaunchEnv(
+  modelGateway: AgentSessionConfig["modelGateway"] | undefined,
+  runtimeSettings: ProviderRuntimeSettings | undefined,
+  logger: Logger,
+): Promise<Record<string, string> | undefined> {
+  if (modelGateway?.type !== "openai-compatible") {
+    return undefined;
+  }
+  const sourceHome = resolveCodexHomeDir(runtimeSettings);
+  const gatewayRoot = resolveCodexModelGatewayRoot(modelGateway);
+  const baseHome = path.join(gatewayRoot, "base");
+  const gatewayHome = path.join(gatewayRoot, "home");
+  await syncCodexGatewayHomeSource(sourceHome, baseHome, gatewayHome);
+  const baseConfigToml = await readTextFileIfExists(path.join(baseHome, "config.toml"));
+  await fs.writeFile(
+    path.join(gatewayHome, "config.toml"),
+    patchCodexGatewayConfigToml(baseConfigToml, modelGateway),
+    "utf8",
+  );
+  await writeCodexGatewayAuthJson(gatewayHome, modelGateway);
+  logger.debug(
+    {
+      provider: CODEX_PROVIDER,
+      gatewayId: resolveModelGatewayProviderId(modelGateway),
+      sourceHome,
+      gatewayHome,
+      hasApiKey: Boolean(modelGateway.apiKey?.trim()),
+    },
+    "provider.codex.model_gateway_home_prepared",
+  );
+  return {
+    CODEX_HOME: gatewayHome,
+    ...buildModelGatewayLaunchEnv(modelGateway),
+  };
 }
 
 interface CodexSubAgentCallState {
@@ -3002,12 +3248,13 @@ export class CodexAppServerAgentSession implements AgentSession {
       provider: CODEX_PROVIDER,
       agentId: this.agentId,
     });
-    if (config.modeId === undefined) {
+    const effectiveConfig = resolveEffectiveCodexSessionConfig(config);
+    if (effectiveConfig.modeId === undefined) {
       throw new Error("Codex agent requires modeId to be specified");
     }
-    validateCodexMode(config.modeId);
-    this.currentMode = config.modeId;
-    this.config = config;
+    validateCodexMode(effectiveConfig.modeId);
+    this.currentMode = effectiveConfig.modeId;
+    this.config = effectiveConfig;
     this.config.thinkingOptionId = normalizeCodexThinkingOptionId(this.config.thinkingOptionId);
     if (this.config.featureValues?.fast_mode && codexModelSupportsFastMode(this.config.model)) {
       this.serviceTier = "fast";
@@ -3439,8 +3686,9 @@ export class CodexAppServerAgentSession implements AgentSession {
     };
     applyApprovalsReviewerParam(params, preset);
 
-    if (this.config.model) {
-      params.model = this.config.model;
+    const runtimeModel = resolveCodexRuntimeModel(this.config);
+    if (runtimeModel) {
+      params.model = runtimeModel;
     }
     const thinkingOptionId = normalizeCodexThinkingOptionId(this.config.thinkingOptionId);
     if (thinkingOptionId) {
@@ -3658,12 +3906,20 @@ export class CodexAppServerAgentSession implements AgentSession {
     const info: AgentRuntimeInfo = {
       provider: CODEX_PROVIDER,
       sessionId: this.currentThreadId,
-      model: this.config.model ?? null,
+      model: resolveCodexRuntimeModel(this.config) ?? null,
       thinkingOptionId: normalizeCodexThinkingOptionId(this.config.thinkingOptionId) ?? null,
       modeId: this.currentMode ?? null,
-      extra: this.resolvedCollaborationMode
-        ? { collaborationMode: this.resolvedCollaborationMode.name }
-        : undefined,
+      extra: (() => {
+        const extra: Record<string, unknown> = {};
+        if (this.resolvedCollaborationMode) {
+          extra.collaborationMode = this.resolvedCollaborationMode.name;
+        }
+        const modelGateway = buildModelGatewayRuntimeMetadata(this.config.modelGateway);
+        if (modelGateway) {
+          extra.modelGateway = modelGateway;
+        }
+        return Object.keys(extra).length > 0 ? extra : undefined;
+      })(),
     };
     this.cachedRuntimeInfo = info;
     return { ...info };
@@ -4126,7 +4382,7 @@ export class CodexAppServerAgentSession implements AgentSession {
       throw new Error("Codex client is not initialized");
     }
     let configuredDefaults: CodexConfiguredDefaults = {};
-    let model = resolveModelGatewayModel(this.config.modelGateway) ?? this.config.model;
+    let model = resolveCodexRuntimeModel(this.config);
     let thinkingOptionId = normalizeCodexThinkingOptionId(this.config.thinkingOptionId);
     if (!model || !thinkingOptionId) {
       configuredDefaults = await readCodexConfiguredDefaults(this.client, this.logger);
@@ -5464,7 +5720,11 @@ export class CodexAppServerAgentClient implements AgentClient {
       // utility generations through `codex exec --ephemeral` in a larger change.
     }
     const sessionConfig: AgentSessionConfig = { ...config, provider: CODEX_PROVIDER };
-    const gatewayLaunchEnv = buildModelGatewayLaunchEnv(sessionConfig.modelGateway);
+    const gatewayLaunchEnv = await prepareCodexModelGatewayLaunchEnv(
+      sessionConfig.modelGateway,
+      this.runtimeSettings,
+      this.logger,
+    );
     const goalsEnabled = await this.resolveGoalsEnabled();
     const autoReviewEnabled = await this.resolveAutoReviewEnabled();
     const session = new CodexAppServerAgentSession(
@@ -5500,7 +5760,11 @@ export class CodexAppServerAgentClient implements AgentClient {
     };
     const goalsEnabled = await this.resolveGoalsEnabled();
     const autoReviewEnabled = await this.resolveAutoReviewEnabled();
-    const gatewayLaunchEnv = buildModelGatewayLaunchEnv(merged.modelGateway);
+    const gatewayLaunchEnv = await prepareCodexModelGatewayLaunchEnv(
+      merged.modelGateway,
+      this.runtimeSettings,
+      this.logger,
+    );
     const session = new CodexAppServerAgentSession(
       merged,
       handle,

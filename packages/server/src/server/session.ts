@@ -85,6 +85,7 @@ import { spawnWorkspaceScript } from "./worktree-bootstrap.js";
 import type { WorkspaceScriptRuntimeStore } from "./workspace-script-runtime-store.js";
 import type { DaemonConfigStore } from "./daemon-config-store.js";
 import { applyMutableProviderConfigToOverrides } from "./daemon-config-store.js";
+import { listModelGatewayModels } from "./model-gateway-models.js";
 import { getErrorMessage, getErrorMessageOr } from "../shared/error-utils.js";
 import { getAgentStatusPriority } from "../shared/agent-state-bucket.js";
 import type {
@@ -1975,12 +1976,54 @@ export class Session {
           },
         });
         return undefined;
+      case "model_gateway.models.list.request":
+        return this.handleListModelGatewayModelsRequest(msg);
       case "read_project_config_request":
         return this.handleReadProjectConfigRequest(msg);
       case "write_project_config_request":
         return this.handleWriteProjectConfigRequest(msg);
       default:
         return undefined;
+    }
+  }
+
+  private async handleListModelGatewayModelsRequest(
+    msg: Extract<SessionInboundMessage, { type: "model_gateway.models.list.request" }>,
+  ): Promise<void> {
+    const fetchedAt = new Date().toISOString();
+    if (msg.gateway.type !== "openai-compatible") {
+      this.emit({
+        type: "model_gateway.models.list.response",
+        payload: {
+          requestId: msg.requestId,
+          models: [],
+          error: "Model discovery is only available for OpenAI-compatible gateways.",
+          fetchedAt,
+        },
+      });
+      return;
+    }
+
+    try {
+      const models = await listModelGatewayModels(msg.gateway);
+      this.emit({
+        type: "model_gateway.models.list.response",
+        payload: { requestId: msg.requestId, models, error: null, fetchedAt },
+      });
+    } catch (error) {
+      this.sessionLogger.warn(
+        { err: error, baseUrl: msg.gateway.baseUrl },
+        "Failed to list model gateway models",
+      );
+      this.emit({
+        type: "model_gateway.models.list.response",
+        payload: {
+          requestId: msg.requestId,
+          models: [],
+          error: getErrorMessage(error),
+          fetchedAt,
+        },
+      });
     }
   }
 

@@ -4,6 +4,7 @@ import {
   FileExplorerRequestSchema,
   MutableDaemonConfigPatchSchema,
   MutableDaemonConfigSchema,
+  SessionInboundMessageSchema,
   SessionOutboundMessageSchema,
 } from "./messages.js";
 
@@ -142,18 +143,48 @@ describe("model gateway message compatibility", () => {
         "9router-local": {
           type: "openai-compatible",
           label: "9Router local",
+          provider: "codex",
           baseUrl: "http://localhost:20128/v1",
           model: "openai-all",
-          apiKeyEnvVar: "NINEROUTER_API_KEY",
+          apiKey: "sk-router",
         },
       },
     });
 
     expect(parsed.modelGateways["9router-local"]).toMatchObject({
       type: "openai-compatible",
+      provider: "codex",
       baseUrl: "http://localhost:20128/v1",
       model: "openai-all",
-      apiKeyEnvVar: "NINEROUTER_API_KEY",
+      apiKey: "sk-router",
+    });
+  });
+
+  test("model gateway catalog messages accept request and response payloads", () => {
+    expect(
+      SessionInboundMessageSchema.parse({
+        type: "model_gateway.models.list.request",
+        requestId: "catalog-request",
+        gateway: {
+          type: "openai-compatible",
+          baseUrl: "http://localhost:20128/v1",
+          apiKey: "sk-router",
+        },
+      }),
+    ).toMatchObject({ requestId: "catalog-request" });
+
+    expect(
+      SessionOutboundMessageSchema.parse({
+        type: "model_gateway.models.list.response",
+        payload: {
+          requestId: "catalog-request",
+          models: ["openai-all"],
+          error: null,
+          fetchedAt: "2026-05-25T12:00:00.000Z",
+        },
+      }),
+    ).toMatchObject({
+      payload: { requestId: "catalog-request", models: ["openai-all"], error: null },
     });
   });
 
@@ -163,6 +194,7 @@ describe("model gateway message compatibility", () => {
         modelGateways: {
           "custom-gateway": {
             type: "openai-compatible",
+            provider: "codex",
             baseUrl: "https://gateway.example.com/v1",
             model: "premium-coding",
             apiKey: "sk-test",
@@ -173,6 +205,7 @@ describe("model gateway message compatibility", () => {
       modelGateways: {
         "custom-gateway": {
           type: "openai-compatible",
+          provider: "codex",
           baseUrl: "https://gateway.example.com/v1",
           model: "premium-coding",
         },

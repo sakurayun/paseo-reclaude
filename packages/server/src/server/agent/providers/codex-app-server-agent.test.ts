@@ -139,20 +139,44 @@ async function runCustomCodexProviderTurn(
   providerId: string,
   baseUrl: string,
   configOverrides: Partial<AgentSessionConfig> = {},
+  options: { collaborationModes?: unknown[] } = {},
 ): Promise<CapturedFakeCodexRecord[]> {
   const tempDir = await mkdtemp(path.join(tmpdir(), "codex-custom-provider-"));
   const fakeAppServerPath = path.join(tempDir, "fake-codex-app-server.cjs");
   const capturedRequestsPath = path.join(tempDir, "requests.jsonl");
+  const sourceCodexHome = path.join(tempDir, "source-codex-home");
+  mkdirSync(sourceCodexHome, { recursive: true });
+  writeFileSync(
+    path.join(sourceCodexHome, "config.toml"),
+    'model = "gpt-5.4"\nmodel_provider = "openai"\n[mcp_servers.context-mode]\ncommand = "context-mode"\n',
+  );
+  writeFileSync(
+    path.join(sourceCodexHome, "auth.json"),
+    `${JSON.stringify({ auth_mode: "chatgpt", OPENAI_API_KEY: null }, null, 2)}\n`,
+  );
   writeFileSync(
     fakeAppServerPath,
     `
 const fs = require("node:fs");
+const path = require("node:path");
 
 const capturePath = process.env.PASEO_FAKE_CODEX_CAPTURE;
 let buffer = "";
 
+function readCodexHomeFile(name) {
+  if (!process.env.CODEX_HOME) return undefined;
+  try {
+    return fs.readFileSync(path.join(process.env.CODEX_HOME, name), "utf8");
+  } catch {
+    return undefined;
+  }
+}
+
 fs.appendFileSync(capturePath, JSON.stringify({
   kind: "env",
+  CODEX_HOME: process.env.CODEX_HOME,
+  CODEX_CONFIG_TOML: readCodexHomeFile("config.toml"),
+  CODEX_AUTH_JSON: readCodexHomeFile("auth.json"),
   OPENAI_BASE_URL: process.env.OPENAI_BASE_URL,
   OPENAI_API_KEY: process.env.OPENAI_API_KEY,
   PASEO_MODEL_GATEWAY_API_KEY: process.env.PASEO_MODEL_GATEWAY_API_KEY,
@@ -165,7 +189,7 @@ function record(method, params) {
 
 function resultFor(method) {
   if (method === "initialize") return {};
-  if (method === "collaborationMode/list") return { data: [] };
+  if (method === "collaborationMode/list") return { data: ${JSON.stringify(options.collaborationModes ?? [])} };
   if (method === "skills/list") return { data: [] };
   if (method === "config/read") return { config: {} };
   if (method === "getUserSavedConfig") return { config: {} };
@@ -200,27 +224,36 @@ process.stdin.on("data", (chunk) => {
         env: {
           OPENAI_API_KEY: "sk-custom",
           OPENAI_BASE_URL: baseUrl,
+          CODEX_HOME: sourceCodexHome,
           PASEO_FAKE_CODEX_CAPTURE: capturedRequestsPath,
         },
       },
     },
   });
-  const session = await registry[providerId].createClient(createTestLogger()).createSession({
-    provider: providerId,
-    cwd: "/workspace/project",
-    modeId: "auto",
-    model: "custom-model",
-    ...configOverrides,
-  });
+  const previousPaseoHome = process.env.PASEO_HOME;
+  process.env.PASEO_HOME = path.join(tempDir, "paseo-home");
+  let session: AgentSession | null = null;
 
   try {
+    session = await registry[providerId].createClient(createTestLogger()).createSession({
+      provider: providerId,
+      cwd: "/workspace/project",
+      modeId: "auto",
+      model: "custom-model",
+      ...configOverrides,
+    });
     await session.startTurn("use the custom endpoint");
     return readFileSync(capturedRequestsPath, "utf8")
       .trim()
       .split("\n")
       .map((line) => JSON.parse(line) as CapturedFakeCodexRecord);
   } finally {
-    await session.close();
+    await session?.close();
+    if (previousPaseoHome === undefined) {
+      delete process.env.PASEO_HOME;
+    } else {
+      process.env.PASEO_HOME = previousPaseoHome;
+    }
     rmSync(tempDir, { recursive: true, force: true });
   }
 }
@@ -570,12 +603,10 @@ describe("Codex app-server provider", () => {
       "https://custom-relay.example.com",
     );
 
-    expect(capturedRequests[0]).toEqual({
+    expect(capturedRequests[0]).toMatchObject({
       kind: "env",
       OPENAI_API_KEY: "sk-custom",
       OPENAI_BASE_URL: "https://custom-relay.example.com",
-      PASEO_MODEL_GATEWAY_API_KEY: undefined,
-      NINEROUTER_API_KEY: undefined,
     });
     expect(capturedThreadStartConfig(capturedRequests)).toEqual({
       model_provider: "codex-iisb",
@@ -615,33 +646,100 @@ describe("Codex app-server provider", () => {
         model: "premium-coding",
         modelGateway: {
           type: "openai-compatible",
+          id: "9router",
           label: "9Router local",
+          provider: "codex",
           baseUrl: "http://localhost:20128",
           model: "openai-all",
           apiKey: "sk-router",
-          apiKeyEnvVar: "NINEROUTER_API_KEY",
         },
       },
     );
 
     expect(capturedRequests[0]).toMatchObject({
       kind: "env",
-      NINEROUTER_API_KEY: "sk-router",
+      CODEX_HOME: expect.stringContaining("/providers/codex/model-gateways/9router/home"),
+      OPENAI_API_KEY: "sk-router",
+    });
+    const codexConfigToml = capturedRequests[0].CODEX_CONFIG_TOML;
+    expect(typeof codexConfigToml).toBe("string");
+    expect(codexConfigToml).toMatch(/^model = "openai-all"\nmodel_provider = "9router"/);
+    expect(codexConfigToml).toContain('model = "openai-all"');
+    expect(codexConfigToml).toContain('model_provider = "9router"');
+    expect(codexConfigToml).toContain("[model_providers.9router]");
+    expect(codexConfigToml).toContain('base_url = "http://localhost:20128/v1"');
+    expect(codexConfigToml).toContain('wire_api = "responses"');
+    expect(codexConfigToml).toContain("requires_openai_auth = false");
+    expect(codexConfigToml).toContain("[agents.subagent]");
+    expect(codexConfigToml).toContain("[mcp_servers.context-mode]");
+    expect(JSON.parse(String(capturedRequests[0].CODEX_AUTH_JSON))).toEqual({
+      auth_mode: "apikey",
+      OPENAI_API_KEY: "sk-router",
     });
     expect(
       capturedRequests.find((record) => record.method === "thread/start")?.params,
     ).toMatchObject({
       model: "openai-all",
     });
+    const turnStartParams = capturedRequests.find((record) => record.method === "turn/start")
+      ?.params as Record<string, unknown> | undefined;
+    expect(turnStartParams).toMatchObject({
+      model: "openai-all",
+    });
     expect(capturedThreadStartConfig(capturedRequests)).toEqual({
-      model_provider: "paseo_model_gateway",
+      model_provider: "9router",
       model_providers: {
-        paseo_model_gateway: {
+        "9router": {
           name: "9Router local",
           base_url: "http://localhost:20128/v1",
-          env_key: "NINEROUTER_API_KEY",
+          env_key: "OPENAI_API_KEY",
           requires_openai_auth: false,
           wire_api: "responses",
+        },
+      },
+      agents: {
+        subagent: {
+          model: "openai-all",
+        },
+      },
+    });
+  });
+
+  test("uses the model gateway model inside Codex collaboration mode settings", async () => {
+    const capturedRequests = await runCustomCodexProviderTurn(
+      "codex-gateway-test",
+      "https://custom-relay.example.com",
+      {
+        model: "premium-coding",
+        modelGateway: {
+          type: "openai-compatible",
+          id: "9router",
+          label: "9Router local",
+          provider: "codex",
+          baseUrl: "http://localhost:20128",
+          model: "openai-all",
+          apiKey: "sk-router",
+        },
+      },
+      {
+        collaborationModes: [
+          {
+            name: "Code",
+            mode: "code",
+            model: "premium-coding",
+            reasoning_effort: "medium",
+          },
+        ],
+      },
+    );
+
+    const turnStartParams = capturedRequests.find((record) => record.method === "turn/start")
+      ?.params as Record<string, unknown> | undefined;
+    expect(turnStartParams).toMatchObject({
+      model: "openai-all",
+      collaborationMode: {
+        settings: {
+          model: "openai-all",
         },
       },
     });

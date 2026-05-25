@@ -13,9 +13,10 @@ describe("workspace-draft-agent-config", () => {
         modelGateway: {
           type: "openai-compatible",
           label: "9Router local",
+          provider: "codex",
           baseUrl: "http://localhost:20128/v1",
           model: "openai-all",
-          apiKeyEnvVar: "NINEROUTER_API_KEY",
+          apiKey: "sk-router",
         },
       }),
     ).toEqual({
@@ -27,9 +28,10 @@ describe("workspace-draft-agent-config", () => {
       modelGateway: {
         type: "openai-compatible",
         label: "9Router local",
+        provider: "codex",
         baseUrl: "http://localhost:20128/v1",
         model: "openai-all",
-        apiKeyEnvVar: "NINEROUTER_API_KEY",
+        apiKey: "sk-router",
       },
     });
   });

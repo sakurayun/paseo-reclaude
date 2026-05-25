@@ -9,6 +9,7 @@ import {
 } from "./agent/provider-launch-config.js";
 import type { AgentProviderRuntimeSettingsMap } from "./agent/provider-launch-config.js";
 import { ensurePrivateFile, writePrivateFileSync } from "./private-files.js";
+import { ModelGatewayConfigSchema } from "../shared/messages.js";
 
 export const LogLevelSchema = z.enum(["trace", "debug", "info", "warn", "error", "fatal"]);
 export const LogFormatSchema = z.enum(["pretty", "json"]);
@@ -284,6 +285,7 @@ export const PersistedConfigSchema = z
       .strict()
       .optional(),
 
+    modelGateways: z.record(z.string(), ModelGatewayConfigSchema).optional(),
     providers: ProvidersSchema.optional(),
     agents: z
       .object({

@@ -46,16 +46,17 @@ export interface NativeModelGatewayConfig {
   type: "native";
   id?: string;
   label?: string;
+  provider?: AgentProvider;
 }
 
 export interface OpenAICompatibleModelGatewayConfig {
   type: "openai-compatible";
   id?: string;
   label?: string;
+  provider?: AgentProvider;
   baseUrl: string;
   model?: string;
   apiKey?: string;
-  apiKeyEnvVar?: string;
 }
 
 export type ModelGatewayConfig = NativeModelGatewayConfig | OpenAICompatibleModelGatewayConfig;

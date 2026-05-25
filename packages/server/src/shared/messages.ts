@@ -105,12 +105,13 @@ const MutableDaemonProviderConfigSchema = z
   })
   .passthrough();
 
-const ModelGatewayConfigSchema = z.discriminatedUnion("type", [
+export const ModelGatewayConfigSchema = z.discriminatedUnion("type", [
   z
     .object({
       type: z.literal("native"),
       id: z.string().optional(),
       label: z.string().optional(),
+      provider: z.string().optional(),
     })
     .passthrough(),
   z
@@ -118,10 +119,10 @@ const ModelGatewayConfigSchema = z.discriminatedUnion("type", [
       type: z.literal("openai-compatible"),
       id: z.string().optional(),
       label: z.string().optional(),
+      provider: z.string().optional(),
       baseUrl: z.string().trim().min(1),
       model: z.string().trim().min(1).optional(),
       apiKey: z.string().optional(),
-      apiKeyEnvVar: z.string().trim().min(1).optional(),
     })
     .passthrough(),
 ]);
@@ -155,6 +156,7 @@ export const MutableDaemonConfigPatchSchema = z
 
 export type MutableDaemonConfig = z.infer<typeof MutableDaemonConfigSchema>;
 export type MutableDaemonConfigPatch = z.infer<typeof MutableDaemonConfigPatchSchema>;
+export type ModelGatewayConfig = z.infer<typeof ModelGatewayConfigSchema>;
 import type { LiteralUnion } from "./literal-union.js";
 import type {
   AgentCapabilityFlags,
@@ -1032,6 +1034,12 @@ export const SetDaemonConfigRequestMessageSchema = z.object({
   config: MutableDaemonConfigPatchSchema,
 });
 
+export const ListModelGatewayModelsRequestMessageSchema = z.object({
+  type: z.literal("model_gateway.models.list.request"),
+  requestId: z.string(),
+  gateway: ModelGatewayConfigSchema,
+});
+
 export const ReadProjectConfigRequestMessageSchema = z.object({
   type: z.literal("read_project_config_request"),
   requestId: z.string(),
@@ -1879,6 +1887,7 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   DaemonGetPairingOfferRequestSchema,
   GetDaemonConfigRequestMessageSchema,
   SetDaemonConfigRequestMessageSchema,
+  ListModelGatewayModelsRequestMessageSchema,
   ReadProjectConfigRequestMessageSchema,
   WriteProjectConfigRequestMessageSchema,
   DictationStreamStartMessageSchema,
@@ -2762,6 +2771,16 @@ export const SetDaemonConfigResponseMessageSchema = z.object({
       config: MutableDaemonConfigSchema,
     })
     .passthrough(),
+});
+
+export const ListModelGatewayModelsResponseMessageSchema = z.object({
+  type: z.literal("model_gateway.models.list.response"),
+  payload: z.object({
+    requestId: z.string(),
+    models: z.array(z.string()),
+    error: z.string().nullable(),
+    fetchedAt: z.string(),
+  }),
 });
 
 export const ReadProjectConfigResponseMessageSchema = z.object({
@@ -3673,6 +3692,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   DaemonGetPairingOfferResponseSchema,
   GetDaemonConfigResponseMessageSchema,
   SetDaemonConfigResponseMessageSchema,
+  ListModelGatewayModelsResponseMessageSchema,
   ReadProjectConfigResponseMessageSchema,
   WriteProjectConfigResponseMessageSchema,
   SetAgentModeResponseMessageSchema,
@@ -3758,6 +3778,9 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
 ]);
 
 export type SessionOutboundMessage = z.infer<typeof SessionOutboundMessageSchema>;
+export type ListModelGatewayModelsResponseMessage = z.infer<
+  typeof ListModelGatewayModelsResponseMessageSchema
+>;
 
 // Type exports for individual message types
 export type ActivityLogMessage = z.infer<typeof ActivityLogMessageSchema>;

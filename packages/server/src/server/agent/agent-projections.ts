@@ -317,6 +317,19 @@ function normalizePromptPreview(text: string): string | null {
     : normalized;
 }
 
+function sanitizeModelGatewayConfig(
+  modelGateway: AgentSessionConfig["modelGateway"],
+): SerializableAgentConfig["modelGateway"] | undefined {
+  if (!modelGateway) {
+    return undefined;
+  }
+  if (modelGateway.type !== "openai-compatible") {
+    return modelGateway;
+  }
+  const { apiKey: _apiKey, ...safeGateway } = modelGateway;
+  return safeGateway;
+}
+
 function buildSerializableConfig(config: AgentSessionConfig): SerializableAgentConfig | null {
   const serializable: SerializableAgentConfig = {};
   if (config.modeId) {
@@ -343,6 +356,10 @@ function buildSerializableConfig(config: AgentSessionConfig): SerializableAgentC
   }
   if (config.mcpServers) {
     serializable.mcpServers = config.mcpServers;
+  }
+  const modelGateway = sanitizeModelGatewayConfig(config.modelGateway);
+  if (modelGateway) {
+    serializable.modelGateway = modelGateway;
   }
   return Object.keys(serializable).length ? serializable : null;
 }

@@ -97,7 +97,12 @@ export class DaemonConfigStore {
 
   public patch(partial: MutableDaemonConfigPatch): MutableDaemonConfig {
     const parsedPatch = MutableDaemonConfigPatchSchema.parse(partial);
-    const next = MutableDaemonConfigSchema.parse(deepMerge(this.current, parsedPatch));
+    const merged = deepMerge(this.current, parsedPatch);
+    // The gateway editor submits the complete registry; omitted IDs are deletions.
+    if (parsedPatch.modelGateways !== undefined) {
+      merged.modelGateways = parsedPatch.modelGateways;
+    }
+    const next = MutableDaemonConfigSchema.parse(merged);
 
     const changedFieldPaths = Array.from(this.fieldChangeHandlers.keys()).filter((path) => {
       return !isEqualValue(getValueAtPath(this.current, path), getValueAtPath(next, path));
@@ -179,6 +184,7 @@ function mergeMutableConfigIntoPersistedConfig(params: {
 
   return {
     ...persisted,
+    modelGateways: mutable.modelGateways,
     daemon: {
       ...persisted.daemon,
       mcp: {

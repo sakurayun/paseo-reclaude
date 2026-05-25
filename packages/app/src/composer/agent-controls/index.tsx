@@ -37,13 +37,20 @@ import {
   buildProviderSelectorProviders,
   type ProviderSelectorProvider,
 } from "@/provider-selection/provider-selection";
+import {
+  buildModelGatewayModelDefinitions,
+  buildModelGatewaySelectorProviders,
+} from "@/model-gateways/model-gateway-models";
 import { useSessionStore } from "@/stores/session-store";
 import { useProvidersSnapshot } from "@/hooks/use-providers-snapshot";
+import { useDaemonConfig } from "@/hooks/use-daemon-config";
+import { useModelGatewayModels } from "@/hooks/use-model-gateway-models";
 import { resolveProviderDefinition } from "@/utils/provider-definitions";
 import {
   buildFavoriteModelKey,
   mergeProviderPreferences,
   toggleFavoriteModel,
+  type UseFormPreferencesReturn,
   useFormPreferences,
 } from "@/hooks/use-form-preferences";
 import {
@@ -60,8 +67,10 @@ import type {
   AgentMode,
   AgentModelDefinition,
   AgentProvider,
+  AgentSessionConfig,
 } from "@server/server/agent/agent-sdk-types";
 import type { AgentProviderDefinition } from "@server/server/agent/provider-manifest";
+import type { DaemonClient } from "@server/client/daemon-client";
 import { getModeVisuals, type AgentModeColorTier } from "@server/server/agent/provider-manifest";
 import {
   getFeatureHighlightColor,
@@ -76,6 +85,14 @@ import { toErrorMessage } from "@/utils/error-messages";
 interface StatusOption {
   id: string;
   label: string;
+}
+
+const NATIVE_MODEL_GATEWAY_ID = "native";
+
+interface RuntimeModelGatewayStatus {
+  id: string;
+  label?: string;
+  provider?: string;
 }
 
 type StatusSelector = "provider" | "gateway" | "mode" | "model" | "thinking" | `feature-${string}`;
@@ -351,10 +368,31 @@ type AgentStatusBarSlice = {
   currentModeId: string | null | undefined;
   runtimeModelId: string | null;
   model: string | null | undefined;
+  modelGatewayId: string | null;
+  modelGatewayLabel: string | null;
   features: AgentFeature[] | undefined;
   thinkingOptionId: string | null | undefined;
   lastUsage: unknown;
 } | null;
+
+function readRuntimeModelGatewayStatus(
+  extra: Record<string, unknown> | undefined,
+): RuntimeModelGatewayStatus | null {
+  const raw = extra?.modelGateway;
+  if (!raw || typeof raw !== "object") {
+    return null;
+  }
+  const record = raw as Record<string, unknown>;
+  const id = typeof record.id === "string" ? record.id.trim() : "";
+  if (!id) {
+    return null;
+  }
+  return {
+    id,
+    label: typeof record.label === "string" ? record.label : undefined,
+    provider: typeof record.provider === "string" ? record.provider : undefined,
+  };
+}
 
 function selectAgentStatusBarSlice(
   state: ReturnType<typeof useSessionStore.getState>,
@@ -365,12 +403,15 @@ function selectAgentStatusBarSlice(
   if (!currentAgent) {
     return null;
   }
+  const modelGateway = readRuntimeModelGatewayStatus(currentAgent.runtimeInfo?.extra);
   return {
     provider: currentAgent.provider,
     cwd: currentAgent.cwd,
     currentModeId: currentAgent.currentModeId,
     runtimeModelId: currentAgent.runtimeInfo?.model ?? null,
     model: currentAgent.model,
+    modelGatewayId: modelGateway?.id ?? null,
+    modelGatewayLabel: modelGateway?.label ?? null,
     features: currentAgent.features,
     thinkingOptionId: currentAgent.thinkingOptionId,
     lastUsage: currentAgent.lastUsage,
@@ -385,6 +426,46 @@ function resolveSnapshotSelectedEntry(
     return null;
   }
   return snapshotEntries.find((e) => e.provider === agentProvider) ?? null;
+}
+
+function buildActiveModelGatewayOptions(
+  id: string | undefined,
+  label: string | undefined,
+): StatusOption[] | undefined {
+  if (!id) {
+    return undefined;
+  }
+  return [
+    { id: NATIVE_MODEL_GATEWAY_ID, label: "Native" },
+    {
+      id,
+      label: label?.trim() || id,
+    },
+  ];
+}
+
+function useActiveModelGatewayStatus(agent: AgentStatusBarSlice) {
+  const modelGatewayId = agent?.modelGatewayId ?? undefined;
+  const modelGatewayLabel = agent?.modelGatewayLabel ?? undefined;
+  const options = useMemo(
+    () => buildActiveModelGatewayOptions(modelGatewayId, modelGatewayLabel),
+    [modelGatewayId, modelGatewayLabel],
+  );
+  return {
+    options,
+    selectedId: modelGatewayId,
+  };
+}
+
+function buildFallbackModeOptions(
+  modeOptions: StatusOption[],
+  currentModeId: string | null | undefined,
+  displayMode: string,
+): StatusOption[] {
+  if (modeOptions.length > 0) {
+    return modeOptions;
+  }
+  return [{ id: currentModeId ?? "", label: displayMode }];
 }
 
 function buildAgentProviderDefinitions(
@@ -406,6 +487,89 @@ function buildAgentProviderModels(
     map.set(agentProvider, models);
   }
   return map;
+}
+
+function resolveConfiguredModelGateway(
+  modelGatewayId: string | null | undefined,
+  modelGateways: Record<string, NonNullable<AgentSessionConfig["modelGateway"]>> | undefined,
+): AgentSessionConfig["modelGateway"] | undefined {
+  if (!modelGatewayId) {
+    return undefined;
+  }
+  return modelGateways?.[modelGatewayId];
+}
+
+function resolveActiveAgentModels(
+  gatewayModels: AgentModelDefinition[],
+  nativeModels: AgentModelDefinition[] | null,
+): AgentModelDefinition[] | null {
+  if (gatewayModels.length > 0) {
+    return gatewayModels;
+  }
+  return nativeModels;
+}
+
+function resolveVisibleThinkingOptions(options: StatusOption[]): StatusOption[] | undefined {
+  if (options.length > 1) {
+    return options;
+  }
+  return undefined;
+}
+
+function useActiveModelGatewayCatalog(
+  serverId: string,
+  agent: AgentStatusBarSlice,
+  daemonConfig: ReturnType<typeof useDaemonConfig>["config"],
+  nativeModels: AgentModelDefinition[] | null,
+) {
+  const configuredModelGateway = resolveConfiguredModelGateway(
+    agent?.modelGatewayId,
+    daemonConfig?.modelGateways,
+  );
+  const { modelIds: discoveredModelIds } = useModelGatewayModels(serverId, configuredModelGateway);
+  const gatewayModels = useMemo(
+    () =>
+      buildModelGatewayModelDefinitions({
+        provider: agent?.provider,
+        gateway: configuredModelGateway,
+        selectedModelId: agent?.runtimeModelId ?? agent?.model,
+        discoveredModelIds,
+      }),
+    [
+      agent?.model,
+      agent?.provider,
+      agent?.runtimeModelId,
+      configuredModelGateway,
+      discoveredModelIds,
+    ],
+  );
+  return {
+    configuredModelGateway,
+    gatewayModels,
+    activeModels: resolveActiveAgentModels(gatewayModels, nativeModels),
+  };
+}
+
+function buildAgentModelSelectorProviders(input: {
+  agentProvider: string | undefined;
+  gatewayLabel: string | null | undefined;
+  configuredModelGateway: AgentSessionConfig["modelGateway"] | undefined;
+  gatewayModels: AgentModelDefinition[];
+  providerDefinitions: AgentProviderDefinition[];
+  providerModels: Map<string, AgentModelDefinition[]>;
+}): ProviderSelectorProvider[] {
+  if (input.gatewayModels.length > 0) {
+    return buildModelGatewaySelectorProviders({
+      provider: input.agentProvider,
+      providerLabel:
+        input.configuredModelGateway?.label?.trim() || input.gatewayLabel || "Model gateway",
+      models: input.gatewayModels,
+    });
+  }
+  return buildProviderSelectorProviders({
+    providerDefinitions: input.providerDefinitions,
+    modelsByProvider: input.providerModels,
+  });
 }
 
 function compareAvailableModes(a: AgentMode[], b: AgentMode[]): boolean {
@@ -1894,92 +2058,15 @@ function ModeComboboxOption({
 const EMPTY_MODES: AgentMode[] = [];
 const FEATURES_SHEET_HEADER: SheetHeader = { title: "Features" };
 
-export const AgentStatusBar = memo(function AgentStatusBar({
-  agentId,
-  serverId,
-  onDropdownClose,
-}: AgentStatusBarProps) {
-  const { preferences, updatePreferences } = useFormPreferences();
-  const agent = useSessionStore(
-    useShallow((state) => selectAgentStatusBarSlice(state, serverId, agentId)),
-  );
-  const availableModes = useStoreWithEqualityFn(
-    useSessionStore,
-    (state) => state.sessions[serverId]?.agents?.get(agentId)?.availableModes ?? EMPTY_MODES,
-    compareAvailableModes,
-  );
-  const client = useSessionStore((state) => state.sessions[serverId]?.client ?? null);
-  const toast = useToast();
-
-  const {
-    entries: snapshotEntries,
-    isLoading: snapshotIsLoading,
-    refetchIfStale: refetchSnapshotIfStale,
-  } = useProvidersSnapshot(serverId);
-
-  const snapshotSelectedEntry = useMemo(
-    () => resolveSnapshotSelectedEntry(snapshotEntries, agent?.provider),
-    [snapshotEntries, agent?.provider],
-  );
-
-  const models = snapshotSelectedEntry?.models ?? null;
-  const selectedProviderIsLoading = snapshotSelectedEntry?.status === "loading";
-
-  const agentProviderDefinitions = useMemo(
-    () => buildAgentProviderDefinitions(agent?.provider, snapshotEntries),
-    [agent?.provider, snapshotEntries],
-  );
-
-  const agentProviderModels = useMemo(
-    () => buildAgentProviderModels(agent?.provider, models),
-    [agent?.provider, models],
-  );
-  const agentModelSelectorProviders = useMemo(
-    () =>
-      buildProviderSelectorProviders({
-        providerDefinitions: agentProviderDefinitions,
-        modelsByProvider: agentProviderModels,
-      }),
-    [agentProviderDefinitions, agentProviderModels],
-  );
-
-  const displayMode = resolveAgentDisplayMode(availableModes, agent?.currentModeId);
-
-  const modelSelection = resolveAgentModelSelection({
-    models,
-    runtimeModelId: agent?.runtimeModelId,
-    configuredModelId: agent?.model,
-    explicitThinkingOptionId: agent?.thinkingOptionId,
-  });
-
-  const modeOptions = useMemo<StatusOption[]>(() => {
-    return availableModes.map((mode) => ({
-      id: mode.id,
-      label: mode.label,
-    }));
-  }, [availableModes]);
-
-  const modelOptions = useMemo<StatusOption[]>(() => {
-    return (models ?? []).map((model) => ({ id: model.id, label: model.label }));
-  }, [models]);
-  const favoriteKeys = useMemo(
-    () =>
-      new Set(
-        (preferences.favoriteModels ?? []).map((favorite) => buildFavoriteModelKey(favorite)),
-      ),
-    [preferences.favoriteModels],
-  );
-
-  const thinkingOptions = useMemo<StatusOption[]>(() => {
-    return (modelSelection.thinkingOptions ?? []).map((option) => ({
-      id: option.id,
-      label: option.label,
-    }));
-  }, [modelSelection.thinkingOptions]);
-
-  const agentProvider = agent?.provider;
-  const activeModelId = modelSelection.activeModelId;
-
+function useAgentStatusActions(input: {
+  agentId: string;
+  agentProvider: string | undefined;
+  activeModelId: string | null | undefined;
+  client: DaemonClient | null;
+  toast: ReturnType<typeof useToast>;
+  updatePreferences: UseFormPreferencesReturn["updatePreferences"];
+}) {
+  const { activeModelId, agentId, agentProvider, client, toast, updatePreferences } = input;
   const handleSelectMode = useCallback(
     (modeId: string) => {
       if (!client) {
@@ -2002,9 +2089,7 @@ export const AgentStatusBar = memo(function AgentStatusBar({
         mergeProviderPreferences({
           preferences: current,
           provider: agentProvider,
-          updates: {
-            model: modelId,
-          },
+          updates: { model: modelId },
         }),
       ).catch((error) => {
         console.warn("[AgentStatusBar] persist model preference failed", error);
@@ -2015,17 +2100,6 @@ export const AgentStatusBar = memo(function AgentStatusBar({
       });
     },
     [agentId, agentProvider, client, toast, updatePreferences],
-  );
-
-  const handleToggleFavoriteModel = useCallback(
-    (provider: string, modelId: string) => {
-      void updatePreferences((current) =>
-        toggleFavoriteModel({ preferences: current, provider, modelId }),
-      ).catch((error) => {
-        console.warn("[AgentStatusBar] toggle favorite model failed", error);
-      });
-    },
-    [updatePreferences],
   );
 
   const handleSelectThinkingOption = useCallback(
@@ -2040,9 +2114,7 @@ export const AgentStatusBar = memo(function AgentStatusBar({
             provider: agentProvider,
             updates: {
               model: activeModelId,
-              thinkingByModel: {
-                [activeModelId]: thinkingOptionId,
-              },
+              thinkingByModel: { [activeModelId]: thinkingOptionId },
             },
           }),
         ).catch((error) => {
@@ -2066,11 +2138,7 @@ export const AgentStatusBar = memo(function AgentStatusBar({
         mergeProviderPreferences({
           preferences: current,
           provider: agentProvider,
-          updates: {
-            featureValues: {
-              [featureId]: value,
-            },
-          },
+          updates: { featureValues: { [featureId]: value } },
         }),
       ).catch((error) => {
         console.warn("[AgentStatusBar] persist feature preference failed", error);
@@ -2083,17 +2151,143 @@ export const AgentStatusBar = memo(function AgentStatusBar({
     [agentId, agentProvider, client, toast, updatePreferences],
   );
 
+  return { handleSelectMode, handleSelectModel, handleSelectThinkingOption, handleSetFeature };
+}
+
+export const AgentStatusBar = memo(function AgentStatusBar({
+  agentId,
+  serverId,
+  onDropdownClose,
+}: AgentStatusBarProps) {
+  const { preferences, updatePreferences } = useFormPreferences();
+  const agent = useSessionStore(
+    useShallow((state) => selectAgentStatusBarSlice(state, serverId, agentId)),
+  );
+  const availableModes = useStoreWithEqualityFn(
+    useSessionStore,
+    (state) => state.sessions[serverId]?.agents?.get(agentId)?.availableModes ?? EMPTY_MODES,
+    compareAvailableModes,
+  );
+  const client = useSessionStore((state) => state.sessions[serverId]?.client ?? null);
+  const toast = useToast();
+
+  const {
+    entries: snapshotEntries,
+    isLoading: snapshotIsLoading,
+    refetchIfStale: refetchSnapshotIfStale,
+  } = useProvidersSnapshot(serverId);
+  const { config: daemonConfig } = useDaemonConfig(serverId);
+
+  const snapshotSelectedEntry = useMemo(
+    () => resolveSnapshotSelectedEntry(snapshotEntries, agent?.provider),
+    [snapshotEntries, agent?.provider],
+  );
+
+  const models = snapshotSelectedEntry?.models ?? null;
+  const { configuredModelGateway, gatewayModels, activeModels } = useActiveModelGatewayCatalog(
+    serverId,
+    agent,
+    daemonConfig,
+    models,
+  );
+  const selectedProviderIsLoading = snapshotSelectedEntry?.status === "loading";
+
+  const agentProviderDefinitions = useMemo(
+    () => buildAgentProviderDefinitions(agent?.provider, snapshotEntries),
+    [agent?.provider, snapshotEntries],
+  );
+
+  const agentProviderModels = useMemo(
+    () => buildAgentProviderModels(agent?.provider, activeModels),
+    [activeModels, agent?.provider],
+  );
+  const agentModelSelectorProviders = useMemo(
+    () =>
+      buildAgentModelSelectorProviders({
+        agentProvider: agent?.provider,
+        gatewayLabel: agent?.modelGatewayLabel,
+        configuredModelGateway,
+        gatewayModels,
+        providerDefinitions: agentProviderDefinitions,
+        providerModels: agentProviderModels,
+      }),
+    [
+      agent?.modelGatewayLabel,
+      agent?.provider,
+      agentProviderDefinitions,
+      agentProviderModels,
+      configuredModelGateway,
+      gatewayModels,
+    ],
+  );
+
+  const displayMode = resolveAgentDisplayMode(availableModes, agent?.currentModeId);
+
+  const modelSelection = resolveAgentModelSelection({
+    models: activeModels,
+    runtimeModelId: agent?.runtimeModelId,
+    configuredModelId: agent?.model,
+    explicitThinkingOptionId: agent?.thinkingOptionId,
+  });
+
+  const modeOptions = useMemo<StatusOption[]>(() => {
+    return availableModes.map((mode) => ({
+      id: mode.id,
+      label: mode.label,
+    }));
+  }, [availableModes]);
+
+  const modelOptions = useMemo<StatusOption[]>(() => {
+    return (activeModels ?? []).map((model) => ({ id: model.id, label: model.label }));
+  }, [activeModels]);
+  const favoriteKeys = useMemo(
+    () =>
+      new Set(
+        (preferences.favoriteModels ?? []).map((favorite) => buildFavoriteModelKey(favorite)),
+      ),
+    [preferences.favoriteModels],
+  );
+
+  const thinkingOptions = useMemo<StatusOption[]>(() => {
+    return (modelSelection.thinkingOptions ?? []).map((option) => ({
+      id: option.id,
+      label: option.label,
+    }));
+  }, [modelSelection.thinkingOptions]);
+
+  const agentProvider = agent?.provider;
+  const activeModelId = modelSelection.activeModelId;
+
+  const { handleSelectMode, handleSelectModel, handleSelectThinkingOption, handleSetFeature } =
+    useAgentStatusActions({
+      agentId,
+      agentProvider,
+      activeModelId,
+      client,
+      toast,
+      updatePreferences,
+    });
+
+  const handleToggleFavoriteModel = useCallback(
+    (provider: string, modelId: string) => {
+      void updatePreferences((current) =>
+        toggleFavoriteModel({ preferences: current, provider, modelId }),
+      ).catch((error) => {
+        console.warn("[AgentStatusBar] toggle favorite model failed", error);
+      });
+    },
+    [updatePreferences],
+  );
+
   const handleModelSelectorOpen = useCallback(() => {
     refetchSnapshotIfStale(agentProvider);
   }, [agentProvider, refetchSnapshotIfStale]);
 
   const fallbackModeOptions = useMemo<StatusOption[]>(
-    () =>
-      modeOptions.length > 0
-        ? modeOptions
-        : [{ id: agent?.currentModeId ?? "", label: displayMode }],
+    () => buildFallbackModeOptions(modeOptions, agent?.currentModeId, displayMode),
     [agent?.currentModeId, displayMode, modeOptions],
   );
+  const activeModelGatewayStatus = useActiveModelGatewayStatus(agent);
 
   if (!agent) {
     return null;
@@ -2110,9 +2304,11 @@ export const AgentStatusBar = memo(function AgentStatusBar({
       modelOptions={modelOptions}
       selectedModelId={modelSelection.activeModelId ?? undefined}
       onSelectModel={handleSelectModel}
+      modelGatewayOptions={activeModelGatewayStatus.options}
+      selectedModelGatewayId={activeModelGatewayStatus.selectedId}
       favoriteKeys={favoriteKeys}
       onToggleFavoriteModel={handleToggleFavoriteModel}
-      thinkingOptions={thinkingOptions.length > 1 ? thinkingOptions : undefined}
+      thinkingOptions={resolveVisibleThinkingOptions(thinkingOptions)}
       selectedThinkingOptionId={modelSelection.selectedThinkingId ?? undefined}
       onSelectThinkingOption={handleSelectThinkingOption}
       features={agent.features}

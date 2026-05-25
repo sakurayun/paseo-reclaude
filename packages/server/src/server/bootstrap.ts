@@ -130,6 +130,7 @@ import type {
   ProviderOverride,
 } from "./agent/provider-launch-config.js";
 import type { PersistedConfig } from "./persisted-config.js";
+import type { MutableDaemonConfig } from "../shared/messages.js";
 import {
   ScriptRouteStore,
   createScriptProxyMiddleware,
@@ -252,6 +253,7 @@ export interface PaseoDaemonConfig {
   downloadTokenTtlMs?: number;
   agentProviderSettings?: AgentProviderRuntimeSettingsMap;
   providerOverrides?: Record<string, ProviderOverride>;
+  modelGateways?: MutableDaemonConfig["modelGateways"];
   log?: PersistedConfig["log"];
   onLifecycleIntent?: (intent: DaemonLifecycleIntent) => void;
   pushNotificationSender?: PushNotificationSender;
@@ -290,7 +292,7 @@ export async function createPaseoDaemon(
           },
         ]),
       ),
-      modelGateways: {},
+      modelGateways: config.modelGateways ?? {},
       autoArchiveAfterMerge: config.autoArchiveAfterMerge ?? false,
       appendSystemPrompt: config.appendSystemPrompt ?? "",
     },
