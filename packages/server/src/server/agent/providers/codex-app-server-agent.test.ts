@@ -158,6 +158,10 @@ async function runCustomCodexProviderTurn(
     `${JSON.stringify({ auth_mode: "chatgpt", OPENAI_API_KEY: null }, null, 2)}\n`,
   );
   writeFileSync(
+    path.join(sourceCodexHome, "hooks.json"),
+    `${JSON.stringify({ hooks: { SessionStart: [{ hooks: [] }] } }, null, 2)}\n`,
+  );
+  writeFileSync(
     fakeAppServerPath,
     `
 const fs = require("node:fs");
@@ -180,6 +184,7 @@ fs.appendFileSync(capturePath, JSON.stringify({
   CODEX_HOME: process.env.CODEX_HOME,
   CODEX_CONFIG_TOML: readCodexHomeFile("config.toml"),
   CODEX_AUTH_JSON: readCodexHomeFile("auth.json"),
+  CODEX_HOOKS_JSON: readCodexHomeFile("hooks.json"),
   OPENAI_BASE_URL: process.env.OPENAI_BASE_URL,
   OPENAI_API_KEY: process.env.OPENAI_API_KEY,
   PASEO_MODEL_GATEWAY_API_KEY: process.env.PASEO_MODEL_GATEWAY_API_KEY,
@@ -679,6 +684,9 @@ describe("Codex app-server provider", () => {
     expect(JSON.parse(String(capturedRequests[0].CODEX_AUTH_JSON))).toEqual({
       auth_mode: "apikey",
       OPENAI_API_KEY: "sk-router",
+    });
+    expect(JSON.parse(String(capturedRequests[0].CODEX_HOOKS_JSON))).toEqual({
+      hooks: { SessionStart: [{ hooks: [] }] },
     });
     expect(
       capturedRequests.find((record) => record.method === "thread/start")?.params,

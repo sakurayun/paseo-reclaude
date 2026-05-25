@@ -3009,7 +3009,14 @@ async function syncCodexGatewayHomeSource(
 ): Promise<void> {
   await fs.mkdir(baseHome, { recursive: true });
   await fs.mkdir(gatewayHome, { recursive: true });
-  const copiedEntries = ["config.toml", "auth.json", "AGENTS.md", "skills", "plugins"];
+  const copiedEntries = [
+    "config.toml",
+    "auth.json",
+    "AGENTS.md",
+    "hooks.json",
+    "skills",
+    "plugins",
+  ];
   for (const entry of copiedEntries) {
     await copyCodexHomeEntryIfExists(sourceHome, baseHome, entry);
     await copyCodexHomeEntryIfExists(baseHome, gatewayHome, entry);
