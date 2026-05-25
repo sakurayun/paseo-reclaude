@@ -151,7 +151,7 @@ async function runCustomCodexProviderTurn(
   mkdirSync(sourceCodexHome, { recursive: true });
   writeFileSync(
     path.join(sourceCodexHome, "config.toml"),
-    'model = "gpt-5.4"\nmodel_provider = "openai"\n[mcp_servers.context-mode]\ncommand = "context-mode"\n',
+    `model = "gpt-5.4"\nmodel_provider = "openai"\n[mcp_servers.context-mode]\ncommand = "context-mode"\n[hooks.state."${path.join(sourceCodexHome, "hooks.json")}:session_start:0:0"]\n`,
   );
   writeFileSync(
     path.join(sourceCodexHome, "auth.json"),
@@ -680,6 +680,10 @@ describe("Codex app-server provider", () => {
     expect(codexConfigToml).toContain('wire_api = "responses"');
     expect(codexConfigToml).toContain("requires_openai_auth = false");
     expect(codexConfigToml).toContain("[agents.subagent]");
+    expect(codexConfigToml).toContain(
+      `[hooks.state."${String(capturedRequests[0].CODEX_HOME)}/hooks.json:session_start:0:0"]`,
+    );
+    expect(codexConfigToml).not.toContain("source-codex-home/hooks.json:session_start:0:0");
     expect(codexConfigToml).toContain("[mcp_servers.context-mode]");
     expect(JSON.parse(String(capturedRequests[0].CODEX_AUTH_JSON))).toEqual({
       auth_mode: "apikey",
@@ -711,6 +715,7 @@ describe("Codex app-server provider", () => {
       },
       agents: {
         subagent: {
+          description: "Subagent routed through the selected model gateway.",
           model: "openai-all",
         },
       },

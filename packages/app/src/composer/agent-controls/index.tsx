@@ -75,9 +75,9 @@ import { getModeVisuals, type AgentModeColorTier } from "@server/server/agent/pr
 import {
   getFeatureHighlightColor,
   getFeatureTooltip,
-  getStatusSelectorHint,
+  getAgentControlHint,
   resolveAgentModelSelection,
-} from "@/components/agent-status-bar.utils";
+} from "@/composer/agent-controls/utils";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { useToast } from "@/contexts/toast-context";
 import { toErrorMessage } from "@/utils/error-messages";
@@ -154,6 +154,8 @@ export interface DraftAgentStatusBarProps {
   disabled?: boolean;
 }
 
+export type DraftAgentControlsProps = DraftAgentStatusBarProps;
+
 interface AgentStatusBarProps {
   agentId: string;
   serverId: string;
@@ -210,6 +212,12 @@ const MODE_ICONS = {
   ShieldOff,
   ShieldQuestionMark,
 } as const;
+
+type ModeIconName = keyof typeof MODE_ICONS;
+
+function resolveModeIcon(icon: string | undefined) {
+  return icon && icon in MODE_ICONS ? MODE_ICONS[icon as ModeIconName] : null;
+}
 
 function resolveDisplayModel(
   isModelLoading: boolean,
@@ -350,7 +358,7 @@ function resolveModeVisualsForProvider(
   const modeVisuals = selectedModeId
     ? getModeVisuals(provider, selectedModeId, providerDefinitions)
     : undefined;
-  const icon = modeVisuals?.icon ? MODE_ICONS[modeVisuals.icon] : null;
+  const icon = resolveModeIcon(modeVisuals?.icon);
   const color = getModeIconColor(modeVisuals?.colorTier, palette);
   return { icon, color };
 }
@@ -1204,7 +1212,7 @@ function DesktopStatusBarContent(props: DesktopStatusBarContentProps) {
             </View>
           </TooltipTrigger>
           <TooltipContent side="top" align="center" offset={8}>
-            <Text style={styles.tooltipText}>{getStatusSelectorHint("model")}</Text>
+            <Text style={styles.tooltipText}>{getAgentControlHint("model")}</Text>
           </TooltipContent>
         </Tooltip>
       ) : null}
@@ -1244,7 +1252,7 @@ function DesktopStatusBarContent(props: DesktopStatusBarContentProps) {
               </Pressable>
             </TooltipTrigger>
             <TooltipContent side="top" align="center" offset={8}>
-              <Text style={styles.tooltipText}>{getStatusSelectorHint("thinking")}</Text>
+              <Text style={styles.tooltipText}>{getAgentControlHint("thinking")}</Text>
             </TooltipContent>
           </Tooltip>
           <Combobox
@@ -1283,7 +1291,7 @@ function DesktopStatusBarContent(props: DesktopStatusBarContentProps) {
               </Pressable>
             </TooltipTrigger>
             <TooltipContent side="top" align="center" offset={8}>
-              <Text style={styles.tooltipText}>{getStatusSelectorHint("mode")}</Text>
+              <Text style={styles.tooltipText}>{getAgentControlHint("mode")}</Text>
             </TooltipContent>
           </Tooltip>
           <Combobox
@@ -1365,7 +1373,7 @@ function DesktopModelGatewaySelector({
           </Pressable>
         </TooltipTrigger>
         <TooltipContent side="top" align="center" offset={8}>
-          <Text style={styles.tooltipText}>{getStatusSelectorHint("gateway")}</Text>
+          <Text style={styles.tooltipText}>{getAgentControlHint("gateway")}</Text>
         </TooltipContent>
       </Tooltip>
       <Combobox
@@ -2039,7 +2047,7 @@ function ModeComboboxOption({
   iconColor: string;
 }) {
   const visuals = getModeVisuals(provider, option.id, providerDefinitions);
-  const IconComponent = visuals?.icon ? MODE_ICONS[visuals.icon] : ShieldCheck;
+  const IconComponent = resolveModeIcon(visuals?.icon) ?? ShieldCheck;
   const leadingSlot = useMemo(
     () => <IconComponent size={16} color={iconColor} />,
     [IconComponent, iconColor],
@@ -2462,6 +2470,9 @@ export function DraftAgentStatusBar({
     />
   );
 }
+
+export const AgentControls = AgentStatusBar;
+export const DraftAgentControls = DraftAgentStatusBar;
 
 const styles = StyleSheet.create((theme) => ({
   container: {

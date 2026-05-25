@@ -1,7 +1,8 @@
 import type { AgentFeature, AgentModelDefinition } from "@server/server/agent/agent-sdk-types";
 
 export type ExplainedStatusSelector = "gateway" | "mode" | "model" | "thinking";
-export type FeatureHighlightColor = "blue" | "default" | "yellow";
+export type ExplainedAgentControl = ExplainedStatusSelector;
+export type FeatureHighlightColor = "blue" | "default" | "green" | "yellow";
 
 export function getStatusSelectorHint(selector: ExplainedStatusSelector): string {
   switch (selector) {
@@ -16,6 +17,25 @@ export function getStatusSelectorHint(selector: ExplainedStatusSelector): string
     default:
       throw new Error("unreachable");
   }
+}
+
+export const getAgentControlHint = getStatusSelectorHint;
+
+interface ControlLabelInput {
+  id: string;
+  label?: string;
+}
+
+function formatControlLabel(option: ControlLabelInput): string {
+  return option.label ?? option.id;
+}
+
+export function formatAgentModeLabel(mode: ControlLabelInput): string {
+  return formatControlLabel(mode);
+}
+
+export function formatThinkingOptionLabel(option: ControlLabelInput): string {
+  return formatControlLabel(option);
 }
 
 export function normalizeModelId(modelId: string | null | undefined): string | null {
