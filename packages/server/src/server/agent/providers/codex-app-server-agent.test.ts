@@ -156,6 +156,7 @@ fs.appendFileSync(capturePath, JSON.stringify({
   OPENAI_BASE_URL: process.env.OPENAI_BASE_URL,
   OPENAI_API_KEY: process.env.OPENAI_API_KEY,
   PASEO_MODEL_GATEWAY_API_KEY: process.env.PASEO_MODEL_GATEWAY_API_KEY,
+  NINEROUTER_API_KEY: process.env.NINEROUTER_API_KEY,
 }) + "\\n");
 
 function record(method, params) {
@@ -574,6 +575,7 @@ describe("Codex app-server provider", () => {
       OPENAI_API_KEY: "sk-custom",
       OPENAI_BASE_URL: "https://custom-relay.example.com",
       PASEO_MODEL_GATEWAY_API_KEY: undefined,
+      NINEROUTER_API_KEY: undefined,
     });
     expect(capturedThreadStartConfig(capturedRequests)).toEqual({
       model_provider: "codex-iisb",
@@ -615,14 +617,21 @@ describe("Codex app-server provider", () => {
           type: "openai-compatible",
           label: "9Router local",
           baseUrl: "http://localhost:20128",
+          model: "openai-all",
           apiKey: "sk-router",
+          apiKeyEnvVar: "NINEROUTER_API_KEY",
         },
       },
     );
 
     expect(capturedRequests[0]).toMatchObject({
       kind: "env",
-      PASEO_MODEL_GATEWAY_API_KEY: "sk-router",
+      NINEROUTER_API_KEY: "sk-router",
+    });
+    expect(
+      capturedRequests.find((record) => record.method === "thread/start")?.params,
+    ).toMatchObject({
+      model: "openai-all",
     });
     expect(capturedThreadStartConfig(capturedRequests)).toEqual({
       model_provider: "paseo_model_gateway",
@@ -630,7 +639,7 @@ describe("Codex app-server provider", () => {
         paseo_model_gateway: {
           name: "9Router local",
           base_url: "http://localhost:20128/v1",
-          env_key: "PASEO_MODEL_GATEWAY_API_KEY",
+          env_key: "NINEROUTER_API_KEY",
           requires_openai_auth: false,
           wire_api: "responses",
         },

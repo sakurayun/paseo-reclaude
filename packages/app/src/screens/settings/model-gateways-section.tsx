@@ -1,0 +1,396 @@
+import { useCallback, useMemo, useState } from "react";
+import { Alert, Pressable, Text, View } from "react-native";
+import { StyleSheet, useUnistyles } from "react-native-unistyles";
+import { Plus, Pencil, Trash2 } from "lucide-react-native";
+import {
+  AdaptiveModalSheet,
+  AdaptiveTextInput,
+  type SheetHeader,
+} from "@/components/adaptive-modal-sheet";
+import { Button } from "@/components/ui/button";
+import { useDaemonConfig } from "@/hooks/use-daemon-config";
+import { SettingsSection } from "@/screens/settings/settings-section";
+import { useSessionStore } from "@/stores/session-store";
+import { settingsStyles } from "@/styles/settings";
+import type { MutableDaemonConfig } from "@server/shared/messages";
+
+type ModelGateways = NonNullable<MutableDaemonConfig["modelGateways"]>;
+type ModelGatewayConfig = ModelGateways[string];
+
+const EMPTY_GATEWAYS: ModelGateways = {};
+const GATEWAY_SHEET_HEADER: SheetHeader = { title: "Model gateway" };
+
+function slugifyGatewayId(label: string, existingIds: Set<string>): string {
+  const base =
+    label
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "") || "gateway";
+  let id = base;
+  let suffix = 2;
+  while (existingIds.has(id)) {
+    id = `${base}-${suffix}`;
+    suffix += 1;
+  }
+  return id;
+}
+
+function getGatewayLabel(id: string, gateway: ModelGatewayConfig): string {
+  return gateway.label?.trim() || id;
+}
+
+function getGatewaySubtitle(gateway: ModelGatewayConfig): string {
+  if (gateway.type === "openai-compatible") {
+    const model = gateway.model?.trim();
+    return model
+      ? `OpenAI-compatible · ${gateway.baseUrl} · model ${model}`
+      : `OpenAI-compatible · ${gateway.baseUrl}`;
+  }
+  return "Native provider routing";
+}
+
+function toOpenAICompatibleDraft(gateway: ModelGatewayConfig | null): {
+  label: string;
+  baseUrl: string;
+  model: string;
+  apiKey: string;
+  apiKeyEnvVar: string;
+} {
+  if (gateway?.type !== "openai-compatible") {
+    return { label: "", baseUrl: "", model: "", apiKey: "", apiKeyEnvVar: "" };
+  }
+  return {
+    label: gateway.label ?? "",
+    baseUrl: gateway.baseUrl,
+    model: gateway.model ?? "",
+    apiKey: gateway.apiKey ?? "",
+    apiKeyEnvVar: gateway.apiKeyEnvVar ?? "",
+  };
+}
+
+export function ModelGatewaysSection({ serverId }: { serverId: string }) {
+  const { theme } = useUnistyles();
+  const supportsModelGateways = useSessionStore(
+    (state) => state.sessions[serverId]?.serverInfo?.features?.modelGateways === true,
+  );
+  const { config, patchConfig } = useDaemonConfig(serverId);
+  const gateways = config?.modelGateways ?? EMPTY_GATEWAYS;
+  const entries = useMemo(
+    () => Object.entries(gateways).sort(([left], [right]) => left.localeCompare(right)),
+    [gateways],
+  );
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [isSheetOpen, setIsSheetOpen] = useState(false);
+  const [label, setLabel] = useState("");
+  const [baseUrl, setBaseUrl] = useState("");
+  const [model, setModel] = useState("");
+  const [apiKey, setApiKey] = useState("");
+  const [apiKeyEnvVar, setApiKeyEnvVar] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
+  const [draftResetKey, setDraftResetKey] = useState(0);
+
+  const resetDraft = useCallback((id: string | null, gateway: ModelGatewayConfig | null) => {
+    const draft = toOpenAICompatibleDraft(gateway);
+    setEditingId(id);
+    setLabel(draft.label);
+    setBaseUrl(draft.baseUrl);
+    setModel(draft.model);
+    setApiKey(draft.apiKey ?? "");
+    setApiKeyEnvVar(draft.apiKeyEnvVar);
+    setDraftResetKey((current) => current + 1);
+  }, []);
+
+  const handleAdd = useCallback(() => {
+    resetDraft(null, null);
+    setIsSheetOpen(true);
+  }, [resetDraft]);
+
+  const handleEdit = useCallback(
+    (id: string, gateway: ModelGatewayConfig) => {
+      resetDraft(id, gateway);
+      setIsSheetOpen(true);
+    },
+    [resetDraft],
+  );
+
+  const handleClose = useCallback(() => {
+    if (isSaving) return;
+    setIsSheetOpen(false);
+  }, [isSaving]);
+
+  const handleSave = useCallback(() => {
+    const nextLabel = label.trim();
+    const nextBaseUrl = baseUrl.trim();
+    const nextModel = model.trim();
+    const nextApiKey = apiKey.trim();
+    const nextApiKeyEnvVar = apiKeyEnvVar.trim();
+    if (!nextLabel) {
+      Alert.alert("Name required", "Enter a name for this gateway.");
+      return;
+    }
+    if (!nextBaseUrl) {
+      Alert.alert("Base URL required", "Enter the gateway base URL.");
+      return;
+    }
+
+    const existingIds = new Set(Object.keys(gateways));
+    const id = editingId ?? slugifyGatewayId(nextLabel, existingIds);
+    const nextGateways: ModelGateways = {
+      ...gateways,
+      [id]: {
+        type: "openai-compatible",
+        id,
+        label: nextLabel,
+        baseUrl: nextBaseUrl,
+        ...(nextModel ? { model: nextModel } : {}),
+        ...(nextApiKey ? { apiKey: nextApiKey } : {}),
+        ...(nextApiKeyEnvVar ? { apiKeyEnvVar: nextApiKeyEnvVar } : {}),
+      },
+    };
+
+    setIsSaving(true);
+    void patchConfig({ modelGateways: nextGateways })
+      .then(() => setIsSheetOpen(false))
+      .catch((error) => {
+        Alert.alert(
+          "Unable to save gateway",
+          error instanceof Error ? error.message : String(error),
+        );
+      })
+      .finally(() => setIsSaving(false));
+  }, [apiKey, apiKeyEnvVar, baseUrl, editingId, gateways, label, model, patchConfig]);
+
+  const handleRemove = useCallback(
+    (id: string) => {
+      const nextGateways: ModelGateways = { ...gateways };
+      delete nextGateways[id];
+      void patchConfig({ modelGateways: nextGateways }).catch((error) => {
+        Alert.alert(
+          "Unable to remove gateway",
+          error instanceof Error ? error.message : String(error),
+        );
+      });
+    },
+    [gateways, patchConfig],
+  );
+
+  const trailing = useMemo(
+    () => (
+      <Pressable
+        onPress={handleAdd}
+        hitSlop={8}
+        style={settingsStyles.sectionHeaderLink}
+        accessibilityRole="button"
+        accessibilityLabel="Add model gateway"
+        testID="add-model-gateway-button"
+      >
+        <Plus size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
+        <Text style={settingsStyles.sectionHeaderLinkText}>Add gateway</Text>
+      </Pressable>
+    ),
+    [handleAdd, theme.colors.foregroundMuted, theme.iconSize.sm],
+  );
+
+  if (!supportsModelGateways) {
+    return null;
+  }
+
+  return (
+    <SettingsSection title="Model Gateways" trailing={trailing} testID="model-gateways-section">
+      <View style={settingsStyles.card}>
+        {entries.length === 0 ? (
+          <View style={styles.emptyState}>
+            <Text style={settingsStyles.rowTitle}>No gateways</Text>
+            <Text style={settingsStyles.rowHint}>
+              Add an OpenAI-compatible endpoint to route model requests through a gateway.
+            </Text>
+          </View>
+        ) : (
+          entries.map(([id, gateway], index) => (
+            <ModelGatewayRow
+              key={id}
+              id={id}
+              gateway={gateway}
+              isFirst={index === 0}
+              onEdit={handleEdit}
+              onRemove={handleRemove}
+            />
+          ))
+        )}
+      </View>
+
+      <AdaptiveModalSheet
+        visible={isSheetOpen}
+        header={GATEWAY_SHEET_HEADER}
+        onClose={handleClose}
+        testID="model-gateway-sheet"
+      >
+        <View style={styles.form}>
+          <View style={styles.fieldGroup}>
+            <Text style={styles.fieldLabel}>Name</Text>
+            <AdaptiveTextInput
+              value={label}
+              initialValue={label}
+              resetKey={`gateway-label-${editingId ?? "new"}-${draftResetKey}`}
+              onChangeText={setLabel}
+              placeholder="Local 9Router"
+              autoCapitalize="none"
+              autoCorrect={false}
+              testID="model-gateway-label-input"
+            />
+          </View>
+          <View style={styles.fieldGroup}>
+            <Text style={styles.fieldLabel}>Base URL</Text>
+            <AdaptiveTextInput
+              value={baseUrl}
+              initialValue={baseUrl}
+              resetKey={`gateway-base-url-${editingId ?? "new"}-${draftResetKey}`}
+              onChangeText={setBaseUrl}
+              placeholder="http://localhost:20128/v1"
+              autoCapitalize="none"
+              autoCorrect={false}
+              testID="model-gateway-base-url-input"
+            />
+          </View>
+          <View style={styles.fieldGroup}>
+            <Text style={styles.fieldLabel}>Model / combo</Text>
+            <AdaptiveTextInput
+              value={model}
+              initialValue={model}
+              resetKey={`gateway-model-${editingId ?? "new"}-${draftResetKey}`}
+              onChangeText={setModel}
+              placeholder="openai-all"
+              autoCapitalize="none"
+              autoCorrect={false}
+              testID="model-gateway-model-input"
+            />
+            <Text style={styles.fieldHint}>
+              Gateway route, alias, or combo. Leave blank to keep the selected provider model.
+            </Text>
+          </View>
+          <View style={styles.fieldGroup}>
+            <Text style={styles.fieldLabel}>API key environment variable</Text>
+            <AdaptiveTextInput
+              value={apiKeyEnvVar}
+              initialValue={apiKeyEnvVar}
+              resetKey={`gateway-api-key-env-${editingId ?? "new"}-${draftResetKey}`}
+              onChangeText={setApiKeyEnvVar}
+              placeholder="NINEROUTER_API_KEY"
+              autoCapitalize="none"
+              autoCorrect={false}
+              testID="model-gateway-api-key-env-input"
+            />
+          </View>
+          <View style={styles.fieldGroup}>
+            <Text style={styles.fieldLabel}>API key</Text>
+            <AdaptiveTextInput
+              value={apiKey}
+              initialValue={apiKey}
+              resetKey={`gateway-api-key-${editingId ?? "new"}-${draftResetKey}`}
+              onChangeText={setApiKey}
+              placeholder="Optional"
+              autoCapitalize="none"
+              autoCorrect={false}
+              secureTextEntry
+              testID="model-gateway-api-key-input"
+            />
+          </View>
+          <View style={styles.formActions}>
+            <Button variant="ghost" onPress={handleClose} disabled={isSaving}>
+              Cancel
+            </Button>
+            <Button variant="default" onPress={handleSave} loading={isSaving}>
+              Save
+            </Button>
+          </View>
+        </View>
+      </AdaptiveModalSheet>
+    </SettingsSection>
+  );
+}
+
+function ModelGatewayRow({
+  id,
+  gateway,
+  isFirst,
+  onEdit,
+  onRemove,
+}: {
+  id: string;
+  gateway: ModelGatewayConfig;
+  isFirst: boolean;
+  onEdit: (id: string, gateway: ModelGatewayConfig) => void;
+  onRemove: (id: string) => void;
+}) {
+  const { theme } = useUnistyles();
+  const label = getGatewayLabel(id, gateway);
+  const rowStyle = useMemo(
+    () => [settingsStyles.row, !isFirst && settingsStyles.rowBorder],
+    [isFirst],
+  );
+  const handleEdit = useCallback(() => onEdit(id, gateway), [gateway, id, onEdit]);
+  const handleRemove = useCallback(() => onRemove(id), [id, onRemove]);
+
+  return (
+    <View style={rowStyle}>
+      <View style={settingsStyles.rowContent}>
+        <Text style={settingsStyles.rowTitle}>{label}</Text>
+        <Text style={settingsStyles.rowHint} numberOfLines={2}>
+          {getGatewaySubtitle(gateway)}
+        </Text>
+      </View>
+      <View style={styles.rowActions}>
+        <Pressable
+          hitSlop={8}
+          onPress={handleEdit}
+          accessibilityRole="button"
+          accessibilityLabel={`Edit ${label}`}
+          testID={`edit-model-gateway-${id}`}
+        >
+          <Pencil size={theme.iconSize.md} color={theme.colors.foregroundMuted} />
+        </Pressable>
+        <Pressable
+          hitSlop={8}
+          onPress={handleRemove}
+          accessibilityRole="button"
+          accessibilityLabel={`Remove ${label}`}
+          testID={`remove-model-gateway-${id}`}
+        >
+          <Trash2 size={theme.iconSize.md} color={theme.colors.destructive} />
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create((theme) => ({
+  emptyState: {
+    paddingHorizontal: theme.spacing[4],
+    paddingVertical: theme.spacing[4],
+  },
+  rowActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[4],
+  },
+  form: {
+    gap: theme.spacing[4],
+  },
+  fieldGroup: {
+    gap: theme.spacing[2],
+  },
+  fieldLabel: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.sm,
+  },
+  fieldHint: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.xs,
+  },
+  formActions: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    gap: theme.spacing[2],
+  },
+}));

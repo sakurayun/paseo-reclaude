@@ -4,7 +4,7 @@
 
 - Branch: `feature/model-gateways`
 - Base: `main` synced with `origin/main` and `upstream/main` at `7fbbb44a`
-- Scope: generic gateway schema plus Codex runtime support. UI registry/editor remains the next product slice.
+- Scope: generic gateway schema, Codex runtime support, and the first settings UI for OpenAI-compatible gateways.
 
 ## Decision
 

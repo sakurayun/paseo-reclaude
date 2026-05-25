@@ -20,6 +20,7 @@ import {
   useHostRuntimeSnapshot,
   useHosts,
 } from "@/runtime/host-runtime";
+import { ModelGatewaysSection } from "@/screens/settings/model-gateways-section";
 import { ProvidersSection } from "@/screens/settings/providers-section";
 import { SettingsSection } from "@/screens/settings/settings-section";
 import { useSessionStore } from "@/stores/session-store";
@@ -168,6 +169,8 @@ export function HostPage({ serverId, onHostRemoved }: HostPageProps) {
       <ConnectionsSection host={host} />
 
       <DaemonSection host={host} isLocalDaemon={isLocalDaemon} />
+
+      <ModelGatewaysSection serverId={serverId} />
 
       <ProvidersSection serverId={serverId} />
 

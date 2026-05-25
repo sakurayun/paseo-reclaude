@@ -1,10 +1,12 @@
 import type { AgentFeature, AgentModelDefinition } from "@server/server/agent/agent-sdk-types";
 
-export type ExplainedAgentControl = "mode" | "model" | "thinking";
-export type FeatureHighlightColor = "blue" | "default" | "green" | "yellow";
+export type ExplainedStatusSelector = "gateway" | "mode" | "model" | "thinking";
+export type FeatureHighlightColor = "blue" | "default" | "yellow";
 
-export function getAgentControlHint(selector: ExplainedAgentControl): string {
+export function getStatusSelectorHint(selector: ExplainedStatusSelector): string {
   switch (selector) {
+    case "gateway":
+      return "Model gateway";
     case "thinking":
       return "Thinking mode";
     case "model":
@@ -32,57 +34,11 @@ export function getFeatureHighlightColor(featureId: string): FeatureHighlightCol
   switch (featureId) {
     case "fast_mode":
       return "yellow";
-    case "auto_accept":
-      return "green";
     case "plan_mode":
       return "blue";
     default:
       return "default";
   }
-}
-
-interface ControlLabelInput {
-  id: string;
-  label?: string | null;
-}
-
-function sentenceCase(value: string): string {
-  if (!value) {
-    return value;
-  }
-  return value.charAt(0).toUpperCase() + value.slice(1).toLowerCase();
-}
-
-function splitCompactLabel(value: string, splitHyphen: boolean): string {
-  const separatorPattern = splitHyphen ? /[_-]+/g : /_+/g;
-
-  return value
-    .replace(separatorPattern, " ")
-    .replace(/([a-z])([A-Z])/g, "$1 $2")
-    .replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function formatControlLabel(option: ControlLabelInput, splitHyphen: boolean): string {
-  const rawLabel = (option.label ?? option.id).trim();
-  return sentenceCase(splitCompactLabel(rawLabel, splitHyphen));
-}
-
-export function formatAgentModeLabel(mode: ControlLabelInput): string {
-  return formatControlLabel(mode, mode.label == null);
-}
-
-export function formatThinkingOptionLabel(option: ControlLabelInput): string {
-  const rawLabel = (option.label ?? option.id).trim();
-  const compactId = option.id.replace(/[\s_-]+/g, "").toLowerCase();
-  const compactLabel = rawLabel.replace(/[\s_-]+/g, "").toLowerCase();
-
-  if (compactId === "xhigh" || compactLabel === "xhigh") {
-    return "Extra high";
-  }
-
-  return formatControlLabel(option, true);
 }
 
 function findModelById(
@@ -151,21 +107,6 @@ function resolveModelDisplay(
   };
 }
 
-function resolveThinkingDisplay(
-  effectiveThinking: ThinkingOption | null,
-  selectedThinkingId: string | null,
-): string {
-  if (effectiveThinking) {
-    return formatThinkingOptionLabel(effectiveThinking);
-  }
-
-  if (selectedThinkingId) {
-    return formatThinkingOptionLabel({ id: selectedThinkingId });
-  }
-
-  return "Unknown";
-}
-
 export function resolveAgentModelSelection(input: {
   models: AgentModelDefinition[] | null;
   runtimeModelId: string | null | undefined;
@@ -195,7 +136,7 @@ export function resolveAgentModelSelection(input: {
   const resolvedThinkingId = resolveThinkingId(explicitThinkingOptionId, selectedModel);
   const effectiveThinking = resolveEffectiveThinking(thinkingOptions, resolvedThinkingId);
   const selectedThinkingId = effectiveThinking?.id ?? null;
-  const displayThinking = resolveThinkingDisplay(effectiveThinking, selectedThinkingId);
+  const displayThinking = effectiveThinking?.label ?? selectedThinkingId ?? "Unknown";
 
   return {
     selectedModel,

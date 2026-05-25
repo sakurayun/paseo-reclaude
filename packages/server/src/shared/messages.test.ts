@@ -143,6 +143,8 @@ describe("model gateway message compatibility", () => {
           type: "openai-compatible",
           label: "9Router local",
           baseUrl: "http://localhost:20128/v1",
+          model: "openai-all",
+          apiKeyEnvVar: "NINEROUTER_API_KEY",
         },
       },
     });
@@ -150,6 +152,8 @@ describe("model gateway message compatibility", () => {
     expect(parsed.modelGateways["9router-local"]).toMatchObject({
       type: "openai-compatible",
       baseUrl: "http://localhost:20128/v1",
+      model: "openai-all",
+      apiKeyEnvVar: "NINEROUTER_API_KEY",
     });
   });
 
@@ -160,6 +164,7 @@ describe("model gateway message compatibility", () => {
           "custom-gateway": {
             type: "openai-compatible",
             baseUrl: "https://gateway.example.com/v1",
+            model: "premium-coding",
             apiKey: "sk-test",
           },
         },
@@ -169,6 +174,7 @@ describe("model gateway message compatibility", () => {
         "custom-gateway": {
           type: "openai-compatible",
           baseUrl: "https://gateway.example.com/v1",
+          model: "premium-coding",
         },
       },
     });
@@ -186,6 +192,7 @@ describe("model gateway message compatibility", () => {
           type: "openai-compatible",
           label: "9Router remote",
           baseUrl: "https://router.example.com/v1",
+          model: "premium-coding",
           apiKey: "sk-router",
         },
       },
@@ -197,6 +204,7 @@ describe("model gateway message compatibility", () => {
     expect(parsed.config.modelGateway).toMatchObject({
       type: "openai-compatible",
       baseUrl: "https://router.example.com/v1",
+      model: "premium-coding",
     });
   });
 });

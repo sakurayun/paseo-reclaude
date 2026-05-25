@@ -53,7 +53,9 @@ export interface OpenAICompatibleModelGatewayConfig {
   id?: string;
   label?: string;
   baseUrl: string;
+  model?: string;
   apiKey?: string;
+  apiKeyEnvVar?: string;
 }
 
 export type ModelGatewayConfig = NativeModelGatewayConfig | OpenAICompatibleModelGatewayConfig;

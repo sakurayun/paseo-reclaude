@@ -2861,10 +2861,11 @@ function buildCodexModelGatewayConfig(
     name: modelGateway.label?.trim() || "Model Gateway",
     base_url: normalizedBaseUrl,
     wire_api: "responses",
+    requires_openai_auth: false,
   };
-  if (modelGateway.apiKey?.trim()) {
-    providerConfig.env_key = MODEL_GATEWAY_API_KEY_ENV;
-    providerConfig.requires_openai_auth = false;
+  const envKey = resolveModelGatewayApiKeyEnv(modelGateway);
+  if (envKey) {
+    providerConfig.env_key = envKey;
   }
   return {
     model_provider: MODEL_GATEWAY_CODEX_PROVIDER_ID,
@@ -2874,6 +2875,28 @@ function buildCodexModelGatewayConfig(
   };
 }
 
+function resolveModelGatewayModel(
+  modelGateway: AgentSessionConfig["modelGateway"] | undefined,
+): string | undefined {
+  if (modelGateway?.type !== "openai-compatible") {
+    return undefined;
+  }
+  return modelGateway.model?.trim() || undefined;
+}
+
+function resolveModelGatewayApiKeyEnv(
+  modelGateway: AgentSessionConfig["modelGateway"] | undefined,
+): string | undefined {
+  if (modelGateway?.type !== "openai-compatible") {
+    return undefined;
+  }
+  const configuredEnvKey = modelGateway.apiKeyEnvVar?.trim();
+  if (configuredEnvKey) {
+    return configuredEnvKey;
+  }
+  return modelGateway.apiKey?.trim() ? MODEL_GATEWAY_API_KEY_ENV : undefined;
+}
+
 function buildModelGatewayLaunchEnv(
   modelGateway: AgentSessionConfig["modelGateway"] | undefined,
 ): Record<string, string> | undefined {
@@ -2881,7 +2904,8 @@ function buildModelGatewayLaunchEnv(
     return undefined;
   }
   const apiKey = modelGateway.apiKey?.trim();
-  return apiKey ? { [MODEL_GATEWAY_API_KEY_ENV]: apiKey } : undefined;
+  const envKey = resolveModelGatewayApiKeyEnv(modelGateway) ?? MODEL_GATEWAY_API_KEY_ENV;
+  return apiKey ? { [envKey]: apiKey } : undefined;
 }
 
 interface CodexSubAgentCallState {
@@ -4102,7 +4126,7 @@ export class CodexAppServerAgentSession implements AgentSession {
       throw new Error("Codex client is not initialized");
     }
     let configuredDefaults: CodexConfiguredDefaults = {};
-    let model = this.config.model;
+    let model = resolveModelGatewayModel(this.config.modelGateway) ?? this.config.model;
     let thinkingOptionId = normalizeCodexThinkingOptionId(this.config.thinkingOptionId);
     if (!model || !thinkingOptionId) {
       configuredDefaults = await readCodexConfiguredDefaults(this.client, this.logger);

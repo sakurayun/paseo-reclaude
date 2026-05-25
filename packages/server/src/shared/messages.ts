@@ -119,7 +119,9 @@ const ModelGatewayConfigSchema = z.discriminatedUnion("type", [
       id: z.string().optional(),
       label: z.string().optional(),
       baseUrl: z.string().trim().min(1),
+      model: z.string().trim().min(1).optional(),
       apiKey: z.string().optional(),
+      apiKeyEnvVar: z.string().trim().min(1).optional(),
     })
     .passthrough(),
 ]);
