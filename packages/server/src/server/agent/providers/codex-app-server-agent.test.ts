@@ -139,7 +139,10 @@ async function runCustomCodexProviderTurn(
   providerId: string,
   baseUrl: string,
   configOverrides: Partial<AgentSessionConfig> = {},
-  options: { collaborationModes?: unknown[] } = {},
+  options: {
+    collaborationModes?: unknown[];
+    beforeTurn?: (session: AgentSession) => Promise<void>;
+  } = {},
 ): Promise<CapturedFakeCodexRecord[]> {
   const tempDir = await mkdtemp(path.join(tmpdir(), "codex-custom-provider-"));
   const fakeAppServerPath = path.join(tempDir, "fake-codex-app-server.cjs");
@@ -242,6 +245,7 @@ process.stdin.on("data", (chunk) => {
       model: "custom-model",
       ...configOverrides,
     });
+    await options.beforeTurn?.(session);
     await session.startTurn("use the custom endpoint");
     return readFileSync(capturedRequestsPath, "utf8")
       .trim()
@@ -742,6 +746,34 @@ describe("Codex app-server provider", () => {
           model: "openai-all",
         },
       },
+    });
+  });
+
+  test("uses a model selected after launch for an active model gateway turn", async () => {
+    const capturedRequests = await runCustomCodexProviderTurn(
+      "codex-gateway-test",
+      "https://custom-relay.example.com",
+      {
+        modelGateway: {
+          type: "openai-compatible",
+          id: "9router",
+          provider: "codex",
+          baseUrl: "http://localhost:20128",
+          model: "openai-all",
+          apiKey: "sk-router",
+        },
+      },
+      {
+        beforeTurn: async (session) => {
+          await session.setModel?.("nvidiafree");
+        },
+      },
+    );
+
+    const turnStartParams = capturedRequests.find((record) => record.method === "turn/start")
+      ?.params as Record<string, unknown> | undefined;
+    expect(turnStartParams).toMatchObject({
+      model: "nvidiafree",
     });
   });
 
