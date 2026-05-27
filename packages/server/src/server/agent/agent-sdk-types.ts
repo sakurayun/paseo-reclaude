@@ -55,6 +55,7 @@ export interface OpenAICompatibleModelGatewayConfig {
   label?: string;
   provider?: AgentProvider;
   baseUrl: string;
+  protocol?: string;
   model?: string;
   apiKey?: string;
 }

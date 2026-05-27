@@ -121,6 +121,7 @@ export const ModelGatewayConfigSchema = z.discriminatedUnion("type", [
       label: z.string().optional(),
       provider: z.string().optional(),
       baseUrl: z.string().trim().min(1),
+      protocol: z.string().trim().min(1).optional(),
       model: z.string().trim().min(1).optional(),
       apiKey: z.string().optional(),
     })

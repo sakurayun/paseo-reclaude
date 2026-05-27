@@ -22,6 +22,8 @@ type ModelGatewayConfig = ModelGateways[string];
 const EMPTY_GATEWAYS: ModelGateways = {};
 const GATEWAY_SHEET_HEADER: SheetHeader = { title: "Model gateway" };
 const CODEX_PROVIDER_LABEL = "Codex";
+const CODEX_GATEWAY_PROTOCOL = "responses";
+const CODEX_PROTOCOL_OPTIONS = [{ id: CODEX_GATEWAY_PROTOCOL, label: "OpenAI Responses" }];
 
 function slugifyGatewayId(label: string, existingIds: Set<string>): string {
   const base =
@@ -46,11 +48,12 @@ function getGatewayLabel(id: string, gateway: ModelGatewayConfig): string {
 function getGatewaySubtitle(gateway: ModelGatewayConfig): string {
   if (gateway.type === "openai-compatible") {
     const model = gateway.model?.trim();
+    const protocol = gateway.protocol?.trim() || CODEX_GATEWAY_PROTOCOL;
     const provider =
       gateway.provider === "codex" || !gateway.provider ? CODEX_PROVIDER_LABEL : gateway.provider;
     return model
-      ? `${provider} · OpenAI-compatible · ${gateway.baseUrl} · model ${model}`
-      : `${provider} · OpenAI-compatible · ${gateway.baseUrl}`;
+      ? `${provider} · ${protocol} · ${gateway.baseUrl} · model ${model}`
+      : `${provider} · ${protocol} · ${gateway.baseUrl}`;
   }
   return "Native provider routing";
 }
@@ -58,15 +61,17 @@ function getGatewaySubtitle(gateway: ModelGatewayConfig): string {
 function toOpenAICompatibleDraft(gateway: ModelGatewayConfig | null): {
   label: string;
   baseUrl: string;
+  protocol: string;
   model: string;
   apiKey: string;
 } {
   if (gateway?.type !== "openai-compatible") {
-    return { label: "", baseUrl: "", model: "", apiKey: "" };
+    return { label: "", baseUrl: "", protocol: CODEX_GATEWAY_PROTOCOL, model: "", apiKey: "" };
   }
   return {
     label: gateway.label ?? "",
     baseUrl: gateway.baseUrl,
+    protocol: gateway.protocol ?? CODEX_GATEWAY_PROTOCOL,
     model: gateway.model ?? "",
     apiKey: gateway.apiKey ?? "",
   };
@@ -88,6 +93,7 @@ export function ModelGatewaysSection({ serverId }: { serverId: string }) {
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const [label, setLabel] = useState("");
   const [baseUrl, setBaseUrl] = useState("");
+  const [protocol, setProtocol] = useState(CODEX_GATEWAY_PROTOCOL);
   const [model, setModel] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [isSaving, setIsSaving] = useState(false);
@@ -96,18 +102,22 @@ export function ModelGatewaysSection({ serverId }: { serverId: string }) {
   const [isDiscoveringModels, setIsDiscoveringModels] = useState(false);
   const [modelDiscoveryError, setModelDiscoveryError] = useState<string | null>(null);
   const [isModelSelectorOpen, setIsModelSelectorOpen] = useState(false);
+  const [isProtocolSelectorOpen, setIsProtocolSelectorOpen] = useState(false);
   const modelAnchorRef = useRef<View | null>(null);
+  const protocolAnchorRef = useRef<View | null>(null);
 
   const resetDraft = useCallback((id: string | null, gateway: ModelGatewayConfig | null) => {
     const draft = toOpenAICompatibleDraft(gateway);
     setEditingId(id);
     setLabel(draft.label);
     setBaseUrl(draft.baseUrl);
+    setProtocol(draft.protocol);
     setModel(draft.model);
     setApiKey(draft.apiKey ?? "");
     setDiscoveredModels([]);
     setModelDiscoveryError(null);
     setIsModelSelectorOpen(false);
+    setIsProtocolSelectorOpen(false);
     setDraftResetKey((current) => current + 1);
   }, []);
 
@@ -159,6 +169,9 @@ export function ModelGatewaysSection({ serverId }: { serverId: string }) {
   const handleOpenModelSelector = useCallback(() => {
     setIsModelSelectorOpen(true);
   }, []);
+  const handleOpenProtocolSelector = useCallback(() => {
+    setIsProtocolSelectorOpen(true);
+  }, []);
 
   const modelOptions = useMemo(
     () => discoveredModels.map((id) => ({ id, label: id })),
@@ -180,6 +193,7 @@ export function ModelGatewaysSection({ serverId }: { serverId: string }) {
   const handleSave = useCallback(() => {
     const nextLabel = label.trim();
     const nextBaseUrl = baseUrl.trim();
+    const nextProtocol = protocol.trim() || CODEX_GATEWAY_PROTOCOL;
     const nextModel = model.trim();
     const nextApiKey = apiKey.trim();
     if (!nextLabel) {
@@ -201,6 +215,7 @@ export function ModelGatewaysSection({ serverId }: { serverId: string }) {
         provider: "codex",
         label: nextLabel,
         baseUrl: nextBaseUrl,
+        protocol: nextProtocol,
         ...(nextModel ? { model: nextModel } : {}),
         ...(nextApiKey ? { apiKey: nextApiKey } : {}),
       },
@@ -216,7 +231,7 @@ export function ModelGatewaysSection({ serverId }: { serverId: string }) {
         );
       })
       .finally(() => setIsSaving(false));
-  }, [apiKey, baseUrl, editingId, gateways, label, model, patchConfig]);
+  }, [apiKey, baseUrl, editingId, gateways, label, model, patchConfig, protocol]);
 
   const handleRemove = useCallback(
     (id: string) => {
@@ -319,6 +334,44 @@ export function ModelGatewaysSection({ serverId }: { serverId: string }) {
               autoCorrect={false}
               testID="model-gateway-base-url-input"
             />
+          </View>
+          <View style={styles.fieldGroup}>
+            <Text style={styles.fieldLabel}>Protocol</Text>
+            <View ref={protocolAnchorRef} collapsable={false}>
+              <Pressable
+                onPress={handleOpenProtocolSelector}
+                style={styles.modelSelector}
+                accessibilityRole="button"
+                accessibilityLabel="Select gateway protocol"
+                testID="model-gateway-protocol-input"
+              >
+                <Text style={styles.modelSelectorText} numberOfLines={1}>
+                  {protocol.trim() || CODEX_GATEWAY_PROTOCOL}
+                </Text>
+                <ChevronDown size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
+              </Pressable>
+              <Combobox
+                options={CODEX_PROTOCOL_OPTIONS}
+                value={protocol}
+                onSelect={setProtocol}
+                searchable
+                allowCustomValue
+                customValuePrefix="Use protocol"
+                placeholder="responses"
+                searchPlaceholder="Search protocols or enter one"
+                emptyText="Enter a protocol value."
+                title="Protocol"
+                open={isProtocolSelectorOpen}
+                onOpenChange={setIsProtocolSelectorOpen}
+                anchorRef={protocolAnchorRef}
+                desktopPlacement="bottom-start"
+                desktopPreventInitialFlash
+                desktopMinWidth={320}
+              />
+            </View>
+            <Text style={styles.fieldHint}>
+              Codex currently supports the OpenAI Responses protocol for model gateways.
+            </Text>
           </View>
           <View style={styles.fieldGroup}>
             <Text style={styles.fieldLabel}>API key</Text>

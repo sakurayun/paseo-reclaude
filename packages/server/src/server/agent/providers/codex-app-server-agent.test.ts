@@ -730,6 +730,63 @@ describe("Codex app-server provider", () => {
     });
   });
 
+  test("omits Codex model gateway model config when no gateway model is selected", async () => {
+    const capturedRequests = await runCustomCodexProviderTurn(
+      "codex-gateway-test",
+      "https://custom-relay.example.com",
+      {
+        modelGateway: {
+          type: "openai-compatible",
+          id: "9router",
+          provider: "codex",
+          baseUrl: "http://localhost:20128",
+          apiKey: "sk-router",
+        },
+      },
+    );
+
+    const codexConfigToml = String(capturedRequests[0].CODEX_CONFIG_TOML);
+    expect(codexConfigToml).toMatch(/^model_provider = "9router"/);
+    expect(codexConfigToml).not.toContain('model = ""');
+    expect(capturedThreadStartConfig(capturedRequests)).toMatchObject({
+      model_provider: "9router",
+      agents: {
+        subagent: {
+          description: "Subagent routed through the selected model gateway.",
+        },
+      },
+    });
+  });
+
+  test("rejects unsupported Codex model gateway protocols", async () => {
+    await expect(
+      runCustomCodexProviderTurn("codex-gateway-test", "https://custom-relay.example.com", {
+        modelGateway: {
+          type: "openai-compatible",
+          id: "9router",
+          provider: "codex",
+          baseUrl: "http://localhost:20128",
+          protocol: "chat_completions",
+          apiKey: "sk-router",
+        },
+      }),
+    ).rejects.toThrow("Codex model gateways only support the OpenAI Responses protocol.");
+  });
+
+  test("rejects model gateway base URLs without an http(s) scheme", async () => {
+    await expect(
+      runCustomCodexProviderTurn("codex-gateway-test", "https://custom-relay.example.com", {
+        modelGateway: {
+          type: "openai-compatible",
+          id: "9router",
+          provider: "codex",
+          baseUrl: "localhost:20128",
+          apiKey: "sk-router",
+        },
+      }),
+    ).rejects.toThrow("Model gateway base URL must be an http(s) URL");
+  });
+
   test("uses the model gateway model inside Codex collaboration mode settings", async () => {
     const capturedRequests = await runCustomCodexProviderTurn(
       "codex-gateway-test",

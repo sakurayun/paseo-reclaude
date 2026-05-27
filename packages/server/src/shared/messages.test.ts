@@ -145,6 +145,7 @@ describe("model gateway message compatibility", () => {
           label: "9Router local",
           provider: "codex",
           baseUrl: "http://localhost:20128/v1",
+          protocol: "responses",
           model: "openai-all",
           apiKey: "sk-router",
         },
@@ -155,6 +156,7 @@ describe("model gateway message compatibility", () => {
       type: "openai-compatible",
       provider: "codex",
       baseUrl: "http://localhost:20128/v1",
+      protocol: "responses",
       model: "openai-all",
       apiKey: "sk-router",
     });

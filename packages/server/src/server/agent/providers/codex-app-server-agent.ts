@@ -2815,12 +2815,23 @@ function buildCodexAppServerInitializeParams(): {
   };
 }
 
+const CODEX_MODEL_GATEWAY_PROTOCOL = "responses";
+
 function normalizeOpenAICompatibleBaseUrl(value: string): string | null {
   const trimmed = value.trim();
   if (!trimmed) {
     return null;
   }
-  const withoutTrailingSlashes = trimmed.replace(/\/+$/u, "");
+  let url: URL;
+  try {
+    url = new URL(trimmed);
+  } catch {
+    return null;
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    return null;
+  }
+  const withoutTrailingSlashes = url.toString().replace(/\/+$/u, "");
   if (withoutTrailingSlashes.endsWith("/v1")) {
     return withoutTrailingSlashes;
   }
@@ -2845,7 +2856,7 @@ function buildCodexCustomProviderConfig(
   const providerConfig: Record<string, unknown> = {
     name: customProvider.label,
     base_url: normalizedBaseUrl,
-    wire_api: "responses",
+    wire_api: CODEX_MODEL_GATEWAY_PROTOCOL,
   };
   if (runtimeSettings?.env?.OPENAI_API_KEY?.trim()) {
     providerConfig.env_key = "OPENAI_API_KEY";
@@ -2869,10 +2880,11 @@ function buildCodexModelGatewayConfig(
   if (!normalizedBaseUrl) {
     throw new Error("Model gateway base URL must be an http(s) URL");
   }
+  const protocol = resolveCodexModelGatewayProtocol(modelGateway);
   const providerConfig: Record<string, unknown> = {
     name: modelGateway.label?.trim() || "Model Gateway",
     base_url: normalizedBaseUrl,
-    wire_api: "responses",
+    wire_api: protocol,
     requires_openai_auth: false,
   };
   const envKey = resolveModelGatewayApiKeyEnv(modelGateway);
@@ -2889,10 +2901,23 @@ function buildCodexModelGatewayConfig(
     agents: {
       subagent: {
         description: "Subagent routed through the selected model gateway.",
-        model: gatewayModel ?? "",
+        ...(gatewayModel ? { model: gatewayModel } : {}),
       },
     },
   };
+}
+
+function resolveCodexModelGatewayProtocol(
+  modelGateway: AgentSessionConfig["modelGateway"],
+): string {
+  if (modelGateway?.type !== "openai-compatible") {
+    return CODEX_MODEL_GATEWAY_PROTOCOL;
+  }
+  const protocol = modelGateway.protocol?.trim() || CODEX_MODEL_GATEWAY_PROTOCOL;
+  if (protocol !== CODEX_MODEL_GATEWAY_PROTOCOL) {
+    throw new Error("Codex model gateways only support the OpenAI Responses protocol.");
+  }
+  return protocol;
 }
 
 function resolveModelGatewayProviderId(
@@ -3099,26 +3124,31 @@ function patchCodexGatewayConfigToml(
     return baseToml;
   }
   const providerId = resolveModelGatewayProviderId(modelGateway);
-  const gatewayModel = resolveModelGatewayModel(modelGateway) ?? "";
+  const gatewayModel = resolveModelGatewayModel(modelGateway);
+  const normalizedBaseUrl = normalizeOpenAICompatibleBaseUrl(modelGateway.baseUrl);
+  if (!normalizedBaseUrl) {
+    throw new Error("Model gateway base URL must be an http(s) URL");
+  }
+  const protocol = resolveCodexModelGatewayProtocol(modelGateway);
   let nextToml = baseToml;
   nextToml = removeTopLevelTomlKeys(nextToml, ["model", "model_provider"]);
   nextToml = removeTomlSection(nextToml, `model_providers.${providerId}`);
   nextToml = removeTomlSection(nextToml, "agents.subagent").trimEnd();
   const rootToml = [
-    `model = ${quoteTomlString(gatewayModel)}`,
+    ...(gatewayModel ? [`model = ${quoteTomlString(gatewayModel)}`] : []),
     `model_provider = ${quoteTomlString(providerId)}`,
   ].join("\n");
   const gatewayToml = [
     "",
     `[model_providers.${providerId}]`,
     `name = ${quoteTomlString(modelGateway.label?.trim() || "Model Gateway")}`,
-    `base_url = ${quoteTomlString(normalizeOpenAICompatibleBaseUrl(modelGateway.baseUrl) ?? "")}`,
-    'wire_api = "responses"',
+    `base_url = ${quoteTomlString(normalizedBaseUrl)}`,
+    `wire_api = ${quoteTomlString(protocol)}`,
     "requires_openai_auth = false",
     "",
     "[agents.subagent]",
     'description = "Subagent routed through the selected model gateway."',
-    `model = ${quoteTomlString(gatewayModel)}`,
+    ...(gatewayModel ? [`model = ${quoteTomlString(gatewayModel)}`] : []),
   ].join("\n");
   return `${rootToml}${nextToml ? `\n\n${nextToml}` : ""}\n${gatewayToml}\n`;
 }
