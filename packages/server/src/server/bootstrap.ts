@@ -153,13 +153,24 @@ function formatHostForHttpUrl(host: string): string {
   return host.includes(":") && !host.startsWith("[") ? `[${host}]` : host;
 }
 
+function resolveAgentMcpClientHost(host: string): string {
+  if (host === "0.0.0.0") {
+    return "127.0.0.1";
+  }
+  if (host === "::" || host === "[::]") {
+    return "::1";
+  }
+  return host;
+}
+
 function createAgentMcpBaseUrl(listenTarget: ListenTarget | null): string | null {
   if (!listenTarget || listenTarget.type !== "tcp") {
     return null;
   }
+  const host = resolveAgentMcpClientHost(listenTarget.host);
   return new URL(
     "/mcp/agents",
-    `http://${formatHostForHttpUrl(listenTarget.host)}:${listenTarget.port}`,
+    `http://${formatHostForHttpUrl(host)}:${listenTarget.port}`,
   ).toString();
 }
 

@@ -17,6 +17,9 @@
   <a href="https://discord.gg/jz8T2uahpH">
     <img src="https://img.shields.io/badge/Discord-555?logo=discord" alt="Discord">
   </a>
+  <a href="https://www.reddit.com/r/PaseoAI/">
+    <img src="https://img.shields.io/badge/Reddit-555?logo=reddit" alt="Reddit">
+  </a>
 </p>
 
 <p align="center">One interface for Claude Code, Codex, Copilot, OpenCode, and Pi agents.</p>

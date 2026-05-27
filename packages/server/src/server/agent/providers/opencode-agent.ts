@@ -425,6 +425,15 @@ function isAlreadyPresentMcpError(error: unknown): boolean {
   return MCP_ALREADY_PRESENT_ERROR_TOKENS.some((token) => normalized.includes(token));
 }
 
+function readOpenCodeMcpOperationError(data: unknown, name: string): unknown {
+  const root = readOpenCodeRecord(data);
+  const entry = readOpenCodeRecord(root?.[name]);
+  if (!entry || entry.status !== "failed") {
+    return undefined;
+  }
+  return entry.error ?? `OpenCode reported MCP server '${name}' failed`;
+}
+
 function resolvePartDedupeKey(
   part: { id: string; messageID: string },
   partType: "text" | "reasoning",
@@ -3507,10 +3516,10 @@ class OpenCodeAgentSession implements AgentSession {
   private async runMcpOperation(
     operation: "add",
     name: string,
-    run: () => Promise<{ error?: unknown }>,
+    run: () => Promise<{ data?: unknown; error?: unknown }>,
   ): Promise<void> {
     const response = await run();
-    const error = response.error;
+    const error = response.error ?? readOpenCodeMcpOperationError(response.data, name);
     if (!error) {
       return;
     }
