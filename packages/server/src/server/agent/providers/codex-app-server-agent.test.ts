@@ -667,7 +667,9 @@ describe("Codex app-server provider", () => {
 
     expect(capturedRequests[0]).toMatchObject({
       kind: "env",
-      CODEX_HOME: expect.stringContaining("/providers/codex/model-gateways/9router/home"),
+      CODEX_HOME: expect.stringMatching(
+        /[\\/]providers[\\/]codex[\\/]model-gateways[\\/]9router[\\/]home$/,
+      ),
       OPENAI_API_KEY: "sk-router",
     });
     const codexConfigToml = capturedRequests[0].CODEX_CONFIG_TOML;

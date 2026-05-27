@@ -26,16 +26,42 @@ interface ControlLabelInput {
   label?: string;
 }
 
-function formatControlLabel(option: ControlLabelInput): string {
-  return option.label ?? option.id;
+const SEPARATOR_PATTERN = /[-_\s]+/g;
+
+function splitCompactLabel(value: string): string {
+  return value
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .replace(SEPARATOR_PATTERN, " ")
+    .trim();
+}
+
+function sentenceCase(value: string): string {
+  const compact = splitCompactLabel(value);
+  if (!compact) {
+    return value;
+  }
+  const lower = compact.toLowerCase();
+  return lower.charAt(0).toUpperCase() + lower.slice(1);
+}
+
+function formatControlLabel(option: ControlLabelInput, preserveHyphenatedLabel: boolean): string {
+  const label = option.label ?? option.id;
+  if (label.toLowerCase() === "xhigh") {
+    return "Extra high";
+  }
+  if (preserveHyphenatedLabel && option.label?.includes("-") && !option.label.includes("_")) {
+    const lower = option.label.toLowerCase();
+    return lower.charAt(0).toUpperCase() + lower.slice(1);
+  }
+  return sentenceCase(label);
 }
 
 export function formatAgentModeLabel(mode: ControlLabelInput): string {
-  return formatControlLabel(mode);
+  return formatControlLabel(mode, true);
 }
 
 export function formatThinkingOptionLabel(option: ControlLabelInput): string {
-  return formatControlLabel(option);
+  return formatControlLabel(option, false);
 }
 
 export function normalizeModelId(modelId: string | null | undefined): string | null {
@@ -156,7 +182,9 @@ export function resolveAgentModelSelection(input: {
   const resolvedThinkingId = resolveThinkingId(explicitThinkingOptionId, selectedModel);
   const effectiveThinking = resolveEffectiveThinking(thinkingOptions, resolvedThinkingId);
   const selectedThinkingId = effectiveThinking?.id ?? null;
-  const displayThinking = effectiveThinking?.label ?? selectedThinkingId ?? "Unknown";
+  const displayThinking = effectiveThinking
+    ? formatThinkingOptionLabel(effectiveThinking)
+    : (selectedThinkingId ?? "Unknown");
 
   return {
     selectedModel,
