@@ -70,6 +70,10 @@ const ONE_BY_ONE_PNG_BASE64 =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+X1r0AAAAASUVORK5CYII=";
 const CODEX_PROVIDER = "codex";
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function createConfig(overrides: Partial<AgentSessionConfig> = {}): AgentSessionConfig {
   return {
     provider: CODEX_PROVIDER,
@@ -682,8 +686,10 @@ describe("Codex app-server provider", () => {
     expect(codexConfigToml).toContain('wire_api = "responses"');
     expect(codexConfigToml).toContain("requires_openai_auth = false");
     expect(codexConfigToml).toContain("[agents.subagent]");
-    expect(codexConfigToml).toContain(
-      `[hooks.state."${String(capturedRequests[0].CODEX_HOME)}/hooks.json:session_start:0:0"]`,
+    expect(codexConfigToml).toMatch(
+      new RegExp(
+        `\\[hooks\\.state\\."${escapeRegExp(String(capturedRequests[0].CODEX_HOME))}[\\\\/]hooks\\.json:session_start:0:0"\\]`,
+      ),
     );
     expect(codexConfigToml).not.toContain("source-codex-home/hooks.json:session_start:0:0");
     expect(codexConfigToml).toContain("[mcp_servers.context-mode]");

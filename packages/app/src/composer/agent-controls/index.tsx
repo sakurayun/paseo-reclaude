@@ -692,6 +692,7 @@ function ControlledStatusBar({
     selectedThinkingOptionId,
     thinkingOptions?.[0]?.label ?? "Unknown",
   );
+  const displayMode = findOptionLabel(modeOptions, selectedModeId, selectedModeId ?? "");
 
   const { icon: ModeIconComponent, color: modeIconColor } = resolveModeVisualsForProvider(
     provider,
@@ -943,6 +944,7 @@ function ControlledStatusBar({
           displayModel={displayModel}
           displayModelGateway={displayModelGateway}
           displayThinking={displayThinking}
+          displayMode={displayMode}
           ModeIconComponent={ModeIconComponent}
           modeIconColor={modeIconColor}
           openSelector={openSelector}
@@ -1052,6 +1054,7 @@ interface DesktopStatusBarContentProps {
   displayModel: string;
   displayModelGateway: string;
   displayThinking: string;
+  displayMode: string;
   ModeIconComponent: (typeof MODE_ICONS)[keyof typeof MODE_ICONS] | null;
   modeIconColor: string;
   openSelector: StatusSelector | null;
@@ -1129,6 +1132,7 @@ function DesktopStatusBarContent(props: DesktopStatusBarContentProps) {
     displayModel,
     displayModelGateway,
     displayThinking,
+    displayMode,
     ModeIconComponent,
     modeIconColor,
     openSelector,
@@ -1280,7 +1284,7 @@ function DesktopStatusBarContent(props: DesktopStatusBarContentProps) {
                 onPress={handleModePress}
                 style={modePressableStyle}
                 accessibilityRole="button"
-                accessibilityLabel={`Select agent mode (${selectedModeId ?? ""})`}
+                accessibilityLabel={`Select agent mode (${displayMode})`}
                 testID="agent-mode-selector"
               >
                 {ModeIconComponent ? (
@@ -1604,7 +1608,7 @@ function SheetStatusBarContent(props: SheetStatusBarContentProps) {
           disabled={disabled || !canSelectMode}
           style={modeButtonStyle}
           accessibilityRole="button"
-          accessibilityLabel={`Select agent mode (${selectedModeId ?? ""})`}
+          accessibilityLabel={`Select agent mode (${displayMode})`}
           testID="agent-preferences-mode"
         >
           {ModeIconComponent ? (
