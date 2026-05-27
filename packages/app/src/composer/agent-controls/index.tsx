@@ -998,6 +998,7 @@ function ControlledStatusBar({
           comboboxModeOptions={comboboxModeOptions}
           comboboxModelGatewayOptions={comboboxModelGatewayOptions}
           comboboxThinkingOptions={comboboxThinkingOptions}
+          displayMode={displayMode}
           ModeIconComponent={ModeIconComponent}
           modeIconColor={modeIconColor}
           openSelector={openSelector}
@@ -1418,6 +1419,7 @@ interface SheetStatusBarContentProps {
   comboboxModeOptions: ComboboxOption[];
   comboboxModelGatewayOptions: ComboboxOption[];
   comboboxThinkingOptions: ComboboxOption[];
+  displayMode: string;
   ModeIconComponent: (typeof MODE_ICONS)[keyof typeof MODE_ICONS] | null;
   modeIconColor: string;
   openSelector: StatusSelector | null;
@@ -1470,6 +1472,7 @@ function SheetStatusBarContent(props: SheetStatusBarContentProps) {
     comboboxModeOptions,
     comboboxModelGatewayOptions,
     comboboxThinkingOptions,
+    displayMode,
     ModeIconComponent,
     modeIconColor,
     openSelector,
