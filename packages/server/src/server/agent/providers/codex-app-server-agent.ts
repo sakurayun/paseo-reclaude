@@ -3044,12 +3044,13 @@ function remapCodexGatewayHookStateToml(
   sourceHome: string,
   gatewayHome: string,
 ): string {
-  const sourceHooksPath = quoteTomlString(path.join(sourceHome, "hooks.json")).slice(1, -1);
-  const gatewayHooksPath = quoteTomlString(path.join(gatewayHome, "hooks.json")).slice(1, -1);
-  return baseToml.replaceAll(
-    `[hooks.state."${sourceHooksPath}:`,
-    `[hooks.state."${gatewayHooksPath}:`,
-  );
+  const sourceHooksPath = path.join(sourceHome, "hooks.json");
+  const gatewayHooksPath = path.join(gatewayHome, "hooks.json");
+  const sourceHooksTomlPath = quoteTomlString(sourceHooksPath).slice(1, -1);
+  const gatewayHooksTomlPath = quoteTomlString(gatewayHooksPath).slice(1, -1);
+  return baseToml
+    .replaceAll(`[hooks.state."${sourceHooksPath}:`, `[hooks.state."${gatewayHooksPath}:`)
+    .replaceAll(`[hooks.state."${sourceHooksTomlPath}:`, `[hooks.state."${gatewayHooksTomlPath}:`);
 }
 
 function removeTopLevelTomlKeys(source: string, keys: string[]): string {
