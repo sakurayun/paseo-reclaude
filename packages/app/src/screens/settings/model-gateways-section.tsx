@@ -14,7 +14,7 @@ import { useHostRuntimeClient } from "@/runtime/host-runtime";
 import { SettingsSection } from "@/screens/settings/settings-section";
 import { useSessionStore } from "@/stores/session-store";
 import { settingsStyles } from "@/styles/settings";
-import type { MutableDaemonConfig } from "@server/shared/messages";
+import type { MutableDaemonConfig } from "@getpaseo/protocol/messages";
 
 type ModelGateways = NonNullable<MutableDaemonConfig["modelGateways"]>;
 type ModelGatewayConfig = ModelGateways[string];
@@ -204,6 +204,13 @@ export function ModelGatewaysSection({ serverId }: { serverId: string }) {
       Alert.alert("Base URL required", "Enter the gateway base URL.");
       return;
     }
+    if (nextProtocol !== CODEX_GATEWAY_PROTOCOL) {
+      Alert.alert(
+        "Unsupported protocol",
+        "Codex currently supports only the OpenAI Responses protocol for model gateways.",
+      );
+      return;
+    }
 
     const existingIds = new Set(Object.keys(gateways));
     const id = editingId ?? slugifyGatewayId(nextLabel, existingIds);
@@ -355,11 +362,9 @@ export function ModelGatewaysSection({ serverId }: { serverId: string }) {
                 value={protocol}
                 onSelect={setProtocol}
                 searchable
-                allowCustomValue
-                customValuePrefix="Use protocol"
                 placeholder="responses"
-                searchPlaceholder="Search protocols or enter one"
-                emptyText="Enter a protocol value."
+                searchPlaceholder="Search protocols"
+                emptyText="No supported protocols found."
                 title="Protocol"
                 open={isProtocolSelectorOpen}
                 onOpenChange={setIsProtocolSelectorOpen}

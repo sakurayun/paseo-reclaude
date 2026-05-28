@@ -5,11 +5,10 @@ import { z } from "zod";
 import {
   AgentProviderRuntimeSettingsMapSchema,
   migrateProviderSettings,
-  ProviderOverrideSchema,
+  ProviderOverridesSchema,
 } from "./agent/provider-launch-config.js";
 import type { AgentProviderRuntimeSettingsMap } from "./agent/provider-launch-config.js";
 import { ensurePrivateFile, writePrivateFileSync } from "./private-files.js";
-import { ModelGatewayConfigSchema } from "../shared/messages.js";
 
 export const LogLevelSchema = z.enum(["trace", "debug", "info", "warn", "error", "fatal"]);
 export const LogFormatSchema = z.enum(["pretty", "json"]);
@@ -63,6 +62,29 @@ const ProvidersSchema = z
     local: LocalSpeechProviderSchema.optional(),
   })
   .strict();
+
+const ModelGatewayConfigSchema = z.discriminatedUnion("type", [
+  z
+    .object({
+      type: z.literal("native"),
+      id: z.string().optional(),
+      label: z.string().optional(),
+      provider: z.string().optional(),
+    })
+    .passthrough(),
+  z
+    .object({
+      type: z.literal("openai-compatible"),
+      id: z.string().optional(),
+      label: z.string().optional(),
+      provider: z.string().optional(),
+      baseUrl: z.string().trim().min(1),
+      protocol: z.string().trim().min(1).optional(),
+      model: z.string().trim().min(1).optional(),
+      apiKey: z.string().optional(),
+    })
+    .passthrough(),
+]);
 
 const BcryptHashSchema = z.string().regex(/^\$2[aby]\$\d{2}\$[./A-Za-z0-9]{53}$/, {
   message: "Expected a bcrypt hash",
@@ -133,57 +155,6 @@ const FeatureVoiceModeSchema = z
   .strict();
 
 const BUILTIN_PROVIDER_IDS = ["claude", "codex", "copilot", "opencode", "pi"] as const;
-const PROVIDER_ID_PATTERN = /^[a-z][a-z0-9-]*$/;
-
-const ProviderOverridesSchema = z
-  .record(z.string(), ProviderOverrideSchema)
-  .superRefine((providers, ctx) => {
-    const builtinProviderIdSet = new Set<string>(BUILTIN_PROVIDER_IDS);
-    const validExtendsValues = new Set<string>([...BUILTIN_PROVIDER_IDS, "acp"]);
-
-    for (const [providerId, provider] of Object.entries(providers)) {
-      if (!PROVIDER_ID_PATTERN.test(providerId)) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: [providerId],
-          message: `Provider ID "${providerId}" must match ${PROVIDER_ID_PATTERN}.`,
-        });
-      }
-
-      const isBuiltinProvider = builtinProviderIdSet.has(providerId);
-      if (!isBuiltinProvider && !provider.extends) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: [providerId, "extends"],
-          message: `Custom provider "${providerId}" must declare extends.`,
-        });
-      }
-
-      if (!isBuiltinProvider && !provider.label) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: [providerId, "label"],
-          message: `Custom provider "${providerId}" must declare label.`,
-        });
-      }
-
-      if (provider.extends && !validExtendsValues.has(provider.extends)) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: [providerId, "extends"],
-          message: `Provider "${providerId}" extends unknown provider "${provider.extends}".`,
-        });
-      }
-
-      if (provider.extends === "acp" && !provider.command) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: [providerId, "command"],
-          message: `Provider "${providerId}" extending "acp" must declare command.`,
-        });
-      }
-    }
-  });
 
 function isLegacyProviderEntry(value: unknown): boolean {
   if (!value || typeof value !== "object" || Array.isArray(value)) {

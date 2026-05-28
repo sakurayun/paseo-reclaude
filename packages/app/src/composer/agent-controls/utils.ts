@@ -1,4 +1,4 @@
-import type { AgentFeature, AgentModelDefinition } from "@server/server/agent/agent-sdk-types";
+import type { AgentFeature, AgentModelDefinition } from "@getpaseo/protocol/agent-types";
 
 export type ExplainedStatusSelector = "gateway" | "mode" | "model" | "thinking";
 export type ExplainedAgentControl = ExplainedStatusSelector;

@@ -5,6 +5,7 @@ import {
   useRef,
   useState,
   type ReactElement,
+  type ReactNode,
   type RefObject,
 } from "react";
 import {
@@ -68,10 +69,13 @@ import type {
   AgentModelDefinition,
   AgentProvider,
   AgentSessionConfig,
-} from "@server/server/agent/agent-sdk-types";
-import type { AgentProviderDefinition } from "@server/server/agent/provider-manifest";
-import type { DaemonClient } from "@server/client/daemon-client";
-import { getModeVisuals, type AgentModeColorTier } from "@server/server/agent/provider-manifest";
+} from "@getpaseo/protocol/agent-types";
+import {
+  getModeVisuals,
+  type AgentModeColorTier,
+  type AgentProviderDefinition,
+} from "@getpaseo/protocol/provider-manifest";
+import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
 import {
   getFeatureHighlightColor,
   getFeatureTooltip,
@@ -97,7 +101,7 @@ interface RuntimeModelGatewayStatus {
 
 type StatusSelector = "provider" | "gateway" | "mode" | "model" | "thinking" | `feature-${string}`;
 
-interface ControlledAgentStatusBarProps {
+interface ControlledAgentControlsProps {
   provider: string;
   providerOptions?: StatusOption[];
   selectedProviderId?: string;
@@ -125,6 +129,9 @@ interface ControlledAgentStatusBarProps {
   onSetFeature?: (featureId: string, value: unknown) => void;
   onDropdownClose?: () => void;
   onModelSelectorOpen?: () => void;
+  /** Extra elements rendered inline with the agent controls (desktop only). */
+  desktopExtras?: ReactNode;
+  modelSelectorServerId?: string | null;
 }
 
 export interface DraftAgentStatusBarProps {
@@ -152,6 +159,7 @@ export interface DraftAgentStatusBarProps {
   onDropdownClose?: () => void;
   onModelSelectorOpen?: () => void;
   disabled?: boolean;
+  modelSelectorServerId?: string | null;
 }
 
 export type DraftAgentControlsProps = DraftAgentStatusBarProps;
@@ -656,7 +664,9 @@ function ControlledStatusBar({
   onSetFeature,
   onDropdownClose,
   onModelSelectorOpen,
-}: ControlledAgentStatusBarProps) {
+  desktopExtras,
+  modelSelectorServerId = null,
+}: ControlledAgentControlsProps) {
   const { theme } = useUnistyles();
   const isCompact = useIsCompactFormFactor();
   const [activeSheet, setActiveSheet] = useState<ActiveSheet>(null);
@@ -972,6 +982,8 @@ function ControlledStatusBar({
           handleOpenChange={handleOpenChange}
           renderModeOption={renderModeOption}
           renderThinkingOption={renderThinkingOption}
+          extras={desktopExtras}
+          modelSelectorServerId={modelSelectorServerId}
         />
       ) : (
         <SheetStatusBarContent
@@ -1013,6 +1025,7 @@ function ControlledStatusBar({
           handleOpenChange={handleOpenChange}
           renderModeOption={renderModeOption}
           renderThinkingOption={renderThinkingOption}
+          modelSelectorServerId={modelSelectorServerId}
         />
       )}
     </View>
@@ -1093,6 +1106,8 @@ interface DesktopStatusBarContentProps {
     active: boolean;
     onPress: () => void;
   }) => ReactElement;
+  extras?: ReactNode;
+  modelSelectorServerId: string | null;
 }
 
 const DESKTOP_SEARCH_THRESHOLD = 6;
@@ -1161,6 +1176,8 @@ function DesktopStatusBarContent(props: DesktopStatusBarContentProps) {
     handleOpenChange,
     renderModeOption,
     renderThinkingOption,
+    extras,
+    modelSelectorServerId,
   } = props;
 
   return (
@@ -1213,6 +1230,7 @@ function DesktopStatusBarContent(props: DesktopStatusBarContentProps) {
                 disabled={modelDisabled}
                 onOpen={onModelSelectorOpen}
                 onClose={onDropdownClose}
+                serverId={modelSelectorServerId}
               />
             </View>
           </TooltipTrigger>
@@ -1312,6 +1330,8 @@ function DesktopStatusBarContent(props: DesktopStatusBarContentProps) {
           />
         </>
       ) : null}
+
+      {extras}
 
       {features?.map((feature) => (
         <DesktopFeatureItem
@@ -1444,6 +1464,7 @@ interface SheetStatusBarContentProps {
     active: boolean;
     onPress: () => void;
   }) => ReactElement;
+  modelSelectorServerId: string | null;
 }
 
 function SheetStatusBarContent(props: SheetStatusBarContentProps) {
@@ -1487,6 +1508,7 @@ function SheetStatusBarContent(props: SheetStatusBarContentProps) {
     handleOpenChange,
     renderModeOption,
     renderThinkingOption,
+    modelSelectorServerId,
   } = props;
 
   const thinkingAnchorRef = useRef<View | null>(null);
@@ -1575,6 +1597,7 @@ function SheetStatusBarContent(props: SheetStatusBarContentProps) {
           onOpen={onModelSelectorOpen}
           onClose={onDropdownClose}
           renderTrigger={renderModelTrigger}
+          serverId={modelSelectorServerId}
         />
       ) : null}
 
@@ -2332,6 +2355,7 @@ export const AgentStatusBar = memo(function AgentStatusBar({
       onModelSelectorOpen={handleModelSelectorOpen}
       onDropdownClose={onDropdownClose}
       disabled={!client}
+      modelSelectorServerId={serverId}
     />
   );
 });
@@ -2361,7 +2385,8 @@ export function DraftAgentStatusBar({
   onDropdownClose,
   onModelSelectorOpen,
   disabled = false,
-}: DraftAgentStatusBarProps) {
+  modelSelectorServerId = null,
+}: DraftAgentControlsProps) {
   const { preferences, updatePreferences } = useFormPreferences();
   const isCompact = useIsCompactFormFactor();
 
@@ -2425,6 +2450,7 @@ export function DraftAgentStatusBar({
           disabled={disabled}
           onOpen={onModelSelectorOpen}
           onClose={onDropdownClose}
+          serverId={modelSelectorServerId}
         />
         {selectedProvider ? (
           <ControlledStatusBar
@@ -2474,6 +2500,7 @@ export function DraftAgentStatusBar({
       onSetFeature={onSetFeature}
       onModelSelectorOpen={onModelSelectorOpen}
       disabled={disabled}
+      modelSelectorServerId={modelSelectorServerId}
     />
   );
 }

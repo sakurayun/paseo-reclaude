@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { ModelGatewayConfig } from "../shared/messages.js";
+import type { ModelGatewayConfig } from "@getpaseo/protocol/messages";
 
 type OpenAICompatibleGateway = Extract<ModelGatewayConfig, { type: "openai-compatible" }>;
 

@@ -4,7 +4,7 @@ import type {
   AgentModelDefinition,
   AgentProvider,
   AgentSessionConfig,
-} from "@server/server/agent/agent-sdk-types";
+} from "@getpaseo/protocol/agent-types";
 
 type ModelGatewayConfig = NonNullable<AgentSessionConfig["modelGateway"]>;
 
