@@ -30,9 +30,9 @@ import { spawnProcess } from "./spawn.js";
 import { resolvePaseoHome } from "../server/paseo-home.js";
 import { createExternalProcessEnv } from "../server/paseo-env.js";
 import { parseGitRevParsePath, resolveGitRevParsePath } from "./git-rev-parse-path.js";
-import { validateBranchSlug } from "./branch-slug.js";
+import { validateBranchSlug } from "@getpaseo/protocol/branch-slug";
 
-export { slugify, validateBranchSlug } from "./branch-slug.js";
+export { slugify, validateBranchSlug } from "@getpaseo/protocol/branch-slug";
 
 const execFileAsync = promisify(execFile);
 const READ_ONLY_GIT_ENV = {

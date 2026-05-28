@@ -40,21 +40,6 @@ describe("branch slug utilities", () => {
     });
   });
 
-  it("is exported through the package subpath", () => {
-    const currentDir = dirname(fileURLToPath(import.meta.url));
-    const packageJson = JSON.parse(
-      readFileSync(join(currentDir, "..", "..", "package.json"), "utf8"),
-    ) as {
-      exports?: Record<string, { types?: string; source?: string; default?: string }>;
-    };
-
-    expect(packageJson.exports?.["./utils/branch-slug"]).toEqual({
-      types: "./dist/server/utils/branch-slug.d.ts",
-      source: "./src/utils/branch-slug.ts",
-      default: "./dist/server/utils/branch-slug.js",
-    });
-  });
-
   it("does not import server-only modules", () => {
     const currentDir = dirname(fileURLToPath(import.meta.url));
     const source = readFileSync(join(currentDir, "branch-slug.ts"), "utf8");

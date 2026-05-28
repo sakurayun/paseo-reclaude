@@ -200,7 +200,7 @@ import {
   createPullRequest,
   renameCurrentBranch,
 } from "../utils/checkout-git.js";
-import { validateBranchSlug } from "../utils/branch-slug.js";
+import { validateBranchSlug } from "@getpaseo/protocol/branch-slug";
 import { getProjectIcon } from "../utils/project-icon.js";
 import { expandTilde } from "../utils/path.js";
 import { searchHomeDirectories, searchWorkspaceEntries } from "../utils/directory-suggestions.js";
