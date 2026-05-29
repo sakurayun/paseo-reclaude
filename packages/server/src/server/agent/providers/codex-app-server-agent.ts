@@ -3206,7 +3206,13 @@ async function prepareCodexModelGatewayLaunchEnv(
   const gatewayRoot = resolveCodexModelGatewayRoot(modelGateway);
   const baseHome = path.join(gatewayRoot, "base");
   const gatewayHome = path.join(gatewayRoot, "home");
+  const existingGatewayAuthJson = modelGateway.apiKey?.trim()
+    ? ""
+    : await readTextFileIfExists(path.join(gatewayHome, "auth.json"));
   await syncCodexGatewayHomeSource(sourceHome, baseHome, gatewayHome);
+  if (existingGatewayAuthJson) {
+    await fs.writeFile(path.join(gatewayHome, "auth.json"), existingGatewayAuthJson, "utf8");
+  }
   const baseConfigToml = await readTextFileIfExists(path.join(baseHome, "config.toml"));
   const gatewayConfigToml = remapCodexGatewayHookStateToml(baseConfigToml, sourceHome, gatewayHome);
   await fs.writeFile(

@@ -1051,6 +1051,8 @@ export class VoiceAssistantWebSocketServer {
         rewind: true,
         // COMPAT(modelGateways): added in v0.1.82, remove gate after 2026-11-24.
         modelGateways: true,
+        // COMPAT(checkoutRefresh): added in v0.1.86, remove gate after 2026-11-29.
+        checkoutRefresh: true,
       },
     };
   }

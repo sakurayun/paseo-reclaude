@@ -8,6 +8,13 @@ describe("model gateway model catalog", () => {
     );
   });
 
+  test("normalizes OpenAI-compatible base URLs to the v1 models endpoint", () => {
+    expect(getModelGatewayModelsUrl("https://router.local")).toBe("https://router.local/v1/models");
+    expect(getModelGatewayModelsUrl("https://router.local/api/")).toBe(
+      "https://router.local/api/v1/models",
+    );
+  });
+
   test("lists distinct OpenAI-compatible model IDs with gateway authentication", async () => {
     const fetchImpl = vi.fn(async () => {
       return new Response(

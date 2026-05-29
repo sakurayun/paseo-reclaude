@@ -16,7 +16,11 @@ const GatewayModelsResponseSchema = z
   .passthrough();
 
 export function getModelGatewayModelsUrl(baseUrl: string): string {
-  return `${baseUrl.trim().replace(/\/+$/, "")}/models`;
+  const normalizedBaseUrl = baseUrl.trim().replace(/\/+$/, "");
+  if (/\/v1$/i.test(normalizedBaseUrl)) {
+    return `${normalizedBaseUrl}/models`;
+  }
+  return `${normalizedBaseUrl}/v1/models`;
 }
 
 export async function listModelGatewayModels(

@@ -146,6 +146,7 @@ async function runCustomCodexProviderTurn(
   options: {
     collaborationModes?: unknown[];
     beforeTurn?: (session: AgentSession) => Promise<void>;
+    seedGatewayAuthJson?: string;
   } = {},
 ): Promise<CapturedFakeCodexRecord[]> {
   const tempDir = await mkdtemp(path.join(tmpdir(), "codex-custom-provider-"));
@@ -244,6 +245,19 @@ process.stdin.on("data", (chunk) => {
   });
   const previousPaseoHome = process.env.PASEO_HOME;
   process.env.PASEO_HOME = path.join(tempDir, "paseo-home");
+  if (options.seedGatewayAuthJson && configOverrides.modelGateway?.type === "openai-compatible") {
+    const gatewayId = configOverrides.modelGateway.id ?? "model-gateway";
+    const gatewayHome = path.join(
+      process.env.PASEO_HOME,
+      "providers",
+      "codex",
+      "model-gateways",
+      gatewayId,
+      "home",
+    );
+    mkdirSync(gatewayHome, { recursive: true });
+    writeFileSync(path.join(gatewayHome, "auth.json"), options.seedGatewayAuthJson);
+  }
   let session: AgentSession | null = null;
 
   try {
@@ -727,6 +741,33 @@ describe("Codex app-server provider", () => {
           model: "openai-all",
         },
       },
+    });
+  });
+
+  test("preserves existing Codex model gateway auth when resumed metadata has no api key", async () => {
+    const existingGatewayAuth = `${JSON.stringify(
+      { auth_mode: "apikey", OPENAI_API_KEY: "sk-preserved-router" },
+      null,
+      2,
+    )}\n`;
+    const capturedRequests = await runCustomCodexProviderTurn(
+      "codex-gateway-test",
+      "https://custom-relay.example.com",
+      {
+        modelGateway: {
+          type: "openai-compatible",
+          id: "9router",
+          provider: "codex",
+          baseUrl: "http://localhost:20128",
+          model: "openai-all",
+        },
+      },
+      { seedGatewayAuthJson: existingGatewayAuth },
+    );
+
+    expect(JSON.parse(String(capturedRequests[0].CODEX_AUTH_JSON))).toEqual({
+      auth_mode: "apikey",
+      OPENAI_API_KEY: "sk-preserved-router",
     });
   });
 

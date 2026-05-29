@@ -154,6 +154,20 @@ const FeatureVoiceModeSchema = z
   })
   .strict();
 
+const StructuredGenerationProviderConfigSchema = z
+  .object({
+    provider: z.string().min(1),
+    model: z.string().min(1).optional(),
+    thinkingOptionId: z.string().min(1).optional(),
+  })
+  .strict();
+
+const AgentMetadataGenerationSchema = z
+  .object({
+    providers: z.array(StructuredGenerationProviderConfigSchema).optional(),
+  })
+  .strict();
+
 const BUILTIN_PROVIDER_IDS = ["claude", "codex", "copilot", "opencode", "pi"] as const;
 
 function isLegacyProviderEntry(value: unknown): boolean {
@@ -261,6 +275,7 @@ export const PersistedConfigSchema = z
     agents: z
       .object({
         providers: z.preprocess(normalizeAgentProviders, ProviderOverridesSchema).optional(),
+        metadataGeneration: AgentMetadataGenerationSchema.optional(),
       })
       .strict()
       .optional(),
