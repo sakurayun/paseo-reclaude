@@ -517,6 +517,9 @@ export class VoiceAssistantWebSocketServer {
         const newStatus = event.agent.lifecycle;
         if (newStatus !== prevStatus) {
           this.agentStatuses.set(agentId, newStatus);
+          if (newStatus === "idle" || newStatus === "error") {
+            void this.quotaFetcher.triggerFetch();
+          }
         }
       }
     });

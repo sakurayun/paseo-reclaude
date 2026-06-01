@@ -101,6 +101,7 @@ function getMeterGeometry(showPercentage: boolean) {
 function formatResetsAtLabel(resetsAt: string | undefined): string {
   if (!resetsAt) return "";
   const diffMs = new Date(resetsAt).getTime() - Date.now();
+  if (!Number.isFinite(diffMs)) return "";
   if (diffMs <= 0) return "resetting now";
   const diffMinutes = Math.floor(diffMs / 60_000);
   const diffHours = Math.floor(diffMinutes / 60);
