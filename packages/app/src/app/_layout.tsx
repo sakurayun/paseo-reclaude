@@ -16,6 +16,7 @@ import {
   useSyncExternalStore,
 } from "react";
 import { View } from "react-native";
+import { SystemBars } from "react-native-edge-to-edge";
 import { Gesture, GestureDetector, GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { Extrapolation, interpolate, runOnJS, useSharedValue } from "react-native-reanimated";
@@ -939,8 +940,12 @@ function RootProviders({ children }: { children: ReactNode }) {
 }
 
 export default function RootLayout() {
+  const { theme } = useUnistyles();
+  const statusBarStyle = theme.colorScheme === "light" ? "dark" : "light";
+
   return (
     <GestureHandlerRootView style={flexStyle}>
+      <SystemBars style={{ statusBar: statusBarStyle }} />
       <View style={layoutStyles.surfaceFill}>
         <RootProviders>
           <RuntimeProviders>
