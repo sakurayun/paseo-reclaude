@@ -569,6 +569,7 @@ export interface SessionOptions {
   downloadTokenStore: DownloadTokenStore;
   pushTokenStore: PushTokenStore;
   paseoHome: string;
+  worktreesRoot?: string;
   agentManager: AgentManager;
   agentStorage: AgentStorage;
   projectRegistry: ProjectRegistry;
@@ -742,6 +743,7 @@ export class Session {
   private readonly onLifecycleIntent: ((intent: SessionLifecycleIntent) => void) | null;
   private readonly sessionLogger: pino.Logger;
   private readonly paseoHome: string;
+  private readonly worktreesRoot: string | undefined;
 
   // State machine
   private abortController: AbortController;
@@ -859,6 +861,7 @@ export class Session {
       downloadTokenStore,
       pushTokenStore,
       paseoHome,
+      worktreesRoot,
       agentManager,
       agentStorage,
       projectRegistry,
@@ -900,6 +903,7 @@ export class Session {
     this.downloadTokenStore = downloadTokenStore;
     this.pushTokenStore = pushTokenStore;
     this.paseoHome = paseoHome;
+    this.worktreesRoot = worktreesRoot;
     this.sessionLogger = logger.child({
       module: "session",
       clientId: this.clientId,
@@ -930,6 +934,7 @@ export class Session {
     });
     this.createAgentLifecycleDispatch = new CreateAgentLifecycleDispatch({
       paseoHome: this.paseoHome,
+      worktreesRoot: this.worktreesRoot,
       agentManager: this.agentManager,
       agentStorage: this.agentStorage,
       github: this.github,
@@ -3111,6 +3116,7 @@ export class Session {
           agentStorage: this.agentStorage,
           logger: this.sessionLogger,
           paseoHome: this.paseoHome,
+          worktreesRoot: this.worktreesRoot,
           workspaceGitService: this.workspaceGitService,
           providerSnapshotManager: this.providerSnapshotManager,
           daemonConfig: this.readStructuredGenerationDaemonConfig(),
@@ -3491,6 +3497,7 @@ export class Session {
     return buildWorktreeAgentSessionConfig(
       {
         paseoHome: this.paseoHome,
+        worktreesRoot: this.worktreesRoot,
         sessionLogger: this.sessionLogger,
         workspaceGitService: this.workspaceGitService,
         createPaseoWorktree: (input, serviceOptions) =>
@@ -5230,7 +5237,7 @@ export class Session {
           baseRef,
           mode: msg.strategy === "squash" ? "squash" : "merge",
         },
-        { paseoHome: this.paseoHome },
+        { paseoHome: this.paseoHome, worktreesRoot: this.worktreesRoot },
       );
       await Promise.all([
         this.notifyGitMutation(mutatedCwd, "merge-to-base", { invalidateGithub: true }),
@@ -5711,6 +5718,7 @@ export class Session {
     return handleWorktreeArchiveRequest(
       {
         paseoHome: this.paseoHome,
+        worktreesRoot: this.worktreesRoot,
         github: this.github,
         workspaceGitService: this.workspaceGitService,
         agentManager: this.agentManager,
@@ -7298,6 +7306,7 @@ export class Session {
     return handleCreateWorktreeRequest(
       {
         paseoHome: this.paseoHome,
+        worktreesRoot: this.worktreesRoot,
         describeWorkspaceRecord: (result) => this.describeCreatedWorktreeWorkspace(result),
         emit: (message) => this.emit(message),
         sessionLogger: this.sessionLogger,
@@ -7317,6 +7326,7 @@ export class Session {
     return createWorktreeWorkflow(
       {
         paseoHome: this.paseoHome,
+        worktreesRoot: this.worktreesRoot,
         createPaseoWorktree: (workflowInput, serviceOptions) =>
           this.createPaseoWorktree(workflowInput, serviceOptions),
         warmWorkspaceGitData: (workspace) => this.warmWorkspaceGitDataForWorkspace(workspace),

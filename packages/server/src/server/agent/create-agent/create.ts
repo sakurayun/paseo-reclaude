@@ -46,6 +46,7 @@ interface CreateAgentCommandDependencies {
   agentStorage: AgentStorage;
   logger: Logger;
   paseoHome?: string;
+  worktreesRoot?: string;
   workspaceGitService?: Pick<
     WorkspaceGitService,
     "getSnapshot" | "listWorktrees" | "resolveRepoRoot"
@@ -419,6 +420,7 @@ async function resolveMcpCwd(params: {
       ...(params.initialPrompt ? { firstAgentContext: { prompt: params.initialPrompt } } : {}),
       runSetup: false,
       paseoHome: dependencies.paseoHome,
+      worktreesRoot: dependencies.worktreesRoot,
     },
     createPaseoWorktree: dependencies.createPaseoWorktree,
     resolveDefaultBranch: baseBranch ? async () => baseBranch : undefined,

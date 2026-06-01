@@ -99,6 +99,7 @@ export interface AgentMcpServerOptions {
   clearWorkspaceArchiving?: ArchivePaseoWorktreeDependencies["clearWorkspaceArchiving"];
   createPaseoWorktree?: CreatePaseoWorktreeWorkflowFn;
   paseoHome?: string;
+  worktreesRoot?: string;
   /**
    * ID of the agent that is connecting to this MCP server.
    * Used for cwd/mode inheritance when agents spawn child agents.
@@ -918,6 +919,7 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
           agentStorage,
           logger: childLogger,
           paseoHome: options.paseoHome,
+          worktreesRoot: options.worktreesRoot,
           workspaceGitService: options.workspaceGitService,
           terminalManager,
           providerSnapshotManager,
@@ -2152,6 +2154,7 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
       const commandResult = await createPaseoWorktreeCommand(
         {
           paseoHome: options.paseoHome,
+          worktreesRoot: options.worktreesRoot,
           createPaseoWorktreeWorkflow: options.createPaseoWorktree,
         },
         createMcpWorktreeCommandInput(repoRoot, target),
@@ -2414,6 +2417,7 @@ function archiveWorktreeDependencies(
   }
   return {
     paseoHome: options.paseoHome,
+    worktreesRoot: options.worktreesRoot,
     github: options.github,
     workspaceGitService: options.workspaceGitService,
     agentManager: context.agentManager,

@@ -1,6 +1,7 @@
 import path from "node:path";
 import { resolvePaseoNodeEnv } from "./paseo-env.js";
 import { z } from "zod";
+import { expandTilde } from "../utils/path.js";
 
 import type { PaseoDaemonConfig } from "./bootstrap.js";
 import {
@@ -256,6 +257,21 @@ function resolveAuthConfig(
     : undefined;
 }
 
+function resolveWorktreesRoot(
+  paseoHome: string,
+  persisted: ReturnType<typeof loadPersistedConfig>,
+): string | undefined {
+  const configuredRoot = persisted.worktrees?.root?.trim();
+  if (!configuredRoot) {
+    return undefined;
+  }
+
+  const expandedRoot = expandTilde(configuredRoot);
+  return path.isAbsolute(expandedRoot)
+    ? path.resolve(expandedRoot)
+    : path.resolve(paseoHome, expandedRoot);
+}
+
 function resolveAppendSystemPrompt(persisted: ReturnType<typeof loadPersistedConfig>): string {
   return persisted.daemon?.appendSystemPrompt ?? "";
 }
@@ -321,6 +337,7 @@ export function loadConfig(
   return {
     listen,
     paseoHome,
+    worktreesRoot: resolveWorktreesRoot(paseoHome, persisted),
     corsAllowedOrigins: resolveCorsAllowedOrigins(env, persisted),
     hostnames,
     mcpEnabled,

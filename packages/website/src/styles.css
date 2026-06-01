@@ -20,9 +20,29 @@
 
 .social-proof-marquee {
   margin-inline: calc(50% - 50vw);
-  mask-image: linear-gradient(to right, transparent, black 8%, black 92%, transparent);
   overflow-x: clip;
-  padding-inline: max(1.5rem, calc((100vw - 80rem) / 2));
+  position: relative;
+}
+
+.social-proof-marquee::before,
+.social-proof-marquee::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: max(4rem, 8vw);
+  z-index: 1;
+  pointer-events: none;
+}
+
+.social-proof-marquee::before {
+  left: 0;
+  background: linear-gradient(to right, var(--color-background), transparent);
+}
+
+.social-proof-marquee::after {
+  right: 0;
+  background: linear-gradient(to left, var(--color-background), transparent);
 }
 
 .social-proof-row {
@@ -34,6 +54,7 @@
   display: flex;
   width: max-content;
   animation: social-proof-scroll 46s linear infinite;
+  will-change: transform;
 }
 
 .social-proof-track-reverse {

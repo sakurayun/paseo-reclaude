@@ -231,6 +231,7 @@ export type DaemonLifecycleIntent =
 export interface PaseoDaemonConfig {
   listen: string;
   paseoHome: string;
+  worktreesRoot?: string;
   corsAllowedOrigins: string[];
   allowedHosts?: HostnamesConfig;
   hostnames?: HostnamesConfig;
@@ -518,6 +519,7 @@ export async function createPaseoDaemon(
   const workspaceGitService = new WorkspaceGitServiceImpl({
     logger,
     paseoHome: config.paseoHome,
+    worktreesRoot: config.worktreesRoot,
     deps: {
       github,
     },
@@ -657,6 +659,7 @@ export async function createPaseoDaemon(
 
   setupAutoArchiveOnMerge({
     paseoHome: config.paseoHome,
+    worktreesRoot: config.worktreesRoot,
     daemonConfigStore,
     workspaceGitService,
     github,
@@ -694,6 +697,7 @@ export async function createPaseoDaemon(
           return createPaseoWorktreeWorkflow(
             {
               paseoHome: config.paseoHome,
+              worktreesRoot: config.worktreesRoot,
               createPaseoWorktree: async (workflowInput, workflowOptions) => {
                 return createRegisteredPaseoWorktree(workflowInput, {
                   github,
@@ -740,6 +744,7 @@ export async function createPaseoDaemon(
           );
         },
         paseoHome: config.paseoHome,
+        worktreesRoot: config.worktreesRoot,
         callerAgentId,
         enableVoiceTools: false,
         resolveSpeakHandler: (agentId) => wsServer?.resolveVoiceSpeakHandler(agentId) ?? null,
@@ -965,6 +970,7 @@ export async function createPaseoDaemon(
             providerSnapshotManager,
             {
               listen: formatListenTarget(boundListenTarget ?? listenTarget),
+              worktreesRoot: config.worktreesRoot,
               relay: {
                 enabled: relayEnabled,
                 endpoint: relayEndpoint,

@@ -19,7 +19,7 @@ import {
 } from "../services/github-service.js";
 import { parseGitRevParsePath, resolveGitRevParsePath } from "./git-rev-parse-path.js";
 import { runGitCommand } from "./run-git-command.js";
-import { isPaseoOwnedWorktreeCwd } from "./worktree.js";
+import { isPaseoOwnedWorktreeCwd, resolvePaseoWorktreesBaseRoot } from "./worktree.js";
 import { readPaseoWorktreeMetadata } from "./worktree-metadata.js";
 const READ_ONLY_GIT_ENV = {
   GIT_OPTIONAL_LOCKS: "0",
@@ -779,6 +779,7 @@ export interface MergeFromBaseOptions {
 
 export interface CheckoutContext {
   paseoHome?: string;
+  worktreesRoot?: string;
   logger?: Pick<Logger, "trace">;
   facts?: CheckoutSnapshotFacts | null;
 }
@@ -882,6 +883,7 @@ export async function getMainRepoRoot(cwd: string): Promise<string> {
 async function getMainRepoRootFromCommonDir(
   cwd: string,
   commonDir: string | null,
+  context?: CheckoutContext,
 ): Promise<string> {
   if (!commonDir) {
     throw new Error("Not in a git repository");
@@ -897,7 +899,14 @@ async function getMainRepoRootFromCommonDir(
     envOverlay: READ_ONLY_GIT_ENV,
   });
   const worktrees = parseWorktreeList(worktreeOut);
-  const nonBareNonPaseo = worktrees.filter((wt) => !wt.isBare && !isPaseoWorktreePath(wt.path));
+  const nonBareNonPaseo = worktrees.filter(
+    (wt) =>
+      !wt.isBare &&
+      !isPaseoWorktreePath(wt.path, {
+        paseoHome: context?.paseoHome,
+        worktreesRoot: context?.worktreesRoot,
+      }),
+  );
   const childrenOfBareRepo = nonBareNonPaseo.filter((wt) => isDescendantPath(wt.path, normalized));
   const mainChild = childrenOfBareRepo.find((wt) => basename(wt.path) === "main");
   return mainChild?.path ?? childrenOfBareRepo[0]?.path ?? nonBareNonPaseo[0]?.path ?? normalized;
@@ -909,8 +918,14 @@ export interface GitWorktreeEntry {
   isBare?: boolean;
 }
 
-/** Check whether a path contains a `.paseo/worktrees/` segment (both `/` and `\`). */
-export function isPaseoWorktreePath(p: string): boolean {
+/** Check whether a path is under Paseo's worktree root. */
+export function isPaseoWorktreePath(
+  p: string,
+  options?: { paseoHome?: string; worktreesRoot?: string },
+): boolean {
+  if (options?.worktreesRoot || options?.paseoHome) {
+    return isDescendantPath(p, resolvePaseoWorktreesBaseRoot(options));
+  }
   return /[/\\]\.paseo[/\\]worktrees[/\\]/.test(p);
 }
 
@@ -1008,7 +1023,10 @@ async function getPaseoWorktreeForCwd(
     return { isPaseoOwnedWorktree: false };
   }
 
-  const ownership = await isPaseoOwnedWorktreeCwd(cwd, { paseoHome: context?.paseoHome });
+  const ownership = await isPaseoOwnedWorktreeCwd(cwd, {
+    paseoHome: context?.paseoHome,
+    worktreesRoot: context?.worktreesRoot,
+  });
   if (!ownership.allowed) {
     return { isPaseoOwnedWorktree: false };
   }
@@ -1548,9 +1566,11 @@ export async function getCheckoutSnapshotFacts(
     ? readPaseoWorktreeBaseRef(inspected.paseoWorktree.worktreeRoot)
     : null;
   const resolvedBaseRef = storedBaseRef ?? (await resolveBaseRef(cwd));
-  const mainRepoRoot = await getMainRepoRootFromCommonDir(cwd, inspected.gitCommonDir).catch(
-    () => null,
-  );
+  const mainRepoRoot = await getMainRepoRootFromCommonDir(
+    cwd,
+    inspected.gitCommonDir,
+    context,
+  ).catch(() => null);
   let comparisonBaseRef: string | null = null;
   if (
     resolvedBaseRef &&

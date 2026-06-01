@@ -351,6 +351,7 @@ export class VoiceAssistantWebSocketServer {
   private readonly workspaceGitService: WorkspaceGitService;
   private readonly downloadTokenStore: DownloadTokenStore;
   private readonly paseoHome: string;
+  private readonly worktreesRoot: string | undefined;
   private readonly daemonConfigStore: DaemonConfigStore;
   private readonly pushTokenStore: PushTokenStore;
   private readonly pushNotificationSender: PushNotificationSender;
@@ -423,6 +424,7 @@ export class VoiceAssistantWebSocketServer {
     providerSnapshotManager?: ProviderSnapshotManager,
     daemonRuntimeConfig?: {
       listen: string | null;
+      worktreesRoot?: string;
       relay: {
         enabled: boolean;
         endpoint: string;
@@ -457,6 +459,7 @@ export class VoiceAssistantWebSocketServer {
     this.workspaceGitService = workspaceGitService ?? createFallbackWorkspaceGitService();
     this.downloadTokenStore = downloadTokenStore;
     this.paseoHome = paseoHome;
+    this.worktreesRoot = daemonRuntimeConfig?.worktreesRoot;
     this.daemonConfigStore = daemonConfigStore;
     this.mcpBaseUrl = mcpBaseUrl;
     this.assignOptionalServices({
@@ -882,6 +885,7 @@ export class VoiceAssistantWebSocketServer {
       downloadTokenStore: this.downloadTokenStore,
       pushTokenStore: this.pushTokenStore,
       paseoHome: this.paseoHome,
+      worktreesRoot: this.worktreesRoot,
       agentManager: this.agentManager,
       agentStorage: this.agentStorage,
       projectRegistry: this.projectRegistry,

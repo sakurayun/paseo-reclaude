@@ -259,6 +259,7 @@ interface WorkspaceGitServiceDependencies {
 interface WorkspaceGitServiceOptions {
   logger: pino.Logger;
   paseoHome: string;
+  worktreesRoot?: string;
   deps?: Partial<WorkspaceGitServiceDependencies>;
 }
 
@@ -347,6 +348,7 @@ function resolveWorkspaceGitServiceDeps(
 export class WorkspaceGitServiceImpl implements WorkspaceGitService {
   private readonly logger: pino.Logger;
   private readonly paseoHome: string;
+  private readonly worktreesRoot: string | undefined;
   private readonly deps: WorkspaceGitServiceDependencies;
   private readonly snapshotUpdatedListeners = new Set<WorkspaceGitSnapshotUpdatedListener>();
   private readonly workspaceTargets = new Map<string, WorkspaceGitTarget>();
@@ -385,6 +387,7 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
   constructor(options: WorkspaceGitServiceOptions) {
     this.logger = options.logger.child({ module: "workspace-git-service" });
     this.paseoHome = options.paseoHome;
+    this.worktreesRoot = options.worktreesRoot;
     this.deps = resolveWorkspaceGitServiceDeps(options.deps);
   }
 
@@ -438,6 +441,7 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
     try {
       const status = await this.deps.getCheckoutStatus(normalizedCwd, {
         paseoHome: this.paseoHome,
+        worktreesRoot: this.worktreesRoot,
         logger: this.logger,
       });
       if (!status.isGit) {
@@ -484,7 +488,10 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
     const normalizedOptions = this.normalizeCheckoutDiffOptions(options);
     const key = this.buildCheckoutDiffCacheKey(normalizedCwd, normalizedOptions);
     return this.readAuxiliaryCache(this.checkoutDiffCache, key, readOptions, () =>
-      this.deps.getCheckoutDiff(normalizedCwd, normalizedOptions, { paseoHome: this.paseoHome }),
+      this.deps.getCheckoutDiff(normalizedCwd, normalizedOptions, {
+        paseoHome: this.paseoHome,
+        worktreesRoot: this.worktreesRoot,
+      }),
     );
   }
 
@@ -581,6 +588,7 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
       this.deps.listPaseoWorktrees({
         cwd: repoRoot,
         paseoHome: this.paseoHome,
+        worktreesRoot: this.worktreesRoot,
       }),
     );
   }
@@ -1566,7 +1574,11 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
 
     const cwd = target.cwd;
     const previousGitHubPollKey = this.getGitHubPollKey(target);
-    const baseContext: CheckoutContext = { paseoHome: this.paseoHome, logger: this.logger };
+    const baseContext: CheckoutContext = {
+      paseoHome: this.paseoHome,
+      worktreesRoot: this.worktreesRoot,
+      logger: this.logger,
+    };
     const facts = await this.loadCheckoutFacts(target, {
       ...baseContext,
       allowRecent: !request.force,

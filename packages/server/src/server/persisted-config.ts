@@ -63,6 +63,12 @@ const ProvidersSchema = z
   })
   .strict();
 
+const WorktreesConfigSchema = z
+  .object({
+    root: z.string().min(1).optional(),
+  })
+  .strict();
+
 const BcryptHashSchema = z.string().regex(/^\$2[aby]\$\d{2}\$[./A-Za-z0-9]{53}$/, {
   message: "Expected a bcrypt hash",
 });
@@ -248,6 +254,7 @@ export const PersistedConfigSchema = z
       .optional(),
 
     providers: ProvidersSchema.optional(),
+    worktrees: WorktreesConfigSchema.optional(),
     agents: z
       .object({
         providers: z.preprocess(normalizeAgentProviders, ProviderOverridesSchema).optional(),
