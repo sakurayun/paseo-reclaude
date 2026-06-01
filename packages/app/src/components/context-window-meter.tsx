@@ -1,13 +1,20 @@
-import { Pressable, Text, View } from "react-native";
+import { useMemo, type ReactNode } from "react";
+import { Pressable, Text, View, type StyleProp, type ViewStyle } from "react-native";
 import Svg, { Circle } from "react-native-svg";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { useSessionStore } from "@/stores/session-store";
+import { formatTokenCount } from "./context-window-meter.utils";
 
 interface ContextWindowMeterProps {
   maxTokens: number;
   usedTokens: number;
   totalCostUsd?: number | null;
   showPercentage?: boolean;
+  serverId?: string;
+  selectedModel?: string | null;
+  /** The Paseo provider key, e.g. "claude", "gemini", "codex" */
+  provider?: string | null;
 }
 
 const SVG_SIZE = 16;
@@ -40,16 +47,6 @@ function clampPercentage(value: number): number {
   return Math.max(0, Math.min(100, value));
 }
 
-function formatTokenCount(value: number): string {
-  if (value >= 1_000_000) {
-    return `${Math.round(value / 1_000_000)}m`;
-  }
-  if (value >= 1_000) {
-    return `${Math.round(value / 1_000)}k`;
-  }
-  return Math.round(value).toString();
-}
-
 function formatSessionCost(value: number): string | null {
   if (!Number.isFinite(value) || value <= 0) {
     return null;
@@ -74,14 +71,204 @@ function getMeterColors(
   return { progress: theme.colors.foregroundMuted, track };
 }
 
+function getBarColor(pct: number, theme: ReturnType<typeof useUnistyles>["theme"]): string {
+  if (pct > 90) return theme.colors.destructive;
+  if (pct >= 70) return theme.colors.palette.amber[500];
+  return theme.colors.accent;
+}
+
+function getMeterGeometry(showPercentage: boolean) {
+  if (showPercentage) {
+    return {
+      svgSize: COMPACT_SVG_SIZE,
+      center: COMPACT_CENTER,
+      radius: COMPACT_RADIUS,
+      strokeWidth: COMPACT_STROKE_WIDTH,
+      circumference: COMPACT_CIRCUMFERENCE,
+      containerStyle: styles.containerWithLabel,
+    };
+  }
+  return {
+    svgSize: SVG_SIZE,
+    center: CENTER,
+    radius: RADIUS,
+    strokeWidth: STROKE_WIDTH,
+    circumference: CIRCUMFERENCE,
+    containerStyle: styles.container,
+  };
+}
+
+function formatResetsAtLabel(resetsAt: string | undefined): string {
+  if (!resetsAt) return "";
+  const diffMs = new Date(resetsAt).getTime() - Date.now();
+  if (diffMs <= 0) return "resetting now";
+  const diffMinutes = Math.floor(diffMs / 60_000);
+  const diffHours = Math.floor(diffMinutes / 60);
+  const diffDays = Math.floor(diffHours / 24);
+  if (diffDays > 0) return `resets ${diffDays}d`;
+  if (diffHours > 0) return `resets ${diffHours}h`;
+  return `resets ${diffMinutes}m`;
+}
+
+function QuotaUsageBar({
+  label,
+  utilizationPct,
+  resetsAt,
+  theme,
+}: {
+  label: string;
+  utilizationPct: number;
+  resetsAt?: string;
+  theme: ReturnType<typeof useUnistyles>["theme"];
+}) {
+  const pct = clampPercentage(utilizationPct);
+  const barColor = getBarColor(pct, theme);
+  const resetLabel = formatResetsAtLabel(resetsAt);
+
+  const fillStyle = useMemo<StyleProp<ViewStyle>>(
+    () => [styles.usageBarFill, { width: `${pct}%`, backgroundColor: barColor }],
+    [pct, barColor],
+  );
+
+  return (
+    <View style={styles.usageBarContainer}>
+      <View style={styles.usageBarRow}>
+        <Text style={styles.usageBarLabel}>{label}</Text>
+        <Text style={styles.usageBarValue}>
+          {`${Math.round(pct)}%`}
+          {resetLabel ? ` · ${resetLabel}` : ""}
+        </Text>
+      </View>
+      <View style={styles.usageBarTrack}>
+        <View style={fillStyle} />
+      </View>
+    </View>
+  );
+}
+
+type ProviderQuota = NonNullable<
+  ReturnType<typeof useSessionStore.getState>["sessions"][string]["providerQuota"]
+>;
+
+function ClaudeQuotaContent({
+  quota,
+  theme,
+}: {
+  quota: NonNullable<ProviderQuota["claude"]>;
+  theme: ReturnType<typeof useUnistyles>["theme"];
+}) {
+  return (
+    <>
+      <Text style={styles.tooltipTitle}>{`Plan usage${quota.plan ? ` · ${quota.plan}` : ""}`}</Text>
+      {quota.fiveHour ? (
+        <QuotaUsageBar
+          label="5-hour limit"
+          utilizationPct={quota.fiveHour.utilizationPct}
+          resetsAt={quota.fiveHour.resetsAt}
+          theme={theme}
+        />
+      ) : null}
+      {quota.sevenDay ? (
+        <QuotaUsageBar
+          label="Weekly · all models"
+          utilizationPct={quota.sevenDay.utilizationPct}
+          resetsAt={quota.sevenDay.resetsAt}
+          theme={theme}
+        />
+      ) : null}
+      {quota.sevenDayOpus ? (
+        <QuotaUsageBar
+          label="Weekly · Opus"
+          utilizationPct={quota.sevenDayOpus.utilizationPct}
+          resetsAt={quota.sevenDayOpus.resetsAt}
+          theme={theme}
+        />
+      ) : null}
+    </>
+  );
+}
+
+function CodexQuotaContent({
+  quota,
+  theme,
+}: {
+  quota: NonNullable<ProviderQuota["codex"]>;
+  theme: ReturnType<typeof useUnistyles>["theme"];
+}) {
+  return (
+    <>
+      <Text
+        style={styles.tooltipTitle}
+      >{`Plan usage${quota.planType ? ` · ${quota.planType}` : ""}`}</Text>
+      {quota.session ? (
+        <QuotaUsageBar
+          label="Session"
+          utilizationPct={quota.session.utilizationPct}
+          resetsAt={quota.session.resetsAt}
+          theme={theme}
+        />
+      ) : null}
+      {quota.weekly ? (
+        <QuotaUsageBar
+          label="Weekly"
+          utilizationPct={quota.weekly.utilizationPct}
+          resetsAt={quota.weekly.resetsAt}
+          theme={theme}
+        />
+      ) : null}
+    </>
+  );
+}
+
+function PlanUsageSection({
+  provider,
+  providerQuota,
+}: {
+  provider: string | null | undefined;
+  providerQuota: ProviderQuota | null;
+}) {
+  const { theme } = useUnistyles();
+  const p = provider?.toLowerCase();
+  if (p !== "claude" && p !== "codex") return null;
+
+  let content: ReactNode;
+  if (p === "claude") {
+    content = providerQuota?.claude ? (
+      <ClaudeQuotaContent quota={providerQuota.claude} theme={theme} />
+    ) : (
+      <Text style={styles.tooltipDetail}>Loading plan usage…</Text>
+    );
+  } else {
+    content = providerQuota?.codex ? (
+      <CodexQuotaContent quota={providerQuota.codex} theme={theme} />
+    ) : (
+      <Text style={styles.tooltipDetail}>Loading plan usage…</Text>
+    );
+  }
+
+  return (
+    <>
+      <View style={styles.tooltipDivider} />
+      {content}
+    </>
+  );
+}
+
 export function ContextWindowMeter({
   maxTokens,
   usedTokens,
   totalCostUsd,
   showPercentage = false,
+  serverId,
+  selectedModel: _selectedModel,
+  provider,
 }: ContextWindowMeterProps) {
   const { theme } = useUnistyles();
   const percentage = getUsagePercentage(maxTokens, usedTokens);
+
+  const providerQuota = useSessionStore((state) =>
+    serverId ? (state.sessions[serverId]?.providerQuota ?? null) : null,
+  );
 
   if (percentage === null) {
     return null;
@@ -89,16 +276,12 @@ export function ContextWindowMeter({
 
   const clampedPercentage = clampPercentage(percentage);
   const roundedPercentage = Math.round(percentage);
-  const svgSize = showPercentage ? COMPACT_SVG_SIZE : SVG_SIZE;
-  const center = showPercentage ? COMPACT_CENTER : CENTER;
-  const radius = showPercentage ? COMPACT_RADIUS : RADIUS;
-  const strokeWidth = showPercentage ? COMPACT_STROKE_WIDTH : STROKE_WIDTH;
-  const circumference = showPercentage ? COMPACT_CIRCUMFERENCE : CIRCUMFERENCE;
+  const { svgSize, center, radius, strokeWidth, circumference, containerStyle } =
+    getMeterGeometry(showPercentage);
   const dashOffset = circumference - (clampedPercentage / 100) * circumference;
   const colors = getMeterColors(clampedPercentage, theme);
   const formattedSessionCost =
     typeof totalCostUsd === "number" ? formatSessionCost(totalCostUsd) : null;
-  const containerStyle = showPercentage ? styles.containerWithLabel : styles.container;
 
   return (
     <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile>
@@ -151,6 +334,7 @@ export function ContextWindowMeter({
           {formattedSessionCost ? (
             <Text style={styles.tooltipDetail}>{`Session cost ${formattedSessionCost}`}</Text>
           ) : null}
+          <PlanUsageSection provider={provider} providerQuota={providerQuota} />
         </View>
       </TooltipContent>
     </Tooltip>
@@ -183,6 +367,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   tooltipContent: {
     gap: theme.spacing[1],
+    minWidth: 200,
   },
   tooltipTitle: {
     color: theme.colors.foreground,
@@ -197,5 +382,37 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.xs,
     lineHeight: theme.fontSize.xs * 1.4,
+  },
+  tooltipDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: theme.colors.border,
+    marginVertical: theme.spacing[1] + 1,
+  },
+  usageBarContainer: {
+    gap: 3,
+  },
+  usageBarRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  usageBarLabel: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.xs,
+  },
+  usageBarValue: {
+    color: theme.colors.foreground,
+    fontSize: theme.fontSize.xs,
+    fontWeight: "500",
+  },
+  usageBarTrack: {
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: theme.colors.surface3,
+    overflow: "hidden",
+  },
+  usageBarFill: {
+    height: 4,
+    borderRadius: 2,
   },
 }));

@@ -3654,6 +3654,37 @@ export const TerminalStreamExitSchema = z.object({
   }),
 });
 
+export const ProviderQuotaWindowSchema = z.object({
+  utilizationPct: z.number(),
+  resetsAt: z.string().optional(),
+});
+
+export const ProviderQuotaMessageSchema = z.object({
+  type: z.literal("provider_quota"),
+  payload: z.object({
+    claude: z
+      .object({
+        fiveHour: ProviderQuotaWindowSchema.nullable(),
+        sevenDay: ProviderQuotaWindowSchema.nullable(),
+        sevenDayOpus: ProviderQuotaWindowSchema.nullable(),
+        plan: z.string().nullable(),
+      })
+      .optional(),
+    codex: z
+      .object({
+        session: ProviderQuotaWindowSchema.nullable(),
+        weekly: ProviderQuotaWindowSchema.nullable(),
+        planType: z.string().nullable(),
+        email: z.string().nullable(),
+      })
+      .optional(),
+    fetchedAt: z.string(),
+  }),
+});
+
+export type ProviderQuotaMessage = z.infer<typeof ProviderQuotaMessageSchema>;
+export type ProviderQuotaWindow = z.infer<typeof ProviderQuotaWindowSchema>;
+
 export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   ActivityLogMessageSchema,
   AssistantChunkMessageSchema,
@@ -3757,6 +3788,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   KillTerminalResponseSchema,
   CaptureTerminalResponseSchema,
   TerminalStreamExitSchema,
+  ProviderQuotaMessageSchema,
   ChatCreateResponseSchema,
   ChatListResponseSchema,
   ChatInspectResponseSchema,
