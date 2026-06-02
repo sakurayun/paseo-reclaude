@@ -221,6 +221,154 @@ function CodexQuotaContent({
   );
 }
 
+function CopilotQuotaContent({
+  quota,
+  theme: _theme,
+}: {
+  quota: NonNullable<ProviderQuota["copilot"]>;
+  theme: ReturnType<typeof useUnistyles>["theme"];
+}) {
+  const resetLabel = formatResetsAtLabel(quota.quotaResetDate || undefined);
+  return (
+    <>
+      <Text style={styles.tooltipTitle}>
+        {`GitHub Copilot${quota.plan ? ` · ${quota.plan}` : ""}`}
+      </Text>
+      {resetLabel ? <Text style={styles.tooltipDetail}>{`Resets: ${resetLabel}`}</Text> : null}
+    </>
+  );
+}
+
+function CursorQuotaContent({
+  quota,
+  theme,
+}: {
+  quota: NonNullable<ProviderQuota["cursor"]>;
+  theme: ReturnType<typeof useUnistyles>["theme"];
+}) {
+  const limit = quota.planUsage?.limit;
+  const remaining = quota.planUsage?.remaining;
+  const totalSpend = quota.planUsage?.totalSpend;
+  const utilizationPct =
+    typeof limit === "number" && typeof remaining === "number" && limit > 0
+      ? ((limit - remaining) / limit) * 100
+      : 0;
+
+  const label =
+    typeof totalSpend === "number" && typeof limit === "number"
+      ? `Spent $${totalSpend.toFixed(2)} / $${limit.toFixed(2)}`
+      : "Usage";
+
+  return (
+    <>
+      <Text style={styles.tooltipTitle}>Cursor usage</Text>
+      {quota.planUsage ? (
+        <QuotaUsageBar label={label} utilizationPct={utilizationPct} theme={theme} />
+      ) : null}
+      {quota.billingCycleEnd ? (
+        <Text style={styles.tooltipDetail}>
+          {`Billing resets ${new Date(quota.billingCycleEnd).toLocaleDateString()}`}
+        </Text>
+      ) : null}
+    </>
+  );
+}
+
+function ZaiQuotaContent({
+  quota,
+  theme: _theme,
+}: {
+  quota: NonNullable<ProviderQuota["zai"]>;
+  theme: ReturnType<typeof useUnistyles>["theme"];
+}) {
+  return (
+    <>
+      <Text style={styles.tooltipTitle}>
+        {`Z.ai${quota.productName ? ` · ${quota.productName}` : ""}`}
+      </Text>
+      {quota.status ? <Text style={styles.tooltipDetail}>{`Status: ${quota.status}`}</Text> : null}
+      {quota.valid ? <Text style={styles.tooltipDetail}>{`Valid: ${quota.valid}`}</Text> : null}
+    </>
+  );
+}
+
+function GrokQuotaContent({
+  quota,
+  theme,
+}: {
+  quota: NonNullable<ProviderQuota["grok"]>;
+  theme: ReturnType<typeof useUnistyles>["theme"];
+}) {
+  const limit = quota.monthlyLimit;
+  const usage = quota.creditUsage;
+  const utilizationPct =
+    typeof limit === "number" && typeof usage === "number" && limit > 0 ? (usage / limit) * 100 : 0;
+
+  const label =
+    typeof usage === "number" && typeof limit === "number"
+      ? `Used ${usage.toLocaleString()} / ${limit.toLocaleString()}`
+      : "Usage";
+
+  return (
+    <>
+      <Text style={styles.tooltipTitle}>Grok Build Quota</Text>
+      <QuotaUsageBar label={label} utilizationPct={utilizationPct} theme={theme} />
+    </>
+  );
+}
+
+function KimiQuotaContent({
+  quota,
+  theme,
+}: {
+  quota: NonNullable<ProviderQuota["kimi"]>;
+  theme: ReturnType<typeof useUnistyles>["theme"];
+}) {
+  const limitVal = quota.limit ? parseFloat(quota.limit) : NaN;
+  const remainingVal = quota.remaining ? parseFloat(quota.remaining) : NaN;
+
+  const hasNumbers = !isNaN(limitVal) && !isNaN(remainingVal);
+  const usedVal = hasNumbers ? limitVal - remainingVal : 0;
+  const utilizationPct = hasNumbers && limitVal > 0 ? (usedVal / limitVal) * 100 : 0;
+
+  const label = hasNumbers ? `Used ${Math.round(usedVal)} / ${Math.round(limitVal)}` : "Usage";
+
+  return (
+    <>
+      <Text style={styles.tooltipTitle}>Kimi Code Quota</Text>
+      {hasNumbers ? (
+        <QuotaUsageBar
+          label={label}
+          utilizationPct={utilizationPct}
+          resetsAt={quota.resetTime || undefined}
+          theme={theme}
+        />
+      ) : (
+        <Text style={styles.tooltipDetail}>No quota data available</Text>
+      )}
+    </>
+  );
+}
+
+const QUOTA_RENDERERS: Record<
+  string,
+  (quota: unknown, theme: ReturnType<typeof useUnistyles>["theme"]) => ReactNode
+> = {
+  claude: (q, t) => (
+    <ClaudeQuotaContent quota={q as NonNullable<ProviderQuota["claude"]>} theme={t} />
+  ),
+  codex: (q, t) => <CodexQuotaContent quota={q as NonNullable<ProviderQuota["codex"]>} theme={t} />,
+  copilot: (q, t) => (
+    <CopilotQuotaContent quota={q as NonNullable<ProviderQuota["copilot"]>} theme={t} />
+  ),
+  cursor: (q, t) => (
+    <CursorQuotaContent quota={q as NonNullable<ProviderQuota["cursor"]>} theme={t} />
+  ),
+  zai: (q, t) => <ZaiQuotaContent quota={q as NonNullable<ProviderQuota["zai"]>} theme={t} />,
+  grok: (q, t) => <GrokQuotaContent quota={q as NonNullable<ProviderQuota["grok"]>} theme={t} />,
+  kimi: (q, t) => <KimiQuotaContent quota={q as NonNullable<ProviderQuota["kimi"]>} theme={t} />,
+};
+
 function PlanUsageSection({
   provider,
   providerQuota,
@@ -230,22 +378,15 @@ function PlanUsageSection({
 }) {
   const { theme } = useUnistyles();
   const p = provider?.toLowerCase();
-  if (p !== "claude" && p !== "codex") return null;
+  if (!p || !(p in QUOTA_RENDERERS)) return null;
 
-  let content: ReactNode;
-  if (p === "claude") {
-    content = providerQuota?.claude ? (
-      <ClaudeQuotaContent quota={providerQuota.claude} theme={theme} />
-    ) : (
-      <Text style={styles.tooltipDetail}>Loading plan usage…</Text>
-    );
-  } else {
-    content = providerQuota?.codex ? (
-      <CodexQuotaContent quota={providerQuota.codex} theme={theme} />
-    ) : (
-      <Text style={styles.tooltipDetail}>Loading plan usage…</Text>
-    );
-  }
+  const render = QUOTA_RENDERERS[p];
+  const quotaData = providerQuota ? providerQuota[p as keyof ProviderQuota] : null;
+  const content = quotaData ? (
+    render(quotaData, theme)
+  ) : (
+    <Text style={styles.tooltipDetail}>Loading plan usage…</Text>
+  );
 
   return (
     <>

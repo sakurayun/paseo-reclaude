@@ -85,12 +85,32 @@ describe("QuotaFetcherService", () => {
   let broadcasts: ProviderQuotaMessage[];
   let service: QuotaFetcherService;
   let originalFetch: typeof fetch;
+  let originalEnv: Record<string, string | undefined>;
 
   beforeEach(() => {
     claudeHome = mkdtempSync(join(tmpdir(), "quota-test-claude-"));
     codexHome = mkdtempSync(join(tmpdir(), "quota-test-codex-"));
     broadcasts = [];
     originalFetch = globalThis.fetch;
+    originalEnv = { ...process.env };
+
+    const envVarsToClear = [
+      "COPILOT_TOKEN",
+      "GITHUB_TOKEN",
+      "GITHUB_PAT",
+      "CURSOR_ACCESS_TOKEN",
+      "CURSOR_TOKEN",
+      "ZAI_API_KEY",
+      "GLM_API_KEY",
+      "GROK_API_KEY",
+      "GROK_TOKEN",
+      "KIMI_TOKEN",
+      "KIMI_API_KEY",
+    ];
+    for (const key of envVarsToClear) {
+      delete process.env[key];
+    }
+
     service = new QuotaFetcherService({
       broadcast: (msg) => broadcasts.push(msg),
       logger: {
@@ -107,6 +127,15 @@ describe("QuotaFetcherService", () => {
     service.stop();
     rmSync(claudeHome, { recursive: true, force: true });
     rmSync(codexHome, { recursive: true, force: true });
+
+    for (const key in originalEnv) {
+      process.env[key] = originalEnv[key];
+    }
+    for (const key of Object.keys(process.env)) {
+      if (!(key in originalEnv)) {
+        delete process.env[key];
+      }
+    }
   });
 
   // ── Claude ─────────────────────────────────────────────────────────────
@@ -222,6 +251,150 @@ describe("QuotaFetcherService", () => {
       await service.triggerFetch();
 
       expect(broadcasts[0].payload.codex).toBeUndefined();
+    });
+  });
+
+  // ── New Providers ──────────────────────────────────────────────────────
+
+  describe("New Providers", () => {
+    it("returns copilot quota when COPILOT_TOKEN is set and API succeeds", async () => {
+      writeCreds(claudeHome, "at_valid"); // need Claude too so broadcast fires
+      process.env["COPILOT_TOKEN"] = "copilot_test_token";
+      globalThis.fetch = mockFetch(
+        new Map([
+          ["https://api.anthropic.com/api/oauth/usage", () => jsonResponse(makeClaudeResponse())],
+          [
+            "https://api.github.com/copilot_internal/user",
+            () =>
+              jsonResponse({
+                copilot_plan: "business",
+                quota_reset_date: "2026-07-01T00:00:00Z",
+              }),
+          ],
+        ]),
+      );
+
+      await service.triggerFetch();
+
+      const { copilot } = broadcasts[0].payload;
+      expect(copilot?.plan).toBe("business");
+      expect(copilot?.quotaResetDate).toBe("2026-07-01T00:00:00Z");
+    });
+
+    it("returns cursor quota when CURSOR_ACCESS_TOKEN is set and API succeeds", async () => {
+      writeCreds(claudeHome, "at_valid");
+      process.env["CURSOR_ACCESS_TOKEN"] = "cursor_test_token";
+      globalThis.fetch = mockFetch(
+        new Map([
+          ["https://api.anthropic.com/api/oauth/usage", () => jsonResponse(makeClaudeResponse())],
+          [
+            "https://api2.cursor.sh/aiserver.v1.DashboardService/GetCurrentPeriodUsage",
+            () =>
+              jsonResponse({
+                planUsage: {
+                  totalSpend: 1500,
+                  includedSpend: 1000,
+                  bonusSpend: 500,
+                  remaining: 2500,
+                  limit: 4000,
+                },
+                billingCycleStart: "1768399334000",
+                billingCycleEnd: "1771077734000",
+              }),
+          ],
+        ]),
+      );
+
+      await service.triggerFetch();
+
+      const { cursor } = broadcasts[0].payload;
+      expect(cursor?.planUsage?.totalSpend).toBe(15);
+      expect(cursor?.planUsage?.limit).toBe(40);
+      expect(cursor?.planUsage?.remaining).toBe(25);
+      expect(cursor?.billingCycleEnd).toBe(new Date(1771077734000).toISOString());
+    });
+
+    it("returns zai quota when ZAI_API_KEY is set and API succeeds", async () => {
+      writeCreds(claudeHome, "at_valid");
+      process.env["ZAI_API_KEY"] = "zai_test_token";
+      globalThis.fetch = mockFetch(
+        new Map([
+          ["https://api.anthropic.com/api/oauth/usage", () => jsonResponse(makeClaudeResponse())],
+          [
+            "https://api.z.ai/api/biz/subscription/list",
+            () =>
+              jsonResponse({
+                code: 200,
+                data: [
+                  {
+                    productName: "GLM Coding Max",
+                    status: "VALID",
+                    purchaseTime: "2026-01-12 16:55:13",
+                    valid: "2026-02-12 16:55:13-2026-03-12 16:55:13",
+                  },
+                ],
+              }),
+          ],
+        ]),
+      );
+
+      await service.triggerFetch();
+
+      const { zai } = broadcasts[0].payload;
+      expect(zai?.productName).toBe("GLM Coding Max");
+      expect(zai?.status).toBe("VALID");
+    });
+
+    it("returns grok quota when GROK_API_KEY is set and API succeeds", async () => {
+      writeCreds(claudeHome, "at_valid");
+      process.env["GROK_API_KEY"] = "grok_test_token";
+      globalThis.fetch = mockFetch(
+        new Map([
+          ["https://api.anthropic.com/api/oauth/usage", () => jsonResponse(makeClaudeResponse())],
+          [
+            "https://cli-chat-proxy.grok.com/v1/billing",
+            () =>
+              jsonResponse({
+                config: { monthlyLimit: { val: 60000 } },
+                usage: { creditUsage: 12000 },
+              }),
+          ],
+        ]),
+      );
+
+      await service.triggerFetch();
+
+      const { grok } = broadcasts[0].payload;
+      expect(grok?.monthlyLimit).toBe(60000);
+      expect(grok?.creditUsage).toBe(12000);
+    });
+
+    it("returns kimi quota when KIMI_TOKEN is set and API succeeds", async () => {
+      writeCreds(claudeHome, "at_valid");
+      process.env["KIMI_TOKEN"] = "kimi_test_token";
+      globalThis.fetch = mockFetch(
+        new Map([
+          ["https://api.anthropic.com/api/oauth/usage", () => jsonResponse(makeClaudeResponse())],
+          [
+            "https://api.kimi.com/coding/v1/usages",
+            () =>
+              jsonResponse({
+                usage: {
+                  limit: "100",
+                  remaining: "74",
+                  resetTime: "2026-02-11T17:32:50Z",
+                },
+              }),
+          ],
+        ]),
+      );
+
+      await service.triggerFetch();
+
+      const { kimi } = broadcasts[0].payload;
+      expect(kimi?.limit).toBe("100");
+      expect(kimi?.remaining).toBe("74");
+      expect(kimi?.resetTime).toBe("2026-02-11T17:32:50Z");
     });
   });
 

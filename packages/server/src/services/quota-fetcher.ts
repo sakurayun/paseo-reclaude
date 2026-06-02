@@ -1,19 +1,20 @@
 /**
  * QuotaFetcherService
  *
- * Fetches live plan quota utilization from the Claude and Codex provider APIs,
- * mirroring what tokscale does in crates/tokscale-cli/src/commands/usage/claude.rs
- * and codex.rs — but in TypeScript on the daemon side.
- *
- * Broadcasts a `provider_quota` WebSocket message to all connected clients.
- * Polls every 15 minutes; also exposed as triggerFetch() for on-demand refresh.
+ * Fetches plan quota utilization from Anthropic, OpenAI, GitHub Copilot, Cursor,
+ * Z.ai, Grok, and Kimi provider APIs, caching and broadcasting them as a
+ * `provider_quota` WebSocket message to all connected clients.
  */
 
 import { existsSync, promises as fs } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
+import { exec } from "node:child_process";
+import { promisify } from "node:util";
 import type { Logger } from "pino";
 import type { ProviderQuotaMessage, ProviderQuotaWindow } from "../server/messages.js";
+
+const execAsync = promisify(exec);
 
 const CLAUDE_OAUTH_BETA = "oauth-2025-04-20";
 const CLAUDE_CLIENT_ID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e";
@@ -28,9 +29,16 @@ export interface QuotaFetcherServiceOptions {
 }
 
 // ---------------------------------------------------------------------------
-// Credential file shapes
+// Provider Interface
 // ---------------------------------------------------------------------------
+export interface QuotaProvider {
+  readonly id: string;
+  fetch(): Promise<unknown>;
+}
 
+// ---------------------------------------------------------------------------
+// Claude
+// ---------------------------------------------------------------------------
 interface ClaudeCredentials {
   claudeAiOauth?: {
     accessToken?: string;
@@ -39,18 +47,6 @@ interface ClaudeCredentials {
     rateLimitTier?: string;
   };
 }
-
-interface CodexAuth {
-  tokens?: {
-    access_token?: string;
-    refresh_token?: string;
-    account_id?: string;
-  };
-}
-
-// ---------------------------------------------------------------------------
-// API response shapes
-// ---------------------------------------------------------------------------
 
 interface ClaudeUsageWindow {
   utilization: number;
@@ -68,127 +64,30 @@ interface ClaudeTokenRefresh {
   refresh_token?: string;
 }
 
-interface CodexWindow {
-  used_percent?: number;
-  reset_at?: number;
+function toQuotaWindow(w: ClaudeUsageWindow | undefined): ProviderQuotaWindow | null {
+  if (!w) return null;
+  return { utilizationPct: w.utilization, resetsAt: w.resets_at };
 }
 
-interface CodexUsageResponse {
-  plan_type?: string;
-  email?: string;
-  rate_limit?: {
-    primary_window?: CodexWindow;
-    secondary_window?: CodexWindow;
-  };
+function buildClaudePlan(
+  subscriptionType: string | undefined,
+  rateLimitTier: string | undefined,
+): string | null {
+  if (!subscriptionType) return null;
+  const label = subscriptionType.charAt(0).toUpperCase() + subscriptionType.slice(1);
+  const tier = rateLimitTier?.split("_").pop();
+  return tier ? `${label} ${tier}` : label;
 }
 
-interface CodexTokenRefresh {
-  access_token?: string;
-  refresh_token?: string;
-}
+export class ClaudeQuotaProvider implements QuotaProvider {
+  readonly id = "claude";
 
-// ---------------------------------------------------------------------------
-// Service
-// ---------------------------------------------------------------------------
+  constructor(
+    private readonly claudeHome: string,
+    _logger: Logger,
+  ) {}
 
-export class QuotaFetcherService {
-  private readonly broadcastFn: (message: ProviderQuotaMessage) => void;
-  private readonly logger: Logger;
-  private readonly claudeHome: string;
-  private readonly codexHome: string;
-  private readonly pollIntervalMs: number;
-  private timer: NodeJS.Timeout | null = null;
-  private cached: ProviderQuotaMessage | null = null;
-  private isFetching = false;
-  private pendingFetch = false;
-
-  constructor(options: QuotaFetcherServiceOptions) {
-    this.broadcastFn = options.broadcast;
-    this.logger = options.logger.child({ module: "quota-fetcher" });
-    this.claudeHome = options.claudeHome ?? join(homedir(), ".claude");
-    this.codexHome = options.codexHome ?? join(homedir(), ".codex");
-    this.pollIntervalMs = options.pollIntervalMs ?? 15 * 60 * 1000;
-  }
-
-  public start(): void {
-    if (this.timer) return;
-    void this.triggerFetch();
-    this.timer = setInterval(() => {
-      void this.triggerFetch();
-    }, this.pollIntervalMs);
-  }
-
-  public stop(): void {
-    if (this.timer) {
-      clearInterval(this.timer);
-      this.timer = null;
-    }
-  }
-
-  public getCached(): ProviderQuotaMessage | null {
-    return this.cached;
-  }
-
-  public async triggerFetch(): Promise<void> {
-    if (this.isFetching) {
-      this.pendingFetch = true;
-      return;
-    }
-    this.isFetching = true;
-    try {
-      await this.performFetch();
-    } catch (err) {
-      this.logger.warn({ err }, "QuotaFetcherService fetch failed");
-    } finally {
-      this.isFetching = false;
-      if (this.pendingFetch) {
-        this.pendingFetch = false;
-        setImmediate(() => void this.triggerFetch());
-      }
-    }
-  }
-
-  // -------------------------------------------------------------------------
-  // Core fetch
-  // -------------------------------------------------------------------------
-
-  private async performFetch(): Promise<void> {
-    const [claudeResult, codexResult] = await Promise.allSettled([
-      this.fetchClaudeQuota(),
-      this.fetchCodexQuota(),
-    ]);
-
-    const claude = claudeResult.status === "fulfilled" ? claudeResult.value : undefined;
-    const codex = codexResult.status === "fulfilled" ? codexResult.value : undefined;
-
-    if (claudeResult.status === "rejected") {
-      this.logger.debug({ err: claudeResult.reason }, "Claude quota fetch failed");
-    }
-    if (codexResult.status === "rejected") {
-      this.logger.debug({ err: codexResult.reason }, "Codex quota fetch failed");
-    }
-
-    if (!claude && !codex) return;
-
-    const next: ProviderQuotaMessage = {
-      type: "provider_quota",
-      payload: { claude, codex, fetchedAt: new Date().toISOString() },
-    };
-
-    const { fetchedAt: _a, ...prevData } = this.cached?.payload ?? {};
-    const { fetchedAt: _b, ...nextData } = next.payload;
-    const changed = !this.cached || JSON.stringify(prevData) !== JSON.stringify(nextData);
-    this.cached = next;
-    if (changed) {
-      this.broadcastFn(next);
-    }
-  }
-
-  // -------------------------------------------------------------------------
-  // Claude
-  // -------------------------------------------------------------------------
-
-  private async fetchClaudeQuota(): Promise<ProviderQuotaMessage["payload"]["claude"]> {
+  async fetch(): Promise<ProviderQuotaMessage["payload"]["claude"]> {
     const credPath = join(this.claudeHome, ".credentials.json");
     if (!existsSync(credPath)) return undefined;
 
@@ -206,7 +105,6 @@ export class QuotaFetcherService {
       const refreshed = await this.refreshClaudeToken(oauth.refreshToken);
       if (!refreshed?.access_token) return undefined;
 
-      // Save refreshed tokens back to disk
       await this.saveClaudeCredentials(credPath, {
         ...oauth,
         accessToken: refreshed.access_token,
@@ -262,15 +160,50 @@ export class QuotaFetcherService {
       existing.claudeAiOauth = oauth;
       await fs.writeFile(credPath, JSON.stringify(existing, null, 2), { mode: 0o600 });
     } catch {
-      // Non-fatal — next start will re-read the old token
+      // Non-fatal
     }
   }
+}
 
-  // -------------------------------------------------------------------------
-  // Codex
-  // -------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// Codex
+// ---------------------------------------------------------------------------
+interface CodexAuth {
+  tokens?: {
+    access_token?: string;
+    refresh_token?: string;
+    account_id?: string;
+  };
+}
 
-  private async fetchCodexQuota(): Promise<ProviderQuotaMessage["payload"]["codex"]> {
+interface CodexWindow {
+  used_percent?: number;
+  reset_at?: number;
+}
+
+interface CodexUsageResponse {
+  plan_type?: string;
+  email?: string;
+  rate_limit?: {
+    primary_window?: CodexWindow;
+    secondary_window?: CodexWindow;
+  };
+}
+
+interface CodexTokenRefresh {
+  access_token?: string;
+  refresh_token?: string;
+}
+
+export class CodexQuotaProvider implements QuotaProvider {
+  readonly id = "codex";
+
+  constructor(
+    private readonly codexHome: string,
+    _logger: Logger,
+  ) {}
+
+  async fetch(): Promise<ProviderQuotaMessage["payload"]["codex"]> {
     const auth = await this.readCodexAuth();
     if (!auth?.tokens?.access_token) return undefined;
 
@@ -383,21 +316,426 @@ export class QuotaFetcherService {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
+// Helper for GitHub CLI hosts parsing
+async function readGithubCliToken(): Promise<string | null> {
+  const candidates: string[] = [];
+  if (process.env["APPDATA"]) {
+    candidates.push(join(process.env["APPDATA"], "GitHub CLI", "hosts.yml"));
+  }
+  candidates.push(join(homedir(), ".config", "gh", "hosts.yml"));
 
-function toQuotaWindow(w: ClaudeUsageWindow | undefined): ProviderQuotaWindow | null {
-  if (!w) return null;
-  return { utilizationPct: w.utilization, resetsAt: w.resets_at };
+  for (const p of candidates) {
+    if (!existsSync(p)) continue;
+    try {
+      const raw = await fs.readFile(p, "utf8");
+      const match = raw.match(/oauth_token:\s*["']?([a-zA-Z0-9_-]+)["']?/);
+      if (match?.[1]) return match[1];
+    } catch {
+      continue;
+    }
+  }
+  return null;
 }
 
-function buildClaudePlan(
-  subscriptionType: string | undefined,
-  rateLimitTier: string | undefined,
-): string | null {
-  if (!subscriptionType) return null;
-  const label = subscriptionType.charAt(0).toUpperCase() + subscriptionType.slice(1);
-  const tier = rateLimitTier?.split("_").pop();
-  return tier ? `${label} ${tier}` : label;
+// Helper for Cursor SQLite auth status parsing
+async function readCursorTokenFromSqlite(): Promise<string | null> {
+  const dbPaths: string[] = [];
+  if (process.env["APPDATA"]) {
+    dbPaths.push(join(process.env["APPDATA"], "Cursor", "User", "globalStorage", "state.vscdb"));
+  }
+  dbPaths.push(
+    join(
+      homedir(),
+      "Library",
+      "Application Support",
+      "Cursor",
+      "User",
+      "globalStorage",
+      "state.vscdb",
+    ),
+  );
+  dbPaths.push(join(homedir(), ".config", "Cursor", "User", "globalStorage", "state.vscdb"));
+
+  for (const p of dbPaths) {
+    if (!existsSync(p)) continue;
+    try {
+      const escapedPath = p.replace(/"/g, '\\"');
+      const { stdout } = await execAsync(
+        `sqlite3 "${escapedPath}" "SELECT value FROM ItemTable WHERE key = 'cursorAuthStatus'"`,
+      );
+      if (stdout) {
+        const parsed = JSON.parse(stdout.trim());
+        if (parsed?.accessToken) return parsed.accessToken;
+      }
+    } catch {
+      continue;
+    }
+  }
+  return null;
+}
+
+// ---------------------------------------------------------------------------
+// GitHub Copilot
+// ---------------------------------------------------------------------------
+export class CopilotQuotaProvider implements QuotaProvider {
+  readonly id = "copilot";
+
+  constructor(private readonly logger: Logger) {}
+
+  async fetch(): Promise<ProviderQuotaMessage["payload"]["copilot"]> {
+    const token =
+      process.env["COPILOT_TOKEN"] ||
+      process.env["GITHUB_TOKEN"] ||
+      process.env["GITHUB_PAT"] ||
+      (await readGithubCliToken());
+
+    if (!token) return undefined;
+
+    const res = await fetch("https://api.github.com/copilot_internal/user", {
+      headers: {
+        Authorization: `token ${token}`,
+        Accept: "application/json",
+        "Editor-Version": "vscode/1.96.2",
+        "Editor-Plugin-Version": "copilot-chat/0.26.7",
+        "User-Agent": "GitHubCopilotChat/0.26.7",
+        "X-Github-Api-Version": "2025-04-01",
+      },
+    });
+
+    if (!res.ok) {
+      this.logger.debug({ status: res.status }, "Copilot quota fetch failed");
+      return undefined;
+    }
+
+    const resp = (await res.json()) as unknown as {
+      copilot_plan?: string;
+      quota_reset_date?: string;
+    };
+    return {
+      plan: resp.copilot_plan || null,
+      quotaResetDate: resp.quota_reset_date || null,
+    };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Cursor
+// ---------------------------------------------------------------------------
+export class CursorQuotaProvider implements QuotaProvider {
+  readonly id = "cursor";
+
+  constructor(private readonly logger: Logger) {}
+
+  async fetch(): Promise<ProviderQuotaMessage["payload"]["cursor"]> {
+    const token =
+      process.env["CURSOR_ACCESS_TOKEN"] ||
+      process.env["CURSOR_TOKEN"] ||
+      (await readCursorTokenFromSqlite());
+
+    if (!token) return undefined;
+
+    const res = await fetch(
+      "https://api2.cursor.sh/aiserver.v1.DashboardService/GetCurrentPeriodUsage",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+          "Connect-Protocol-Version": "1",
+        },
+        body: JSON.stringify({}),
+      },
+    );
+
+    if (!res.ok) {
+      this.logger.debug({ status: res.status }, "Cursor quota fetch failed");
+      return undefined;
+    }
+
+    const resp = (await res.json()) as unknown as {
+      planUsage?: {
+        totalSpend?: number;
+        includedSpend?: number;
+        bonusSpend?: number;
+        remaining?: number;
+        limit?: number;
+      } | null;
+      billingCycleStart?: string;
+      billingCycleEnd?: string;
+    };
+    return {
+      planUsage: resp.planUsage
+        ? {
+            totalSpend:
+              typeof resp.planUsage.totalSpend === "number"
+                ? resp.planUsage.totalSpend / 100
+                : null,
+            includedSpend:
+              typeof resp.planUsage.includedSpend === "number"
+                ? resp.planUsage.includedSpend / 100
+                : null,
+            bonusSpend:
+              typeof resp.planUsage.bonusSpend === "number"
+                ? resp.planUsage.bonusSpend / 100
+                : null,
+            remaining:
+              typeof resp.planUsage.remaining === "number" ? resp.planUsage.remaining / 100 : null,
+            limit: typeof resp.planUsage.limit === "number" ? resp.planUsage.limit / 100 : null,
+          }
+        : null,
+      billingCycleStart: resp.billingCycleStart
+        ? new Date(Number(resp.billingCycleStart)).toISOString()
+        : null,
+      billingCycleEnd: resp.billingCycleEnd
+        ? new Date(Number(resp.billingCycleEnd)).toISOString()
+        : null,
+    };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Z.ai
+// ---------------------------------------------------------------------------
+export class ZaiQuotaProvider implements QuotaProvider {
+  readonly id = "zai";
+
+  constructor(private readonly logger: Logger) {}
+
+  async fetch(): Promise<ProviderQuotaMessage["payload"]["zai"]> {
+    const token = process.env["ZAI_API_KEY"] || process.env["GLM_API_KEY"];
+    if (!token) return undefined;
+
+    const res = await fetch("https://api.z.ai/api/biz/subscription/list", {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: "application/json",
+      },
+    });
+
+    if (!res.ok) {
+      this.logger.debug({ status: res.status }, "Z.ai quota fetch failed");
+      return undefined;
+    }
+
+    const resp = (await res.json()) as unknown as {
+      data?: Array<{
+        productName?: string;
+        status?: string;
+        purchaseTime?: string;
+        valid?: string;
+      }>;
+    };
+    const sub = resp.data?.[0];
+    if (!sub) return undefined;
+
+    return {
+      productName: sub.productName || null,
+      status: sub.status || null,
+      purchaseTime: sub.purchaseTime || null,
+      valid: sub.valid || null,
+    };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Grok
+// ---------------------------------------------------------------------------
+export class GrokQuotaProvider implements QuotaProvider {
+  readonly id = "grok";
+
+  constructor(private readonly logger: Logger) {}
+
+  async fetch(): Promise<ProviderQuotaMessage["payload"]["grok"]> {
+    const token =
+      process.env["GROK_API_KEY"] || process.env["GROK_TOKEN"] || (await this.readGrokToken());
+
+    if (!token) return undefined;
+
+    const res = await fetch("https://cli-chat-proxy.grok.com/v1/billing", {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "X-XAI-Token-Auth": "xai-grok-cli",
+        Accept: "application/json",
+      },
+    });
+
+    if (!res.ok) {
+      this.logger.debug({ status: res.status }, "Grok quota fetch failed");
+      return undefined;
+    }
+
+    const resp = (await res.json()) as unknown as {
+      config?: { monthlyLimit?: { val?: number } };
+      usage?: { creditUsage?: number };
+    };
+    return {
+      monthlyLimit: resp.config?.monthlyLimit?.val || null,
+      creditUsage: resp.usage?.creditUsage || null,
+    };
+  }
+
+  private async readGrokToken(): Promise<string | null> {
+    const p = join(homedir(), ".grok", "auth.json");
+    if (!existsSync(p)) return null;
+    try {
+      const raw = await fs.readFile(p, "utf8");
+      const auth = JSON.parse(raw);
+      return auth.access_token || null;
+    } catch {
+      return null;
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Kimi
+// ---------------------------------------------------------------------------
+export class KimiQuotaProvider implements QuotaProvider {
+  readonly id = "kimi";
+
+  constructor(private readonly logger: Logger) {}
+
+  async fetch(): Promise<ProviderQuotaMessage["payload"]["kimi"]> {
+    const token =
+      process.env["KIMI_TOKEN"] || process.env["KIMI_API_KEY"] || (await this.readKimiToken());
+
+    if (!token) return undefined;
+
+    const res = await fetch("https://api.kimi.com/coding/v1/usages", {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: "application/json",
+      },
+    });
+
+    if (!res.ok) {
+      this.logger.debug({ status: res.status }, "Kimi quota fetch failed");
+      return undefined;
+    }
+
+    const resp = (await res.json()) as unknown as {
+      usage?: { limit?: string; remaining?: string; resetTime?: string };
+    };
+    return {
+      limit: resp.usage?.limit || null,
+      remaining: resp.usage?.remaining || null,
+      resetTime: resp.usage?.resetTime || null,
+    };
+  }
+
+  private async readKimiToken(): Promise<string | null> {
+    const p = join(homedir(), ".kimi", "credentials", "kimi-code.json");
+    if (!existsSync(p)) return null;
+    try {
+      const raw = await fs.readFile(p, "utf8");
+      const credentials = JSON.parse(raw);
+      return credentials.access_token || null;
+    } catch {
+      return null;
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Quota Fetcher Service
+// ---------------------------------------------------------------------------
+export class QuotaFetcherService {
+  private readonly broadcastFn: (message: ProviderQuotaMessage) => void;
+  private readonly logger: Logger;
+  private readonly providers: QuotaProvider[];
+  private readonly pollIntervalMs: number;
+  private timer: NodeJS.Timeout | null = null;
+  private cached: ProviderQuotaMessage | null = null;
+  private isFetching = false;
+  private pendingFetch = false;
+
+  constructor(options: QuotaFetcherServiceOptions) {
+    this.broadcastFn = options.broadcast;
+    this.logger = options.logger.child({ module: "quota-fetcher" });
+    this.pollIntervalMs = options.pollIntervalMs ?? 15 * 60 * 1000;
+
+    const claudeHome = options.claudeHome ?? join(homedir(), ".claude");
+    const codexHome = options.codexHome ?? join(homedir(), ".codex");
+
+    this.providers = [
+      new ClaudeQuotaProvider(claudeHome, this.logger),
+      new CodexQuotaProvider(codexHome, this.logger),
+      new CopilotQuotaProvider(this.logger),
+      new CursorQuotaProvider(this.logger),
+      new ZaiQuotaProvider(this.logger),
+      new GrokQuotaProvider(this.logger),
+      new KimiQuotaProvider(this.logger),
+    ];
+  }
+
+  public start(): void {
+    if (this.timer) return;
+    void this.triggerFetch();
+    this.timer = setInterval(() => {
+      void this.triggerFetch();
+    }, this.pollIntervalMs);
+  }
+
+  public stop(): void {
+    if (this.timer) {
+      clearInterval(this.timer);
+      this.timer = null;
+    }
+  }
+
+  public getCached(): ProviderQuotaMessage | null {
+    return this.cached;
+  }
+
+  public async triggerFetch(): Promise<void> {
+    if (this.isFetching) {
+      this.pendingFetch = true;
+      return;
+    }
+    this.isFetching = true;
+    try {
+      await this.performFetch();
+    } catch (err) {
+      this.logger.warn({ err }, "QuotaFetcherService fetch failed");
+    } finally {
+      this.isFetching = false;
+      if (this.pendingFetch) {
+        this.pendingFetch = false;
+        setImmediate(() => void this.triggerFetch());
+      }
+    }
+  }
+
+  private async performFetch(): Promise<void> {
+    const results = await Promise.allSettled(this.providers.map((p) => p.fetch()));
+
+    const payload: Record<string, unknown> = {
+      fetchedAt: new Date().toISOString(),
+    };
+
+    for (let i = 0; i < this.providers.length; i++) {
+      const provider = this.providers[i];
+      const result = results[i];
+      if (result.status === "fulfilled" && result.value !== undefined) {
+        payload[provider.id] = result.value;
+      } else if (result.status === "rejected") {
+        this.logger.debug({ err: result.reason, providerId: provider.id }, "Quota fetch failed");
+      }
+    }
+
+    if (Object.keys(payload).length <= 1) return;
+
+    const next: ProviderQuotaMessage = {
+      type: "provider_quota",
+      payload: payload as ProviderQuotaMessage["payload"],
+    };
+
+    const { fetchedAt: _a, ...prevData } = this.cached?.payload ?? {};
+    const { fetchedAt: _b, ...nextData } = next.payload;
+    const changed = !this.cached || JSON.stringify(prevData) !== JSON.stringify(nextData);
+    this.cached = next;
+    if (changed) {
+      this.broadcastFn(next);
+    }
+  }
 }

@@ -3678,6 +3678,48 @@ export const ProviderQuotaMessageSchema = z.object({
         email: z.string().nullable(),
       })
       .optional(),
+    copilot: z
+      .object({
+        plan: z.string().nullable(),
+        quotaResetDate: z.string().nullable(),
+      })
+      .optional(),
+    cursor: z
+      .object({
+        planUsage: z
+          .object({
+            totalSpend: z.number().nullable(),
+            includedSpend: z.number().nullable(),
+            bonusSpend: z.number().nullable(),
+            remaining: z.number().nullable(),
+            limit: z.number().nullable(),
+          })
+          .nullable(),
+        billingCycleStart: z.string().nullable(),
+        billingCycleEnd: z.string().nullable(),
+      })
+      .optional(),
+    zai: z
+      .object({
+        productName: z.string().nullable(),
+        status: z.string().nullable(),
+        purchaseTime: z.string().nullable(),
+        valid: z.string().nullable(),
+      })
+      .optional(),
+    grok: z
+      .object({
+        monthlyLimit: z.number().nullable(),
+        creditUsage: z.number().nullable(),
+      })
+      .optional(),
+    kimi: z
+      .object({
+        limit: z.string().nullable(),
+        remaining: z.string().nullable(),
+        resetTime: z.string().nullable(),
+      })
+      .optional(),
     fetchedAt: z.string(),
   }),
 });
