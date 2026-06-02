@@ -67,10 +67,10 @@ const CATALOG_DATA = [
     title: "Cline",
     description:
       "Autonomous coding agent CLI - capable of creating/editing files, running commands, using the browser, and more",
-    version: "2.18.0",
+    version: "3",
     iconId: "cline",
     installLink: "https://cline.bot/cli",
-    command: ["npx", "-y", "cline@2.18.0", "--acp"],
+    command: ["npx", "-y", "cline@3", "--acp"],
   },
   {
     id: "codebuddy-code",
