@@ -49,19 +49,12 @@ $env:PASEO_CORS_ORIGINS = "*"
 
 # Configure the app to auto-connect to this daemon on localhost
 $env:APP_VARIANT = "development"
-$env:EXPO_PUBLIC_LOCAL_DAEMON = "localhost:6769"
+$env:EXPO_PUBLIC_LOCAL_DAEMON = "localhost:6767"
 $env:BROWSER = "none"
-$env:PASEO_LISTEN = "[::]:6769"
 
-# Build dependencies first to ensure they are fully populated and avoid Metro watch crashes
-Write-Host "Building dependencies..."
-npm run build:server-deps
-
-# Run watch compilers, daemon server, and Metro bundler concurrently
+# Run both with concurrently
 concurrently `
-    --names "protocol,client,server,metro" `
-    --prefix-colors "yellow,blue,cyan,magenta" `
-    "npm run watch:protocol" `
-    "npm run watch:client" `
-    "npm run dev:server:raw" `
+    --names "daemon,metro" `
+    --prefix-colors "cyan,magenta" `
+    "npm run dev:server" `
     "cd packages/app && npx expo start"
