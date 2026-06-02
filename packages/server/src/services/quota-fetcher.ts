@@ -57,6 +57,10 @@ interface ClaudeUsageResponse {
   five_hour?: ClaudeUsageWindow;
   seven_day?: ClaudeUsageWindow;
   seven_day_opus?: ClaudeUsageWindow;
+  seven_day_omelette?: ClaudeUsageWindow;
+  extra_usage?: {
+    is_enabled?: boolean;
+  };
 }
 
 interface ClaudeTokenRefresh {
@@ -82,10 +86,11 @@ function buildClaudePlan(
 export class ClaudeQuotaProvider implements QuotaProvider {
   readonly id = "claude";
 
-  constructor(
-    private readonly claudeHome: string,
-    _logger: Logger,
-  ) {}
+  private readonly claudeHome: string;
+
+  constructor(_logger: Logger, claudeHome?: string) {
+    this.claudeHome = claudeHome || process.env["CLAUDE_HOME"] || join(homedir(), ".claude");
+  }
 
   async fetch(): Promise<ProviderQuotaMessage["payload"]["claude"]> {
     const credPath = join(this.claudeHome, ".credentials.json");
@@ -119,6 +124,12 @@ export class ClaudeQuotaProvider implements QuotaProvider {
       fiveHour: toQuotaWindow(resp.five_hour),
       sevenDay: toQuotaWindow(resp.seven_day),
       sevenDayOpus: toQuotaWindow(resp.seven_day_opus),
+      sevenDayOmelette: toQuotaWindow(resp.seven_day_omelette),
+      extraUsage: resp.extra_usage
+        ? {
+            isEnabled: resp.extra_usage.is_enabled ?? null,
+          }
+        : null,
       plan,
     };
   }
@@ -188,6 +199,14 @@ interface CodexUsageResponse {
     primary_window?: CodexWindow;
     secondary_window?: CodexWindow;
   };
+  code_review_rate_limit?: {
+    primary_window?: CodexWindow;
+  };
+  credits?: {
+    has_credits?: boolean;
+    unlimited?: boolean;
+    balance?: number;
+  };
 }
 
 interface CodexTokenRefresh {
@@ -198,10 +217,11 @@ interface CodexTokenRefresh {
 export class CodexQuotaProvider implements QuotaProvider {
   readonly id = "codex";
 
-  constructor(
-    private readonly codexHome: string,
-    _logger: Logger,
-  ) {}
+  private readonly codexHome: string;
+
+  constructor(_logger: Logger, codexHome?: string) {
+    this.codexHome = codexHome || process.env["CODEX_HOME"] || join(homedir(), ".codex");
+  }
 
   async fetch(): Promise<ProviderQuotaMessage["payload"]["codex"]> {
     const auth = await this.readCodexAuth();
@@ -232,6 +252,14 @@ export class CodexQuotaProvider implements QuotaProvider {
     return {
       session: toWindow(resp.rate_limit?.primary_window),
       weekly: toWindow(resp.rate_limit?.secondary_window),
+      codeReview: toWindow(resp.code_review_rate_limit?.primary_window),
+      credits: resp.credits
+        ? {
+            hasCredits: resp.credits.has_credits ?? null,
+            unlimited: resp.credits.unlimited ?? null,
+            balance: resp.credits.balance ?? null,
+          }
+        : null,
       planType: resp.plan_type ?? null,
       email: resp.email ?? null,
     };
@@ -654,12 +682,9 @@ export class QuotaFetcherService {
     this.logger = options.logger.child({ module: "quota-fetcher" });
     this.pollIntervalMs = options.pollIntervalMs ?? 15 * 60 * 1000;
 
-    const claudeHome = options.claudeHome ?? join(homedir(), ".claude");
-    const codexHome = options.codexHome ?? join(homedir(), ".codex");
-
     this.providers = [
-      new ClaudeQuotaProvider(claudeHome, this.logger),
-      new CodexQuotaProvider(codexHome, this.logger),
+      new ClaudeQuotaProvider(this.logger, options.claudeHome),
+      new CodexQuotaProvider(this.logger, options.codexHome),
       new CopilotQuotaProvider(this.logger),
       new CursorQuotaProvider(this.logger),
       new ZaiQuotaProvider(this.logger),

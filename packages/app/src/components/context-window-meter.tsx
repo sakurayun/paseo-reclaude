@@ -185,6 +185,17 @@ function ClaudeQuotaContent({
           theme={theme}
         />
       ) : null}
+      {quota.sevenDayOmelette ? (
+        <QuotaUsageBar
+          label="Weekly · Design"
+          utilizationPct={quota.sevenDayOmelette.utilizationPct}
+          resetsAt={quota.sevenDayOmelette.resetsAt}
+          theme={theme}
+        />
+      ) : null}
+      {quota.extraUsage?.isEnabled ? (
+        <Text style={styles.tooltipDetail}>Overage credits: Enabled</Text>
+      ) : null}
     </>
   );
 }
@@ -216,6 +227,19 @@ function CodexQuotaContent({
           resetsAt={quota.weekly.resetsAt}
           theme={theme}
         />
+      ) : null}
+      {quota.codeReview ? (
+        <QuotaUsageBar
+          label="Code Review"
+          utilizationPct={quota.codeReview.utilizationPct}
+          resetsAt={quota.codeReview.resetsAt}
+          theme={theme}
+        />
+      ) : null}
+      {quota.credits?.balance != null ? (
+        <Text
+          style={styles.tooltipDetail}
+        >{`Credits remaining: $${quota.credits.balance.toFixed(2)}`}</Text>
       ) : null}
     </>
   );

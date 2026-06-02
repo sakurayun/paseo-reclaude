@@ -3667,6 +3667,13 @@ export const ProviderQuotaMessageSchema = z.object({
         fiveHour: ProviderQuotaWindowSchema.nullable(),
         sevenDay: ProviderQuotaWindowSchema.nullable(),
         sevenDayOpus: ProviderQuotaWindowSchema.nullable(),
+        sevenDayOmelette: ProviderQuotaWindowSchema.nullable().optional(),
+        extraUsage: z
+          .object({
+            isEnabled: z.boolean().nullable(),
+          })
+          .nullable()
+          .optional(),
         plan: z.string().nullable(),
       })
       .optional(),
@@ -3674,6 +3681,15 @@ export const ProviderQuotaMessageSchema = z.object({
       .object({
         session: ProviderQuotaWindowSchema.nullable(),
         weekly: ProviderQuotaWindowSchema.nullable(),
+        codeReview: ProviderQuotaWindowSchema.nullable().optional(),
+        credits: z
+          .object({
+            hasCredits: z.boolean().nullable(),
+            unlimited: z.boolean().nullable(),
+            balance: z.number().nullable(),
+          })
+          .nullable()
+          .optional(),
         planType: z.string().nullable(),
         email: z.string().nullable(),
       })
