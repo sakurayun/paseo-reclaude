@@ -186,6 +186,8 @@ function buildAgentStateSelector(serverId: string, agentId: string) {
       contextWindowMaxTokens: agent?.lastUsage?.contextWindowMaxTokens ?? null,
       contextWindowUsedTokens: agent?.lastUsage?.contextWindowUsedTokens ?? null,
       totalCostUsd: agent?.lastUsage?.totalCostUsd ?? null,
+      model: agent?.model ?? null,
+      provider: agent?.provider ?? null,
     };
   };
 }
@@ -195,6 +197,9 @@ function renderContextWindowMeter(
   contextWindowUsedTokens: number | null,
   totalCostUsd: number | null,
   showPercentage: boolean,
+  serverId: string,
+  selectedModel: string | null,
+  provider: string | null,
 ): ReactElement | null {
   if (contextWindowMaxTokens === null || contextWindowUsedTokens === null) {
     return null;
@@ -205,6 +210,9 @@ function renderContextWindowMeter(
       usedTokens={contextWindowUsedTokens}
       totalCostUsd={totalCostUsd}
       showPercentage={showPercentage}
+      serverId={serverId}
+      selectedModel={selectedModel}
+      provider={provider}
     />
   );
 }
@@ -1493,8 +1501,19 @@ export function Composer({
         contextWindowUsedTokens,
         agentState.totalCostUsd,
         isCompactLayout,
+        serverId,
+        agentState.model,
+        agentState.provider,
       ),
-    [contextWindowMaxTokens, contextWindowUsedTokens, agentState.totalCostUsd, isCompactLayout],
+    [
+      contextWindowMaxTokens,
+      contextWindowUsedTokens,
+      agentState.totalCostUsd,
+      isCompactLayout,
+      serverId,
+      agentState.model,
+      agentState.provider,
+    ],
   );
   const { beforeVoiceContent, footerInlineContent } = useMemo(
     () => resolveContextWindowPlacement(contextWindowMeter, isCompactLayout),

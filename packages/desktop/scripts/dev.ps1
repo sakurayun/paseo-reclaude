@@ -42,9 +42,10 @@ Write-Host @"
 "@
 
 # Launch Metro + Electron together, kill both on exit
-& "$RootDir\node_modules\.bin\concurrently" `
+npx concurrently `
     --kill-others `
     --names "metro,electron" `
     --prefix-colors "magenta,cyan" `
-    "cd `"$AppDir`" && `$env:PASEO_WEB_PLATFORM = `"electron`"; npx expo start --port $($env:EXPO_PORT)" `
+    "cd `"$AppDir`" && npx cross-env PASEO_WEB_PLATFORM=electron npx expo start --port $($env:EXPO_PORT)" `
     "npx wait-on tcp:$($env:EXPO_PORT) && npx electron `"$DesktopDir`""
+

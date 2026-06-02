@@ -66,12 +66,15 @@ export function parseListenString(listen: string): ListenTarget {
   }
   // 6. host:port — TCP
   if (listen.includes(":")) {
-    const [host, portStr] = listen.split(":");
+    const lastColonIdx = listen.lastIndexOf(":");
+    const host = listen.slice(0, lastColonIdx);
+    const portStr = listen.slice(lastColonIdx + 1);
     const parsedPort = parseInt(portStr, 10);
     if (!Number.isFinite(parsedPort)) {
       throw new Error(`Invalid port in listen string: ${listen}`);
     }
-    return { type: "tcp", host: host || "127.0.0.1", port: parsedPort };
+    const cleanHost = host.startsWith("[") && host.endsWith("]") ? host.slice(1, -1) : host;
+    return { type: "tcp", host: cleanHost || "127.0.0.1", port: parsedPort };
   }
   throw new Error(`Invalid listen string: ${listen}`);
 }

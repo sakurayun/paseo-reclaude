@@ -3,6 +3,7 @@ import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Logger } from "pino";
+import { withTimeout } from "../../../../utils/promise-timeout.js";
 
 import {
   type AgentCapabilityFlags,
@@ -1710,21 +1711,33 @@ export class PiRpcAgentClient implements AgentClient {
   }
 
   async isAvailable(): Promise<boolean> {
-    const launch = await this.resolvePiLaunch();
-    const availability = await checkProviderLaunchAvailable(launch);
-    if (!availability.available) {
-      return false;
-    }
-    const runtimeSession = await this.runtime.startSession({ cwd: homedir() }).catch(() => null);
-    if (!runtimeSession) {
-      return false;
-    }
     try {
-      return (await runtimeSession.getAvailableModels()).length > 0;
+      return await withTimeout(
+        (async () => {
+          const launch = await this.resolvePiLaunch();
+          const availability = await checkProviderLaunchAvailable(launch);
+          if (!availability.available) {
+            return false;
+          }
+          const runtimeSession = await this.runtime
+            .startSession({ cwd: homedir() })
+            .catch(() => null);
+          if (!runtimeSession) {
+            return false;
+          }
+          try {
+            return (await runtimeSession.getAvailableModels()).length > 0;
+          } catch {
+            return false;
+          } finally {
+            await runtimeSession.close().catch(() => undefined);
+          }
+        })(),
+        2000,
+        "Pi availability check timed out",
+      );
     } catch {
       return false;
-    } finally {
-      await runtimeSession.close().catch(() => undefined);
     }
   }
 

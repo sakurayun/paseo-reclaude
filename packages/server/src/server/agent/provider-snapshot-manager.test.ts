@@ -8,7 +8,7 @@ import type {
   AgentProvider,
   ListModelsOptions,
 } from "./agent-sdk-types.js";
-import { ProviderSnapshotManager } from "./provider-snapshot-manager.js";
+import { ProviderSnapshotManager, resolveSnapshotCwd } from "./provider-snapshot-manager.js";
 
 const TEST_CAPABILITIES = {
   supportsStreaming: false,
@@ -499,6 +499,15 @@ describe("ProviderSnapshotManager cwd routing", () => {
       }
     } finally {
       manager.destroy();
+    }
+  });
+
+  test("resolveSnapshotCwd normalizes pure drive letters to append backslash on Windows", () => {
+    const resolved = resolveSnapshotCwd("C:");
+    if (process.platform === "win32") {
+      expect(resolved).toBe("C:\\");
+    } else {
+      expect(resolved).toBeDefined();
     }
   });
 });

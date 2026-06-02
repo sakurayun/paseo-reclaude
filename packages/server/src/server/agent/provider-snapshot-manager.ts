@@ -730,9 +730,16 @@ export function resolveSnapshotCwd(cwd?: string | null): string {
   if (!trimmed) {
     return homedir();
   }
-  const expanded =
+  let expanded =
     trimmed === "~" || trimmed.startsWith("~/") ? `${homedir()}${trimmed.slice(1)}` : trimmed;
-  return resolve(expanded);
+  if (process.platform === "win32" && /^[A-Za-z]:$/.test(expanded)) {
+    expanded = `${expanded}\\`;
+  }
+  let resolved = resolve(expanded);
+  if (process.platform === "win32" && /^[A-Za-z]:$/.test(resolved)) {
+    resolved = `${resolved}\\`;
+  }
+  return resolved;
 }
 
 function entriesToArray(
