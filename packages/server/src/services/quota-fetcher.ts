@@ -9,12 +9,12 @@
 import { existsSync, promises as fs } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
-import { exec } from "node:child_process";
+import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import type { Logger } from "pino";
 import type { ProviderQuotaMessage, ProviderQuotaWindow } from "../server/messages.js";
 
-const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 const CLAUDE_OAUTH_BETA = "oauth-2025-04-20";
 const CLAUDE_CLIENT_ID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e";
@@ -387,10 +387,10 @@ async function readCursorTokenFromSqlite(): Promise<string | null> {
   for (const p of dbPaths) {
     if (!existsSync(p)) continue;
     try {
-      const escapedPath = p.replace(/"/g, '\\"');
-      const { stdout } = await execAsync(
-        `sqlite3 "${escapedPath}" "SELECT value FROM ItemTable WHERE key = 'cursorAuthStatus'"`,
-      );
+      const { stdout } = await execFileAsync("sqlite3", [
+        p,
+        "SELECT value FROM ItemTable WHERE key = 'cursorAuthStatus'",
+      ]);
       if (stdout) {
         const parsed = JSON.parse(stdout.trim());
         if (parsed?.accessToken) return parsed.accessToken;
