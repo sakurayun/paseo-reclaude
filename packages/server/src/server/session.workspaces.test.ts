@@ -4201,7 +4201,25 @@ test("buildWorkspaceDescriptorMap computes statusEnteredAt from runtime agent fi
     expect(descriptor.statusEnteredAt).toBe(updatedAt);
   }
 
-  // 3. Highest-priority across all buckets: a "needs_input" agent beats
+  // 3. A root agent that is still initializing does not make the workspace
+  // look like it is actively working.
+  {
+    const { session, workspace } = setupSession();
+    const updatedAt = "2026-05-12T09:45:00.000Z";
+    session.listAgentPayloads = async () => [
+      makeAgent({
+        id: "agent-initializing",
+        cwd: workspace.cwd,
+        status: "initializing",
+        updatedAt,
+      }),
+    ];
+    const descriptor = await buildDescriptor(session, workspace.workspaceId);
+    expect(descriptor.status).toBe("done");
+    expect(descriptor.statusEnteredAt).toBe(updatedAt);
+  }
+
+  // 4. Highest-priority across all buckets: a "needs_input" agent beats
   // a "running" agent beats a "done" agent. statusEnteredAt is the winning
   // bucket's newest agent timestamp.
   {
@@ -4235,7 +4253,7 @@ test("buildWorkspaceDescriptorMap computes statusEnteredAt from runtime agent fi
     expect(descriptor.statusEnteredAt).toBe(needsInputUpdatedAt);
   }
 
-  // 4. Same-bucket: keep the previous bucket entry time even when newer
+  // 5. Same-bucket: keep the previous bucket entry time even when newer
   // agents contribute to the same winning bucket.
   {
     const { session, workspace } = setupSession();
