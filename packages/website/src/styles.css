@@ -21,7 +21,6 @@
 .social-proof-marquee {
   margin-inline: calc(50% - 50vw);
   overflow-x: clip;
-  padding-inline: max(1.5rem, calc((100vw - 80rem) / 2));
   position: relative;
 }
 

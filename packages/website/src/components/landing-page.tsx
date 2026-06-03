@@ -306,12 +306,12 @@ function SocialProofRow({
   return (
     <div className="social-proof-row">
       <div className={`social-proof-track ${reverse ? "social-proof-track-reverse" : ""}`}>
-        <div className="flex shrink-0 gap-4 px-2">
+        <div className="flex shrink-0 gap-4 pr-4">
           {tweets.map((tweet) => (
             <SocialProofCard key={tweet.url} tweet={tweet} />
           ))}
         </div>
-        <div className="flex shrink-0 gap-4 px-2" aria-hidden="true">
+        <div className="flex shrink-0 gap-4 pr-4" aria-hidden="true">
           {tweets.map((tweet) => (
             <SocialProofCard key={`${tweet.url}-clone`} tweet={tweet} inert />
           ))}
