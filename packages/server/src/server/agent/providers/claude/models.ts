@@ -550,6 +550,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 /**
  * Normalize a runtime model string (from SDK init message) to a known model ID.
  * Handles the `[1m]` suffix that the SDK appends for 1M context sessions.
+ *
+ * On Bedrock, the SDK init message includes versioned ARNs or region-prefixed IDs
+ * (e.g. `us.anthropic.claude-opus-4-6-v1:0`). We normalize these to the generic
+ * family alias (opus, sonnet, haiku) so the next turn doesn't send an invalid ID.
  */
 export function normalizeClaudeRuntimeModelId(value: string | null | undefined): string | null {
   const trimmed = typeof value === "string" ? value.trim() : "";
@@ -557,14 +561,21 @@ export function normalizeClaudeRuntimeModelId(value: string | null | undefined):
     return null;
   }
 
-  // Check for exact match first (handles claude-opus-4-6[1m] directly)
-  if (CLAUDE_MODELS.some((model) => model.id === trimmed)) {
+  // Check for exact match in the active catalog (Bedrock or Anthropic)
+  const activeCatalog = isBedrockTransport() ? CLAUDE_BEDROCK_MODELS : CLAUDE_MODELS;
+  if (activeCatalog.some((model) => model.id === trimmed)) {
     return trimmed;
   }
 
   const runtimeMatch = parseClaudeRuntimeModelId(trimmed);
   if (!runtimeMatch) {
     return null;
+  }
+
+  // On Bedrock (including ARN-style us.anthropic.claude-... IDs), the CLI only
+  // understands the generic family alias.
+  if (isBedrockTransport()) {
+    return runtimeMatch.family;
   }
 
   const minorSegment = runtimeMatch.minor === null ? "" : `-${runtimeMatch.minor}`;
@@ -575,6 +586,7 @@ function parseClaudeRuntimeModelId(value: string): ClaudeRuntimeModelParts | nul
   // Match: claude-{family}-{major}[-{minor}][1m]? possibly followed by a date suffix.
   // The minor segment is capped at 2 digits so an 8-digit date suffix (e.g.
   // claude-fable-5-20260101) is not mistaken for a minor version.
+  // Also matches Bedrock ARN patterns like: us.anthropic.claude-opus-4-6-v1:0
   const runtimeMatch = value.match(
     /(?:claude-)?(opus|sonnet|haiku|fable)[-_ ]+(\d+)(?:[-.](\d{1,2})(?!\d))?(\[1m\])?/i,
   );

@@ -435,8 +435,7 @@ describe("ClaudeAgentClient.listModels", () => {
   });
 
   test("returns bedrock-compatible models when CLAUDE_CODE_USE_BEDROCK is set", async () => {
-    const prev = process.env.CLAUDE_CODE_USE_BEDROCK;
-    process.env.CLAUDE_CODE_USE_BEDROCK = "1";
+    vi.stubEnv("CLAUDE_CODE_USE_BEDROCK", "1");
     try {
       const client = new ClaudeAgentClient({
         logger,
@@ -449,11 +448,7 @@ describe("ClaudeAgentClient.listModels", () => {
       const defaultModel = models.find((m) => m.isDefault);
       expect(defaultModel?.id).toBe("opus");
     } finally {
-      if (prev === undefined) {
-        delete process.env.CLAUDE_CODE_USE_BEDROCK;
-      } else {
-        process.env.CLAUDE_CODE_USE_BEDROCK = prev;
-      }
+      vi.unstubAllEnvs();
     }
   });
 });
