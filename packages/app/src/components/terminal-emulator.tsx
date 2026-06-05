@@ -340,11 +340,16 @@ export default function TerminalEmulator({
         runtimeRef.current?.blur();
       },
       requestClipboardRead: () => {
-        void navigator.clipboard.readText().then((text) => {
-          if (text) {
-            runtimeRef.current?.paste(text);
-          }
-        });
+        void navigator.clipboard
+          .readText()
+          .then((text) => {
+            if (text) {
+              runtimeRef.current?.paste(text);
+            }
+          })
+          .catch(() => {
+            // Clipboard permission denied or unavailable — silently ignore.
+          });
       },
     }),
     [],

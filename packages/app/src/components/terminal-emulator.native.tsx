@@ -559,11 +559,15 @@ export default function TerminalEmulator({
           callbacksRef.current.onSwipeRight?.();
           break;
         case "clipboardRead":
-          void Clipboard.getStringAsync().then((text) => {
-            if (text) {
-              sendToWebView({ type: "clipboardText", streamKey: message.streamKey, text });
-            }
-          });
+          void Clipboard.getStringAsync()
+            .then((text) => {
+              if (text) {
+                sendToWebView({ type: "clipboardText", streamKey: message.streamKey, text });
+              }
+            })
+            .catch(() => {
+              // Clipboard permission denied or unavailable — silently ignore.
+            });
           break;
         case "debug":
           break;
