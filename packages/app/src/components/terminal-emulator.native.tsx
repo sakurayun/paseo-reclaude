@@ -29,6 +29,7 @@ import { terminalEmulatorWebViewHtml } from "../terminal/webview/terminal-emulat
 import type { PendingTerminalModifiers } from "../utils/terminal-keys";
 import type { TerminalRendererReadyChange } from "../utils/terminal-renderer-readiness";
 import { openExternalUrl } from "../utils/open-external-url";
+import * as Clipboard from "expo-clipboard";
 
 export interface TerminalEmulatorHandle {
   writeOutput: (data: TerminalOutputData) => void;
@@ -36,6 +37,7 @@ export interface TerminalEmulatorHandle {
   renderSnapshot: (state: TerminalState | null) => void;
   clear: () => void;
   blur: () => void;
+  requestClipboardRead: () => void;
 }
 
 interface TerminalEmulatorProps {
@@ -105,7 +107,8 @@ type BridgeInboundMessage =
       streamKey: string;
       requestId: number;
       target: TerminalLocalFileLinkTarget | null;
-    };
+    }
+  | { type: "clipboardText"; streamKey: string; text: string };
 
 type BridgeOutboundMessage =
   | { type: "bridgeReady" }
@@ -138,6 +141,7 @@ type BridgeOutboundMessage =
     }
   | { type: "swipeLeft"; streamKey: string }
   | { type: "swipeRight"; streamKey: string }
+  | { type: "clipboardRead"; streamKey: string }
   | { type: "debug"; message: string; details?: unknown };
 
 const TERMINAL_WEBVIEW_SOURCE = { html: terminalEmulatorWebViewHtml };
@@ -374,6 +378,11 @@ export default function TerminalEmulator({
         );
         Keyboard.dismiss();
       },
+      requestClipboardRead: () => {
+        webViewRef.current?.injectJavaScript(
+          "window.__PASEO_TERMINAL_WEBVIEW_REQUEST_CLIPBOARD_READ__ && window.__PASEO_TERMINAL_WEBVIEW_REQUEST_CLIPBOARD_READ__(); true;",
+        );
+      },
     }),
     [sendToWebView, streamKey],
   );
@@ -549,11 +558,18 @@ export default function TerminalEmulator({
         case "swipeRight":
           callbacksRef.current.onSwipeRight?.();
           break;
+        case "clipboardRead":
+          void Clipboard.getStringAsync().then((text) => {
+            if (text) {
+              sendToWebView({ type: "clipboardText", streamKey: message.streamKey, text });
+            }
+          });
+          break;
         case "debug":
           break;
       }
     },
-    [resolveLocalFileLink],
+    [resolveLocalFileLink, sendToWebView],
   );
 
   const handleMessage = useCallback(

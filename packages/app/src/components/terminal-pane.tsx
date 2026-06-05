@@ -728,6 +728,11 @@ export function TerminalPane({
     [keyboardPaddingStyle],
   );
 
+  const handlePaste = useCallback(() => {
+    emulatorRef.current?.requestClipboardRead();
+    requestTerminalFocus();
+  }, [requestTerminalFocus]);
+
   const handleSwipeRight = useCallback(() => {
     if (!swipeGesturesEnabled) return;
     emulatorRef.current?.blur();
@@ -857,6 +862,17 @@ export function TerminalPane({
                   onSend={sendVirtualKey}
                 />
               ))}
+
+              <Pressable
+                testID="terminal-key-paste"
+                onPress={handlePaste}
+                style={({ hovered, pressed }: PressableStateCallbackType & { hovered?: boolean }) => [
+                  styles.keyButton,
+                  (Boolean(hovered) || pressed) && styles.keyButtonHovered,
+                ]}
+              >
+                <Text style={styles.keyButtonText}>Paste</Text>
+              </Pressable>
             </View>
           </View>
         </View>

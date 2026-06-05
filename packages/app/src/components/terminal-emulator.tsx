@@ -49,6 +49,7 @@ export interface TerminalEmulatorHandle {
   renderSnapshot: (state: TerminalState | null) => void;
   clear: () => void;
   blur: () => void;
+  requestClipboardRead: () => void;
 }
 
 const SCROLLBAR_HANDLE_WIDTH_IDLE = 6;
@@ -337,6 +338,13 @@ export default function TerminalEmulator({
       },
       blur: () => {
         runtimeRef.current?.blur();
+      },
+      requestClipboardRead: () => {
+        void navigator.clipboard.readText().then((text) => {
+          if (text) {
+            runtimeRef.current?.paste(text);
+          }
+        });
       },
     }),
     [],

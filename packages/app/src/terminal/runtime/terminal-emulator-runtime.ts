@@ -715,6 +715,10 @@ export class TerminalEmulatorRuntime {
     this.terminal?.blur();
   }
 
+  paste(text: string): void {
+    this.terminal?.paste(text);
+  }
+
   private refreshVisibleRows(): void {
     const terminal = this.terminal;
     if (!terminal || terminal.rows <= 0) {
