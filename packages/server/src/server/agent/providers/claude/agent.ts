@@ -36,6 +36,7 @@ import {
   getClaudeModelsWithSettings,
   isClaudeThinkingEffort,
   normalizeClaudeRuntimeModelId,
+  resolveClaudeModelContextWindowOverride,
 } from "./models.js";
 import { parsePartialJsonObject } from "./partial-json.js";
 import { ClaudeSidechainTracker } from "./sidechain-tracker.js";
@@ -1695,6 +1696,17 @@ function readUsageTotalTokens(usage: unknown): number | undefined {
     return undefined;
   }
   return totalTokens;
+}
+
+function maxPositiveFiniteNumber(...values: Array<number | undefined>): number | undefined {
+  let max: number | undefined;
+  for (const value of values) {
+    if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+      continue;
+    }
+    max = Math.max(max ?? 0, value);
+  }
+  return max;
 }
 
 function readContextWindowUsedTokensFromTaskProgress(
@@ -3927,7 +3939,12 @@ class ClaudeAgentSession implements AgentSession {
       outputTokens: message.usage.output_tokens,
       totalCostUsd: message.total_cost_usd,
     };
-    const contextWindowMaxTokens = extractContextWindowSize(modelUsage ?? message.modelUsage);
+    const sdkContextWindowMaxTokens = extractContextWindowSize(modelUsage ?? message.modelUsage);
+    const selectedModelContextWindowMaxTokens = this.resolveSelectedModelContextWindowMaxTokens();
+    const contextWindowMaxTokens = maxPositiveFiniteNumber(
+      sdkContextWindowMaxTokens,
+      selectedModelContextWindowMaxTokens,
+    );
     if (contextWindowMaxTokens !== undefined) {
       this.lastContextWindowMaxTokens = contextWindowMaxTokens;
       usage.contextWindowMaxTokens = contextWindowMaxTokens;
@@ -3962,6 +3979,16 @@ class ClaudeAgentSession implements AgentSession {
       }
     }
     return usage;
+  }
+
+  private resolveSelectedModelContextWindowMaxTokens(): number | undefined {
+    const modelId =
+      this.config.model ??
+      this.lastOptionsModel ??
+      this.launchEnv?.ANTHROPIC_MODEL ??
+      this.runtimeSettings?.env?.ANTHROPIC_MODEL ??
+      this.lastRuntimeModel;
+    return resolveClaudeModelContextWindowOverride(modelId);
   }
 
   private createUsageUpdatedEvent(contextWindowUsedTokens: number): AgentStreamEvent {

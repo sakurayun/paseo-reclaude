@@ -152,6 +152,8 @@ export function isClaudeThinkingEffort(
   );
 }
 
+const MODEL_CONTEXT_WINDOW_OVERRIDES = new Map<string, number>([["minimax-m3", 1_000_000]]);
+
 export function getClaudeModels(): AgentModelDefinition[] {
   return CLAUDE_MODELS.map((model) => ({ ...model }));
 }
@@ -546,4 +548,19 @@ function parseClaudeRuntimeModelId(value: string): ClaudeRuntimeModelParts | nul
     minor: runtimeMatch[3] ?? null,
     suffix: runtimeMatch[4] ?? "",
   };
+}
+
+export function resolveClaudeModelContextWindowOverride(
+  modelId: string | null | undefined,
+): number | undefined {
+  const trimmed = typeof modelId === "string" ? modelId.trim() : "";
+  if (!trimmed) {
+    return undefined;
+  }
+
+  if (/\[1m\]$/i.test(trimmed)) {
+    return 1_000_000;
+  }
+
+  return MODEL_CONTEXT_WINDOW_OVERRIDES.get(trimmed.toLowerCase());
 }
