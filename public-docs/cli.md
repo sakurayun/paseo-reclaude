@@ -29,6 +29,7 @@ Use `paseo run` to start a new agent with a task:
 ```bash
 paseo run "implement user authentication"
 paseo run --provider codex "refactor the API layer"
+paseo run --provider claude/opus --feature ultracode "audit the auth flow"
 paseo run --detach "run the full test suite"  # background
 paseo run --worktree feature-x "implement feature X"
 paseo run --output-schema schema.json "extract release notes"
@@ -36,6 +37,8 @@ paseo run --output-schema '{"type":"object","properties":{"summary":{"type":"str
 ```
 
 The `--worktree` flag creates the agent in an isolated git worktree, useful for parallel feature development.
+
+Use `--feature <id[=value]>` for provider-specific features advertised by the selected provider/model. Toggle features can use shorthand (`--feature ultracode`) or explicit booleans (`--feature ultracode=true`). Claude Ultracode is a feature, not a thinking option: it enables Claude Code's Ultracode setting and pins the session to `xhigh` effort.
 
 Use `--output-schema` to return only matching JSON output. You can pass a schema file path or an inline JSON schema object. This mode cannot be used with `--detach`.
 
@@ -108,6 +111,26 @@ Change an agent's operational mode (provider-specific):
 paseo agent mode <id> --list   # Show available modes
 paseo agent mode <id> bypass   # Set bypass mode
 paseo agent mode <id> plan     # Set plan mode
+```
+
+## Agent features
+
+List or update provider features on an existing agent:
+
+```bash
+paseo provider features claude/opus       # Show features for a provider/model
+paseo provider features claude/opus --feature ultracode
+paseo agent feature <id> --list           # Show features for an agent
+paseo agent feature <id> ultracode true   # Enable Claude Ultracode
+paseo agent feature <id> ultracode false  # Disable Claude Ultracode
+```
+
+Only set feature IDs returned by `paseo provider features` or `paseo agent feature --list`. Boolean toggles require real boolean values (`true`/`false`) so scripts do not accidentally enable a feature by passing the string `"false"`.
+
+Schedules that create fresh agents accept the same creation-time flag:
+
+```bash
+paseo schedule create --every 30m --provider claude/opus --feature ultracode "continue the audit"
 ```
 
 ## Daemon management

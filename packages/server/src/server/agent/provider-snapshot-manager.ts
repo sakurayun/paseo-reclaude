@@ -82,6 +82,8 @@ export interface ResolveProviderCreateConfigOptions {
   cwd?: string | null;
   provider: AgentProvider;
   requestedMode: string | undefined;
+  model?: string | undefined;
+  thinkingOptionId?: string | undefined;
   featureValues: Record<string, unknown> | undefined;
   parent: ManagedAgent | null;
   unattended: boolean;
@@ -89,6 +91,7 @@ export interface ResolveProviderCreateConfigOptions {
 
 export interface ResolvedProviderCreateConfig {
   modeId: string | undefined;
+  thinkingOptionId?: string | null;
   featureValues: Record<string, unknown> | undefined;
 }
 
@@ -96,6 +99,17 @@ interface ResolveDefaultModelOptions {
   provider: AgentProvider;
   requestedModel?: string | null;
   cwd?: string;
+}
+
+function resolveCreateConfigModel(
+  input: ResolveProviderCreateConfigOptions,
+  entry: ProviderSnapshotEntry,
+): { model: string } | Record<string, never> {
+  if (input.model) {
+    return { model: input.model };
+  }
+  const defaultModel = entry.models?.find((model) => model.isDefault) ?? entry.models?.[0];
+  return defaultModel ? { model: defaultModel.id } : {};
 }
 
 export interface ProviderDiagnosticResult {
@@ -326,6 +340,8 @@ export class ProviderSnapshotManager {
     return definition.resolveCreateConfig({
       provider: input.provider,
       requestedMode: input.requestedMode,
+      ...resolveCreateConfigModel(input, entry),
+      ...(input.thinkingOptionId ? { thinkingOptionId: input.thinkingOptionId } : {}),
       featureValues: input.featureValues,
       parent,
       unattended: input.unattended || parent?.isUnattended === true,

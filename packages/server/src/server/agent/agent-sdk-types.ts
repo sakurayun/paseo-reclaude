@@ -118,6 +118,8 @@ export interface AgentCreateConfigParent {
 export interface ResolveAgentCreateConfigInput {
   provider: AgentProvider;
   requestedMode: string | undefined;
+  model?: string | undefined;
+  thinkingOptionId?: string | undefined;
   featureValues: Record<string, unknown> | undefined;
   parent: AgentCreateConfigParent | null;
   unattended: boolean;
@@ -126,6 +128,7 @@ export interface ResolveAgentCreateConfigInput {
 
 export interface ResolveAgentCreateConfigResult {
   modeId: string | undefined;
+  thinkingOptionId?: string | null;
   featureValues: Record<string, unknown> | undefined;
 }
 
@@ -559,6 +562,11 @@ export interface AgentCreateSessionOptions {
   persistSession?: boolean;
 }
 
+export interface AgentConfigurationUpdateResult {
+  thinkingOptionId?: string | null;
+  featureValues?: Record<string, unknown>;
+}
+
 /**
  * Returned by respondToPermission when the permission resolution requires
  * a follow-up turn (e.g. Codex plan approval → implementation).
@@ -589,9 +597,11 @@ export interface AgentSession {
   interrupt(): Promise<void>;
   close(): Promise<void>;
   listCommands?(): Promise<AgentSlashCommand[]>;
-  setModel?(modelId: string | null): Promise<void>;
-  setThinkingOption?(thinkingOptionId: string | null): Promise<void>;
-  setFeature?(featureId: string, value: unknown): Promise<void>;
+  setModel?(modelId: string | null): Promise<AgentConfigurationUpdateResult | void>;
+  setThinkingOption?(
+    thinkingOptionId: string | null,
+  ): Promise<AgentConfigurationUpdateResult | void>;
+  setFeature?(featureId: string, value: unknown): Promise<AgentConfigurationUpdateResult | void>;
   revertConversation?(input: { messageId: string }): Promise<void>;
   revertFiles?(input: { messageId: string }): Promise<void>;
   revertBoth?(input: { messageId: string }): Promise<void>;

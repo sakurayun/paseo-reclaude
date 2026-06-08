@@ -54,6 +54,7 @@ import {
 } from "./agent-stream-coalescer.js";
 import { ForegroundRunState, type ForegroundTurnWaiter } from "./foreground-run-state.js";
 import { getAgentProviderDefinition } from "@getpaseo/protocol/provider-manifest";
+import { validateAgentFeatureValues } from "./feature-values.js";
 import { invokeRewindCapability, type RewindMode } from "./rewind/rewind.js";
 import { isSystemInjectedEnvelope } from "./agent-prompt.js";
 import { stripInternalPaseoMcpServer, withRuntimePaseoMcpServer } from "./runtime-mcp-config.js";
@@ -1160,13 +1161,23 @@ export class AgentManager {
     const normalizedModelId =
       typeof modelId === "string" && modelId.trim().length > 0 ? modelId : null;
 
-    if (agent.session.setModel) {
-      await agent.session.setModel(normalizedModelId);
-    }
+    const update = agent.session.setModel
+      ? await agent.session.setModel(normalizedModelId)
+      : undefined;
 
     agent.config.model = normalizedModelId ?? undefined;
+    if (update && Object.prototype.hasOwnProperty.call(update, "thinkingOptionId")) {
+      agent.config.thinkingOptionId = update.thinkingOptionId ?? undefined;
+    }
+    if (update?.featureValues !== undefined) {
+      agent.config.featureValues = update.featureValues;
+    }
     if (agent.runtimeInfo) {
-      agent.runtimeInfo = { ...agent.runtimeInfo, model: normalizedModelId };
+      agent.runtimeInfo = {
+        ...agent.runtimeInfo,
+        model: normalizedModelId,
+        thinkingOptionId: agent.config.thinkingOptionId ?? null,
+      };
     }
     this.touchUpdatedAt(agent);
     this.emitState(agent);
@@ -1180,14 +1191,23 @@ export class AgentManager {
         : null;
 
     if (agent.session.setThinkingOption) {
-      await agent.session.setThinkingOption(normalizedThinkingOptionId);
+      const update = await agent.session.setThinkingOption(normalizedThinkingOptionId);
+      if (update?.featureValues !== undefined) {
+        agent.config.featureValues = update.featureValues;
+      }
+      if (update && Object.prototype.hasOwnProperty.call(update, "thinkingOptionId")) {
+        agent.config.thinkingOptionId = update.thinkingOptionId ?? undefined;
+      } else {
+        agent.config.thinkingOptionId = normalizedThinkingOptionId ?? undefined;
+      }
+    } else {
+      agent.config.thinkingOptionId = normalizedThinkingOptionId ?? undefined;
     }
 
-    agent.config.thinkingOptionId = normalizedThinkingOptionId ?? undefined;
     if (agent.runtimeInfo) {
       agent.runtimeInfo = {
         ...agent.runtimeInfo,
-        thinkingOptionId: normalizedThinkingOptionId,
+        thinkingOptionId: agent.config.thinkingOptionId ?? null,
       };
     }
     this.touchUpdatedAt(agent);
@@ -1201,8 +1221,25 @@ export class AgentManager {
       throw new Error("Agent session does not support setting features");
     }
 
-    await agent.session.setFeature(featureId, value);
-    agent.config.featureValues = { ...agent.config.featureValues, [featureId]: value };
+    const featureUpdate = await agent.session.setFeature(featureId, value);
+    agent.config.featureValues = featureUpdate?.featureValues ?? {
+      ...agent.config.featureValues,
+      [featureId]: value,
+    };
+    if (featureUpdate && Object.prototype.hasOwnProperty.call(featureUpdate, "thinkingOptionId")) {
+      const normalizedThinkingOptionId =
+        typeof featureUpdate.thinkingOptionId === "string" &&
+        featureUpdate.thinkingOptionId.trim().length > 0
+          ? featureUpdate.thinkingOptionId
+          : null;
+      agent.config.thinkingOptionId = normalizedThinkingOptionId ?? undefined;
+      if (agent.runtimeInfo) {
+        agent.runtimeInfo = {
+          ...agent.runtimeInfo,
+          thinkingOptionId: normalizedThinkingOptionId,
+        };
+      }
+    }
     this.touchUpdatedAt(agent);
     this.emitState(agent);
   }
@@ -3453,7 +3490,8 @@ export class AgentManager {
     config: AgentSessionConfig,
     agentId: string,
   ): Promise<PreparedSessionConfig> {
-    const storedConfig = await this.normalizeConfig(stripInternalPaseoMcpServer(config));
+    const normalizedConfig = await this.normalizeConfig(stripInternalPaseoMcpServer(config));
+    const storedConfig = await this.resolveProviderCreateConfigForSession(normalizedConfig);
     const launchConfig = this.applyDaemonAppendSystemPrompt(
       withRuntimePaseoMcpServer({
         config: storedConfig,
@@ -3462,6 +3500,55 @@ export class AgentManager {
       }),
     );
     return { storedConfig, launchConfig };
+  }
+
+  private async resolveProviderCreateConfigForSession(
+    config: AgentSessionConfig,
+  ): Promise<AgentSessionConfig> {
+    const client = this.clients.get(config.provider);
+    if (!client) {
+      return config;
+    }
+    const resolved = client.resolveCreateConfig?.({
+      provider: config.provider,
+      requestedMode: config.modeId,
+      ...(config.model ? { model: config.model } : {}),
+      ...(config.thinkingOptionId ? { thinkingOptionId: config.thinkingOptionId } : {}),
+      featureValues: config.featureValues,
+      parent: null,
+      unattended: false,
+      availableModes: undefined,
+    });
+    const resolvedConfig: AgentSessionConfig = {
+      ...config,
+      ...(resolved?.modeId !== undefined ? { modeId: resolved.modeId } : {}),
+      ...(resolved?.thinkingOptionId !== undefined
+        ? { thinkingOptionId: resolved.thinkingOptionId ?? undefined }
+        : {}),
+      ...(resolved?.featureValues !== undefined ? { featureValues: resolved.featureValues } : {}),
+    };
+    return await this.validateSessionFeatureValues(resolvedConfig);
+  }
+
+  private async validateSessionFeatureValues(
+    config: AgentSessionConfig,
+  ): Promise<AgentSessionConfig> {
+    if (!config.featureValues || Object.keys(config.featureValues).length === 0) {
+      return config;
+    }
+    const client = this.clients.get(config.provider);
+    if (!client) {
+      return config;
+    }
+    if (!client.listFeatures) {
+      return config;
+    }
+    const featureValues = validateAgentFeatureValues(
+      config.featureValues,
+      await client.listFeatures(config),
+      { provider: config.provider },
+    );
+    return { ...config, featureValues };
   }
 
   private applyDaemonAppendSystemPrompt(config: AgentSessionConfig): AgentSessionConfig {

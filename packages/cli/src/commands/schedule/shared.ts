@@ -11,6 +11,7 @@ import type {
   UpdateScheduleNewAgentConfig,
 } from "./types.js";
 import { parseDuration } from "../../utils/duration.js";
+import { hasFeatureValues, parseFeatureFlagValues } from "../../utils/provider-features.js";
 import { resolveProviderAndModel } from "../../utils/provider-model.js";
 
 export interface ScheduleCommandOptions extends CommandOptions {
@@ -108,7 +109,7 @@ function resolveScheduleTarget(args: {
   if (hasExplicitNewAgentOption) {
     throw {
       code: "INVALID_TARGET",
-      message: "--provider/--mode can only be used with a new-agent target",
+      message: "--provider/--mode/--feature can only be used with a new-agent target",
       details: "Use --target new-agent or omit --target to create a new agent schedule",
     } satisfies CommandError;
   }
@@ -135,6 +136,7 @@ export function parseScheduleCreateInput(options: {
   target?: string;
   provider?: string;
   mode?: string;
+  feature?: string[];
   cwd?: string;
   host?: string;
   maxRuns?: string;
@@ -170,7 +172,9 @@ export function parseScheduleCreateInput(options: {
 
   const targetValue = options.target?.trim();
   const modeId = options.mode?.trim();
-  const hasExplicitNewAgentOption = options.provider !== undefined || options.mode !== undefined;
+  const featureValues = parseFeatureFlagValues(options.feature);
+  const hasExplicitNewAgentOption =
+    options.provider !== undefined || options.mode !== undefined || hasFeatureValues(featureValues);
   const createNewAgentTarget = (): ScheduleTarget => {
     const resolvedProviderModel = resolveProviderAndModel({
       provider: options.provider,
@@ -182,6 +186,7 @@ export function parseScheduleCreateInput(options: {
         cwd: cwdInput ?? process.cwd(),
         ...(resolvedProviderModel.model ? { model: resolvedProviderModel.model } : {}),
         ...(modeId ? { modeId } : {}),
+        ...(hasFeatureValues(featureValues) ? { featureValues } : {}),
       },
     };
   };
