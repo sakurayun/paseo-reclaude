@@ -7,6 +7,7 @@ import {
   type AgentDefinition,
   type CanUseTool,
   type McpServerConfig as ClaudeSdkMcpServerConfig,
+  type ModelInfo,
   type PermissionMode,
   type PermissionResult,
   type PermissionUpdate,
@@ -29,7 +30,11 @@ import {
   mapTaskNotificationSystemRecordToToolCall,
   mapTaskNotificationUserContentToToolCall,
 } from "./task-notification-tool-call.js";
-import { getClaudeModelsWithSettings, normalizeClaudeRuntimeModelId } from "./models.js";
+import {
+  decorateClaudeModelsWithSdkEfforts,
+  getClaudeModelsWithSettings,
+  normalizeClaudeRuntimeModelId,
+} from "./models.js";
 import { parsePartialJsonObject } from "./partial-json.js";
 import { ClaudeSidechainTracker } from "./sidechain-tracker.js";
 import { buildClaudeFeatures, claudeModelSupportsFastMode } from "./feature-definitions.js";
@@ -96,6 +101,12 @@ const CLAUDE_SETTING_SOURCES: NonNullable<ClaudeOptions["settingSources"]> = [
   "project",
   "local",
 ];
+const CLAUDE_MODEL_DISCOVERY_SETTING_SOURCES: NonNullable<ClaudeOptions["settingSources"]> = [
+  "user",
+  "project",
+];
+const CLAUDE_SUPPORTED_MODELS_TIMEOUT_MS = 15_000;
+const CLAUDE_SCRATCH_QUERY_CLOSE_TIMEOUT_MS = 3_000;
 
 function readNonEmptyString(value: unknown): string | null {
   return typeof value === "string" && value.trim().length > 0 ? value : null;
@@ -306,6 +317,10 @@ function errorToMessageString(error: unknown): string {
   if (typeof error === "string") return error;
   if (error instanceof Error) return error.message;
   return "";
+}
+
+function createEmptyPrompt(): AsyncGenerator<SDKUserMessage, void, undefined> {
+  return (async function* empty() {})();
 }
 
 function firstStringField(
@@ -1282,6 +1297,8 @@ export class ClaudeAgentClient implements AgentClient {
   private readonly queryFactory?: ClaudeQueryFactory;
   private readonly resolveBinary: () => Promise<string>;
   private readonly configDir?: string;
+  private readonly scratchQueries = new Set<Query>();
+  private readonly closingScratchQueries = new WeakSet<Query>();
 
   constructor(options: ClaudeAgentClientOptions) {
     this.defaults = options.defaults;
@@ -1340,7 +1357,69 @@ export class ClaudeAgentClient implements AgentClient {
 
   async listModels(_options: ListModelsOptions): Promise<AgentModelDefinition[]> {
     // Claude exposes a global catalog here; cwd/force are intentionally irrelevant.
-    return await getClaudeModelsWithSettings(this.logger, this.configDir);
+    const staticModels = await getClaudeModelsWithSettings(this.logger, this.configDir);
+    let sdkModels: ModelInfo[];
+    try {
+      sdkModels = await this.discoverClaudeSdkModels();
+    } catch (error) {
+      this.logger.debug({ err: error }, "Failed to discover Claude SDK model effort levels");
+      return staticModels;
+    }
+
+    return decorateClaudeModelsWithSdkEfforts(staticModels, sdkModels);
+  }
+
+  async shutdown(): Promise<void> {
+    const scratchQueries = Array.from(this.scratchQueries);
+    await Promise.all(scratchQueries.map((query) => this.returnScratchQuery(query)));
+  }
+
+  private async discoverClaudeSdkModels(): Promise<ModelInfo[]> {
+    const claudeBinary = await this.resolveBinary();
+    const query = claudeQuery(
+      {
+        prompt: createEmptyPrompt(),
+        options: {
+          cwd: process.cwd(),
+          permissionMode: "plan",
+          includePartialMessages: false,
+          settingSources: CLAUDE_MODEL_DISCOVERY_SETTING_SOURCES,
+          pathToClaudeCodeExecutable: claudeBinary,
+          // Avoid empty scratch sessions in Claude's local history UI.
+          persistSession: false,
+        },
+      },
+      { runtimeSettings: this.runtimeSettings, queryFactory: this.queryFactory },
+    );
+
+    this.scratchQueries.add(query);
+    try {
+      return await withTimeout({
+        promise: query.supportedModels(),
+        timeoutMs: CLAUDE_SUPPORTED_MODELS_TIMEOUT_MS,
+        label: "Claude supportedModels discovery",
+      });
+    } finally {
+      this.scratchQueries.delete(query);
+      await this.returnScratchQuery(query);
+    }
+  }
+
+  private async returnScratchQuery(query: Query): Promise<void> {
+    if (this.closingScratchQueries.has(query)) {
+      return;
+    }
+    this.closingScratchQueries.add(query);
+
+    try {
+      await withTimeout({
+        promise: query.return(),
+        timeoutMs: CLAUDE_SCRATCH_QUERY_CLOSE_TIMEOUT_MS,
+        label: "Claude supportedModels query close",
+      });
+    } catch (error) {
+      this.logger.debug({ err: error }, "Failed to close Claude model discovery query");
+    }
   }
 
   async listFeatures(config: AgentSessionConfig): Promise<AgentFeature[]> {

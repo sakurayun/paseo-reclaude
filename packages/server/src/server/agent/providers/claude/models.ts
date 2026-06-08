@@ -3,7 +3,38 @@ import * as os from "node:os";
 import * as path from "node:path";
 import type { Logger } from "pino";
 
-import type { AgentModelDefinition } from "../../agent-sdk-types.js";
+import type { AgentModelDefinition, AgentSelectOption } from "../../agent-sdk-types.js";
+
+export type ClaudeThinkingEffort = "low" | "medium" | "high" | "xhigh" | "max";
+
+type ClaudeModelFamily = "opus" | "sonnet" | "haiku";
+
+export interface ClaudeSdkModelInfo {
+  value: string;
+  supportedEffortLevels?: readonly unknown[];
+}
+
+interface ClaudeRuntimeModelParts {
+  family: ClaudeModelFamily;
+  major: string;
+  minor: string;
+  suffix: string;
+}
+
+interface ClaudeSdkEffortModel {
+  value: string;
+  normalizedValue: string;
+  abstractFamily: ClaudeModelFamily | null;
+  thinkingOptions: AgentSelectOption[];
+}
+
+const CLAUDE_THINKING_OPTION_LABELS: Record<ClaudeThinkingEffort, string> = {
+  low: "Low",
+  medium: "Medium",
+  high: "High",
+  xhigh: "Extra High",
+  max: "Max",
+};
 
 const CLAUDE_THINKING_OPTIONS = [
   { id: "low", label: "Low" },
@@ -94,8 +125,47 @@ const CLAUDE_SETTINGS_MODEL_ENV_KEYS = [
   "ANTHROPIC_DEFAULT_HAIKU_MODEL",
 ] as const;
 
+export function isClaudeThinkingEffort(
+  value: string | null | undefined,
+): value is ClaudeThinkingEffort {
+  return (
+    value === "low" ||
+    value === "medium" ||
+    value === "high" ||
+    value === "xhigh" ||
+    value === "max"
+  );
+}
+
 export function getClaudeModels(): AgentModelDefinition[] {
   return CLAUDE_MODELS.map((model) => ({ ...model }));
+}
+
+export function decorateClaudeModelsWithSdkEfforts(
+  models: readonly AgentModelDefinition[],
+  sdkModels: readonly ClaudeSdkModelInfo[],
+): AgentModelDefinition[] {
+  const sdkEffortModels = buildClaudeSdkEffortModels(sdkModels);
+  if (sdkEffortModels.length === 0) {
+    return models.map((model) => cloneClaudeModelDefinition(model));
+  }
+
+  return models.map((model) => {
+    const sdkModel = findClaudeSdkEffortModel(model, sdkEffortModels);
+    if (!sdkModel) {
+      return cloneClaudeModelDefinition(model);
+    }
+
+    const thinkingOptions = mergeClaudeThinkingOptions(
+      model.thinkingOptions,
+      sdkModel.thinkingOptions,
+    );
+
+    return {
+      ...model,
+      thinkingOptions,
+    };
+  });
 }
 
 export async function getClaudeModelsWithSettings(
@@ -187,6 +257,191 @@ function addSettingsModel(
   });
 }
 
+function cloneClaudeModelDefinition(model: AgentModelDefinition): AgentModelDefinition {
+  return {
+    ...model,
+    thinkingOptions: model.thinkingOptions?.map((option) => ({ ...option })),
+  };
+}
+
+function buildClaudeSdkEffortModels(
+  sdkModels: readonly ClaudeSdkModelInfo[],
+): ClaudeSdkEffortModel[] {
+  const effortModels: ClaudeSdkEffortModel[] = [];
+
+  for (const sdkModel of sdkModels) {
+    const thinkingOptions = buildClaudeSdkThinkingOptions(sdkModel.supportedEffortLevels);
+    if (thinkingOptions.length === 0) {
+      continue;
+    }
+
+    const value = sdkModel.value.trim();
+    if (value.length === 0) {
+      continue;
+    }
+
+    const normalizedValue = normalizeClaudeSdkModelValue(value);
+    effortModels.push({
+      value,
+      normalizedValue,
+      abstractFamily: getClaudeAbstractModelFamily(normalizedValue),
+      thinkingOptions,
+    });
+  }
+
+  return effortModels;
+}
+
+function buildClaudeSdkThinkingOptions(
+  supportedEffortLevels: readonly unknown[] | undefined,
+): AgentSelectOption[] {
+  if (!Array.isArray(supportedEffortLevels)) {
+    return [];
+  }
+
+  const thinkingOptions: AgentSelectOption[] = [];
+  const seenIds = new Set<ClaudeThinkingEffort>();
+  for (const effort of supportedEffortLevels) {
+    if (typeof effort !== "string" || !isClaudeThinkingEffort(effort) || seenIds.has(effort)) {
+      continue;
+    }
+
+    seenIds.add(effort);
+    thinkingOptions.push({
+      id: effort,
+      label: CLAUDE_THINKING_OPTION_LABELS[effort],
+    });
+  }
+
+  return thinkingOptions;
+}
+
+function findClaudeSdkEffortModel(
+  model: AgentModelDefinition,
+  sdkEffortModels: readonly ClaudeSdkEffortModel[],
+): ClaudeSdkEffortModel | null {
+  if (!isClaudeCodeEffortCapableModel(model.id)) {
+    return null;
+  }
+
+  const normalizedModelId = normalizeClaudeSdkModelValue(model.id);
+  const exactMatches = sdkEffortModels.filter(
+    (sdkModel) => sdkModel.normalizedValue === normalizedModelId,
+  );
+  if (exactMatches.length === 1) {
+    return exactMatches[0];
+  }
+  if (exactMatches.length > 1) {
+    return null;
+  }
+
+  const modelFamily = getClaudeModelFamily(model.id);
+  if (modelFamily) {
+    const familyMatches = sdkEffortModels.filter(
+      (sdkModel) => sdkModel.abstractFamily === modelFamily,
+    );
+    if (familyMatches.length === 1) {
+      return familyMatches[0];
+    }
+    if (familyMatches.length > 1) {
+      return null;
+    }
+  }
+
+  if (model.isDefault === true) {
+    const defaultMatches = sdkEffortModels.filter(
+      (sdkModel) => sdkModel.normalizedValue === "default",
+    );
+    if (defaultMatches.length === 1) {
+      return defaultMatches[0];
+    }
+  }
+
+  return null;
+}
+
+function mergeClaudeThinkingOptions(
+  staticOptions: readonly AgentSelectOption[] | undefined,
+  sdkOptions: readonly AgentSelectOption[],
+): AgentSelectOption[] | undefined {
+  const optionsById = new Map<string, AgentSelectOption>();
+  for (const option of staticOptions ?? []) {
+    optionsById.set(option.id, { ...option });
+  }
+  for (const option of sdkOptions) {
+    if (!optionsById.has(option.id)) {
+      optionsById.set(option.id, { ...option });
+    }
+  }
+
+  const thinkingOptions = Array.from(optionsById.values());
+  return thinkingOptions.length > 0 ? thinkingOptions : undefined;
+}
+
+function normalizeClaudeSdkModelValue(value: string): string {
+  return normalizeClaudeRuntimeModelId(value) ?? value.trim().toLowerCase();
+}
+
+function getClaudeModelFamily(value: string): ClaudeModelFamily | null {
+  const normalizedValue = normalizeClaudeSdkModelValue(value);
+  const abstractFamily = getClaudeAbstractModelFamily(normalizedValue);
+  if (abstractFamily) return abstractFamily;
+
+  if (normalizedValue.startsWith("claude-opus-")) {
+    return "opus";
+  }
+  if (normalizedValue.startsWith("claude-sonnet-")) {
+    return "sonnet";
+  }
+  if (normalizedValue.startsWith("claude-haiku-")) {
+    return "haiku";
+  }
+
+  return null;
+}
+
+function getClaudeAbstractModelFamily(normalizedValue: string): ClaudeModelFamily | null {
+  if (normalizedValue === "opus" || normalizedValue === "sonnet" || normalizedValue === "haiku") {
+    return normalizedValue;
+  }
+
+  return null;
+}
+
+function isClaudeCodeEffortCapableModel(value: string): boolean {
+  const normalizedValue = normalizeClaudeSdkModelValue(value);
+  const abstractFamily = getClaudeAbstractModelFamily(normalizedValue);
+  if (abstractFamily) {
+    return abstractFamily !== "haiku";
+  }
+
+  const runtimeModel = parseClaudeRuntimeModelId(normalizedValue);
+  if (!runtimeModel) {
+    return false;
+  }
+
+  if (runtimeModel.family === "haiku") {
+    return false;
+  }
+
+  // Claude Code documents effort support from Opus 4.6 and Sonnet 4.6 onward.
+  return compareClaudeRuntimeModelVersion(runtimeModel, 4, 6) >= 0;
+}
+
+function compareClaudeRuntimeModelVersion(
+  model: ClaudeRuntimeModelParts,
+  major: number,
+  minor: number,
+): number {
+  const modelMajor = Number(model.major);
+  const modelMinor = Number(model.minor);
+  if (modelMajor !== major) {
+    return modelMajor - major;
+  }
+
+  return modelMinor - minor;
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -206,17 +461,25 @@ export function normalizeClaudeRuntimeModelId(value: string | null | undefined):
     return trimmed;
   }
 
-  // Match: claude-{family}-{major}-{minor}[1m]? possibly followed by a date suffix
-  const runtimeMatch = trimmed.match(
-    /(?:claude-)?(opus|sonnet|haiku)[-_ ]+(\d+)[-.](\d+)(\[1m\])?/i,
-  );
+  const runtimeMatch = parseClaudeRuntimeModelId(trimmed);
   if (!runtimeMatch) {
     return null;
   }
 
-  const family = runtimeMatch[1].toLowerCase();
-  const major = runtimeMatch[2];
-  const minor = runtimeMatch[3];
-  const suffix = runtimeMatch[4] ?? "";
-  return `claude-${family}-${major}-${minor}${suffix}`;
+  return `claude-${runtimeMatch.family}-${runtimeMatch.major}-${runtimeMatch.minor}${runtimeMatch.suffix}`;
+}
+
+function parseClaudeRuntimeModelId(value: string): ClaudeRuntimeModelParts | null {
+  // Match: claude-{family}-{major}-{minor}[1m]? possibly followed by a date suffix
+  const runtimeMatch = value.match(/(?:claude-)?(opus|sonnet|haiku)[-_ ]+(\d+)[-.](\d+)(\[1m\])?/i);
+  if (!runtimeMatch) {
+    return null;
+  }
+
+  return {
+    family: runtimeMatch[1].toLowerCase() as ClaudeModelFamily,
+    major: runtimeMatch[2],
+    minor: runtimeMatch[3],
+    suffix: runtimeMatch[4] ?? "",
+  };
 }
