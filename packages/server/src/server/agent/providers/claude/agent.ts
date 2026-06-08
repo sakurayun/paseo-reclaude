@@ -133,6 +133,31 @@ function assertClaudeFeatureToggleValue(featureId: string, value: unknown): bool
   return value;
 }
 
+export function normalizeClaudeAskUserQuestionRequestInput(
+  toolName: string,
+  input: AgentMetadata,
+): AgentMetadata {
+  if (toolName !== "AskUserQuestion" || !Array.isArray(input.questions)) {
+    return input;
+  }
+
+  // Claude Code's AskUserQuestion schema says "Other" is host-provided, not a
+  // model-supplied option. Paseo's shared question UI uses allowOther for that
+  // freeform answer path.
+  return {
+    ...input,
+    questions: input.questions.map((item) => {
+      if (!isMetadata(item)) {
+        return item;
+      }
+      return {
+        ...item,
+        allowOther: true,
+      };
+    }),
+  };
+}
+
 export function normalizeClaudeAskUserQuestionUpdatedInput(
   updatedInput: AgentMetadata | undefined,
   fallbackInput: AgentMetadata | undefined,
@@ -3994,6 +4019,7 @@ class ClaudeAgentSession implements AgentSession {
   ): Promise<PermissionResult> => {
     const requestId = `permission-${randomUUID()}`;
     const kind = resolvePermissionKind(toolName, input);
+    const requestInput = normalizeClaudeAskUserQuestionRequestInput(toolName, input);
     const metadata: AgentMetadata = {};
     if (options.toolUseID) {
       metadata.toolUseId = options.toolUseID;
@@ -4016,7 +4042,7 @@ class ClaudeAgentSession implements AgentSession {
       provider: "claude",
       name: toolName,
       kind,
-      input,
+      input: requestInput,
       detail: toolDetail,
       suggestions: options.suggestions?.map((suggestion) => ({
         ...suggestion,
