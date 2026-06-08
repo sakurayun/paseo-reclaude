@@ -33,6 +33,7 @@ export type ScheduleTarget =
         sandboxMode?: string;
         networkAccess?: boolean;
         webSearch?: boolean;
+        featureValues?: Record<string, unknown>;
       };
     };
 

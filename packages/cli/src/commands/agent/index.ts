@@ -1,4 +1,5 @@
 import { Command } from "commander";
+import { runAgentFeatureCommand } from "./feature.js";
 import { runModeCommand } from "./mode.js";
 import { addArchiveOptions, runArchiveCommand } from "./archive.js";
 import { addDeleteOptions, runDeleteCommand } from "./delete.js";
@@ -67,6 +68,16 @@ export function createAgentCommand(): Command {
       .argument("[mode]", "Mode to set (required unless --list)")
       .option("--list", "List available modes for this agent"),
   ).action(withOutput(runModeCommand));
+
+  addJsonAndDaemonHostOptions(
+    agent
+      .command("feature")
+      .description("List or set a provider feature for an agent")
+      .argument("<id>", "Agent ID (or prefix)")
+      .argument("[featureId]", "Feature ID to set (required unless --list)")
+      .argument("[value]", "Feature value (default: true)")
+      .option("--list", "List available features for this agent"),
+  ).action(withOutput(runAgentFeatureCommand));
 
   addJsonAndDaemonHostOptions(addArchiveOptions(agent.command("archive"))).action(
     withOutput(runArchiveCommand),

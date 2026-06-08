@@ -22,7 +22,7 @@ Returns `{ branchName, worktreePath }`. Pass `cwd` to target a specific repo.
 
 **`create_agent`** — required: `title`, `provider` (`claude/opus`, `codex/gpt-5.4`, …), `initialPrompt`. Common: `cwd` (often a `worktreePath`), `notifyOnFinish`, `settings`, `detached`. Returns `{ agentId, … }`.
 
-Initial runtime settings live under `settings`: `modeId`, `thinkingOptionId`, and provider-specific `features`. For Codex fast mode, pass `settings: { features: { "fast_mode": true } }` when creating the agent.
+Initial runtime settings live under `settings`: `modeId`, `thinkingOptionId`, and provider-specific `features`. For Codex fast mode, pass `settings: { features: { "fast_mode": true } }`. For Claude Ultracode, pass `settings: { features: { "ultracode": true } }`; do not pass `thinkingOptionId: "ultracode"`.
 
 Compose: call `create_worktree` first, then `create_agent` with `cwd` set to the returned `worktreePath`.
 
@@ -36,7 +36,7 @@ For subagents, leave `notifyOnFinish` omitted or set it to `true`. You will get 
 
 **`send_agent_prompt`** — `{ agentId, prompt }`. Use for follow-ups to an existing agent.
 
-**`update_agent`** — `{ agentId, name?, labels?, settings? }`. Use `settings` for runtime changes on an existing agent: `modeId`, `model`, `thinkingOptionId`, and provider-specific `features`. For Codex fast mode, pass `settings: { features: { "fast_mode": true } }`.
+**`update_agent`** — `{ agentId, name?, labels?, settings? }`. Use `settings` for runtime changes on an existing agent: `modeId`, `model`, `thinkingOptionId`, and provider-specific `features`. For Codex fast mode, pass `settings: { features: { "fast_mode": true } }`. For Claude Ultracode, pass `settings: { features: { "ultracode": true } }`; enabling it also sets the session effort to xhigh.
 
 **`list_agents`** — filter by `cwd`, `statuses`, `sinceHours`, `includeArchived`.
 
@@ -50,7 +50,7 @@ For subagents, leave `notifyOnFinish` omitted or set it to `true`. You will get 
 
 **`inspect_provider`** — compact provider capability and feature inspection. Required: `provider`; pass `cwd` when you are not in an agent-scoped session. Optional: `settings` with draft `model`, `modeId`, `thinkingOptionId`, and `features`.
 
-Only set feature IDs returned by `inspect_provider`. For Codex fast mode, look for `fast_mode` and pass `settings: { features: { "fast_mode": true } }` to `create_agent` or `update_agent`.
+Only set feature IDs returned by `inspect_provider`. For Codex fast mode, look for `fast_mode`; for Claude Ultracode, look for `ultracode` on supported Opus models. Pass boolean feature values as real booleans, not strings.
 
 ## Schedules and heartbeats
 
@@ -104,6 +104,10 @@ The `paseo` CLI is a thin wrapper over the same daemon. Same surface:
 
 ```bash
 paseo run --provider codex/gpt-5.4 --mode full-access --worktree feat/x "<prompt>"
+paseo run --provider claude/opus --feature ultracode "<prompt>"
+paseo schedule create --every 30m --provider claude/opus --feature ultracode "<prompt>"
+paseo provider features claude/opus
+paseo agent feature <agent-id> ultracode false
 paseo send <agent-id> "<follow-up>"
 paseo ls
 paseo worktree ls

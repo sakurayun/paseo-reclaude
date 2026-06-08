@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import { withOutput } from "../../output/index.js";
-import { addJsonAndDaemonHostOptions } from "../../utils/command-options.js";
+import { addJsonAndDaemonHostOptions, collectMultiple } from "../../utils/command-options.js";
 import { runCreateCommand } from "./create.js";
 import { runLsCommand } from "./ls.js";
 import { runInspectCommand } from "./inspect.js";
@@ -31,6 +31,12 @@ export function createScheduleCommand(): Command {
       .option(
         "--mode <mode>",
         "Provider-specific mode (e.g. claude bypassPermissions, opencode build)",
+      )
+      .option(
+        "--feature <id[=value]>",
+        "Set provider feature(s) for new-agent runs (can be used multiple times)",
+        collectMultiple,
+        [],
       )
       .option("--cwd <path>", "Working directory (default: current; required with --host)")
       .option("--run-now", "Fire one immediate run on creation (only with --cron)")

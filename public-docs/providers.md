@@ -20,6 +20,17 @@ A provider is the contract between Paseo and one external agent CLI: how to laun
 
 Either way, **you install the underlying CLI**. Paseo runs it.
 
+## Provider features
+
+Providers can advertise model-specific features such as Fast Mode or Claude Ultracode. Discover them with:
+
+```bash
+paseo provider features claude/opus
+paseo provider features claude/opus --feature ultracode
+```
+
+Feature IDs are provider-owned. Pass them at creation time with `paseo run --feature <id[=value]>`, or update a running/idle agent with `paseo agent feature <agent-id> <feature-id> [value]`. For Claude, `ultracode=true` enables Claude Code's Ultracode setting and persists the session effort as `xhigh`.
+
 ## Where to go next
 
 - [Supported providers](/docs/supported-providers), the full list with install links.
