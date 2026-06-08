@@ -1,7 +1,10 @@
 import type { AgentFeature, AgentModelDefinition } from "@getpaseo/protocol/agent-types";
 
+const CLAUDE_ULTRACODE_FEATURE_ID = "ultracode";
+const CLAUDE_ULTRACODE_THINKING_OPTION_ID = "xhigh";
+
 export type ExplainedAgentControl = "mode" | "model" | "thinking";
-export type FeatureHighlightColor = "blue" | "default" | "green" | "yellow";
+export type FeatureHighlightColor = "blue" | "default" | "green" | "purple" | "yellow";
 
 export function getAgentControlHint(selector: ExplainedAgentControl): string {
   switch (selector) {
@@ -32,6 +35,8 @@ export function getFeatureHighlightColor(featureId: string): FeatureHighlightCol
   switch (featureId) {
     case "fast_mode":
       return "yellow";
+    case CLAUDE_ULTRACODE_FEATURE_ID:
+      return "purple";
     case "auto_accept":
       return "green";
     case "plan_mode":
@@ -39,6 +44,38 @@ export function getFeatureHighlightColor(featureId: string): FeatureHighlightCol
     default:
       return "default";
   }
+}
+
+export function resolveFeatureImpliedThinkingOptionId(input: {
+  featureId: string;
+  value: unknown;
+  thinkingOptions: readonly { id: string }[] | undefined;
+}): string | null {
+  if (input.featureId !== CLAUDE_ULTRACODE_FEATURE_ID || input.value !== true) {
+    return null;
+  }
+  const hasXhigh = input.thinkingOptions?.some(
+    (option) => option.id === CLAUDE_ULTRACODE_THINKING_OPTION_ID,
+  );
+  return hasXhigh ? CLAUDE_ULTRACODE_THINKING_OPTION_ID : null;
+}
+
+export function resolveThinkingImpliedFeatureUpdates(input: {
+  thinkingOptionId: string;
+  features: readonly AgentFeature[] | undefined;
+}): Array<{ featureId: string; value: boolean }> {
+  if (input.thinkingOptionId === CLAUDE_ULTRACODE_THINKING_OPTION_ID) {
+    return [];
+  }
+
+  const ultracodeFeature = input.features?.find(
+    (feature) => feature.type === "toggle" && feature.id === CLAUDE_ULTRACODE_FEATURE_ID,
+  );
+  if (!ultracodeFeature || ultracodeFeature.type !== "toggle" || !ultracodeFeature.value) {
+    return [];
+  }
+
+  return [{ featureId: CLAUDE_ULTRACODE_FEATURE_ID, value: false }];
 }
 
 interface ControlLabelInput {
