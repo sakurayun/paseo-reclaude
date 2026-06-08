@@ -277,6 +277,24 @@ describe("searchWorkspaceEntries", () => {
     ]);
   });
 
+  it("includes plan files under known hidden agent directories", async () => {
+    mkdirSync(path.join(workspaceDir, ".cursor", "plans"), { recursive: true });
+    writeFileSync(path.join(workspaceDir, ".cursor", "plans", "implementation-plan.md"), "");
+
+    const results = await searchWorkspaceEntries({
+      cwd: workspaceDir,
+      query: "implementation",
+      limit: 20,
+      includeFiles: true,
+      includeDirectories: false,
+    });
+
+    expect(results).toContainEqual({
+      path: ".cursor/plans/implementation-plan.md",
+      kind: "file",
+    });
+  });
+
   it("ranks fuzzy basename matches after exact, prefix, and substring matches", async () => {
     writeFileSync(path.join(workspaceDir, "src", "components", "msgrndr"), "");
     writeFileSync(path.join(workspaceDir, "src", "components", "msgrndr-panel.tsx"), "");

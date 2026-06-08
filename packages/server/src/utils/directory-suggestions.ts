@@ -91,6 +91,7 @@ const IGNORED_SUGGESTION_DIRECTORY_NAMES = new Set([
   "vendor",
   "__pycache__",
 ]);
+const ALLOWED_HIDDEN_WORKSPACE_DIRECTORY_NAMES = new Set([".claude", ".codex", ".cursor"]);
 
 export async function searchHomeDirectories(
   options: SearchHomeDirectoriesOptions,
@@ -869,7 +870,8 @@ async function listWorkspaceChildEntries(input: {
   );
   const candidates = dirents.filter(
     (dirent) =>
-      !isHiddenDirectoryName(dirent.name) && !isIgnoredSuggestionDirectoryName(dirent.name),
+      (!isHiddenDirectoryName(dirent.name) || isAllowedHiddenWorkspaceDirectoryName(dirent.name)) &&
+      !isIgnoredSuggestionDirectoryName(dirent.name),
   );
   const resolved = await Promise.all(
     candidates.map(async (dirent) => {
@@ -958,6 +960,10 @@ async function resolveWorkspaceCandidate(input: {
 
 function isHiddenDirectoryName(name: string): boolean {
   return name.startsWith(".");
+}
+
+function isAllowedHiddenWorkspaceDirectoryName(name: string): boolean {
+  return ALLOWED_HIDDEN_WORKSPACE_DIRECTORY_NAMES.has(name);
 }
 
 function isIgnoredSuggestionDirectoryName(name: string): boolean {
