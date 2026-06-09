@@ -86,7 +86,6 @@ import { resolveActiveHost } from "@/utils/active-host";
 import { toggleDesktopSidebarsWithCheckoutIntent } from "@/utils/desktop-sidebar-toggle";
 import {
   buildHostRootRoute,
-  mapPathnameToServer,
   parseHostAgentRouteFromPathname,
   parseServerIdFromPathname,
   parseWorkspaceOpenIntent,
@@ -821,7 +820,6 @@ function OpenProjectListener() {
 }
 
 function AppWithSidebar({ children }: { children: ReactNode }) {
-  const router = useRouter();
   const pathname = usePathname();
   const params = useGlobalSearchParams<{ open?: string | string[] }>();
   const hosts = useHosts();
@@ -829,16 +827,6 @@ function AppWithSidebar({ children }: { children: ReactNode }) {
   const activeServerId = useMemo(() => parseServerIdFromPathname(pathname), [pathname]);
   const shouldShowAppChrome =
     storeReady && activeServerId !== null && hosts.some((host) => host.serverId === activeServerId);
-
-  useEffect(() => {
-    if (!activeServerId || hosts.length === 0) {
-      return;
-    }
-    if (hosts.some((host) => host.serverId === activeServerId)) {
-      return;
-    }
-    router.replace(mapPathnameToServer(pathname, hosts[0].serverId));
-  }, [activeServerId, hosts, pathname, router]);
 
   // Parse selectedAgentKey directly from pathname
   // useLocalSearchParams doesn't update when navigating between same-pattern routes

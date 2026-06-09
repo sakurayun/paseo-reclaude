@@ -23,6 +23,7 @@ import {
   type AgentSession,
   type AgentSessionConfig,
   type AgentSlashCommand,
+  type AgentSlashCommandKind,
   type AgentStreamEvent,
   type AgentUsage,
   type ListPersistedAgentsOptions,
@@ -101,13 +102,22 @@ const PI_HANDLED_BUILTIN_SLASH_COMMANDS: AgentSlashCommand[] = [
     name: "compact",
     description: "Manually compact the session context",
     argumentHint: "[instructions]",
+    kind: "command",
   },
   {
     name: "autocompact",
     description: "Toggle automatic context compaction",
     argumentHint: "[on|off|toggle]",
+    kind: "command",
   },
 ];
+
+function mapPiCommandKind(source: PiRpcSlashCommand["source"]): AgentSlashCommandKind {
+  if (source === "skill") {
+    return "skill";
+  }
+  return "command";
+}
 
 const PI_CAPABILITIES: AgentCapabilityFlags = {
   supportsStreaming: true,
@@ -1190,6 +1200,7 @@ export class PiRpcAgentSession implements AgentSession {
         name: command.name,
         description: command.description ?? command.source,
         argumentHint: knownCommand?.argumentHint ?? "",
+        kind: mapPiCommandKind(command.source),
       });
     }
     return [...mappedCommands.values()];

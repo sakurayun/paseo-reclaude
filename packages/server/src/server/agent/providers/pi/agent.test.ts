@@ -830,15 +830,17 @@ describe("PiRpcAgentClient", () => {
         name: "compact",
         description: "Manually compact the session context",
         argumentHint: "[instructions]",
+        kind: "command",
       },
       {
         name: "autocompact",
         description: "Toggle automatic context compaction",
         argumentHint: "[on|off|toggle]",
+        kind: "command",
       },
-      { name: "review", description: "Review changes", argumentHint: "" },
-      { name: "fix-tests", description: "Fix tests", argumentHint: "" },
-      { name: "skill:docs", description: "Read docs", argumentHint: "" },
+      { name: "review", description: "Review changes", argumentHint: "", kind: "command" },
+      { name: "fix-tests", description: "Fix tests", argumentHint: "", kind: "command" },
+      { name: "skill:docs", description: "Read docs", argumentHint: "", kind: "skill" },
     ]);
   });
 
@@ -852,11 +854,13 @@ describe("PiRpcAgentClient", () => {
       name: "compact",
       description: "Manually compact the session context",
       argumentHint: "[instructions]",
+      kind: "command",
     });
     await expect(session.listCommands()).resolves.toContainEqual({
       name: "autocompact",
       description: "Toggle automatic context compaction",
       argumentHint: "[on|off|toggle]",
+      kind: "command",
     });
   });
 
@@ -872,11 +876,13 @@ describe("PiRpcAgentClient", () => {
         name: "compact",
         description: "Compact from RPC",
         argumentHint: "[instructions]",
+        kind: "command",
       },
       {
         name: "autocompact",
         description: "Auto compact from RPC",
         argumentHint: "[on|off|toggle]",
+        kind: "command",
       },
     ]);
   });
