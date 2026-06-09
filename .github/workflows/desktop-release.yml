@@ -152,17 +152,16 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           EP_GH_IGNORE_TIME: true
-          CSC_LINK: ${{ secrets.APPLE_CERTIFICATE }}
-          CSC_KEY_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          # No Apple Developer account in this repo: build ad-hoc unsigned, no notarization.
+          # Disable signing-cert auto-discovery so electron-builder doesn't try (and fail) to sign.
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
           PASEO_DESKTOP_SMOKE: "1"
         run: |
           set -euo pipefail
           build_args=(-- --publish never --mac --${{ matrix.electron_arch }})
           build_args+=("-c.publish.releaseType=$RELEASE_TYPE")
           build_args+=("-c.publish.channel=$RELEASE_CHANNEL")
+          build_args+=("-c.mac.notarize=false" "-c.mac.hardenedRuntime=false")
           npm run build:desktop "${build_args[@]}"
 
       - name: Upload desktop artifacts to release
