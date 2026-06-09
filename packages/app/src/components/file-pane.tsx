@@ -10,7 +10,6 @@ import Markdown, {
 import {
   ActivityIndicator,
   Image as RNImage,
-  Linking,
   ScrollView as RNScrollView,
   Text,
   type TextProps,
@@ -26,6 +25,7 @@ import { useIsCompactFormFactor } from "@/constants/layout";
 import { useSessionStore, type ExplorerFile } from "@/stores/session-store";
 import { useWebScrollViewScrollbar } from "@/components/use-web-scrollbar";
 import { useWebScrollbarStyle } from "@/hooks/use-web-scrollbar-style";
+import { openExternalUrl } from "@/utils/open-external-url";
 import { highlightCode, type HighlightToken } from "@getpaseo/highlight";
 import { syntaxTokenStyleFor } from "@/styles/syntax-token-styles";
 import { inlineUnistylesStyle } from "@/styles/unistyles-inline-style";
@@ -209,7 +209,7 @@ function FilePreviewMarkdownLink({
   const handlePress = useCallback(() => {
     if (!href) return;
     if (onLinkPress?.(href) === false) return;
-    void Linking.openURL(href);
+    void openExternalUrl(href);
   }, [href, onLinkPress]);
 
   return (

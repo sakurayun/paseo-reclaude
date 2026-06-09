@@ -1158,6 +1158,11 @@ describe("transformPiModels", () => {
           id: "openrouter/google/gemini-2.5-flash-lite",
           label: "openrouter/google/gemini_2.5 flash lite",
         },
+        {
+          provider: "pi",
+          id: "openrouter/openai/gpt-5.5",
+          label: "openrouter/OpenAI: GPT-5.5",
+        },
       ]),
     ).toEqual([
       {
@@ -1165,6 +1170,12 @@ describe("transformPiModels", () => {
         id: "openrouter/google/gemini-2.5-flash-lite",
         label: "gemini 2.5 flash lite",
         description: "openrouter/google/gemini_2.5 flash lite",
+      },
+      {
+        provider: "pi",
+        id: "openrouter/openai/gpt-5.5",
+        label: "GPT-5.5",
+        description: "openrouter/OpenAI: GPT-5.5",
       },
     ]);
   });

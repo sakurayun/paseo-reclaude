@@ -237,7 +237,13 @@ interface PiSlashCommandInvocation {
 type AutoCompactMode = boolean | "toggle" | "unknown";
 
 function normalizePiModelLabel(label: string): string {
-  return label.trim().replace(/[_\s]+/g, " ");
+  const normalizedLabel = label.trim().replace(/[_\s]+/g, " ");
+  const vendorSeparatorIndex = normalizedLabel.indexOf(": ");
+  if (vendorSeparatorIndex === -1) {
+    return normalizedLabel;
+  }
+
+  return normalizedLabel.slice(vendorSeparatorIndex + 2).trim();
 }
 
 export function transformPiModels(models: AgentModelDefinition[]): AgentModelDefinition[] {
