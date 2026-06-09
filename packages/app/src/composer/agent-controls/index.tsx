@@ -68,11 +68,17 @@ import {
   getFeatureTooltip,
   getFeatureTooltipI18nKey,
   getAgentControlHint,
+  hideFastModeForReclaude,
+  isReclaudeCommand,
+  isUltracodeThinkingHighlighted,
+  ULTRACODE_ACCENT_COLOR,
+  ULTRACODE_THINKING_CHIP_LABEL,
   formatThinkingOptionLabel,
   resolveFeatureImpliedThinkingOptionId,
   resolveThinkingImpliedFeatureUpdates,
   resolveAgentModelSelection,
 } from "@/composer/agent-controls/utils";
+import { useDaemonConfig } from "@/hooks/use-daemon-config";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { useToast } from "@/contexts/toast-context";
 import { toErrorMessage } from "@/utils/error-messages";
@@ -166,8 +172,6 @@ const FEATURE_ICONS: Record<string, typeof Zap> = {
   zap: Zap,
 };
 
-const ULTRACODE_ACTIVE_COLOR = "#A06AF5";
-
 function getFeatureIcon(featureId: string, icon?: string) {
   if (featureId === "ultracode") {
     return Code2;
@@ -196,7 +200,7 @@ function getFeatureIconColor(
     case "green":
       return palette.green[400];
     case "purple":
-      return ULTRACODE_ACTIVE_COLOR;
+      return ULTRACODE_ACCENT_COLOR;
     case "yellow":
       return palette.yellow[400];
     default:
@@ -384,6 +388,10 @@ function buildAgentProviderDefinitions(
   return definition ? [definition] : [];
 }
 
+function resolveReclaudeEnabled(config: ReturnType<typeof useDaemonConfig>["config"]): boolean {
+  return isReclaudeCommand(config?.providers?.claude?.command);
+}
+
 function buildAgentProviderModels(
   agentProvider: string | undefined,
   models: AgentModelDefinition[] | null,
@@ -470,6 +478,16 @@ function ControlledAgentControls({
   );
 
   const ProviderIcon = resolveProviderIcon(provider);
+
+  // Purple accent for the input-box thinking chip when Ultracode is on (Extra-high selected).
+  // The dropdown list keeps its default colors.
+  const thinkingAccentColor = isUltracodeThinkingHighlighted(features, selectedThinkingOptionId)
+    ? ULTRACODE_ACCENT_COLOR
+    : null;
+  // While Ultracode is on, the chip shows "xhigh + ultra code" instead of "Extra high".
+  const displayThinkingChipLabel = thinkingAccentColor
+    ? ULTRACODE_THINKING_CHIP_LABEL
+    : displayThinking;
 
   const hasAnyControl = resolveHasAnyControl({
     providerOptions,
@@ -658,7 +676,7 @@ function ControlledAgentControls({
           comboboxProviderOptions={comboboxProviderOptions}
           comboboxThinkingOptions={comboboxThinkingOptions}
           displayProvider={displayProvider}
-          displayThinking={displayThinking}
+          displayThinking={displayThinkingChipLabel}
           openSelector={openSelector}
           providerAnchorRef={providerAnchorRef}
           thinkingAnchorRef={thinkingAnchorRef}
@@ -673,6 +691,7 @@ function ControlledAgentControls({
           handleThinkingOpenChange={handleThinkingOpenChange}
           handleOpenChange={handleOpenChange}
           renderThinkingOption={renderThinkingOption}
+          thinkingAccentColor={thinkingAccentColor}
           extras={desktopExtras}
           modelSelectorServerId={modelSelectorServerId}
         />
@@ -705,6 +724,7 @@ function ControlledAgentControls({
           handleSelectThinkingAndClose={handleSelectThinkingAndClose}
           handleOpenChange={handleOpenChange}
           renderThinkingOption={renderThinkingOption}
+          thinkingAccentColor={thinkingAccentColor}
           modelSelectorServerId={modelSelectorServerId}
         />
       )}
@@ -758,6 +778,8 @@ interface DesktopAgentControlsContentProps {
     active: boolean;
     onPress: () => void;
   }) => ReactElement;
+  /** When set, tints the toolbar thinking chip (icon + label) — Ultracode Extra-high highlight. */
+  thinkingAccentColor: string | null;
   extras?: ReactNode;
   modelSelectorServerId: string | null;
 }
@@ -807,9 +829,19 @@ function DesktopAgentControlsContent(props: DesktopAgentControlsContentProps) {
     handleThinkingOpenChange,
     handleOpenChange,
     renderThinkingOption,
+    thinkingAccentColor,
     extras,
     modelSelectorServerId,
   } = props;
+
+  const thinkingIconColor = thinkingAccentColor ?? theme.colors.foregroundMuted;
+  const thinkingTextStyle = useMemo(
+    () =>
+      thinkingAccentColor
+        ? [styles.modeBadgeText, { color: thinkingAccentColor }]
+        : styles.modeBadgeText,
+    [thinkingAccentColor],
+  );
 
   return (
     <>
@@ -884,8 +916,8 @@ function DesktopAgentControlsContent(props: DesktopAgentControlsContentProps) {
                 })}
                 testID="agent-thinking-selector"
               >
-                <Brain size={theme.iconSize.md} color={theme.colors.foregroundMuted} />
-                <Text style={styles.modeBadgeText}>{displayThinking}</Text>
+                <Brain size={theme.iconSize.md} color={thinkingIconColor} />
+                <Text style={thinkingTextStyle}>{displayThinking}</Text>
                 <ChevronDown size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
               </Pressable>
             </TooltipTrigger>
@@ -956,6 +988,8 @@ interface SheetAgentControlsContentProps {
     active: boolean;
     onPress: () => void;
   }) => ReactElement;
+  /** When set, tints the compact thinking icon button — Ultracode Extra-high highlight. */
+  thinkingAccentColor: string | null;
   modelSelectorServerId: string | null;
 }
 
@@ -990,10 +1024,12 @@ function SheetAgentControlsContent(props: SheetAgentControlsContentProps) {
     handleSelectThinkingAndClose,
     handleOpenChange,
     renderThinkingOption,
+    thinkingAccentColor,
     modelSelectorServerId,
   } = props;
 
   const thinkingAnchorRef = useRef<View | null>(null);
+  const thinkingIconColor = thinkingAccentColor ?? theme.colors.foregroundMuted;
 
   const hasThinking = comboboxThinkingOptions.length > 0;
   const hasFeatures = Boolean(features && features.length > 0);
@@ -1078,7 +1114,7 @@ function SheetAgentControlsContent(props: SheetAgentControlsContentProps) {
           accessibilityLabel={t("controls.thinking.selectAccessibilityLabel")}
           testID="agent-controls-thinking"
         >
-          <Brain size={theme.iconSize.md} color={theme.colors.foregroundMuted} />
+          <Brain size={theme.iconSize.md} color={thinkingIconColor} />
         </Pressable>
       ) : null}
 
@@ -1429,6 +1465,20 @@ export const AgentControls = memo(function AgentControls({
   );
   const client = useSessionStore((state) => state.sessions[serverId]?.client ?? null);
   const toast = useToast();
+  const { config: daemonConfig } = useDaemonConfig(serverId);
+  const reclaudeEnabled = resolveReclaudeEnabled(daemonConfig);
+
+  // Hide Claude's fast mode toggle when the daemon runs Claude via the reclaude binary,
+  // which doesn't support fast mode.
+  const visibleFeatures = useMemo(
+    () =>
+      hideFastModeForReclaude({
+        features: agent?.features,
+        provider: agent?.provider,
+        reclaudeEnabled,
+      }),
+    [agent?.features, agent?.provider, reclaudeEnabled],
+  );
 
   const {
     entries: snapshotEntries,
@@ -1622,7 +1672,7 @@ export const AgentControls = memo(function AgentControls({
       thinkingOptions={thinkingOptions.length > 1 ? thinkingOptions : undefined}
       selectedThinkingOptionId={modelSelection.selectedThinkingId ?? undefined}
       onSelectThinkingOption={handleSelectThinkingOption}
-      features={agent.features}
+      features={visibleFeatures}
       onSetFeature={handleSetFeature}
       isModelLoading={snapshotIsLoading || selectedProviderIsLoading}
       onModelSelectorOpen={handleModelSelectorOpen}

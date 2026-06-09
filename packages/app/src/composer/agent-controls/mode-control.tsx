@@ -30,9 +30,37 @@ import { useIsCompactFormFactor } from "@/constants/layout";
 import { toErrorMessage } from "@/utils/error-messages";
 import { formatAgentModeLabel } from "@/composer/agent-controls/utils";
 import type { AgentMode, AgentProvider } from "@getpaseo/protocol/agent-types";
-import { getModeVisuals, type AgentProviderDefinition } from "@getpaseo/protocol/provider-manifest";
+import {
+  getModeVisuals,
+  type AgentModeColorTier,
+  type AgentProviderDefinition,
+} from "@getpaseo/protocol/provider-manifest";
 
 export type AgentModeControlPlacement = "toolbar" | "footer";
+
+// Cyan-blue accent for planning modes (the theme palette has no cyan scale).
+const PLAN_MODE_COLOR = "#1ba6c4";
+
+// Maps a mode's permission tier to an accent color so the selected chip and the
+// dropdown icons signal risk: bypass/dangerous → red, auto-accept/moderate → yellow,
+// plan/planning → cyan-blue. Safe and unknown tiers stay muted (return null).
+function getModeTierColor(
+  colorTier: AgentModeColorTier | undefined,
+  theme: ReturnType<typeof useUnistyles>["theme"],
+): string | null {
+  if (!colorTier) return null;
+  if (colorTier.startsWith("#")) return colorTier;
+  switch (colorTier) {
+    case "dangerous":
+      return theme.colors.palette.red[500];
+    case "moderate":
+      return theme.colors.palette.yellow[400];
+    case "planning":
+      return PLAN_MODE_COLOR;
+    default:
+      return null;
+  }
+}
 
 function shouldRenderForPlacement(placement: AgentModeControlPlacement, isCompact: boolean) {
   return placement === "footer" ? isCompact : !isCompact;
@@ -70,11 +98,13 @@ function ModeComboboxOption({
   providerDefinitions,
   iconColor,
 }: ModeComboboxOptionProps) {
+  const { theme } = useUnistyles();
   const visuals = getModeVisuals(provider, option.id, providerDefinitions);
   const IconComponent = visuals?.icon ? MODE_ICONS[visuals.icon] : undefined;
+  const optionIconColor = getModeTierColor(visuals?.colorTier, theme) ?? iconColor;
   const leadingSlot = useMemo(
-    () => (IconComponent ? <IconComponent size={16} color={iconColor} /> : null),
-    [IconComponent, iconColor],
+    () => (IconComponent ? <IconComponent size={16} color={optionIconColor} /> : null),
+    [IconComponent, optionIconColor],
   );
   return (
     <ComboboxItem
@@ -123,7 +153,8 @@ function AgentModeControlView({
     ? getModeVisuals(provider, selectedMode.id, providerDefinitions)
     : undefined;
   const Icon = visuals?.icon ? MODE_ICONS[visuals.icon] : undefined;
-  const iconColor = theme.colors.foregroundMuted;
+  const tierColor = getModeTierColor(visuals?.colorTier, theme);
+  const iconColor = tierColor ?? theme.colors.foregroundMuted;
   const selectedModeLabel = selectedMode ? formatAgentModeLabel(selectedMode) : "";
 
   const allOptions = useMemo<ComboboxOption[]>(
@@ -180,7 +211,10 @@ function AgentModeControlView({
     [open, disabled],
   );
 
-  const labelStyle = styles.chipLabel;
+  const labelStyle = useMemo(
+    () => (tierColor ? [styles.chipLabel, { color: tierColor }] : styles.chipLabel),
+    [tierColor],
+  );
 
   const sheetHeader = useMemo<SheetHeader>(
     () => ({
@@ -212,7 +246,7 @@ function AgentModeControlView({
       >
         {Icon ? <Icon size={theme.iconSize.md} color={iconColor} /> : null}
         <Text style={labelStyle}>{selectedModeLabel}</Text>
-        <ChevronDown size={theme.iconSize.sm} color={iconColor} />
+        <ChevronDown size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
       </Pressable>
       <Combobox
         options={options}

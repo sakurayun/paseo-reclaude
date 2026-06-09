@@ -2,6 +2,33 @@ import type { AgentFeature, AgentModelDefinition } from "@getpaseo/protocol/agen
 
 const CLAUDE_ULTRACODE_FEATURE_ID = "ultracode";
 const CLAUDE_ULTRACODE_THINKING_OPTION_ID = "xhigh";
+const CLAUDE_PROVIDER_ID = "claude";
+const CLAUDE_FAST_MODE_FEATURE_ID = "fast_mode";
+const RECLAUDE_BINARY = "reclaude";
+
+// Whether the daemon launches Claude through the reclaude-compatible binary. The provider's
+// launch command is `["reclaude"]` when the user enables reclaude in provider settings.
+export function isReclaudeCommand(command: readonly string[] | null | undefined): boolean {
+  return command?.[0] === RECLAUDE_BINARY;
+}
+
+// reclaude-compatible launches don't support Claude's fast mode, so hide that toggle for
+// Claude agents whenever the daemon runs Claude through the reclaude binary.
+export function hideFastModeForReclaude(input: {
+  features: AgentFeature[] | undefined;
+  provider: string | null | undefined;
+  reclaudeEnabled: boolean;
+}): AgentFeature[] | undefined {
+  const { features, provider, reclaudeEnabled } = input;
+  if (!features || !reclaudeEnabled || provider !== CLAUDE_PROVIDER_ID) {
+    return features;
+  }
+  return features.filter((feature) => feature.id !== CLAUDE_FAST_MODE_FEATURE_ID);
+}
+
+// Ultracode brand accent (the theme has no purple token). Shared by the composer feature icon,
+// the input-box border, and the Extra-high thinking chip so the highlight color lives in one place.
+export const ULTRACODE_ACCENT_COLOR = "#A06AF5";
 
 export type ExplainedAgentControl = "mode" | "model" | "thinking";
 export type FeatureHighlightColor = "blue" | "default" | "green" | "purple" | "yellow";
@@ -87,6 +114,35 @@ export function resolveThinkingImpliedFeatureUpdates(input: {
 
   return [{ featureId: CLAUDE_ULTRACODE_FEATURE_ID, value: false }];
 }
+
+// Whether the Ultracode toggle is present and switched on in the current feature set. Drives
+// the light purple input-box tint.
+export function isUltracodeEnabled(features: readonly AgentFeature[] | undefined): boolean {
+  return (
+    features?.some(
+      (feature) =>
+        feature.type === "toggle" &&
+        feature.id === CLAUDE_ULTRACODE_FEATURE_ID &&
+        feature.value === true,
+    ) ?? false
+  );
+}
+
+// Whether the toolbar thinking chip should render in the Ultracode purple: only when Ultracode
+// is on and its implied Extra-high (xhigh) level is selected. Used for the input-box chip only —
+// the dropdown list keeps its default colors.
+export function isUltracodeThinkingHighlighted(
+  features: readonly AgentFeature[] | undefined,
+  selectedThinkingOptionId: string | null | undefined,
+): boolean {
+  return (
+    isUltracodeEnabled(features) && selectedThinkingOptionId === CLAUDE_ULTRACODE_THINKING_OPTION_ID
+  );
+}
+
+// Label shown on the input-box thinking chip while Ultracode is on (replaces "Extra high").
+// The dropdown list keeps the plain "Extra high" label.
+export const ULTRACODE_THINKING_CHIP_LABEL = "xhigh + UltraCode";
 
 interface ControlLabelInput {
   id: string;

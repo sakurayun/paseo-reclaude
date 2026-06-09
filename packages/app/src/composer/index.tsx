@@ -38,6 +38,7 @@ import {
   DraftAgentControls,
   type DraftAgentControlsProps,
 } from "@/composer/agent-controls";
+import { isUltracodeEnabled } from "@/composer/agent-controls/utils";
 import { ContextWindowMeter } from "@/components/context-window-meter";
 import { useImageAttachmentPicker } from "@/hooks/use-image-attachment-picker";
 import { useSessionStore } from "@/stores/session-store";
@@ -188,6 +189,9 @@ function buildAgentStateSelector(serverId: string, agentId: string) {
       contextWindowMaxTokens: agent?.lastUsage?.contextWindowMaxTokens ?? null,
       contextWindowUsedTokens: agent?.lastUsage?.contextWindowUsedTokens ?? null,
       totalCostUsd: agent?.lastUsage?.totalCostUsd ?? null,
+      // Drives the light purple input-box tint when Ultracode is on for an existing
+      // agent (draft flows read features from agentControls instead).
+      ultracodeEnabled: isUltracodeEnabled(agent?.features),
     };
   };
 }
@@ -1678,6 +1682,11 @@ export function Composer({
     ? t("main.githubPicker.searching")
     : t("main.githubPicker.noResults");
   const autocompleteVisible = autocomplete.isVisible && isPaneFocused;
+  const isUltracodeActive = useMemo(
+    () =>
+      agentControls ? isUltracodeEnabled(agentControls.features) : agentState.ultracodeEnabled,
+    [agentControls, agentState.ultracodeEnabled],
+  );
 
   return (
     <Animated.View style={composerContainerStyle}>
@@ -1739,6 +1748,7 @@ export function Composer({
               onFocusChange={handleFocusChange}
               onHeightChange={onComposerHeightChange}
               inputWrapperStyle={inputWrapperStyle}
+              isUltracodeActive={isUltracodeActive}
               attachmentSlot={attachmentTray}
             />
             <Combobox

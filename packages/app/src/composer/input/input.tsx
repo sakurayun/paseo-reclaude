@@ -41,6 +41,7 @@ import {
 } from "@/utils/image-attachments-from-files";
 import type { ComposerAttachment } from "@/attachments/types";
 import type { ImageAttachment, MessagePayload } from "@/composer/types";
+import { ULTRACODE_ACCENT_COLOR } from "@/composer/agent-controls/utils";
 import { focusWithRetries } from "@/utils/web-focus";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Shortcut } from "@/components/ui/shortcut";
@@ -124,6 +125,8 @@ export interface MessageInputProps {
   onHeightChange?: (height: number) => void;
   /** Extra styles merged onto the input wrapper (e.g. elevated background). */
   inputWrapperStyle?: import("react-native").ViewStyle;
+  /** Tints the whole input box light purple while Claude Ultracode is enabled. */
+  isUltracodeActive?: boolean;
   /** Content rendered inside the bordered input surface, above the text input (e.g. attachment pills). */
   attachmentSlot?: React.ReactNode;
 }
@@ -1238,6 +1241,7 @@ interface ResolvedMessageInputProps {
   onFocusChange: ((focused: boolean) => void) | undefined;
   onHeightChange: ((height: number) => void) | undefined;
   inputWrapperStyle: import("react-native").ViewStyle | undefined;
+  isUltracodeActive: boolean;
   attachmentSlot: React.ReactNode;
 }
 
@@ -1278,6 +1282,7 @@ function resolveMessageInputProps(props: MessageInputProps): ResolvedMessageInpu
     onFocusChange: props.onFocusChange,
     onHeightChange: props.onHeightChange,
     inputWrapperStyle: props.inputWrapperStyle,
+    isUltracodeActive: props.isUltracodeActive ?? false,
     attachmentSlot: props.attachmentSlot,
   };
 }
@@ -1326,6 +1331,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       onFocusChange,
       onHeightChange,
       inputWrapperStyle,
+      isUltracodeActive,
       attachmentSlot,
     } = resolveMessageInputProps(props);
     const isCompact = useIsCompactFormFactor();
@@ -1834,8 +1840,13 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
     }, [handleStopRealtimeVoice]);
 
     const inputWrapperCombinedStyle = useMemo(
-      () => [styles.inputWrapper, inputWrapperStyle, inputAnimatedStyle],
-      [inputWrapperStyle, inputAnimatedStyle],
+      () => [
+        styles.inputWrapper,
+        inputWrapperStyle,
+        isUltracodeActive && styles.inputWrapperUltracode,
+        inputAnimatedStyle,
+      ],
+      [inputWrapperStyle, isUltracodeActive, inputAnimatedStyle],
     );
     const textInputStyle = useMemo(
       () => [styles.textInput, computeTextInputHeightStyle(inputHeight, maxInputHeight)],
@@ -1996,6 +2007,17 @@ const styles = StyleSheet.create((theme: Theme) => ({
       xs: theme.spacing[3],
       md: theme.spacing[4],
     },
+    ...(isWeb
+      ? {
+          transitionProperty: "border-color",
+          transitionDuration: "200ms",
+          transitionTimingFunction: "ease-in-out",
+        }
+      : {}),
+  },
+  inputWrapperUltracode: {
+    // Keep the themed surface background; only the border turns purple while Ultracode is on.
+    borderColor: ULTRACODE_ACCENT_COLOR,
     ...(isWeb
       ? {
           transitionProperty: "border-color",
