@@ -1,4 +1,5 @@
 import { View, Text } from "react-native";
+import { useTranslation } from "react-i18next";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import Animated, { useAnimatedStyle, withTiming, useSharedValue } from "react-native-reanimated";
 import { useEffect, useMemo } from "react";
@@ -16,6 +17,7 @@ interface FileDropZoneProps {
 const IS_WEB = isWeb;
 
 export function FileDropZone({ children, onFilesDropped, disabled = false }: FileDropZoneProps) {
+  const { t } = useTranslation("app");
   const { theme } = useUnistyles();
   const { isDragging, containerRef } = useFileDropZone({
     onFilesDropped,
@@ -58,7 +60,7 @@ export function FileDropZone({ children, onFilesDropped, disabled = false }: Fil
         {/* Content */}
         <View style={styles.overlayContent}>
           <Upload size={32} color={theme.colors.primary} />
-          <Text style={styles.overlayText}>Drop images here</Text>
+          <Text style={styles.overlayText}>{t("files.dropZone.dropImages")}</Text>
         </View>
       </Animated.View>
     </View>

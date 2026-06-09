@@ -183,6 +183,7 @@ describe("buildStatusSidebarShortcutModel", () => {
 
     const model = buildStatusSidebarShortcutModel({
       workspaces,
+      t: ((key: string) => key) as never,
       projectNamesByKey: new Map([
         ["p1", "Project 1"],
         ["p2", "Project 2"],
@@ -223,6 +224,7 @@ describe("buildStatusSidebarShortcutModel", () => {
 
     const model = buildStatusSidebarShortcutModel({
       workspaces,
+      t: ((key: string) => key) as never,
       projectNamesByKey: new Map([["p1", "Project 1"]]),
       collapsedStatusGroupKeys: new Set(["needs_input"]),
     });

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Text, TextInput, View, type PressableStateCallbackType } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { ChevronDown, Monitor, Moon, Sun } from "lucide-react-native";
@@ -49,16 +50,35 @@ const ThemedChevronDown = withUnistyles(ChevronDown);
 
 const mutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
 
-// Stored value -> displayed label. `auto` reads as "System" for the app theme.
-const THEME_LABELS: Record<AppSettings["theme"], string> = {
-  light: "Light",
-  dark: "Dark",
-  zinc: "Zinc",
-  midnight: "Midnight",
-  claude: "Claude",
-  ghostty: "Ghostty",
-  auto: "System",
-};
+type TFunc = ReturnType<typeof useTranslation<"settings">>["t"];
+
+// Translatable theme labels. `auto` reads as "System" for the app theme.
+// Proper-noun themes (Zinc, Midnight, Claude, Ghostty) are brand names and stay
+// literal — see themeLabel().
+const THEME_LABEL_KEYS = {
+  light: "appearance.theme.light",
+  dark: "appearance.theme.dark",
+  auto: "appearance.theme.system",
+} as const;
+
+// Stored value -> displayed label. Brand-name themes are returned verbatim; the
+// generic light/dark/system options are translated.
+function themeLabel(t: TFunc, value: AppSettings["theme"]): string {
+  switch (value) {
+    case "light":
+    case "dark":
+    case "auto":
+      return t(THEME_LABEL_KEYS[value]);
+    case "zinc":
+      return "Zinc";
+    case "midnight":
+      return "Midnight";
+    case "claude":
+      return "Claude";
+    case "ghostty":
+      return "Ghostty";
+  }
+}
 
 const PRIMARY_THEMES: readonly AppSettings["theme"][] = ["light", "dark", "auto"];
 const DARK_VARIANT_THEMES: readonly AppSettings["theme"][] = [
@@ -72,12 +92,9 @@ const DARK_VARIANT_THEMES: readonly AppSettings["theme"][] = [
 // those read as a bug, so show a human label in the placeholder instead.
 const BARE_DEFAULT_STACKS: ReadonlySet<string> = new Set(["normal", "monospace"]);
 
-function resolveDefaultStackPlaceholder(stack: string): string {
-  return BARE_DEFAULT_STACKS.has(stack) ? "System default" : stack;
+function resolveDefaultStackPlaceholder(t: TFunc, stack: string): string {
+  return BARE_DEFAULT_STACKS.has(stack) ? t("appearance.fonts.systemDefault") : stack;
 }
-
-const UI_FONT_PLACEHOLDER = resolveDefaultStackPlaceholder(DEFAULT_UI_FONT_STACK);
-const MONO_FONT_PLACEHOLDER = resolveDefaultStackPlaceholder(DEFAULT_MONO_FONT_STACK);
 
 // Local size string (digits only) -> preview override number. Empty/invalid
 // yields undefined so the preview falls back to the committed theme value.
@@ -128,13 +145,14 @@ interface ThemeMenuItemProps {
 }
 
 function ThemeMenuItem({ themeValue, selected, onChange }: ThemeMenuItemProps) {
+  const { t } = useTranslation("settings");
   const handleSelect = useCallback(() => {
     onChange(themeValue);
   }, [onChange, themeValue]);
   const leading = useMemo(() => <ThemeLeading themeValue={themeValue} />, [themeValue]);
   return (
     <DropdownMenuItem selected={selected} onSelect={handleSelect} leading={leading}>
-      {THEME_LABELS[themeValue]}
+      {themeLabel(t, themeValue)}
     </DropdownMenuItem>
   );
 }
@@ -145,18 +163,19 @@ interface ThemeRowProps {
 }
 
 function ThemeRow({ value, onChange }: ThemeRowProps) {
+  const { t } = useTranslation("settings");
   return (
     <View style={settingsStyles.row}>
       <View style={settingsStyles.rowContent}>
-        <Text style={settingsStyles.rowTitle}>Theme</Text>
+        <Text style={settingsStyles.rowTitle}>{t("appearance.theme.title")}</Text>
       </View>
       <DropdownMenu>
         <DropdownMenuTrigger
           style={dropdownTriggerStyle}
-          accessibilityLabel={`Theme: ${THEME_LABELS[value]}`}
+          accessibilityLabel={t("appearance.theme.a11y", { value: themeLabel(t, value) })}
         >
           <ThemeLeading themeValue={value} />
-          <Text style={styles.triggerText}>{THEME_LABELS[value]}</Text>
+          <Text style={styles.triggerText}>{themeLabel(t, value)}</Text>
           <ThemedChevronDown size={ICON_SIZE.sm} uniProps={mutedColorMapping} />
         </DropdownMenuTrigger>
         <DropdownMenuContent side="bottom" align="end" width={200}>
@@ -316,16 +335,17 @@ interface SyntaxRowProps {
 }
 
 function SyntaxRow({ value, onChange }: SyntaxRowProps) {
+  const { t } = useTranslation("settings");
   return (
     <View style={settingsStyles.row}>
       <View style={settingsStyles.rowContent}>
-        <Text style={settingsStyles.rowTitle}>Highlight theme</Text>
-        <Text style={settingsStyles.rowHint}>Colors for code, independent of the app theme</Text>
+        <Text style={settingsStyles.rowTitle}>{t("appearance.syntax.title")}</Text>
+        <Text style={settingsStyles.rowHint}>{t("appearance.syntax.hint")}</Text>
       </View>
       <DropdownMenu>
         <DropdownMenuTrigger
           style={dropdownTriggerStyle}
-          accessibilityLabel={`Highlight theme: ${syntaxLabelForId(value)}`}
+          accessibilityLabel={t("appearance.syntax.a11y", { value: syntaxLabelForId(value) })}
         >
           <Text style={styles.triggerText}>{syntaxLabelForId(value)}</Text>
           <ThemedChevronDown size={ICON_SIZE.sm} uniProps={mutedColorMapping} />
@@ -350,8 +370,12 @@ function SyntaxRow({ value, onChange }: SyntaxRowProps) {
 // ---------------------------------------------------------------------------
 
 export function AppearanceSection() {
+  const { t } = useTranslation("settings");
   const { settings, updateSettings } = useAppSettings();
   const showFontFamilyRows = !isNative;
+
+  const uiFontPlaceholder = resolveDefaultStackPlaceholder(t, DEFAULT_UI_FONT_STACK);
+  const monoFontPlaceholder = resolveDefaultStackPlaceholder(t, DEFAULT_MONO_FONT_STACK);
 
   const [uiFontDraft, setUiFontDraft] = useState(settings.uiFontFamily);
   const [monoFontDraft, setMonoFontDraft] = useState(settings.monoFontFamily);
@@ -455,19 +479,19 @@ export function AppearanceSection() {
 
   return (
     <View>
-      <SettingsSection title="Theme">
+      <SettingsSection title={t("appearance.theme.section")}>
         <View style={settingsStyles.card}>
           <ThemeRow value={settings.theme} onChange={handleThemeChange} />
         </View>
       </SettingsSection>
-      <SettingsSection title="Fonts">
+      <SettingsSection title={t("appearance.fonts.section")}>
         <View style={settingsStyles.card}>
           {showFontFamilyRows ? (
             <FontFamilyRow
-              title="Interface font"
-              hint="Used across the app. Leave empty for the system default"
-              accessibilityLabel="Interface font family"
-              placeholder={UI_FONT_PLACEHOLDER}
+              title={t("appearance.fonts.uiTitle")}
+              hint={t("appearance.fonts.uiHint")}
+              accessibilityLabel={t("appearance.fonts.uiA11y")}
+              placeholder={uiFontPlaceholder}
               value={settings.uiFontFamily}
               draft={uiFontDraft}
               withBorder={false}
@@ -476,8 +500,8 @@ export function AppearanceSection() {
             />
           ) : null}
           <FontSizeRow
-            title="Interface size"
-            accessibilityLabel="Interface font size"
+            title={t("appearance.fonts.uiSizeTitle")}
+            accessibilityLabel={t("appearance.fonts.uiSizeA11y")}
             draft={uiSizeDraft}
             withBorder={showFontFamilyRows}
             onChangeDraft={handleUiSizeChange}
@@ -485,10 +509,10 @@ export function AppearanceSection() {
           />
           {showFontFamilyRows ? (
             <FontFamilyRow
-              title="Code font"
-              hint="Used in code, diffs, and the terminal output. Leave empty for the system default"
-              accessibilityLabel="Code font family"
-              placeholder={MONO_FONT_PLACEHOLDER}
+              title={t("appearance.fonts.codeTitle")}
+              hint={t("appearance.fonts.codeHint")}
+              accessibilityLabel={t("appearance.fonts.codeA11y")}
+              placeholder={monoFontPlaceholder}
               value={settings.monoFontFamily}
               draft={monoFontDraft}
               withBorder
@@ -497,15 +521,15 @@ export function AppearanceSection() {
             />
           ) : null}
           <FontSizeRow
-            title="Code size"
-            accessibilityLabel="Code font size"
+            title={t("appearance.fonts.codeSizeTitle")}
+            accessibilityLabel={t("appearance.fonts.codeSizeA11y")}
             draft={codeSizeDraft}
             onChangeDraft={handleCodeSizeChange}
             onCommit={commitCodeSize}
           />
         </View>
       </SettingsSection>
-      <SettingsSection title="Syntax">
+      <SettingsSection title={t("appearance.syntax.section")}>
         <View style={settingsStyles.card}>
           <SyntaxRow value={settings.syntaxTheme} onChange={handleSyntaxThemeChange} />
         </View>

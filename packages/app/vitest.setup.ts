@@ -94,3 +94,10 @@ vi.mock("react-native-svg", () => {
 vi.mock("expo-linking", () => ({
   openURL: vi.fn().mockResolvedValue(undefined),
 }));
+
+vi.mock("expo-localization", () => ({
+  getLocales: () => [{ languageCode: "en", languageTag: "en-US" }],
+}));
+
+// Initialize i18n so components using useTranslation() resolve real (English) copy in tests.
+await import("./src/i18n");

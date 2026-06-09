@@ -86,7 +86,12 @@ import type {
   AgentProvider,
   AgentSessionConfig,
 } from "@getpaseo/protocol/agent-types";
-import type { MutableDaemonConfig, MutableDaemonConfigPatch } from "@getpaseo/protocol/messages";
+import type {
+  MutableDaemonConfig,
+  MutableDaemonConfigPatch,
+  SpeechDictationListModelsResponse,
+  SpeechDictationSetModelResponse,
+} from "@getpaseo/protocol/messages";
 import { isRelayClientWebSocketUrl } from "@getpaseo/protocol/daemon-endpoints";
 import {
   asUint8Array,
@@ -338,6 +343,8 @@ type GetProvidersSnapshotPayload = GetProvidersSnapshotResponseMessage["payload"
 type RefreshProvidersSnapshotPayload = RefreshProvidersSnapshotResponseMessage["payload"];
 type ProviderDiagnosticPayload = ProviderDiagnosticResponseMessage["payload"];
 type DaemonStatusPayload = DaemonGetStatusResponse["payload"];
+type DictationListModelsPayload = SpeechDictationListModelsResponse["payload"];
+type DictationSetModelPayload = SpeechDictationSetModelResponse["payload"];
 type DaemonPairingOfferPayload = DaemonGetPairingOfferResponse["payload"];
 type ReadProjectConfigPayload = Extract<
   SessionOutboundMessage,
@@ -3543,6 +3550,29 @@ export class DaemonClient {
       },
       responseType: "set_daemon_config_response",
       timeout: 10000,
+    });
+  }
+
+  async listDictationModels(requestId?: string): Promise<DictationListModelsPayload> {
+    return this.sendCorrelatedSessionRequest({
+      requestId,
+      message: {
+        type: "speech.dictation.list_models.request",
+      },
+      responseType: "speech.dictation.list_models.response",
+      timeout: 10000,
+    });
+  }
+
+  async setDictationModel(model: string, requestId?: string): Promise<DictationSetModelPayload> {
+    return this.sendCorrelatedSessionRequest({
+      requestId,
+      message: {
+        type: "speech.dictation.set_model.request",
+        model,
+      },
+      responseType: "speech.dictation.set_model.response",
+      timeout: 15000,
     });
   }
 

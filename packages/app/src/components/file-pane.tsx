@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, type ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import { useQuery } from "@tanstack/react-query";
 import type { FileReadResult } from "@getpaseo/client/internal/daemon-client";
 import Markdown, {
@@ -502,6 +503,7 @@ function FilePreviewBody({
   location,
   imagePreviewUri,
 }: FilePreviewBodyProps) {
+  const { t } = useTranslation("app");
   const { theme } = useUnistyles();
   const filePath = location.path;
   const markdownStyles = useMemo(() => createMarkdownStyles(theme), [theme]);
@@ -562,7 +564,7 @@ function FilePreviewBody({
     return (
       <View style={styles.centerState}>
         <ActivityIndicator size="small" />
-        <Text style={styles.loadingText}>Loading file…</Text>
+        <Text style={styles.loadingText}>{t("files.preview.loading")}</Text>
       </View>
     );
   }
@@ -570,7 +572,7 @@ function FilePreviewBody({
   if (!preview) {
     return (
       <View style={styles.centerState}>
-        <Text style={styles.emptyText}>No preview available</Text>
+        <Text style={styles.emptyText}>{t("files.preview.noPreview")}</Text>
       </View>
     );
   }
@@ -659,7 +661,7 @@ function FilePreviewBody({
       return (
         <View style={styles.centerState}>
           <ActivityIndicator size="small" />
-          <Text style={styles.loadingText}>Loading file…</Text>
+          <Text style={styles.loadingText}>{t("files.preview.loading")}</Text>
         </View>
       );
     }
@@ -689,7 +691,7 @@ function FilePreviewBody({
 
   return (
     <View style={styles.centerState}>
-      <Text style={styles.emptyText}>Binary preview unavailable</Text>
+      <Text style={styles.emptyText}>{t("files.preview.binaryUnavailable")}</Text>
       <Text style={styles.binaryMetaText}>{formatFileSize({ size: preview.size })}</Text>
     </View>
   );
@@ -704,6 +706,7 @@ export function FilePane({
   workspaceRoot: string;
   location: WorkspaceFileLocation;
 }) {
+  const { t } = useTranslation("app");
   const isMobile = useIsCompactFormFactor();
   const showDesktopWebScrollbar = isWeb && !isMobile;
 
@@ -726,7 +729,7 @@ export function FilePane({
     enabled: Boolean(client && readTarget),
     queryFn: async () => {
       if (!client || !readTarget) {
-        return { file: null as ExplorerFile | null, error: "Host is not connected" };
+        return { file: null as ExplorerFile | null, error: t("files.error.hostNotConnected") };
       }
       try {
         const file = await client.readFile(readTarget.cwd, readTarget.path);
@@ -740,7 +743,7 @@ export function FilePane({
         return {
           file: null,
           imageAttachment: null,
-          error: error instanceof Error ? error.message : "Failed to load file",
+          error: error instanceof Error ? error.message : t("files.error.loadFailed"),
         };
       }
     },

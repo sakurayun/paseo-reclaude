@@ -11,6 +11,7 @@ import {
   type ViewStyle,
 } from "react-native";
 import * as Haptics from "expo-haptics";
+import { useTranslation } from "react-i18next";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { slugify, validateBranchSlug, MAX_SLUG_LENGTH } from "@getpaseo/protocol/branch-slug";
 import { ProjectIconView } from "@/components/project-icon-view";
@@ -307,6 +308,7 @@ function getWorkspaceArchiveStatus(
 }
 
 export function PrBadge({ hint }: { hint: PrHint }) {
+  const { t } = useTranslation("workspaces");
   const [isHovered, setIsHovered] = useState(false);
 
   const handlePressIn = useCallback((event: GestureResponderEvent) => {
@@ -330,7 +332,7 @@ export function PrBadge({ hint }: { hint: PrHint }) {
   return (
     <Pressable
       accessibilityRole="link"
-      accessibilityLabel={`Pull request #${hint.number}`}
+      accessibilityLabel={t("branch.pullRequestLabel", { number: hint.number })}
       hitSlop={4}
       onPressIn={handlePressIn}
       onPress={handlePress}
@@ -572,6 +574,7 @@ function ProjectKebabMenu({
   onRemoveProject: () => void;
   removeProjectStatus: "idle" | "pending" | "success";
 }) {
+  const { t } = useTranslation("workspaces");
   const toast = useToast();
   const handleOpenProjectSettings = useCallback(() => {
     if (projectKey.trim().length === 0) return;
@@ -589,16 +592,16 @@ function ProjectKebabMenu({
       ?.window?.openNew?.({ pendingOpenProjectPath: trimmedPath })
       ?.catch((error) => {
         console.warn("[sidebar] openNew failed", error);
-        toast.error("Couldn't open a new window");
+        toast.error(t("errors.openNewWindowFailed"));
       });
-  }, [projectPath, toast]);
+  }, [projectPath, toast, t]);
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
         hitSlop={8}
         style={projectKebabStyle}
         accessibilityRole={platformIsWeb ? undefined : "button"}
-        accessibilityLabel="Project actions"
+        accessibilityLabel={t("menu.projectActions")}
         testID={`sidebar-project-kebab-${projectKey}`}
       >
         {renderKebabTriggerIcon}
@@ -610,7 +613,7 @@ function ProjectKebabMenu({
             leading={settingsLeadingIcon}
             onSelect={handleOpenProjectSettings}
           >
-            Open project settings
+            {t("menu.openProjectSettings")}
           </DropdownMenuItem>
         ) : null}
         {canOpenInNewWindow ? (
@@ -619,17 +622,17 @@ function ProjectKebabMenu({
             leading={openInNewWindowLeadingIcon}
             onSelect={handleOpenInNewWindow}
           >
-            Open in new window
+            {t("menu.openInNewWindow")}
           </DropdownMenuItem>
         ) : null}
         <DropdownMenuItem
           testID={`sidebar-project-menu-remove-${projectKey}`}
           leading={trash2LeadingIcon}
           status={removeProjectStatus}
-          pendingLabel="Removing..."
+          pendingLabel={t("menu.removingProject")}
           onSelect={onRemoveProject}
         >
-          Remove project
+          {t("menu.removeProject")}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
@@ -669,13 +672,14 @@ function WorkspaceRowRightGroup({
   onCopyPath?: () => void;
   onRename?: () => void;
 }) {
+  const { t } = useTranslation("workspaces");
   const showShortcut = showShortcutBadge && shortcutNumber !== null;
   const showKebab = Boolean(onArchive && (isHovered || isTouchPlatform));
   const showKebabInSlot = showKebab && !showShortcut;
   const shouldRenderActionSlot = Boolean(onArchive || workspace.diffStat);
   return (
     <>
-      {isCreating ? <Text style={styles.workspaceCreatingText}>Creating...</Text> : null}
+      {isCreating ? <Text style={styles.workspaceCreatingText}>{t("list.creating")}</Text> : null}
       {shouldRenderActionSlot ? (
         <SidebarWorkspaceTrailingActionSlot>
           <SidebarWorkspaceTrailingActionBase
@@ -733,6 +737,7 @@ function WorkspaceKebabMenu({
   archivePendingLabel?: string;
   archiveShortcutKeys?: ShortcutKey[][] | null;
 }) {
+  const { t } = useTranslation("workspaces");
   const archiveTrailing = useMemo(
     () => (archiveShortcutKeys ? <Shortcut chord={archiveShortcutKeys} /> : null),
     [archiveShortcutKeys],
@@ -743,7 +748,7 @@ function WorkspaceKebabMenu({
         hitSlop={8}
         style={workspaceKebabStyle}
         accessibilityRole={platformIsWeb ? undefined : "button"}
-        accessibilityLabel="Workspace actions"
+        accessibilityLabel={t("menu.workspaceActions")}
         testID={`sidebar-workspace-kebab-${workspaceKey}`}
       >
         {renderKebabTriggerIcon}
@@ -755,7 +760,7 @@ function WorkspaceKebabMenu({
             leading={copyLeadingIcon}
             onSelect={onCopyPath}
           >
-            Copy path
+            {t("menu.copyPath")}
           </DropdownMenuItem>
         ) : null}
         {onCopyBranchName ? (
@@ -764,7 +769,7 @@ function WorkspaceKebabMenu({
             leading={copyLeadingIcon}
             onSelect={onCopyBranchName}
           >
-            Copy branch name
+            {t("menu.copyBranchName")}
           </DropdownMenuItem>
         ) : null}
         {onRename ? (
@@ -773,7 +778,7 @@ function WorkspaceKebabMenu({
             leading={renameLeadingIcon}
             onSelect={onRename}
           >
-            Rename workspace
+            {t("menu.renameWorkspace")}
           </DropdownMenuItem>
         ) : null}
         {onMarkAsRead ? (
@@ -782,7 +787,7 @@ function WorkspaceKebabMenu({
             leading={markAsReadLeadingIcon}
             onSelect={onMarkAsRead}
           >
-            Mark as read
+            {t("menu.markAsRead")}
           </DropdownMenuItem>
         ) : null}
         <DropdownMenuItem
@@ -793,7 +798,7 @@ function WorkspaceKebabMenu({
           pendingLabel={archivePendingLabel}
           onSelect={onArchive}
         >
-          {archiveLabel ?? "Archive"}
+          {archiveLabel ?? t("menu.archive")}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
@@ -912,6 +917,7 @@ function NewWorktreeButton({
   testID: string;
   showShortcutHint?: boolean;
 }) {
+  const { t } = useTranslation("workspaces");
   const newWorktreeKeys = useShortcutKeys("new-worktree");
 
   const pressableStyle = useCallback(
@@ -940,7 +946,7 @@ function NewWorktreeButton({
             onPress={handlePress}
             disabled={loading}
             accessibilityRole={platformIsWeb ? undefined : "button"}
-            accessibilityLabel={`Create a new workspace for ${displayName}`}
+            accessibilityLabel={t("actions.createWorkspaceForProject", { name: displayName })}
             testID={testID}
           >
             {({ hovered, pressed }) =>
@@ -959,7 +965,7 @@ function NewWorktreeButton({
         </TooltipTrigger>
         <TooltipContent side="bottom" align="center" offset={8}>
           <View style={styles.projectActionTooltipRow}>
-            <Text style={styles.projectActionTooltipText}>New workspace</Text>
+            <Text style={styles.projectActionTooltipText}>{t("actions.newWorkspace")}</Text>
             {showShortcutHint && newWorktreeKeys ? (
               <Shortcut chord={newWorktreeKeys} style={styles.projectActionTooltipShortcut} />
             ) : null}
@@ -1481,6 +1487,7 @@ function WorkspaceRowWithMenu({
   canCopyBranchName: boolean;
   isCreating?: boolean;
 }) {
+  const { t } = useTranslation("workspaces");
   const toast = useToast();
   const archiveWorktree = useCheckoutGitActionsStore((state) => state.archiveWorktree);
   const queryClient = useQueryClient();
@@ -1508,17 +1515,21 @@ function WorkspaceRowWithMenu({
     });
   }, [selected, workspace]);
 
+  const { t: tGit } = useTranslation("git");
   const archiveWorktreeAfterConfirmation = useCallback(async () => {
     if (isArchiving) {
       return;
     }
 
-    const confirmed = await confirmRiskyWorktreeArchive({
-      worktreeName: workspace.name,
-      isDirty: workspace.archiveHasUncommittedChanges,
-      aheadOfOrigin: workspace.archiveUnpushedCommitCount,
-      diffStat: workspace.diffStat,
-    });
+    const confirmed = await confirmRiskyWorktreeArchive(
+      {
+        worktreeName: workspace.name,
+        isDirty: workspace.archiveHasUncommittedChanges,
+        aheadOfOrigin: workspace.archiveUnpushedCommitCount,
+        diffStat: workspace.diffStat,
+      },
+      tGit,
+    );
 
     if (!confirmed) {
       return;
@@ -1530,12 +1541,12 @@ function WorkspaceRowWithMenu({
         workspaceDirectory: workspace.workspaceDirectory,
       });
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Workspace path not available");
+      toast.error(error instanceof Error ? error.message : t("errors.workspacePathUnavailable"));
       return;
     }
 
     if (!archiveDirectory) {
-      toast.error("Workspace path not available");
+      toast.error(t("errors.workspacePathUnavailable"));
       return;
     }
 
@@ -1545,11 +1556,12 @@ function WorkspaceRowWithMenu({
       serverId: workspace.serverId,
       cwd: archiveDirectory,
       worktreePath: archiveDirectory,
+      t: tGit,
     }).catch((error) => {
-      const message = error instanceof Error ? error.message : "Failed to archive worktree";
+      const message = error instanceof Error ? error.message : t("errors.archiveWorktreeFailed");
       toast.error(message);
     });
-  }, [archiveWorktree, isArchiving, redirectAfterArchive, toast, workspace]);
+  }, [archiveWorktree, isArchiving, redirectAfterArchive, toast, workspace, t, tGit]);
 
   const handleArchiveWorktree = useCallback(() => {
     void archiveWorktreeAfterConfirmation();
@@ -1561,10 +1573,10 @@ function WorkspaceRowWithMenu({
     }
 
     const confirmed = await confirmDialog({
-      title: "Hide workspace?",
-      message: `Hide "${workspace.name}" from the sidebar?\n\nFiles on disk will not be changed.`,
-      confirmLabel: "Hide",
-      cancelLabel: "Cancel",
+      title: t("actions.hideWorkspaceTitle"),
+      message: t("actions.hideWorkspaceMessage", { name: workspace.name }),
+      confirmLabel: t("actions.hide"),
+      cancelLabel: t("actions.cancel"),
       destructive: true,
     });
     if (!confirmed) {
@@ -1573,7 +1585,7 @@ function WorkspaceRowWithMenu({
 
     const client = getHostRuntimeStore().getClient(workspace.serverId);
     if (!client) {
-      toast.error("Host is not connected");
+      toast.error(t("errors.hostNotConnected"));
       return;
     }
 
@@ -1585,11 +1597,11 @@ function WorkspaceRowWithMenu({
         afterHide: redirectAfterArchive,
       });
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to hide workspace");
+      toast.error(error instanceof Error ? error.message : t("errors.hideWorkspaceFailed"));
     } finally {
       setIsArchivingWorkspace(false);
     }
-  }, [isArchivingWorkspace, redirectAfterArchive, toast, workspace]);
+  }, [isArchivingWorkspace, redirectAfterArchive, toast, workspace, t]);
 
   const handleArchiveWorkspace = useCallback(() => {
     void hideWorkspaceAfterConfirmation();
@@ -1603,23 +1615,23 @@ function WorkspaceRowWithMenu({
         workspaceDirectory: workspace.workspaceDirectory,
       });
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Workspace path not available");
+      toast.error(error instanceof Error ? error.message : t("errors.workspacePathUnavailable"));
       return;
     }
     void Clipboard.setStringAsync(copyTargetDirectory);
-    toast.copied("Path copied");
-  }, [toast, workspace.workspaceDirectory, workspace.workspaceId]);
+    toast.copied(t("actions.pathCopied"));
+  }, [toast, workspace.workspaceDirectory, workspace.workspaceId, t]);
 
   const handleCopyBranchName = useCallback(() => {
     void Clipboard.setStringAsync(workspace.name);
-    toast.copied("Branch name copied");
-  }, [toast, workspace.name]);
+    toast.copied(t("actions.branchNameCopied"));
+  }, [toast, workspace.name, t]);
 
   const renameMutation = useMutation({
     mutationFn: async (branch: string) => {
       const client = getHostRuntimeStore().getClient(workspace.serverId);
       if (!client) {
-        throw new Error("Host is not connected");
+        throw new Error(t("errors.hostNotConnected"));
       }
       const targetCwd = requireWorkspaceExecutionDirectory({
         workspaceId: workspace.workspaceId,
@@ -1627,7 +1639,7 @@ function WorkspaceRowWithMenu({
       });
       const payload = await client.renameBranch({ cwd: targetCwd, branch });
       if (!payload.success || payload.error) {
-        throw new Error(payload.error?.message ?? "Failed to rename branch");
+        throw new Error(payload.error?.message ?? t("errors.renameBranchFailed"));
       }
       return { targetCwd };
     },
@@ -1654,11 +1666,14 @@ function WorkspaceRowWithMenu({
     [renameMutation],
   );
 
-  const validateRenameSlug = useCallback((value: string): string | null => {
-    const result = validateBranchSlug(slugify(value));
-    if (result.valid) return null;
-    return result.error ?? "Invalid branch name";
-  }, []);
+  const validateRenameSlug = useCallback(
+    (value: string): string | null => {
+      const result = validateBranchSlug(slugify(value));
+      if (result.valid) return null;
+      return result.error ?? t("errors.invalidBranchName");
+    },
+    [t],
+  );
 
   const archiveShortcutKeys = useShortcutKeys("archive-worktree");
   const { hasClearableAttention, clearAttention } = useClearWorkspaceAttention({
@@ -1667,9 +1682,9 @@ function WorkspaceRowWithMenu({
   });
   const handleMarkAsRead = useCallback(() => {
     void clearAttention().catch((error) => {
-      toast.error(error instanceof Error ? error.message : "Failed to mark workspace as read");
+      toast.error(error instanceof Error ? error.message : t("errors.markAsReadFailed"));
     });
-  }, [clearAttention, toast]);
+  }, [clearAttention, toast, t]);
 
   useKeyboardActionHandler({
     handlerId: `worktree-archive-${workspace.workspaceKey}`,
@@ -1700,9 +1715,9 @@ function WorkspaceRowWithMenu({
         isCreating={isCreating}
         dragHandleProps={dragHandleProps}
         menuController={null}
-        archiveLabel={isWorktree ? "Archive worktree" : "Hide from sidebar"}
+        archiveLabel={isWorktree ? t("branch.archiveWorktree") : t("actions.hideFromSidebar")}
         archiveStatus={getWorkspaceArchiveStatus(isWorktree, archiveStatus, isArchivingWorkspace)}
-        archivePendingLabel={isWorktree ? "Archiving..." : "Hiding..."}
+        archivePendingLabel={isWorktree ? t("branch.archiving") : t("actions.hiding")}
         onArchive={isWorktree ? handleArchiveWorktree : handleArchiveWorkspace}
         onCopyBranchName={canCopyBranchName ? handleCopyBranchName : undefined}
         onCopyPath={handleCopyPath}
@@ -1712,10 +1727,10 @@ function WorkspaceRowWithMenu({
       />
       <AdaptiveRenameModal
         visible={isRenameOpen}
-        title="Rename workspace"
+        title={t("menu.renameWorkspace")}
         initialValue={workspace.name}
-        placeholder="branch-name"
-        submitLabel="Rename"
+        placeholder={t("branch.branchNamePlaceholder")}
+        submitLabel={t("actions.rename")}
         validate={validateRenameSlug}
         maxLength={MAX_SLUG_LENGTH}
         onClose={handleCloseRename}
@@ -1751,6 +1766,7 @@ function NonGitProjectRowWithMenuContent({
   isDragging: boolean;
   dragHandleProps?: DraggableListDragHandleProps;
 }) {
+  const { t } = useTranslation("workspaces");
   const toast = useToast();
   const contextMenu = useContextMenu();
   const [isArchivingWorkspace, setIsArchivingWorkspace] = useState(false);
@@ -1769,10 +1785,10 @@ function NonGitProjectRowWithMenuContent({
 
     void (async () => {
       const confirmed = await confirmDialog({
-        title: "Hide workspace?",
-        message: `Hide "${workspace.name}" from the sidebar?\n\nFiles on disk will not be changed.`,
-        confirmLabel: "Hide",
-        cancelLabel: "Cancel",
+        title: t("actions.hideWorkspaceTitle"),
+        message: t("actions.hideWorkspaceMessage", { name: workspace.name }),
+        confirmLabel: t("actions.hide"),
+        cancelLabel: t("actions.cancel"),
         destructive: true,
       });
       if (!confirmed) {
@@ -1781,7 +1797,7 @@ function NonGitProjectRowWithMenuContent({
 
       const client = getHostRuntimeStore().getClient(workspace.serverId);
       if (!client) {
-        toast.error("Host is not connected");
+        toast.error(t("errors.hostNotConnected"));
         return;
       }
 
@@ -1794,13 +1810,13 @@ function NonGitProjectRowWithMenuContent({
             afterHide: redirectAfterArchive,
           });
         } catch (error) {
-          toast.error(error instanceof Error ? error.message : "Failed to hide workspace");
+          toast.error(error instanceof Error ? error.message : t("errors.hideWorkspaceFailed"));
         } finally {
           setIsArchivingWorkspace(false);
         }
       })();
     })();
-  }, [isArchivingWorkspace, redirectAfterArchive, toast, workspace]);
+  }, [isArchivingWorkspace, redirectAfterArchive, toast, workspace, t]);
 
   return (
     <>
@@ -1831,11 +1847,11 @@ function NonGitProjectRowWithMenuContent({
         <ContextMenuItem
           testID={`sidebar-workspace-context-${workspace.workspaceKey}-archive`}
           status={isArchivingWorkspace ? "pending" : "idle"}
-          pendingLabel="Hiding..."
+          pendingLabel={t("actions.hiding")}
           destructive
           onSelect={handleArchiveWorkspace}
         >
-          Hide from sidebar
+          {t("actions.hideFromSidebar")}
         </ContextMenuItem>
       </ContextMenuContent>
     </>
@@ -2211,6 +2227,7 @@ function ProjectBlock({
     [onWorkspaceReorder, project.projectKey],
   );
 
+  const { t } = useTranslation("workspaces");
   const toast = useToast();
   const [isRemovingProject, setIsRemovingProject] = useState(false);
 
@@ -2221,10 +2238,10 @@ function ProjectBlock({
 
     void (async () => {
       const confirmed = await confirmDialog({
-        title: "Remove project?",
-        message: `Remove "${displayName}" from the sidebar?\n\nFiles on disk will not be changed.`,
-        confirmLabel: "Remove",
-        cancelLabel: "Cancel",
+        title: t("actions.removeProjectTitle"),
+        message: t("actions.removeProjectMessage", { name: displayName }),
+        confirmLabel: t("actions.remove"),
+        cancelLabel: t("actions.cancel"),
         destructive: true,
       });
       if (!confirmed) {
@@ -2233,7 +2250,7 @@ function ProjectBlock({
 
       const client = getHostRuntimeStore().getClient(serverId);
       if (!client) {
-        toast.error("Host is not connected");
+        toast.error(t("errors.hostNotConnected"));
         return;
       }
 
@@ -2243,13 +2260,13 @@ function ProjectBlock({
         workspaces: project.workspaces,
       }).then((failures) => {
         if (failures.length > 0) {
-          toast.error("Failed to remove some workspaces");
+          toast.error(t("errors.removeSomeWorkspacesFailed"));
         }
         setIsRemovingProject(false);
         return;
       });
     })();
-  }, [isRemovingProject, serverId, displayName, toast, project.workspaces]);
+  }, [isRemovingProject, serverId, displayName, toast, project.workspaces, t]);
 
   const flattenedRowWorkspaceId =
     rowModel.kind === "workspace_link" ? rowModel.workspace.workspaceId : null;
@@ -2476,6 +2493,7 @@ function ProjectModeList({
 }: Omit<SidebarWorkspaceListProps, "groupMode" | "isRefreshing" | "onRefresh"> & {
   pathname: string;
 }) {
+  const { t } = useTranslation("workspaces");
   const [creatingWorkspaceIds, setCreatingWorkspaceIds] = useState<Set<string>>(() => new Set());
   const creatingWorkspaceTimeoutsRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(
     new Map(),
@@ -2688,10 +2706,10 @@ function ProjectModeList({
     <>
       {projects.length === 0 ? (
         <View style={styles.emptyContainer}>
-          <Text style={styles.emptyTitle}>No projects yet</Text>
-          <Text style={styles.emptyText}>Add a project to get started</Text>
+          <Text style={styles.emptyTitle}>{t("empty.title")}</Text>
+          <Text style={styles.emptyText}>{t("empty.description")}</Text>
           <Button variant="ghost" size="sm" leftIcon={Plus} onPress={onAddProject}>
-            Add project
+            {t("empty.addProject")}
           </Button>
         </View>
       ) : (

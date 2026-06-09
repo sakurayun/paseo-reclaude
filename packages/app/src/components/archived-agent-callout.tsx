@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { View, Text } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import Animated from "react-native-reanimated";
@@ -15,6 +16,7 @@ interface ArchivedAgentCalloutProps {
 }
 
 export function ArchivedAgentCallout({ serverId, agentId }: ArchivedAgentCalloutProps) {
+  const { t } = useTranslation("agents");
   const insets = useSafeAreaInsets();
   const client = useHostRuntimeClient(serverId);
   const isConnected = useHostRuntimeIsConnected(serverId);
@@ -43,14 +45,14 @@ export function ArchivedAgentCallout({ serverId, agentId }: ArchivedAgentCallout
       <View style={styles.inputAreaContainer}>
         <View style={styles.inputAreaContent}>
           <View style={styles.callout}>
-            <Text style={styles.calloutText}>This agent is archived</Text>
+            <Text style={styles.calloutText}>{t("archived.calloutText")}</Text>
             <Button
               size="sm"
               variant="secondary"
               onPress={handleUnarchive}
               disabled={!isConnected || isUnarchiving}
             >
-              Unarchive
+              {t("archived.unarchive")}
             </Button>
           </View>
         </View>

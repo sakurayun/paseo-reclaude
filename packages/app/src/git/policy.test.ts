@@ -1,7 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { CheckoutPrStatusSchema } from "@getpaseo/protocol/messages";
 
-import { buildGitActions, type BuildGitActionsInput } from "./policy";
+import i18n from "@/i18n";
+import { buildGitActions as buildGitActionsRaw, type BuildGitActionsInput } from "./policy";
+
+// Real English translator so label assertions read the en git catalog.
+const tGit = i18n.getFixedT("en", "git");
+function buildGitActions(input: BuildGitActionsInput) {
+  return buildGitActionsRaw(input, tGit);
+}
 
 function githubStatus(
   overrides: Partial<NonNullable<BuildGitActionsInput["pullRequestGithub"]>> = {},

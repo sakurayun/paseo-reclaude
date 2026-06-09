@@ -2,6 +2,7 @@ import type {
   SidebarProjectEntry,
   SidebarWorkspaceEntry,
 } from "@/hooks/use-sidebar-workspaces-list";
+import type { TFunction } from "i18next";
 import { buildStatusGroups } from "@/hooks/sidebar-status-view-model";
 import { isSidebarProjectFlattened } from "./sidebar-project-row-model";
 
@@ -55,9 +56,10 @@ export function buildStatusSidebarShortcutModel(input: {
   projectNamesByKey: Map<string, string>;
   collapsedStatusGroupKeys?: ReadonlySet<string>;
   shortcutLimit?: number;
+  t: TFunction<"agents">;
 }): SidebarShortcutModel {
   const maxShortcuts = Math.max(0, Math.floor(input.shortcutLimit ?? 9));
-  const groups = buildStatusGroups(input.workspaces, input.projectNamesByKey);
+  const groups = buildStatusGroups(input.workspaces, input.projectNamesByKey, input.t);
   const shortcutTargets: SidebarShortcutWorkspaceTarget[] = [];
   const shortcutIndexByWorkspaceKey = new Map<string, number>();
 

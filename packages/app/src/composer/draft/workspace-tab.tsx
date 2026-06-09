@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { Keyboard, ScrollView, Text, View } from "react-native";
+import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import ReanimatedAnimated from "react-native-reanimated";
 import { StyleSheet } from "react-native-unistyles";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -130,6 +132,7 @@ async function submitDraftCreateRequest(input: {
     effectiveThinkingOptionId: string | null;
     featureValues: Record<string, unknown> | undefined;
   };
+  t: TFunction<"composer">;
 }): Promise<{ agentId: string | null; result: AgentSnapshotPayload }> {
   const {
     attempt,
@@ -141,17 +144,18 @@ async function submitDraftCreateRequest(input: {
     workspaceExecutionAuthority,
     autoSubmitConfig,
     composerState,
+    t,
   } = input;
 
   invariant(workspaceDirectory, "Workspace directory is required");
   invariant(workspaceExecutionAuthority, "Workspace authority is required");
   if (!client) {
-    throw new Error("Host is not connected");
+    throw new Error(t("tabs.hostNotConnectedError"));
   }
 
   const provider = autoSubmitConfig?.provider ?? composerState.selectedProvider;
   if (!provider) {
-    throw new Error("Select a model");
+    throw new Error(t("tabs.selectModelError"));
   }
   const modeIdOverride = resolveDraftModeIdOverride({
     autoSubmitConfig,
@@ -199,8 +203,10 @@ function buildDraftAgentSnapshot(input: {
     selectedProvider: string | null;
     agentControls: { features?: Agent["features"] };
   };
+  t: TFunction<"composer">;
 }): Agent {
-  const { attempt, serverId, tabId, workspaceDirectory, autoSubmitConfig, composerState } = input;
+  const { attempt, serverId, tabId, workspaceDirectory, autoSubmitConfig, composerState, t } =
+    input;
   invariant(workspaceDirectory, "Workspace directory is required");
   const now = attempt.timestamp;
   const model = autoSubmitConfig?.model ?? (composerState.effectiveModelId || null);
@@ -213,7 +219,7 @@ function buildDraftAgentSnapshot(input: {
   });
   const provider = autoSubmitConfig?.provider ?? composerState.selectedProvider;
   if (!provider) {
-    throw new Error("Select a model");
+    throw new Error(t("tabs.selectModelError"));
   }
   return {
     serverId,
@@ -309,6 +315,7 @@ export function WorkspaceDraftAgentTab({
   onOpenWorkspaceFile,
   onOpenImportSheet,
 }: WorkspaceDraftAgentTabProps) {
+  const { t } = useTranslation("composer");
   const insets = useSafeAreaInsets();
   const client = useHostRuntimeClient(serverId);
   const isConnected = useHostRuntimeIsConnected(serverId);
@@ -429,6 +436,7 @@ export function WorkspaceDraftAgentTab({
     continueCreateFromAttempt,
   } = useDraftAgentCreateFlow<Agent, AgentSnapshotPayload>({
     draftId,
+    t,
     getPendingServerId: () => serverId,
     initialAttempt: initialCreateAttempt,
     allowEmptyText: allowsEmptyAutoSubmit,
@@ -456,6 +464,7 @@ export function WorkspaceDraftAgentTab({
         workspaceDirectory: draftWorkingDirectory,
         autoSubmitConfig,
         composerState,
+        t,
       }),
     createRequest: async ({ attempt, text, images, attachments }) =>
       submitDraftCreateRequest({
@@ -468,6 +477,7 @@ export function WorkspaceDraftAgentTab({
         workspaceExecutionAuthority,
         autoSubmitConfig,
         composerState,
+        t,
       }),
     onCreateSuccess: ({ result }) => {
       clearDraftInput("sent");

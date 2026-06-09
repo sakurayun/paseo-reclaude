@@ -72,10 +72,24 @@ export function applyMutableProviderConfigToOverrides(
 
   const nextOverrides: Record<string, ProviderOverride> = { ...baseOverrides };
   for (const [providerId, providerConfig] of Object.entries(mutableProviders ?? {})) {
-    nextOverrides[providerId] = {
-      ...nextOverrides[providerId],
-      ...ProviderOverrideSchema.strip().parse(providerConfig),
-    };
+    // `command: null` is the explicit "clear override" signal from clients (deepMerge can't
+    // delete keys). Strip it before validating — ProviderOverrideSchema rejects null — and
+    // drop any existing command so the provider falls back to its default binary.
+    if (providerConfig.command === null) {
+      const rest = { ...providerConfig };
+      delete rest.command;
+      const merged: ProviderOverride = {
+        ...nextOverrides[providerId],
+        ...ProviderOverrideSchema.strip().parse(rest),
+      };
+      delete merged.command;
+      nextOverrides[providerId] = merged;
+    } else {
+      nextOverrides[providerId] = {
+        ...nextOverrides[providerId],
+        ...ProviderOverrideSchema.strip().parse(providerConfig),
+      };
+    }
   }
 
   return nextOverrides;

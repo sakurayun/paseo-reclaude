@@ -1,6 +1,9 @@
+import i18n from "@/i18n";
+import { getActiveLocale } from "@/i18n/use-locale";
+
 /**
  * Format a date as a human-friendly relative time string
- * Examples: "just now", "5m ago", "2h ago", "3d ago", "Jan 15"
+ * Examples: "just now", "5m ago", "2h ago", "3d ago", "Jan 15" (localized via active locale)
  */
 export function formatTimeAgo(date: Date): string {
   const now = new Date();
@@ -11,27 +14,27 @@ export function formatTimeAgo(date: Date): string {
   const diffDay = Math.floor(diffHour / 24);
 
   if (diffSec < 10) {
-    return "just now";
+    return i18n.t("time:justNow");
   }
 
   if (diffMin < 1) {
-    return `${diffSec}s ago`;
+    return i18n.t("time:relative.secondsAgo", { value: diffSec });
   }
 
   if (diffHour < 1) {
-    return `${diffMin}m ago`;
+    return i18n.t("time:relative.minutesAgo", { value: diffMin });
   }
 
   if (diffDay < 1) {
-    return `${diffHour}h ago`;
+    return i18n.t("time:relative.hoursAgo", { value: diffHour });
   }
 
   if (diffDay < 7) {
-    return `${diffDay}d ago`;
+    return i18n.t("time:relative.daysAgo", { value: diffDay });
   }
 
-  // For older dates, show abbreviated month and day
-  const month = date.toLocaleDateString("en-US", { month: "short" });
+  // For older dates, show abbreviated month and day in the active locale.
+  const month = date.toLocaleDateString(getActiveLocale(), { month: "short" });
   const day = date.getDate();
   return `${month} ${day}`;
 }
@@ -44,22 +47,25 @@ function isSameLocalDay(a: Date, b: Date): boolean {
   );
 }
 
-// Cached Intl formatter. Explicitly carrying `hourCycle` from the resolved
-// options is what makes the runtime respect the user's OS-level 12h/24h
-// preference rather than the locale's default cycle.
-let cachedTimeFormatter: Intl.DateTimeFormat | null = null;
+// Cached Intl formatters, keyed by active locale so switching language rebuilds them.
+// Explicitly carrying `hourCycle` from the resolved options is what makes the runtime
+// respect the user's OS-level 12h/24h preference rather than the locale's default cycle.
+const timeFormatterCache = new Map<string, Intl.DateTimeFormat>();
 function getTimeFormatter(): Intl.DateTimeFormat {
-  if (cachedTimeFormatter) return cachedTimeFormatter;
-  const resolved = new Intl.DateTimeFormat(undefined, {
+  const locale = getActiveLocale();
+  const cached = timeFormatterCache.get(locale);
+  if (cached) return cached;
+  const resolved = new Intl.DateTimeFormat(locale, {
     hour: "numeric",
     minute: "2-digit",
   }).resolvedOptions();
-  cachedTimeFormatter = new Intl.DateTimeFormat(undefined, {
+  const formatter = new Intl.DateTimeFormat(locale, {
     hour: "numeric",
     minute: "2-digit",
     hourCycle: resolved.hourCycle,
   });
-  return cachedTimeFormatter;
+  timeFormatterCache.set(locale, formatter);
+  return formatter;
 }
 
 /**
@@ -78,11 +84,11 @@ export function formatMessageTimestamp(date: Date, now: Date = new Date()): stri
   const diffMs = now.getTime() - date.getTime();
   const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
   if (diffDays >= 0 && diffDays < 7) {
-    const weekday = date.toLocaleDateString(undefined, { weekday: "long" });
+    const weekday = date.toLocaleDateString(getActiveLocale(), { weekday: "long" });
     return `${weekday} ${time}`;
   }
 
-  const dateLabel = date.toLocaleDateString(undefined, {
+  const dateLabel = date.toLocaleDateString(getActiveLocale(), {
     day: "numeric",
     month: "short",
     year: "numeric",
@@ -97,19 +103,23 @@ export function formatMessageTimestamp(date: Date, now: Date = new Date()): stri
  */
 export function formatDuration(durationMs: number): string {
   if (!Number.isFinite(durationMs) || durationMs < 0) {
-    return "0s";
+    return i18n.t("time:duration.seconds", { value: 0 });
   }
   const totalSeconds = durationMs / 1000;
 
   if (totalSeconds < 60) {
-    return `${Math.floor(totalSeconds)}s`;
+    return i18n.t("time:duration.seconds", { value: Math.floor(totalSeconds) });
   }
   const totalMinutes = Math.floor(totalSeconds / 60);
   if (totalMinutes < 60) {
     const seconds = Math.floor(totalSeconds) % 60;
-    return seconds === 0 ? `${totalMinutes}m` : `${totalMinutes}m ${seconds}s`;
+    return seconds === 0
+      ? i18n.t("time:duration.minutes", { value: totalMinutes })
+      : i18n.t("time:duration.minutesSeconds", { minutes: totalMinutes, seconds });
   }
   const hours = Math.floor(totalMinutes / 60);
   const remMinutes = totalMinutes % 60;
-  return remMinutes === 0 ? `${hours}h` : `${hours}h ${remMinutes}m`;
+  return remMinutes === 0
+    ? i18n.t("time:duration.hours", { value: hours })
+    : i18n.t("time:duration.hoursMinutes", { hours, minutes: remMinutes });
 }

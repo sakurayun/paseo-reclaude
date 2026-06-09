@@ -1,4 +1,5 @@
 import { memo, useCallback, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { View, Text, Pressable, ScrollView, type PressableStateCallbackType } from "react-native";
 import { NestableScrollContainer } from "react-native-draggable-flatlist";
 import { navigateToWorkspace } from "@/stores/navigation-active-workspace-store";
@@ -108,9 +109,10 @@ export function SidebarStatusWorkspaceList({
   showShortcutBadges,
   onWorkspacePress,
 }: StatusWorkspaceListProps) {
+  const { t } = useTranslation("agents");
   const groups = useMemo(
-    () => buildStatusGroups(workspaces, projectNamesByKey),
-    [workspaces, projectNamesByKey],
+    () => buildStatusGroups(workspaces, projectNamesByKey, t),
+    [workspaces, projectNamesByKey, t],
   );
   const collapsedStatusGroupKeys = useSidebarCollapsedSectionsStore(
     (state) => state.collapsedStatusGroupKeys,
@@ -211,6 +213,7 @@ function StatusGroupList({
 }
 
 function StatusGroupHeader({ group, collapsed }: { group: StatusGroup; collapsed: boolean }) {
+  const { t: tw } = useTranslation("workspaces");
   const [isHovered, setIsHovered] = useState(false);
   const toggleStatusGroupCollapsed = useSidebarCollapsedSectionsStore(
     (state) => state.toggleStatusGroupCollapsed,
@@ -234,7 +237,7 @@ function StatusGroupHeader({ group, collapsed }: { group: StatusGroup; collapsed
     <View onPointerEnter={handleHoverIn} onPointerLeave={handleHoverOut}>
       <Pressable
         accessibilityRole={platformIsWeb ? undefined : "button"}
-        accessibilityLabel={`${group.label} status group`}
+        accessibilityLabel={tw("statusList.group.accessibilityLabel", { label: group.label })}
         accessibilityState={accessibilityState}
         style={rowStyle}
         onPress={handlePress}
@@ -348,6 +351,7 @@ function StatusWorkspaceRowWithMenu({
   showShortcutBadge: boolean;
   onPress: () => void;
 }) {
+  const { t: tw } = useTranslation("workspaces");
   const toast = useToast();
   const archiveWorktree = useCheckoutGitActionsStore((state) => state.archiveWorktree);
   const queryClient = useQueryClient();
@@ -378,14 +382,18 @@ function StatusWorkspaceRowWithMenu({
     });
   }, [selected, workspace]);
 
+  const { t: tGit } = useTranslation("git");
   const archiveWorktreeAfterConfirmation = useCallback(async () => {
     if (isArchiving) return;
-    const confirmed = await confirmRiskyWorktreeArchive({
-      worktreeName: workspace.name,
-      isDirty: workspace.archiveHasUncommittedChanges,
-      aheadOfOrigin: workspace.archiveUnpushedCommitCount,
-      diffStat: workspace.diffStat,
-    });
+    const confirmed = await confirmRiskyWorktreeArchive(
+      {
+        worktreeName: workspace.name,
+        isDirty: workspace.archiveHasUncommittedChanges,
+        aheadOfOrigin: workspace.archiveUnpushedCommitCount,
+        diffStat: workspace.diffStat,
+      },
+      tGit,
+    );
     if (!confirmed) return;
     let archiveDirectory: string;
     try {
@@ -394,7 +402,7 @@ function StatusWorkspaceRowWithMenu({
         workspaceDirectory: workspace.workspaceDirectory,
       });
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Workspace path not available");
+      toast.error(error instanceof Error ? error.message : tw("statusList.errors.pathUnavailable"));
       return;
     }
     redirectAfterArchive();
@@ -402,24 +410,25 @@ function StatusWorkspaceRowWithMenu({
       serverId: workspace.serverId,
       cwd: archiveDirectory,
       worktreePath: archiveDirectory,
+      t: tGit,
     }).catch((error) => {
-      toast.error(error instanceof Error ? error.message : "Failed to archive worktree");
+      toast.error(error instanceof Error ? error.message : tw("statusList.errors.archiveWorktree"));
     });
-  }, [archiveWorktree, isArchiving, redirectAfterArchive, toast, workspace]);
+  }, [archiveWorktree, isArchiving, redirectAfterArchive, toast, tGit, tw, workspace]);
 
   const hideWorkspaceAfterConfirmation = useCallback(async () => {
     if (isArchivingWorkspace) return;
     const confirmed = await confirmDialog({
-      title: "Hide workspace?",
-      message: `Hide "${workspace.name}" from the sidebar?\n\nFiles on disk will not be changed.`,
-      confirmLabel: "Hide",
-      cancelLabel: "Cancel",
+      title: tw("statusList.hide.title"),
+      message: tw("statusList.hide.message", { name: workspace.name }),
+      confirmLabel: tw("statusList.hide.confirm"),
+      cancelLabel: tw("statusList.hide.cancel"),
       destructive: true,
     });
     if (!confirmed) return;
     const client = getHostRuntimeStore().getClient(workspace.serverId);
     if (!client) {
-      toast.error("Host is not connected");
+      toast.error(tw("statusList.errors.hostNotConnected"));
       return;
     }
     setIsArchivingWorkspace(true);
@@ -430,11 +439,11 @@ function StatusWorkspaceRowWithMenu({
         afterHide: redirectAfterArchive,
       });
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to hide workspace");
+      toast.error(error instanceof Error ? error.message : tw("statusList.errors.hideWorkspace"));
     } finally {
       setIsArchivingWorkspace(false);
     }
-  }, [isArchivingWorkspace, redirectAfterArchive, toast, workspace]);
+  }, [isArchivingWorkspace, redirectAfterArchive, toast, tw, workspace]);
 
   const handleCopyPath = useCallback(() => {
     let copyTargetDirectory: string;
@@ -444,29 +453,29 @@ function StatusWorkspaceRowWithMenu({
         workspaceDirectory: workspace.workspaceDirectory,
       });
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Workspace path not available");
+      toast.error(error instanceof Error ? error.message : tw("statusList.errors.pathUnavailable"));
       return;
     }
     void Clipboard.setStringAsync(copyTargetDirectory);
-    toast.copied("Path copied");
-  }, [toast, workspace.workspaceDirectory, workspace.workspaceId]);
+    toast.copied(tw("statusList.toast.pathCopied"));
+  }, [toast, tw, workspace.workspaceDirectory, workspace.workspaceId]);
 
   const handleCopyBranchName = useCallback(() => {
     void Clipboard.setStringAsync(workspace.name);
-    toast.copied("Branch name copied");
-  }, [toast, workspace.name]);
+    toast.copied(tw("statusList.toast.branchNameCopied"));
+  }, [toast, tw, workspace.name]);
 
   const renameMutation = useMutation({
     mutationFn: async (branch: string) => {
       const client = getHostRuntimeStore().getClient(workspace.serverId);
-      if (!client) throw new Error("Host is not connected");
+      if (!client) throw new Error(tw("statusList.errors.hostNotConnected"));
       const targetCwd = requireWorkspaceExecutionDirectory({
         workspaceId: workspace.workspaceId,
         workspaceDirectory: workspace.workspaceDirectory,
       });
       const payload = await client.renameBranch({ cwd: targetCwd, branch });
       if (!payload.success || payload.error) {
-        throw new Error(payload.error?.message ?? "Failed to rename branch");
+        throw new Error(payload.error?.message ?? tw("statusList.errors.renameBranch"));
       }
       return { targetCwd };
     },
@@ -486,11 +495,14 @@ function StatusWorkspaceRowWithMenu({
     },
     [renameMutation],
   );
-  const validateRenameSlug = useCallback((value: string): string | null => {
-    const result = validateBranchSlug(slugify(value));
-    if (result.valid) return null;
-    return result.error ?? "Invalid branch name";
-  }, []);
+  const validateRenameSlug = useCallback(
+    (value: string): string | null => {
+      const result = validateBranchSlug(slugify(value));
+      if (result.valid) return null;
+      return result.error ?? tw("statusList.errors.invalidBranchName");
+    },
+    [tw],
+  );
 
   const archiveShortcutKeys = useShortcutKeys("archive-worktree");
   const { hasClearableAttention, clearAttention } = useClearWorkspaceAttention({
@@ -499,9 +511,9 @@ function StatusWorkspaceRowWithMenu({
   });
   const handleMarkAsRead = useCallback(() => {
     void clearAttention().catch((error) => {
-      toast.error(error instanceof Error ? error.message : "Failed to mark workspace as read");
+      toast.error(error instanceof Error ? error.message : tw("statusList.errors.markAsRead"));
     });
-  }, [clearAttention, toast]);
+  }, [clearAttention, toast, tw]);
 
   useKeyboardActionHandler({
     handlerId: `worktree-archive-${workspace.workspaceKey}`,
@@ -535,9 +547,13 @@ function StatusWorkspaceRowWithMenu({
         showShortcutBadge={showShortcutBadge}
         onPress={onPress}
         isArchiving={isArchiving}
-        archiveLabel={isWorktree ? "Archive worktree" : "Hide from sidebar"}
+        archiveLabel={
+          isWorktree ? tw("statusList.action.archiveWorktree") : tw("statusList.action.hide")
+        }
         archiveStatus={computedArchiveStatus}
-        archivePendingLabel={isWorktree ? "Archiving..." : "Hiding..."}
+        archivePendingLabel={
+          isWorktree ? tw("statusList.action.archiving") : tw("statusList.action.hiding")
+        }
         onArchive={isWorktree ? archiveWorktreeAfterConfirmation : hideWorkspaceAfterConfirmation}
         onCopyBranchName={workspace.projectKind === "git" ? handleCopyBranchName : undefined}
         onCopyPath={handleCopyPath}
@@ -547,10 +563,10 @@ function StatusWorkspaceRowWithMenu({
       />
       <AdaptiveRenameModal
         visible={isRenameOpen}
-        title="Rename workspace"
+        title={tw("statusList.rename.title")}
         initialValue={workspace.name}
-        placeholder="branch-name"
-        submitLabel="Rename"
+        placeholder={tw("statusList.rename.placeholder")}
+        submitLabel={tw("statusList.rename.submit")}
         validate={validateRenameSlug}
         maxLength={MAX_SLUG_LENGTH}
         onClose={handleCloseRename}
@@ -742,6 +758,7 @@ function StatusKebabMenu({
   archivePendingLabel?: string;
   archiveShortcutKeys?: ShortcutKey[][] | null;
 }) {
+  const { t: tw } = useTranslation("workspaces");
   const archiveTrailing = useMemo(
     () => (archiveShortcutKeys ? <Shortcut chord={archiveShortcutKeys} /> : null),
     [archiveShortcutKeys],
@@ -752,7 +769,7 @@ function StatusKebabMenu({
         hitSlop={8}
         style={kebabStyle}
         accessibilityRole={platformIsWeb ? undefined : "button"}
-        accessibilityLabel="Workspace actions"
+        accessibilityLabel={tw("statusList.menu.workspaceActions")}
         testID={`sidebar-workspace-kebab-${workspaceKey}`}
       >
         {({ hovered }: { hovered?: boolean }) => (
@@ -769,7 +786,7 @@ function StatusKebabMenu({
             leading={copyLeadingIcon}
             onSelect={onCopyPath}
           >
-            Copy path
+            {tw("statusList.menu.copyPath")}
           </DropdownMenuItem>
         ) : null}
         {onCopyBranchName ? (
@@ -778,7 +795,7 @@ function StatusKebabMenu({
             leading={copyLeadingIcon}
             onSelect={onCopyBranchName}
           >
-            Copy branch name
+            {tw("statusList.menu.copyBranchName")}
           </DropdownMenuItem>
         ) : null}
         {onRename ? (
@@ -787,7 +804,7 @@ function StatusKebabMenu({
             leading={renameLeadingIcon}
             onSelect={onRename}
           >
-            Rename workspace
+            {tw("statusList.menu.renameWorkspace")}
           </DropdownMenuItem>
         ) : null}
         {onMarkAsRead ? (
@@ -796,7 +813,7 @@ function StatusKebabMenu({
             leading={markAsReadLeadingIcon}
             onSelect={onMarkAsRead}
           >
-            Mark as read
+            {tw("statusList.menu.markAsRead")}
           </DropdownMenuItem>
         ) : null}
         <DropdownMenuItem
@@ -807,7 +824,7 @@ function StatusKebabMenu({
           pendingLabel={archivePendingLabel}
           onSelect={onArchive}
         >
-          {archiveLabel ?? "Archive"}
+          {archiveLabel ?? tw("statusList.menu.archive")}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

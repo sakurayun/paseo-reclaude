@@ -99,6 +99,10 @@ const MutableDaemonProviderConfigSchema = z
   .object({
     enabled: z.boolean().optional(),
     additionalModels: z.array(MutableDaemonProviderModelSchema).optional(),
+    // Custom launch command (argv); first element is the binary, e.g. ["reclaude"].
+    // `null` explicitly clears the override (deepMerge can't delete keys); the daemon
+    // drops the command on merge so the provider falls back to its default binary.
+    command: z.array(z.string().min(1)).min(1).nullable().optional(),
   })
   .passthrough();
 
@@ -1031,6 +1035,43 @@ export const SetDaemonConfigRequestMessageSchema = z.object({
   config: MutableDaemonConfigPatchSchema,
 });
 
+// --- Dictation STT model selection (speech.dictation.*) ---
+// COMPAT(dictationModelSelection): added in v0.1.92, drop the gate when floor >= v0.1.92.
+
+export const DictationModelInfoSchema = z.object({
+  id: z.string(),
+  description: z.string(),
+  /** Language tags the model can transcribe (BCP-47-ish), for display in the UI. */
+  languages: z.array(z.string()),
+  /** Whether the model's files are already present on disk. */
+  installed: z.boolean(),
+});
+
+export const DictationCurrentSelectionSchema = z.object({
+  provider: z.string(),
+  model: z.string(),
+  language: z.string(),
+});
+
+export const DictationReadinessSchema = z.object({
+  available: z.boolean(),
+  downloading: z.boolean(),
+  missingModelIds: z.array(z.string()),
+  reasonCode: z.string(),
+  message: z.string(),
+});
+
+export const SpeechDictationListModelsRequestSchema = z.object({
+  type: z.literal("speech.dictation.list_models.request"),
+  requestId: z.string(),
+});
+
+export const SpeechDictationSetModelRequestSchema = z.object({
+  type: z.literal("speech.dictation.set_model.request"),
+  model: z.string(),
+  requestId: z.string(),
+});
+
 export const ReadProjectConfigRequestMessageSchema = z.object({
   type: z.literal("read_project_config_request"),
   requestId: z.string(),
@@ -1868,6 +1909,8 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   DaemonGetPairingOfferRequestSchema,
   GetDaemonConfigRequestMessageSchema,
   SetDaemonConfigRequestMessageSchema,
+  SpeechDictationListModelsRequestSchema,
+  SpeechDictationSetModelRequestSchema,
   ReadProjectConfigRequestMessageSchema,
   WriteProjectConfigRequestMessageSchema,
   DictationStreamStartMessageSchema,
@@ -2142,6 +2185,8 @@ export const ServerInfoStatusPayloadSchema = z
         rewind: z.boolean().optional(),
         // COMPAT(checkoutRefresh): added in v0.1.86, remove gate after 2026-11-29.
         checkoutRefresh: z.boolean().optional(),
+        // COMPAT(dictationModelSelection): added in v0.1.92, remove gate after 2026-12-09.
+        dictationModelSelection: z.boolean().optional(),
       })
       .optional(),
   })
@@ -2752,6 +2797,33 @@ export const GetDaemonConfigResponseMessageSchema = z.object({
     .object({
       requestId: z.string(),
       config: MutableDaemonConfigSchema,
+    })
+    .passthrough(),
+});
+
+export const SpeechDictationListModelsResponseSchema = z.object({
+  type: z.literal("speech.dictation.list_models.response"),
+  payload: z
+    .object({
+      requestId: z.string(),
+      models: z.array(DictationModelInfoSchema),
+      current: DictationCurrentSelectionSchema,
+      readiness: DictationReadinessSchema,
+      error: z.string().nullable().optional(),
+    })
+    .passthrough(),
+});
+
+export const SpeechDictationSetModelResponseSchema = z.object({
+  type: z.literal("speech.dictation.set_model.response"),
+  payload: z
+    .object({
+      requestId: z.string(),
+      accepted: z.boolean(),
+      models: z.array(DictationModelInfoSchema),
+      current: DictationCurrentSelectionSchema,
+      readiness: DictationReadinessSchema,
+      error: z.string().nullable().optional(),
     })
     .passthrough(),
 });
@@ -3709,6 +3781,8 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   DictationStreamPartialMessageSchema,
   DictationStreamFinalMessageSchema,
   DictationStreamErrorMessageSchema,
+  SpeechDictationListModelsResponseSchema,
+  SpeechDictationSetModelResponseSchema,
   StatusMessageSchema,
   PongMessageSchema,
   RpcErrorMessageSchema,
@@ -3838,6 +3912,17 @@ export type ServerCapabilityState = z.infer<typeof ServerCapabilityStateSchema>;
 export type ServerVoiceCapabilities = z.infer<typeof ServerVoiceCapabilitiesSchema>;
 export type ServerCapabilities = z.infer<typeof ServerCapabilitiesSchema>;
 export type ServerInfoStatusPayload = z.infer<typeof ServerInfoStatusPayloadSchema>;
+export type DictationModelInfo = z.infer<typeof DictationModelInfoSchema>;
+export type DictationCurrentSelection = z.infer<typeof DictationCurrentSelectionSchema>;
+export type DictationReadiness = z.infer<typeof DictationReadinessSchema>;
+export type SpeechDictationListModelsRequest = z.infer<
+  typeof SpeechDictationListModelsRequestSchema
+>;
+export type SpeechDictationSetModelRequest = z.infer<typeof SpeechDictationSetModelRequestSchema>;
+export type SpeechDictationListModelsResponse = z.infer<
+  typeof SpeechDictationListModelsResponseSchema
+>;
+export type SpeechDictationSetModelResponse = z.infer<typeof SpeechDictationSetModelResponseSchema>;
 export type RpcErrorMessage = z.infer<typeof RpcErrorMessageSchema>;
 export type ArtifactMessage = z.infer<typeof ArtifactMessageSchema>;
 export type AgentUpdateMessage = z.infer<typeof AgentUpdateMessageSchema>;

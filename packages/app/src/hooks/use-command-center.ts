@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { ParseKeys, TFunction } from "i18next";
 import type { TextInput } from "react-native";
 import { router, usePathname, type Href } from "expo-router";
 import { useKeyboardShortcutsStore } from "@/stores/keyboard-shortcuts-store";
@@ -26,10 +27,10 @@ const EMPTY_AGENTS: AggregatedAgent[] = [];
 const EMPTY_ACTION_ITEMS: CommandCenterActionItem[] = [];
 const EMPTY_COMMAND_CENTER_ITEMS: CommandCenterItem[] = [];
 
-function isMatch(agent: AggregatedAgent, query: string): boolean {
+function isMatch(agent: AggregatedAgent, query: string, fallbackTitle: string): boolean {
   if (!query) return true;
   const q = query.toLowerCase();
-  const title = (agent.title ?? "New agent").toLowerCase();
+  const title = (agent.title ?? fallbackTitle).toLowerCase();
   const cwd = agent.cwd.toLowerCase();
   return title.includes(q) || cwd.includes(q);
 }
@@ -52,7 +53,7 @@ function sortAgents(left: AggregatedAgent, right: AggregatedAgent): number {
 
 interface CommandCenterActionDefinition {
   id: string;
-  title: string;
+  titleKey: ParseKeys<"shortcuts">;
   icon?: "plus" | "settings" | "home";
   actionId?: string;
   keywords: string[];
@@ -62,7 +63,7 @@ interface CommandCenterActionDefinition {
 const COMMAND_CENTER_ACTIONS: readonly CommandCenterActionDefinition[] = [
   {
     id: "new-agent",
-    title: "Open project",
+    titleKey: "commandCenter.actions.openProject",
     icon: "plus",
     actionId: "new-agent",
     keywords: ["open", "project", "folder", "workspace", "repo"],
@@ -70,24 +71,28 @@ const COMMAND_CENTER_ACTIONS: readonly CommandCenterActionDefinition[] = [
   },
   {
     id: "home",
-    title: "Home",
+    titleKey: "commandCenter.actions.home",
     icon: "home",
     keywords: ["home", "start", "import", "session", "pair", "device", "providers"],
     routeKind: "home",
   },
   {
     id: "settings",
-    title: "Settings",
+    titleKey: "commandCenter.actions.settings",
     icon: "settings",
     keywords: ["settings", "preferences", "config", "configuration"],
     routeKind: "settings",
   },
 ];
 
-function matchesActionQuery(query: string, action: CommandCenterActionDefinition): boolean {
+function matchesActionQuery(
+  query: string,
+  action: CommandCenterActionDefinition,
+  title: string,
+): boolean {
   const normalized = query.trim().toLowerCase();
   if (!normalized) return true;
-  if (action.title.toLowerCase().includes(normalized)) {
+  if (title.toLowerCase().includes(normalized)) {
     return true;
   }
   return action.keywords.some((keyword) => keyword.includes(normalized));
@@ -96,7 +101,7 @@ function matchesActionQuery(query: string, action: CommandCenterActionDefinition
 export interface CommandCenterActionItem {
   kind: "action";
   id: string;
-  title: string;
+  titleKey: ParseKeys<"shortcuts">;
   icon?: "plus" | "settings" | "home";
   route?: Href;
   shortcutKeys?: ShortcutKey[][];
@@ -128,7 +133,7 @@ function resolveActionShortcutKeys(
   return defaultKeys ? [defaultKeys] : undefined;
 }
 
-export function useCommandCenter() {
+export function useCommandCenter(t: TFunction<"shortcuts">) {
   const pathname = usePathname();
   const routeActiveServerId = useActiveServerId();
   const { overrides } = useKeyboardShortcutOverrides();
@@ -154,10 +159,11 @@ export function useCommandCenter() {
     if (!open || agents.length === 0) {
       return EMPTY_AGENTS;
     }
-    const filtered = agents.filter((agent) => isMatch(agent, query));
+    const fallbackTitle = t("commandCenter.agent.untitled");
+    const filtered = agents.filter((agent) => isMatch(agent, query, fallbackTitle));
     filtered.sort(sortAgents);
     return filtered;
-  }, [agents, open, query]);
+  }, [agents, open, query, t]);
 
   const settingsRoute = useMemo<Href>(() => {
     return buildSettingsRoute();
@@ -174,7 +180,7 @@ export function useCommandCenter() {
     }
     return COMMAND_CENTER_ACTIONS.filter((action) => {
       if (action.routeKind === "home" && !homeRoute) return false;
-      return matchesActionQuery(query, action);
+      return matchesActionQuery(query, action, t(action.titleKey));
     }).map<CommandCenterActionItem>((action) => {
       let route: Href | undefined;
       if (action.routeKind === "settings") route = settingsRoute;
@@ -182,13 +188,13 @@ export function useCommandCenter() {
       return {
         kind: "action",
         id: action.id,
-        title: action.title,
+        titleKey: action.titleKey,
         icon: action.icon,
         route,
         shortcutKeys: resolveActionShortcutKeys(action.actionId, overrides),
       };
     });
-  }, [open, query, settingsRoute, homeRoute, overrides]);
+  }, [open, query, settingsRoute, homeRoute, overrides, t]);
 
   const items = useMemo(() => {
     if (!open) {

@@ -1,3 +1,4 @@
+import type { TFunction } from "i18next";
 import type { GitHubSearchItem } from "@getpaseo/protocol/messages";
 import type {
   AttachmentMetadata,
@@ -244,6 +245,7 @@ export interface SendQueuedComposerMessageNowInput {
   messageId: string;
   queue: QueueWriter;
   submitMessage: (input: { text: string; attachments: ComposerAttachment[] }) => Promise<void>;
+  t: TFunction<"composer">;
 }
 
 export type SendQueuedComposerMessageNowResult =
@@ -275,7 +277,7 @@ export async function sendQueuedComposerMessageNow(
     });
     return {
       status: "failed",
-      errorMessage: error instanceof Error ? error.message : "Failed to send message",
+      errorMessage: error instanceof Error ? error.message : input.t("flow.sendMessageFailedError"),
     };
   }
 }

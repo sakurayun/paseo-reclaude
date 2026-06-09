@@ -49,6 +49,8 @@ import {
 import { SidebarCalloutProvider } from "@/contexts/sidebar-callout-context";
 import { ToastProvider } from "@/contexts/toast-context";
 import { VoiceProvider } from "@/contexts/voice-context";
+import i18n, { changeAppLanguage } from "@/i18n";
+import { I18nextProvider } from "react-i18next";
 import { startDaemonIfGateAllows, startHostRuntimeBootstrap } from "@/app/host-runtime-bootstrap";
 import { shouldUseDesktopDaemon } from "@/desktop/daemon/desktop-daemon";
 import { listenToDesktopEvent } from "@/desktop/electron/events";
@@ -637,6 +639,12 @@ function ProvidersWrapper({ children }: { children: ReactNode }) {
     }
   }, [settingsLoading, settings.theme]);
 
+  // Apply language setting on mount and when it changes ("auto" follows device locale).
+  useEffect(() => {
+    if (settingsLoading) return;
+    void changeAppLanguage(settings.language);
+  }, [settingsLoading, settings.language]);
+
   // Apply font / size / syntax appearance settings on mount and when they change.
   // Sibling to the theme effect above; order is irrelevant because both patch all
   // six registered theme keys, so the active key is always current.
@@ -660,11 +668,13 @@ function ProvidersWrapper({ children }: { children: ReactNode }) {
 
   return (
     <VoiceProvider>
-      <DesktopWindowControlsSync enabled={!settingsLoading} />
-      <OfferLinkListener upsertDaemonFromOfferUrl={upsertConnectionFromOfferUrl} />
-      <HostSessionManager />
-      <FaviconStatusSync />
-      {children}
+      <I18nextProvider i18n={i18n}>
+        <DesktopWindowControlsSync enabled={!settingsLoading} />
+        <OfferLinkListener upsertDaemonFromOfferUrl={upsertConnectionFromOfferUrl} />
+        <HostSessionManager />
+        <FaviconStatusSync />
+        {children}
+      </I18nextProvider>
     </VoiceProvider>
   );
 }

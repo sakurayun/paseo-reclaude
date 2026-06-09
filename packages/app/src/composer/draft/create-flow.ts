@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useReducer } from "react";
+import type { TFunction } from "i18next";
 import type { ComposerAttachment } from "@/attachments/types";
 import { splitComposerAttachmentsForSubmit } from "@/composer/attachments/submit";
 import { useCreateFlowStore } from "@/stores/create-flow-store";
@@ -80,6 +81,7 @@ interface CreateRequestContext {
 
 interface UseDraftAgentCreateFlowOptions<TDraftAgent, TCreateResult> {
   draftId: string;
+  t: TFunction<"composer">;
   getPendingServerId: () => string | null;
   initialAttempt?: CreateAttempt | null;
   allowEmptyText?: boolean;
@@ -94,6 +96,7 @@ interface UseDraftAgentCreateFlowOptions<TDraftAgent, TCreateResult> {
 
 export function useDraftAgentCreateFlow<TDraftAgent, TCreateResult>({
   draftId,
+  t,
   getPendingServerId,
   initialAttempt = null,
   allowEmptyText = false,
@@ -163,7 +166,7 @@ export function useDraftAgentCreateFlow<TDraftAgent, TCreateResult>({
     async ({ attempt, cwd }: { attempt: CreateAttempt; cwd: string }) => {
       const pendingServerId = getPendingServerId();
       if (!pendingServerId) {
-        const error = new Error("No host selected");
+        const error = new Error(t("flow.noHostSelectedError"));
         dispatch({ type: "DRAFT_SET_ERROR", message: error.message });
         throw error;
       }
@@ -204,7 +207,8 @@ export function useDraftAgentCreateFlow<TDraftAgent, TCreateResult>({
 
         await onCreateSuccess({ result: createResult.result, attempt });
       } catch (error) {
-        const resolved = error instanceof Error ? error : new Error("Failed to create agent");
+        const resolved =
+          error instanceof Error ? error : new Error(t("flow.createAgentFailedError"));
         dispatch({ type: "CREATE_FAILED", message: resolved.message });
         markPendingCreateLifecycle({ draftId, lifecycle: "abandoned" });
         clearPendingCreateAttempt({ draftId });
@@ -222,6 +226,7 @@ export function useDraftAgentCreateFlow<TDraftAgent, TCreateResult>({
       onBeforeSubmit,
       onCreateError,
       onCreateSuccess,
+      t,
       updatePendingAgentId,
     ],
   );
@@ -238,7 +243,7 @@ export function useDraftAgentCreateFlow<TDraftAgent, TCreateResult>({
 
       const trimmedPrompt = text.trim();
       if (!trimmedPrompt && !allowEmptyText) {
-        const error = new Error("Initial prompt is required");
+        const error = new Error(t("flow.initialPromptRequiredError"));
         dispatch({ type: "DRAFT_SET_ERROR", message: error.message });
         throw error;
       }
@@ -256,7 +261,7 @@ export function useDraftAgentCreateFlow<TDraftAgent, TCreateResult>({
 
       const pendingServerId = getPendingServerId();
       if (!pendingServerId) {
-        const error = new Error("No host selected");
+        const error = new Error(t("flow.noHostSelectedError"));
         dispatch({ type: "DRAFT_SET_ERROR", message: error.message });
         throw error;
       }
@@ -294,6 +299,7 @@ export function useDraftAgentCreateFlow<TDraftAgent, TCreateResult>({
       onCreateStart,
       runCreateAttempt,
       setPendingCreateAttempt,
+      t,
       validateBeforeSubmit,
     ],
   );

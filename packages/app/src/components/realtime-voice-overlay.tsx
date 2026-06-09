@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { useTranslation } from "react-i18next";
 import { ActivityIndicator, Pressable, View } from "react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { Mic, MicOff, Square } from "lucide-react-native";
@@ -22,6 +23,7 @@ export function RealtimeVoiceOverlay({
   onToggleMute,
   onStop,
 }: RealtimeVoiceOverlayProps) {
+  const { t } = useTranslation("voice");
   const { theme } = useUnistyles();
   const { volume, isSpeaking } = useVoiceTelemetry();
   const muteButtonStyle = useMemo(
@@ -53,7 +55,9 @@ export function RealtimeVoiceOverlay({
           onPress={onToggleMute}
           disabled={isSwitching}
           accessibilityRole="button"
-          accessibilityLabel={isMuted ? "Unmute realtime voice" : "Mute realtime voice"}
+          accessibilityLabel={
+            isMuted ? t("overlay.unmuteAccessibilityLabel") : t("overlay.muteAccessibilityLabel")
+          }
           style={muteButtonStyle}
         >
           {isMuted ? (
@@ -67,7 +71,7 @@ export function RealtimeVoiceOverlay({
           onPress={onStop}
           disabled={isSwitching}
           accessibilityRole="button"
-          accessibilityLabel="Stop realtime voice and interrupt turn"
+          accessibilityLabel={t("overlay.stopAccessibilityLabel")}
           style={stopButtonStyle}
         >
           {isSwitching ? (

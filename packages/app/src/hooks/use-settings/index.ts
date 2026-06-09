@@ -143,6 +143,9 @@ export function useSettings(): UseSettingsReturn {
       if (updates.theme !== undefined) {
         appUpdates.theme = updates.theme;
       }
+      if (updates.language !== undefined) {
+        appUpdates.language = updates.language;
+      }
       if (updates.sendBehavior !== undefined) {
         appUpdates.sendBehavior = updates.sendBehavior;
       }

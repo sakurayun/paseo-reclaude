@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import {
@@ -35,6 +36,7 @@ function activityPressableStyle({ hovered }: { hovered?: boolean }) {
 
 export function PrPane({ data }: { data: PrPaneData }) {
   const { theme } = useUnistyles();
+  const { t } = useTranslation("git");
   const [checksOpen, setChecksOpen] = useState(true);
   const [reviewsOpen, setReviewsOpen] = useState(true);
 
@@ -66,7 +68,7 @@ export function PrPane({ data }: { data: PrPaneData }) {
 
   const stateColor = getStateColor(data.state, theme);
   const StateIcon = getStateIcon(data.state);
-  const stateLabel = getStateLabel(data.state);
+  const stateLabel = getStateLabel(data.state, t);
   const stateLabelStyle = useMemo(() => [styles.stateLabel, { color: stateColor }], [stateColor]);
   const keyedActivity = useMemo(
     () => data.activity.map((item, idx) => ({ key: `${item.author}-${item.kind}-${idx}`, item })),
@@ -117,7 +119,7 @@ export function PrPane({ data }: { data: PrPaneData }) {
       <View style={styles.divider} />
 
       <Section
-        title="Checks"
+        title={t("prPane.section.checks")}
         open={checksOpen}
         onToggle={handleToggleChecks}
         summary={
@@ -151,7 +153,7 @@ export function PrPane({ data }: { data: PrPaneData }) {
       <View style={styles.divider} />
 
       <Section
-        title="Reviews"
+        title={t("prPane.section.reviews")}
         open={reviewsOpen}
         onToggle={handleToggleReviews}
         summary={
@@ -266,7 +268,8 @@ function CheckStatusIcon({ status }: { status: CheckStatus }) {
 }
 
 function ActivityRow({ item }: { item: PrPaneActivity }) {
-  const verb = getActivityVerb(item);
+  const { t } = useTranslation("git");
+  const verb = getActivityVerb(item, t);
   const handlePress = useCallback(() => {
     void openExternalUrl(item.url);
   }, [item.url]);

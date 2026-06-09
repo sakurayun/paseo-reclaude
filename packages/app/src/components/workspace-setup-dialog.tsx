@@ -1,4 +1,6 @@
+import type { TFunction } from "i18next";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Image, Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { createNameId } from "mnemonic-id";
@@ -96,8 +98,13 @@ async function callWorkspaceCreation({
   return connectedClient.openProject(input.cwd);
 }
 
-function failureMessageForCreationMethod(method: "create_worktree" | "open_project") {
-  return method === "create_worktree" ? "Failed to create worktree" : "Failed to open project";
+function failureMessageForCreationMethod(
+  method: "create_worktree" | "open_project",
+  t: TFunction<"workspaces">,
+) {
+  return method === "create_worktree"
+    ? t("setup.error.createWorktreeFailed")
+    : t("setup.error.openProjectFailed");
 }
 
 function buildCreateAgentOptions({
@@ -140,6 +147,7 @@ function buildCreateAgentOptions({
 }
 
 export function WorkspaceSetupDialog() {
+  const { t } = useTranslation("workspaces");
   const toast = useToast();
   const pendingWorkspaceSetup = useWorkspaceSetupStore((state) => state.pendingWorkspaceSetup);
   const clearWorkspaceSetup = useWorkspaceSetupStore((state) => state.clearWorkspaceSetup);
@@ -218,15 +226,15 @@ export function WorkspaceSetupDialog() {
 
   const withConnectedClient = useCallback(() => {
     if (!client || !isConnected) {
-      throw new Error("Host is not connected");
+      throw new Error(t("setup.error.hostNotConnected"));
     }
     return client;
-  }, [client, isConnected]);
+  }, [client, isConnected, t]);
 
   const ensureWorkspace = useCallback(
     async (input: { cwd: string; attachments: MessagePayload["attachments"] }) => {
       if (!pendingWorkspaceSetup) {
-        throw new Error("No workspace setup is pending");
+        throw new Error(t("setup.error.noPendingSetup"));
       }
 
       if (createdWorkspace) {
@@ -242,7 +250,7 @@ export function WorkspaceSetupDialog() {
 
       if (payload.error || !payload.workspace) {
         throw new Error(
-          payload.error ?? failureMessageForCreationMethod(pendingWorkspaceSetup.creationMethod),
+          payload.error ?? failureMessageForCreationMethod(pendingWorkspaceSetup.creationMethod, t),
         );
       }
 
@@ -260,6 +268,7 @@ export function WorkspaceSetupDialog() {
       pendingWorkspaceSetup,
       setHasHydratedWorkspaces,
       withConnectedClient,
+      t,
     ],
   );
 
@@ -284,10 +293,10 @@ export function WorkspaceSetupDialog() {
         const ensuredWorkspace = await ensureWorkspace({ cwd, attachments });
         const connectedClient = withConnectedClient();
         if (!composerState) {
-          throw new Error("Workspace setup composer state is required");
+          throw new Error(t("setup.error.composerStateRequired"));
         }
         if (!composerState.selectedProvider) {
-          throw new Error("Select a model");
+          throw new Error(t("setup.error.selectModel"));
         }
 
         const wirePayload = splitComposerAttachmentsForSubmit(attachments);
@@ -336,6 +345,7 @@ export function WorkspaceSetupDialog() {
       ensureWorkspace,
       toast,
       withConnectedClient,
+      t,
     ],
   );
 
@@ -392,8 +402,8 @@ export function WorkspaceSetupDialog() {
   );
 
   const sheetHeader = useMemo<SheetHeader>(
-    () => ({ title: "Create workspace", subtitle: subtitleContent }),
-    [subtitleContent],
+    () => ({ title: t("setup.title"), subtitle: subtitleContent }),
+    [subtitleContent, t],
   );
 
   if (!pendingWorkspaceSetup || !sourceDirectory) {

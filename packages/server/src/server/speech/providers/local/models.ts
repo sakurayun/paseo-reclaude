@@ -1,20 +1,24 @@
 import { ensureSherpaOnnxModels, getSherpaOnnxModelDir } from "./sherpa/model-downloader.js";
 import {
+  DEFAULT_CHINESE_LOCAL_STT_MODEL,
   DEFAULT_LOCAL_STT_MODEL,
   DEFAULT_LOCAL_TTS_MODEL,
   LocalSttModelIdSchema,
   LocalTtsModelIdSchema,
   listSherpaOnnxModels,
+  resolveDefaultLocalSttModel,
   type LocalSpeechModelId,
   type LocalSttModelId,
   type LocalTtsModelId,
 } from "./sherpa/model-catalog.js";
 
 export {
+  DEFAULT_CHINESE_LOCAL_STT_MODEL,
   DEFAULT_LOCAL_STT_MODEL,
   DEFAULT_LOCAL_TTS_MODEL,
   LocalSttModelIdSchema,
   LocalTtsModelIdSchema,
+  resolveDefaultLocalSttModel,
   type LocalSpeechModelId,
   type LocalSttModelId,
   type LocalTtsModelId,

@@ -1,5 +1,6 @@
 import { useCallback, useMemo } from "react";
 import { Pressable, Text, View, type PressableStateCallbackType } from "react-native";
+import { useTranslation } from "react-i18next";
 import { router } from "expo-router";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { ChevronRight } from "lucide-react-native";
@@ -16,6 +17,7 @@ interface ProjectsScreenProps {
 }
 
 export default function ProjectsScreen({ view }: ProjectsScreenProps) {
+  const { t } = useTranslation("workspaces");
   const { projects, hostErrors, isLoading } = useProjects();
   const selectedProjectKey = view.kind === "project" ? view.projectKey : null;
   const iconTargets = useMemo(
@@ -49,7 +51,7 @@ export default function ProjectsScreen({ view }: ProjectsScreenProps) {
   if (projects.length === 0) {
     return (
       <View style={styles.centered} testID="projects-list">
-        <Text style={styles.emptyText}>No projects yet</Text>
+        <Text style={styles.emptyText}>{t("projects.empty")}</Text>
       </View>
     );
   }
@@ -73,11 +75,15 @@ export default function ProjectsScreen({ view }: ProjectsScreenProps) {
 }
 
 function HostErrorsBanner({ errors }: { errors: ProjectHostError[] }) {
+  const { t } = useTranslation("workspaces");
   return (
     <View style={styles.errorsBanner} testID="projects-host-errors">
       {errors.map((error) => (
         <Text key={error.serverId} style={styles.errorsBannerText}>
-          {`Couldn't load projects from host ${error.serverName}: ${error.message}`}
+          {t("projects.hostError", {
+            serverName: error.serverName,
+            message: error.message,
+          })}
         </Text>
       ))}
     </View>
@@ -92,6 +98,7 @@ interface ProjectRowProps {
 }
 
 function ProjectRow({ project, isFirst, isSelected, iconDataUri }: ProjectRowProps) {
+  const { t } = useTranslation("workspaces");
   const { theme } = useUnistyles();
   const { projectKey, projectName } = project;
 
@@ -116,7 +123,7 @@ function ProjectRow({ project, isFirst, isSelected, iconDataUri }: ProjectRowPro
       style={rowStyle}
       onPress={handleNavigate}
       accessibilityRole="button"
-      accessibilityLabel={`Edit ${projectName}`}
+      accessibilityLabel={t("projects.editAccessibilityLabel", { projectName })}
       testID={`project-row-${projectKey}`}
       data-selected={isSelected ? "true" : "false"}
     >

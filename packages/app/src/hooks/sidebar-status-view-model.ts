@@ -1,3 +1,4 @@
+import type { ParseKeys, TFunction } from "i18next";
 import type { SidebarWorkspaceEntry } from "@/hooks/sidebar-workspaces-view-model";
 
 export type StatusBucket = SidebarWorkspaceEntry["statusBucket"];
@@ -10,12 +11,12 @@ export const STATUS_BUCKET_ORDER: readonly StatusBucket[] = [
   "done",
 ] as const;
 
-export const STATUS_BUCKET_LABELS: Record<StatusBucket, string> = {
-  needs_input: "Needs input",
-  failed: "Failed",
-  attention: "Ready to review",
-  running: "Working",
-  done: "Done",
+export const STATUS_BUCKET_LABEL_KEYS: Record<StatusBucket, ParseKeys<"agents">> = {
+  needs_input: "status.bucket.needsInput",
+  failed: "status.bucket.failed",
+  attention: "status.bucket.readyToReview",
+  running: "status.bucket.working",
+  done: "status.bucket.done",
 };
 
 export interface StatusGroup {
@@ -27,6 +28,7 @@ export interface StatusGroup {
 export function buildStatusGroups(
   workspaces: SidebarWorkspaceEntry[],
   projectNamesByKey: Map<string, string>,
+  t: TFunction<"agents">,
 ): StatusGroup[] {
   const bucketRows = new Map<StatusBucket, SidebarWorkspaceEntry[]>();
 
@@ -47,7 +49,7 @@ export function buildStatusGroups(
     if (!rows || rows.length === 0) continue;
 
     rows.sort((a, b) => compareStatusRows(a, b, projectNamesByKey));
-    groups.push({ bucket, label: STATUS_BUCKET_LABELS[bucket], rows });
+    groups.push({ bucket, label: t(STATUS_BUCKET_LABEL_KEYS[bucket]), rows });
   }
 
   return groups;

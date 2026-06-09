@@ -1,5 +1,13 @@
 import { expect, type Page } from "@playwright/test";
-import { getStateLabel } from "@/git/pr-pane-data";
+
+// English PR-state labels, kept local so this e2e helper doesn't import the i18n runtime.
+// Must match the en `git:pr.state.*` catalog.
+const PR_STATE_LABELS: Record<"open" | "merged" | "closed" | "draft", string> = {
+  open: "Open",
+  merged: "Merged",
+  closed: "Closed",
+  draft: "Draft",
+};
 
 export async function openPrPane(page: Page): Promise<void> {
   await page.getByRole("button", { name: "Open explorer" }).click();
@@ -15,7 +23,7 @@ export async function expectPrPaneState(
   page: Page,
   state: "open" | "merged" | "closed" | "draft",
 ): Promise<void> {
-  await expect(page.getByTestId("pr-pane-state")).toHaveText(getStateLabel(state), {
+  await expect(page.getByTestId("pr-pane-state")).toHaveText(PR_STATE_LABELS[state], {
     timeout: 15_000,
   });
 }

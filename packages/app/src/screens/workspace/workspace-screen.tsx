@@ -9,6 +9,8 @@ import {
   type ReactNode,
 } from "react";
 import { useStoreWithEqualityFn } from "zustand/traditional";
+import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import { useIsFocused } from "@react-navigation/native";
 import { ActivityIndicator, BackHandler, Keyboard, Pressable, Text, View } from "react-native";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -295,40 +297,46 @@ function useSyncWorkspaceActiveBrowser(input: {
   }, [desktopActiveBrowserId]);
 }
 
-function getFallbackTabOptionLabel(tab: WorkspaceTabDescriptor): string {
+function getFallbackTabOptionLabel(
+  tab: WorkspaceTabDescriptor,
+  t: TFunction<"workspaces">,
+): string {
   if (tab.target.kind === "draft") {
-    return "New Agent";
+    return t("screen.tab.newAgent");
   }
   if (tab.target.kind === "setup") {
-    return "Setup";
+    return t("screen.tab.setup");
   }
   if (tab.target.kind === "terminal") {
-    return "Terminal";
+    return t("screen.tab.terminal");
   }
   if (tab.target.kind === "browser") {
-    return "Browser";
+    return t("screen.tab.browser");
   }
   if (tab.target.kind === "file") {
     return tab.target.path.split("/").findLast(Boolean) ?? tab.target.path;
   }
-  return "Agent";
+  return t("screen.tab.agent");
 }
 
-function getFallbackTabOptionDescription(tab: WorkspaceTabDescriptor): string {
+function getFallbackTabOptionDescription(
+  tab: WorkspaceTabDescriptor,
+  t: TFunction<"workspaces">,
+): string {
   if (tab.target.kind === "draft") {
-    return "New Agent";
+    return t("screen.tab.newAgent");
   }
   if (tab.target.kind === "setup") {
-    return "Workspace setup";
+    return t("screen.tab.workspaceSetup");
   }
   if (tab.target.kind === "agent") {
-    return "Agent";
+    return t("screen.tab.agent");
   }
   if (tab.target.kind === "terminal") {
-    return "Terminal";
+    return t("screen.tab.terminal");
   }
   if (tab.target.kind === "browser") {
-    return "Browser";
+    return t("screen.tab.browser");
   }
   return tab.target.path;
 }
@@ -383,6 +391,7 @@ function ResolvedMobileActiveTabTrigger({
   normalizedServerId: string;
   normalizedWorkspaceId: string;
 }) {
+  const { t } = useTranslation("workspaces");
   return (
     <WorkspaceTabPresentationResolver
       tab={activeTab}
@@ -396,7 +405,7 @@ function ResolvedMobileActiveTabTrigger({
           </View>
 
           <Text style={styles.switcherTriggerText} numberOfLines={1}>
-            {presentation.titleState === "loading" ? "Loading..." : presentation.label}
+            {presentation.titleState === "loading" ? t("screen.loading") : presentation.label}
           </Text>
         </>
       )}
@@ -411,13 +420,15 @@ function WorkspaceDocumentTitleEffect({
   label: string;
   titleState: "ready" | "loading";
 }) {
+  const { t } = useTranslation("workspaces");
   useEffect(() => {
     if (isNative || typeof document === "undefined") {
       return;
     }
     const resolvedLabel = label.trim();
-    document.title = titleState === "loading" ? "Loading..." : resolvedLabel || "Workspace";
-  }, [label, titleState]);
+    document.title =
+      titleState === "loading" ? t("screen.loading") : resolvedLabel || t("screen.documentTitle");
+  }, [label, titleState, t]);
 
   return null;
 }
@@ -444,12 +455,13 @@ function MobileTabTrailingAccessory({
   presentationLabel: string;
   menuEntries: WorkspaceTabMenuEntry[];
 }) {
+  const { t } = useTranslation("workspaces");
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
         testID={`${menuTestIDBase}-trigger`}
         accessibilityRole="button"
-        accessibilityLabel={`Open menu for ${presentationLabel}`}
+        accessibilityLabel={t("screen.tab.openMenuFor", { label: presentationLabel })}
         hitSlop={8}
         style={mobileTabMenuTriggerStyle}
       >
@@ -547,6 +559,7 @@ function MobileWorkspaceTabOption({
   onCloseTabsBelow: (tabId: string) => Promise<void> | void;
   onCloseOtherTabs: (tabId: string) => Promise<void> | void;
 }) {
+  const { t } = useTranslation("workspaces");
   const menuTestIDBase = `workspace-tab-menu-${buildDeterministicWorkspaceTabId(tab.target)}`;
   const menuEntries = buildWorkspaceTabMenuEntries({
     surface: "mobile",
@@ -564,7 +577,7 @@ function MobileWorkspaceTabOption({
     onCloseOtherTabs,
   });
 
-  const fallbackLabel = getFallbackTabOptionLabel(tab);
+  const fallbackLabel = getFallbackTabOptionLabel(tab, t);
   const trailingAccessory = useMemo(
     () => (
       <MobileTabTrailingAccessory
@@ -618,6 +631,7 @@ const MobileWorkspaceTabSwitcher = memo(function MobileWorkspaceTabSwitcher({
   onCloseTabsBelow,
   onCloseOtherTabs,
 }: MobileWorkspaceTabSwitcherProps) {
+  const { t } = useTranslation("workspaces");
   const [isOpen, setIsOpen] = useState(false);
   const anchorRef = useRef<View>(null);
   const tabIndexByKey = useMemo(() => {
@@ -697,7 +711,7 @@ const MobileWorkspaceTabSwitcher = memo(function MobileWorkspaceTabSwitcher({
         ref={anchorRef}
         testID="workspace-tab-switcher-trigger"
         accessibilityRole="button"
-        accessibilityLabel={`Switch tabs (${tabs.length} open)`}
+        accessibilityLabel={t("screen.tab.switchTabsAccessibility", { count: tabs.length })}
         style={switcherTriggerStyle}
         onPress={handleOpenSwitcher}
       >
@@ -716,8 +730,8 @@ const MobileWorkspaceTabSwitcher = memo(function MobileWorkspaceTabSwitcher({
         value={activeTabKey}
         onSelect={onSelectSwitcherTab}
         searchable={false}
-        title="Switch tab"
-        searchPlaceholder="Search tabs"
+        title={t("screen.tab.switchTab")}
+        searchPlaceholder={t("screen.tab.searchTabs")}
         open={isOpen}
         onOpenChange={setIsOpen}
         anchorRef={anchorRef}
@@ -927,6 +941,7 @@ function WorkspaceHeaderMenu({
   onCopyBranchName,
   onOpenSetupTab,
 }: WorkspaceHeaderMenuProps) {
+  const { t } = useTranslation("workspaces");
   const renderTriggerIcon = useCallback(
     ({ hovered, open }: { hovered: boolean; open: boolean }) => (
       <WorkspaceHeaderMenuTriggerIcon hovered={hovered} open={open} isMobile={isMobile} />
@@ -940,7 +955,7 @@ function WorkspaceHeaderMenu({
         testID="workspace-header-menu-trigger"
         style={isMobile ? styles.compactHeaderActionButton : styles.headerActionButton}
         accessibilityRole="button"
-        accessibilityLabel="Workspace actions"
+        accessibilityLabel={t("screen.header.workspaceActions")}
       >
         {renderTriggerIcon}
       </DropdownMenuTrigger>
@@ -950,7 +965,7 @@ function WorkspaceHeaderMenu({
           leading={menuNewAgentIcon}
           onSelect={onCreateDraftTab}
         >
-          New agent
+          {t("screen.header.newAgent")}
         </DropdownMenuItem>
         <DropdownMenuItem
           testID="workspace-header-new-terminal"
@@ -958,7 +973,7 @@ function WorkspaceHeaderMenu({
           disabled={createTerminalDisabled}
           onSelect={onCreateTerminal}
         >
-          New terminal
+          {t("screen.header.newTerminal")}
         </DropdownMenuItem>
         {showCreateBrowserTab ? (
           <DropdownMenuItem
@@ -966,7 +981,7 @@ function WorkspaceHeaderMenu({
             leading={menuNewBrowserIcon}
             onSelect={onCreateBrowser}
           >
-            New browser tab
+            {t("screen.header.newBrowserTab")}
           </DropdownMenuItem>
         ) : null}
         <DropdownMenuItem
@@ -975,7 +990,7 @@ function WorkspaceHeaderMenu({
           disabled={importAgentDisabled}
           onSelect={onOpenImportSheet}
         >
-          Import session
+          {t("screen.header.importSession")}
         </DropdownMenuItem>
         <DropdownMenuItem
           testID="workspace-header-copy-path"
@@ -983,7 +998,7 @@ function WorkspaceHeaderMenu({
           disabled={!isAbsolutePath(normalizedWorkspaceId)}
           onSelect={onCopyWorkspacePath}
         >
-          Copy workspace path
+          {t("screen.header.copyWorkspacePath")}
         </DropdownMenuItem>
         {currentBranchName ? (
           <DropdownMenuItem
@@ -991,7 +1006,7 @@ function WorkspaceHeaderMenu({
             leading={menuCopyIcon}
             onSelect={onCopyBranchName}
           >
-            Copy branch name
+            {t("screen.header.copyBranchName")}
           </DropdownMenuItem>
         ) : null}
         {showWorkspaceSetup ? (
@@ -1002,7 +1017,7 @@ function WorkspaceHeaderMenu({
               leading={menuSettingsIcon}
               onSelect={onOpenSetupTab}
             >
-              Show setup
+              {t("screen.header.showSetup")}
             </DropdownMenuItem>
           </>
         ) : null}
@@ -1167,6 +1182,7 @@ interface RenderWorkspaceContentInput {
     paneId: string | null;
     tab: WorkspaceTabDescriptor;
   }) => WorkspacePaneContentModel;
+  t: TFunction<"workspaces">;
 }
 
 function renderWorkspaceContent(input: RenderWorkspaceContentInput): React.ReactNode {
@@ -1179,14 +1195,13 @@ function renderWorkspaceContent(input: RenderWorkspaceContentInput): React.React
     isRouteFocused,
     focusedPaneId,
     buildMobilePaneContentModel,
+    t,
   } = input;
 
   if (isMissingWorkspaceExecutionAuthority) {
     return (
       <View style={styles.emptyState}>
-        <Text style={styles.emptyStateText}>
-          Workspace execution directory is missing. Reload workspace data before opening tabs.
-        </Text>
+        <Text style={styles.emptyStateText}>{t("screen.empty.executionDirectoryMissing")}</Text>
       </View>
     );
   }
@@ -1200,9 +1215,7 @@ function renderWorkspaceContent(input: RenderWorkspaceContentInput): React.React
   if (!activeTabDescriptor) {
     return (
       <View style={styles.emptyState}>
-        <Text style={styles.emptyStateText}>
-          No tabs are available yet. Use New tab to create an agent or terminal.
-        </Text>
+        <Text style={styles.emptyStateText}>{t("screen.empty.noTabs")}</Text>
       </View>
     );
   }
@@ -1471,6 +1484,7 @@ function useWorkspaceTerminalTabActions({
   openWorkspaceTabFocused,
   toast,
 }: WorkspaceTerminalTabActionsInput): WorkspaceTerminalTabActions {
+  const { t } = useTranslation("workspaces");
   const handleTerminalCreated = useCallback(
     ({ terminalId, paneId }: { terminalId: string; paneId?: string }) => {
       if (!persistenceKey) {
@@ -1493,11 +1507,11 @@ function useWorkspaceTerminalTabActions({
     [openWorkspaceTabFocused, persistenceKey],
   );
   const handleWorkspacePathUnavailable = useCallback(() => {
-    toast.error("Workspace path is not available yet");
-  }, [toast]);
+    toast.error(t("screen.terminal.pathNotAvailableYet"));
+  }, [toast, t]);
   const handleTerminalCreateQueued = useCallback(() => {
-    toast.show("Preparing workspace, opening terminal when ready...");
-  }, [toast]);
+    toast.show(t("screen.terminal.preparingWorkspace"));
+  }, [toast, t]);
 
   return {
     handleTerminalCreated,
@@ -1555,6 +1569,7 @@ function WorkspaceScreenContent({
   workspaceId,
   isRouteFocused,
 }: WorkspaceScreenContentProps) {
+  const { t } = useTranslation("workspaces");
   const _insets = useSafeAreaInsets();
   const toast = useToast();
   const isMobile = useIsCompactFormFactor();
@@ -2287,10 +2302,10 @@ function WorkspaceScreenContent({
     () =>
       tabs.map((tab) => ({
         id: tab.key,
-        label: getFallbackTabOptionLabel(tab),
-        description: getFallbackTabOptionDescription(tab),
+        label: getFallbackTabOptionLabel(tab, t),
+        description: getFallbackTabOptionDescription(tab, t),
       })),
-    [tabs],
+    [tabs, t],
   );
 
   const handleCreateDraftTab = useCallback(
@@ -2366,10 +2381,10 @@ function WorkspaceScreenContent({
       const { tabId, terminalId } = input;
       await closeTab(tabId, async () => {
         const confirmed = await confirmDialog({
-          title: "Close terminal?",
-          message: "Any running process in this terminal will be stopped immediately.",
-          confirmLabel: "Close",
-          cancelLabel: "Cancel",
+          title: t("screen.closeTerminal.title"),
+          message: t("screen.closeTerminal.message"),
+          confirmLabel: t("screen.closeTerminal.confirm"),
+          cancelLabel: t("screen.closeTerminal.cancel"),
           destructive: true,
         });
         if (!confirmed) {
@@ -2395,6 +2410,7 @@ function WorkspaceScreenContent({
       killTerminalAsync,
       persistenceKey,
       removeTerminalFromCache,
+      t,
     ],
   );
 
@@ -2413,11 +2429,10 @@ function WorkspaceScreenContent({
 
         if (isRunning && closePolicy.kind === "archive-on-close") {
           const confirmed = await confirmDialog({
-            title: "Archive running agent?",
-            message:
-              "This agent is still running. Archiving it will stop the agent and close the tab.",
-            confirmLabel: "Archive",
-            cancelLabel: "Cancel",
+            title: t("screen.archiveAgent.title"),
+            message: t("screen.archiveAgent.message"),
+            confirmLabel: t("screen.archiveAgent.confirm"),
+            cancelLabel: t("screen.archiveAgent.cancel"),
             destructive: true,
           });
           if (!confirmed) {
@@ -2441,7 +2456,7 @@ function WorkspaceScreenContent({
         void archiveAgent({ serverId: normalizedServerId, agentId }).catch(() => {});
       });
     },
-    [archiveAgent, closeTab, closeWorkspaceTabWithCleanup, normalizedServerId, persistenceKey],
+    [archiveAgent, closeTab, closeWorkspaceTabWithCleanup, normalizedServerId, persistenceKey, t],
   );
 
   const handleCloseDraftOrFileTab = useCallback(
@@ -2481,12 +2496,12 @@ function WorkspaceScreenContent({
       if (!agentId) return;
       try {
         await Clipboard.setStringAsync(agentId);
-        toast.copied("Agent ID");
+        toast.copied(t("screen.copyLabel.agentId"));
       } catch {
-        toast.error("Copy failed");
+        toast.error(t("screen.toast.copyFailed"));
       }
     },
-    [toast],
+    [toast, t],
   );
 
   const handleCopyResumeCommand = useCallback(
@@ -2497,7 +2512,7 @@ function WorkspaceScreenContent({
       const providerSessionId =
         agent?.runtimeInfo?.sessionId ?? agent?.persistence?.sessionId ?? null;
       if (!agent || !providerSessionId) {
-        toast.error("Resume ID not available");
+        toast.error(t("screen.toast.resumeIdNotAvailable"));
         return;
       }
 
@@ -2508,27 +2523,27 @@ function WorkspaceScreenContent({
           sessionId: providerSessionId,
         }) ?? null;
       if (!command) {
-        toast.error("Resume command not available");
+        toast.error(t("screen.toast.resumeCommandNotAvailable"));
         return;
       }
       try {
         await Clipboard.setStringAsync(command);
-        toast.copied("resume command");
+        toast.copied(t("screen.copyLabel.resumeCommand"));
       } catch {
-        toast.error("Copy failed");
+        toast.error(t("screen.toast.copyFailed"));
       }
     },
-    [normalizedServerId, toast],
+    [normalizedServerId, toast, t],
   );
 
   const handleReloadAgent = useCallback(
     async (agentId: string) => {
       if (!client || !isConnected) {
-        toast.error("Host is not connected");
+        toast.error(t("screen.toast.hostNotConnected"));
         return;
       }
 
-      toast.show("Reloading agent…", { durationMs: null });
+      toast.show(t("screen.toast.reloadingAgent"), { durationMs: null });
       try {
         await client.refreshAgent(agentId);
         // Send the existing cursor so the server detects the new epoch and
@@ -2544,41 +2559,41 @@ function WorkspaceScreenContent({
             ? { cursor: { epoch: currentCursor.epoch, seq: currentCursor.endSeq } }
             : {}),
         });
-        toast.show("Reloaded agent", { variant: "success" });
+        toast.show(t("screen.toast.reloadedAgent"), { variant: "success" });
       } catch (error) {
-        toast.error(error instanceof Error ? error.message : "Failed to reload agent");
+        toast.error(error instanceof Error ? error.message : t("screen.toast.reloadAgentFailed"));
       }
     },
-    [client, isConnected, normalizedServerId, toast],
+    [client, isConnected, normalizedServerId, toast, t],
   );
 
   const handleCopyWorkspacePath = useCallback(async () => {
     if (!workspaceDirectory) {
-      toast.error("Workspace path not available");
+      toast.error(t("screen.toast.workspacePathNotAvailable"));
       return;
     }
 
     try {
       await Clipboard.setStringAsync(workspaceDirectory);
-      toast.copied("Workspace path");
+      toast.copied(t("screen.copyLabel.workspacePath"));
     } catch {
-      toast.error("Copy failed");
+      toast.error(t("screen.toast.copyFailed"));
     }
-  }, [toast, workspaceDirectory]);
+  }, [toast, workspaceDirectory, t]);
 
   const handleCopyBranchName = useCallback(async () => {
     if (!currentBranchName) {
-      toast.error("Branch name not available");
+      toast.error(t("screen.toast.branchNameNotAvailable"));
       return;
     }
 
     try {
       await Clipboard.setStringAsync(currentBranchName);
-      toast.copied("Branch name");
+      toast.copied(t("screen.copyLabel.branchName"));
     } catch {
-      toast.error("Copy failed");
+      toast.error(t("screen.toast.copyFailed"));
     }
-  }, [currentBranchName, toast]);
+  }, [currentBranchName, toast, t]);
 
   const handleOpenSetupTab = useCallback(() => {
     if (!persistenceKey) {
@@ -2605,8 +2620,8 @@ function WorkspaceScreenContent({
       const confirmed = await confirmDialog({
         title,
         message: buildBulkCloseConfirmationMessage(groups),
-        confirmLabel: "Close",
-        cancelLabel: "Cancel",
+        confirmLabel: t("screen.bulkClose.confirm"),
+        cancelLabel: t("screen.bulkClose.cancel"),
         destructive: true,
       });
       if (!confirmed) {
@@ -2632,7 +2647,7 @@ function WorkspaceScreenContent({
       const closedKeys = new Set(tabsToClose.map((tab) => tab.key));
       setHoveredCloseTabKey((current) => (current && closedKeys.has(current) ? null : current));
     },
-    [client, closeTab, closeWorkspaceTabWithCleanup, persistenceKey],
+    [client, closeTab, closeWorkspaceTabWithCleanup, persistenceKey, t],
   );
 
   const handleCloseTabsToLeftInPane = useCallback(
@@ -2643,11 +2658,11 @@ function WorkspaceScreenContent({
       }
       await handleBulkCloseTabs({
         tabsToClose: paneTabs.slice(0, index),
-        title: "Close tabs to the left?",
+        title: t("screen.bulkClose.toLeftTitle"),
         logLabel: "to the left",
       });
     },
-    [handleBulkCloseTabs],
+    [handleBulkCloseTabs, t],
   );
 
   const handleCloseTabsToLeft = useCallback(
@@ -2665,11 +2680,11 @@ function WorkspaceScreenContent({
       }
       await handleBulkCloseTabs({
         tabsToClose: paneTabs.slice(index + 1),
-        title: "Close tabs to the right?",
+        title: t("screen.bulkClose.toRightTitle"),
         logLabel: "to the right",
       });
     },
-    [handleBulkCloseTabs],
+    [handleBulkCloseTabs, t],
   );
 
   const handleCloseTabsToRight = useCallback(
@@ -2684,11 +2699,11 @@ function WorkspaceScreenContent({
       const tabsToClose = paneTabs.filter((tab) => tab.tabId !== tabId);
       await handleBulkCloseTabs({
         tabsToClose,
-        title: "Close other tabs?",
+        title: t("screen.bulkClose.otherTitle"),
         logLabel: "from close other tabs",
       });
     },
-    [handleBulkCloseTabs],
+    [handleBulkCloseTabs, t],
   );
 
   const handleCloseOtherTabs = useCallback(
@@ -2903,8 +2918,8 @@ function WorkspaceScreenContent({
     if (!isRouteFocused || isNative || typeof document === "undefined" || activeTabDescriptor) {
       return;
     }
-    document.title = "Workspace";
-  }, [activeTabDescriptor, isRouteFocused]);
+    document.title = t("screen.documentTitle");
+  }, [activeTabDescriptor, isRouteFocused, t]);
   const buildPaneContentModel = useCallback(
     (input: {
       tab: WorkspaceTabDescriptor;
@@ -2996,6 +3011,7 @@ function WorkspaceScreenContent({
     isRouteFocused,
     focusedPaneId,
     buildMobilePaneContentModel,
+    t,
   });
 
   const buildDesktopPaneContentModel = useCallback(
@@ -3084,13 +3100,16 @@ function WorkspaceScreenContent({
     [focusedPaneId, handleReorderTabsInPane],
   );
 
-  const renderSplitPaneEmptyState = useCallback(function renderSplitPaneEmptyState() {
-    return (
-      <View style={styles.emptyState}>
-        <Text style={styles.emptyStateText}>No tabs in this pane.</Text>
-      </View>
-    );
-  }, []);
+  const renderSplitPaneEmptyState = useCallback(
+    function renderSplitPaneEmptyState() {
+      return (
+        <View style={styles.emptyState}>
+          <Text style={styles.emptyStateText}>{t("screen.empty.noTabsInPane")}</Text>
+        </View>
+      );
+    },
+    [t],
+  );
 
   const containerStyle = containerWithWorkspaceBackgroundStyle;
 
@@ -3147,7 +3166,11 @@ function WorkspaceScreenContent({
                   testID="workspace-explorer-toggle"
                   onPress={handleToggleExplorer}
                   accessibilityRole="button"
-                  accessibilityLabel={isExplorerOpen ? "Close explorer" : "Open explorer"}
+                  accessibilityLabel={
+                    isExplorerOpen
+                      ? t("screen.explorer.closeAccessibility")
+                      : t("screen.explorer.openAccessibility")
+                  }
                   accessibilityState={explorerToggleAccessibilityState}
                   style={explorerToggleStyle}
                 >
@@ -3175,7 +3198,7 @@ function WorkspaceScreenContent({
                 offset={8}
               >
                 <View style={styles.explorerTooltipRow}>
-                  <Text style={styles.explorerTooltipText}>Toggle explorer</Text>
+                  <Text style={styles.explorerTooltipText}>{t("screen.explorer.toggle")}</Text>
                   <Shortcut keys={EXPLORER_TOGGLE_KEYS} style={styles.explorerTooltipShortcut} />
                 </View>
               </TooltipContent>
@@ -3186,13 +3209,17 @@ function WorkspaceScreenContent({
           <HeaderToggleButton
             testID="workspace-explorer-toggle"
             onPress={handleToggleExplorer}
-            tooltipLabel="Toggle explorer"
+            tooltipLabel={t("screen.explorer.toggle")}
             tooltipKeys={EXPLORER_TOGGLE_KEYS}
             tooltipSide="left"
             style={styles.compactHeaderActionButton}
             accessible
             accessibilityRole="button"
-            accessibilityLabel={isExplorerOpen ? "Close explorer" : "Open explorer"}
+            accessibilityLabel={
+              isExplorerOpen
+                ? t("screen.explorer.closeAccessibility")
+                : t("screen.explorer.openAccessibility")
+            }
             accessibilityState={explorerToggleAccessibilityState}
           >
             {({ hovered }) => {
@@ -3206,13 +3233,17 @@ function WorkspaceScreenContent({
           <HeaderToggleButton
             testID="workspace-explorer-toggle"
             onPress={handleToggleExplorer}
-            tooltipLabel="Toggle explorer"
+            tooltipLabel={t("screen.explorer.toggle")}
             tooltipKeys={EXPLORER_TOGGLE_KEYS}
             tooltipSide="left"
             style={styles.headerActionButton}
             accessible
             accessibilityRole="button"
-            accessibilityLabel={isExplorerOpen ? "Close explorer" : "Open explorer"}
+            accessibilityLabel={
+              isExplorerOpen
+                ? t("screen.explorer.closeAccessibility")
+                : t("screen.explorer.openAccessibility")
+            }
             accessibilityState={explorerToggleAccessibilityState}
           >
             {({ hovered }) => {
@@ -3249,6 +3280,7 @@ function WorkspaceScreenContent({
       isExplorerOpen,
       explorerToggleAccessibilityState,
       explorerToggleStyle,
+      t,
     ],
   );
 

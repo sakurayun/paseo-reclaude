@@ -2,6 +2,13 @@ import { z } from "zod";
 
 export type SherpaOnnxModelKind = "stt-offline" | "tts";
 
+/**
+ * Offline STT model architecture. Drives how {@link SherpaOfflineRecognizerEngine}
+ * wires the sherpa-onnx `modelConfig`: a NeMo transducer triple (encoder/decoder/joiner)
+ * vs. a single-file SenseVoice model. Omitted for TTS entries.
+ */
+export type SherpaSttArchitecture = "nemo_transducer" | "sense_voice";
+
 type DefaultModelRole = "stt" | "tts";
 
 interface SherpaOnnxCatalogEntry {
@@ -11,26 +18,71 @@ interface SherpaOnnxCatalogEntry {
   requiredFiles: string[];
   description: string;
   defaultFor?: DefaultModelRole;
+  /** STT model architecture; drives offline-recognizer construction. Omitted for TTS entries. */
+  architecture?: SherpaSttArchitecture;
+  /** Language tags the model can transcribe (BCP-47-ish), surfaced in the settings UI. */
+  languages: readonly string[];
 }
 
 export const SHERPA_ONNX_MODEL_CATALOG = {
   "parakeet-tdt-0.6b-v2-int8": {
     kind: "stt-offline",
+    architecture: "nemo_transducer",
     archiveUrl:
       "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8.tar.bz2",
     extractedDir: "sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8",
     requiredFiles: ["encoder.int8.onnx", "decoder.int8.onnx", "joiner.int8.onnx", "tokens.txt"],
     description: "NVIDIA Parakeet TDT v2 (offline NeMo transducer, English).",
+    languages: ["en"],
     defaultFor: "stt",
   },
   "parakeet-tdt-0.6b-v3-int8": {
     kind: "stt-offline",
+    architecture: "nemo_transducer",
     archiveUrl:
       "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8.tar.bz2",
     extractedDir: "sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8",
     requiredFiles: ["encoder.int8.onnx", "decoder.int8.onnx", "joiner.int8.onnx", "tokens.txt"],
     description:
       "NVIDIA Parakeet TDT v3 (offline NeMo transducer, 25 European languages, auto-detected).",
+    languages: [
+      "bg",
+      "hr",
+      "cs",
+      "da",
+      "nl",
+      "en",
+      "et",
+      "fi",
+      "fr",
+      "de",
+      "el",
+      "hu",
+      "it",
+      "lv",
+      "lt",
+      "mt",
+      "pl",
+      "pt",
+      "ro",
+      "sk",
+      "sl",
+      "es",
+      "sv",
+      "ru",
+      "uk",
+    ],
+  },
+  "sense-voice-zh-en-ja-ko-yue-int8": {
+    kind: "stt-offline",
+    architecture: "sense_voice",
+    archiveUrl:
+      "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17.tar.bz2",
+    extractedDir: "sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17",
+    requiredFiles: ["model.int8.onnx", "tokens.txt"],
+    description:
+      "SenseVoice (offline, multilingual: Chinese, Cantonese, English, Japanese, Korean).",
+    languages: ["zh", "yue", "en", "ja", "ko"],
   },
   "kokoro-en-v0_19": {
     kind: "tts",
@@ -39,6 +91,7 @@ export const SHERPA_ONNX_MODEL_CATALOG = {
     extractedDir: "kokoro-en-v0_19",
     requiredFiles: ["model.onnx", "voices.bin", "tokens.txt", "espeak-ng-data"],
     description: "Kokoro TTS (higher quality; larger).",
+    languages: ["en"],
     defaultFor: "tts",
   },
 } as const satisfies Record<string, SherpaOnnxCatalogEntry>;
@@ -84,6 +137,33 @@ function resolveDefaultModelId(role: DefaultModelRole): SherpaOnnxModelId {
 
 export const DEFAULT_LOCAL_STT_MODEL = resolveDefaultModelId("stt");
 export const DEFAULT_LOCAL_TTS_MODEL = resolveDefaultModelId("tts");
+
+/** Local STT model used by default when the dictation/voice language is Chinese (incl. Cantonese). */
+export const DEFAULT_CHINESE_LOCAL_STT_MODEL: LocalSttModelId = "sense-voice-zh-en-ja-ko-yue-int8";
+
+const CHINESE_LANGUAGE_PREFIXES = ["zh", "yue", "cmn"];
+
+/**
+ * Pick the local STT model that should be the default for a given language. Chinese (and
+ * Cantonese) default to the multilingual SenseVoice model; every other language keeps the
+ * English-first Parakeet default. An explicit user/env model selection is resolved upstream
+ * and is never overridden here.
+ */
+export function resolveDefaultLocalSttModel(language: string | undefined): LocalSttModelId {
+  const normalized = language?.trim().toLowerCase();
+  if (normalized) {
+    const isChinese = CHINESE_LANGUAGE_PREFIXES.some(
+      (prefix) =>
+        normalized === prefix ||
+        normalized.startsWith(`${prefix}-`) ||
+        normalized.startsWith(`${prefix}_`),
+    );
+    if (isChinese) {
+      return DEFAULT_CHINESE_LOCAL_STT_MODEL;
+    }
+  }
+  return DEFAULT_LOCAL_STT_MODEL;
+}
 
 function createModelIdSchema<T extends string>(
   modelIds: readonly T[],

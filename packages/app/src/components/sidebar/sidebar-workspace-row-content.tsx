@@ -1,4 +1,5 @@
 import { memo, useCallback, useMemo, useState, type ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import {
   ActivityIndicator,
   Pressable,
@@ -158,10 +159,11 @@ export const SidebarWorkspaceRowContent = memo(function SidebarWorkspaceRowConte
 });
 
 function WorkspaceScriptIcon({ kind }: { kind: SidebarWorkspaceScriptIconKind }) {
+  const { t } = useTranslation("workspaces");
   return (
     <View
       style={styles.workspaceTitleAccessory}
-      accessibilityLabel="Scripts available"
+      accessibilityLabel={t("row.scriptsAvailable")}
       testID={kind === "service" ? "workspace-globe-icon" : "workspace-terminal-icon"}
     >
       {kind === "service" ? (
@@ -261,6 +263,7 @@ function StatusDotOverlay({
 }
 
 function PrBadge({ hint }: { hint: PrHint }) {
+  const { t } = useTranslation("workspaces");
   const [isHovered, setIsHovered] = useState(false);
   const handlePress = useCallback(
     (event: GestureResponderEvent) => {
@@ -287,7 +290,7 @@ function PrBadge({ hint }: { hint: PrHint }) {
   return (
     <Pressable
       accessibilityRole="link"
-      accessibilityLabel={`Pull request #${hint.number}`}
+      accessibilityLabel={t("row.pullRequest", { number: hint.number })}
       hitSlop={4}
       onPressIn={handlePressIn}
       onPress={handlePress}
@@ -308,13 +311,14 @@ function PrBadge({ hint }: { hint: PrHint }) {
 }
 
 function ChecksBadge({ checks }: { checks: PrHint["checks"] }) {
+  const { t } = useTranslation("workspaces");
   if (!checks || checks.length === 0) return null;
   const failed = checks.filter((check) => check.status === "failure").length;
   if (failed === 0) return null;
   return (
     <View style={checksBadgeStyles.badge}>
       <ThemedGitHubIcon size={10} uniProps={redColorMapping} />
-      <Text style={checksBadgeStyles.text}>{failed} failed</Text>
+      <Text style={checksBadgeStyles.text}>{t("row.checksFailed", { count: failed })}</Text>
     </View>
   );
 }

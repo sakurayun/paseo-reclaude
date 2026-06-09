@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
+import type { ParseKeys, TFunction } from "i18next";
 import {
   ActivityIndicator,
   Pressable,
@@ -60,23 +62,23 @@ interface TerminalPaneProps {
 
 const TERMINAL_REFIT_DELAYS_MS = [0, 48, 144, 320];
 
-const MODIFIER_LABELS = {
-  ctrl: "Ctrl",
-  shift: "Shift",
-  alt: "Alt",
-} as const;
+const MODIFIER_LABEL_KEYS = {
+  ctrl: "pane.key.ctrl",
+  shift: "pane.key.shift",
+  alt: "pane.key.alt",
+} as const satisfies Record<string, ParseKeys<"terminal">>;
 
 const KEY_BUTTONS = {
-  esc: { id: "esc", label: "Esc", key: "Escape" },
-  tab: { id: "tab", label: "Tab", key: "Tab" },
-  up: { id: "up", label: "↑", key: "ArrowUp" },
-  down: { id: "down", label: "↓", key: "ArrowDown" },
-  left: { id: "left", label: "←", key: "ArrowLeft" },
-  right: { id: "right", label: "→", key: "ArrowRight" },
-  enter: { id: "enter", label: "Enter", key: "Enter" },
-  backspace: { id: "backspace", label: "⌫", key: "Backspace" },
-  space: { id: "space", label: "Space", key: " " },
-} as const;
+  esc: { id: "esc", labelKey: "pane.key.esc", key: "Escape" },
+  tab: { id: "tab", labelKey: "pane.key.tab", key: "Tab" },
+  up: { id: "up", labelKey: "pane.key.up", key: "ArrowUp" },
+  down: { id: "down", labelKey: "pane.key.down", key: "ArrowDown" },
+  left: { id: "left", labelKey: "pane.key.left", key: "ArrowLeft" },
+  right: { id: "right", labelKey: "pane.key.right", key: "ArrowRight" },
+  enter: { id: "enter", labelKey: "pane.key.enter", key: "Enter" },
+  backspace: { id: "backspace", labelKey: "pane.key.backspace", key: "Backspace" },
+  space: { id: "space", labelKey: "pane.key.space", key: " " },
+} as const satisfies Record<string, { id: string; labelKey: ParseKeys<"terminal">; key: string }>;
 
 interface ModifierState {
   ctrl: boolean;
@@ -114,9 +116,10 @@ interface ModifierButtonProps {
   modifier: keyof ModifierState;
   active: boolean;
   onToggle: (modifier: keyof ModifierState) => void;
+  t: TFunction<"terminal">;
 }
 
-function ModifierButton({ modifier, active, onToggle }: ModifierButtonProps) {
+function ModifierButton({ modifier, active, onToggle, t }: ModifierButtonProps) {
   const handlePress = useCallback(() => onToggle(modifier), [onToggle, modifier]);
   const pressableStyle = useCallback(
     ({ hovered, pressed }: PressableStateCallbackType & { hovered?: boolean }) => [
@@ -132,19 +135,20 @@ function ModifierButton({ modifier, active, onToggle }: ModifierButtonProps) {
   );
   return (
     <Pressable testID={`terminal-key-${modifier}`} onPress={handlePress} style={pressableStyle}>
-      <Text style={textStyle}>{MODIFIER_LABELS[modifier]}</Text>
+      <Text style={textStyle}>{t(MODIFIER_LABEL_KEYS[modifier])}</Text>
     </Pressable>
   );
 }
 
 interface VirtualKeyButtonProps {
   id: string;
-  label: string;
+  labelKey: ParseKeys<"terminal">;
   keyValue: string;
   onSend: (key: string) => void;
+  t: TFunction<"terminal">;
 }
 
-function VirtualKeyButton({ id, label, keyValue, onSend }: VirtualKeyButtonProps) {
+function VirtualKeyButton({ id, labelKey, keyValue, onSend, t }: VirtualKeyButtonProps) {
   const handlePress = useCallback(() => onSend(keyValue), [onSend, keyValue]);
   const pressableStyle = useCallback(
     ({ hovered, pressed }: PressableStateCallbackType & { hovered?: boolean }) => [
@@ -155,7 +159,7 @@ function VirtualKeyButton({ id, label, keyValue, onSend }: VirtualKeyButtonProps
   );
   return (
     <Pressable testID={`terminal-key-${id}`} onPress={handlePress} style={pressableStyle}>
-      <Text style={styles.keyButtonText}>{label}</Text>
+      <Text style={styles.keyButtonText}>{t(labelKey)}</Text>
     </Pressable>
   );
 }
@@ -169,6 +173,7 @@ export function TerminalPane({
   onOpenFileExplorer,
   onOpenWorkspaceFile,
 }: TerminalPaneProps) {
+  const { t } = useTranslation("terminal");
   const isAppVisible = useAppVisible();
   const { theme } = useUnistyles();
   const { settings } = useAppSettings();
@@ -750,7 +755,7 @@ export function TerminalPane({
   if (!client || !isConnected) {
     return (
       <View style={styles.centerState}>
-        <Text style={styles.stateText}>Host is not connected</Text>
+        <Text style={styles.stateText}>{t("pane.hostNotConnected")}</Text>
       </View>
     );
   }
@@ -814,33 +819,51 @@ export function TerminalPane({
                 <VirtualKeyButton
                   key={button.id}
                   id={button.id}
-                  label={button.label}
+                  labelKey={button.labelKey}
                   keyValue={button.key}
                   onSend={sendVirtualKey}
+                  t={t}
                 />
               ))}
 
-              <ModifierButton modifier="ctrl" active={modifiers.ctrl} onToggle={toggleModifier} />
+              <ModifierButton
+                modifier="ctrl"
+                active={modifiers.ctrl}
+                onToggle={toggleModifier}
+                t={t}
+              />
 
               <VirtualKeyButton
                 id={KEY_BUTTONS.up.id}
-                label={KEY_BUTTONS.up.label}
+                labelKey={KEY_BUTTONS.up.labelKey}
                 keyValue={KEY_BUTTONS.up.key}
                 onSend={sendVirtualKey}
+                t={t}
               />
 
-              <ModifierButton modifier="shift" active={modifiers.shift} onToggle={toggleModifier} />
+              <ModifierButton
+                modifier="shift"
+                active={modifiers.shift}
+                onToggle={toggleModifier}
+                t={t}
+              />
 
               <VirtualKeyButton
                 id={KEY_BUTTONS.backspace.id}
-                label={KEY_BUTTONS.backspace.label}
+                labelKey={KEY_BUTTONS.backspace.labelKey}
                 keyValue={KEY_BUTTONS.backspace.key}
                 onSend={sendVirtualKey}
+                t={t}
               />
             </View>
 
             <View style={styles.keyboardRow}>
-              <ModifierButton modifier="alt" active={modifiers.alt} onToggle={toggleModifier} />
+              <ModifierButton
+                modifier="alt"
+                active={modifiers.alt}
+                onToggle={toggleModifier}
+                t={t}
+              />
 
               {[
                 KEY_BUTTONS.space,
@@ -852,9 +875,10 @@ export function TerminalPane({
                 <VirtualKeyButton
                   key={button.id}
                   id={button.id}
-                  label={button.label}
+                  labelKey={button.labelKey}
                   keyValue={button.key}
                   onSend={sendVirtualKey}
+                  t={t}
                 />
               ))}
             </View>

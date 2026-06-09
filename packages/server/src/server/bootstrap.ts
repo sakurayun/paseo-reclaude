@@ -302,6 +302,7 @@ export async function createPaseoDaemon(
           {
             ...(override.enabled !== undefined ? { enabled: override.enabled } : {}),
             ...(override.additionalModels ? { additionalModels: override.additionalModels } : {}),
+            ...(override.command ? { command: override.command } : {}),
           },
         ]),
       ),

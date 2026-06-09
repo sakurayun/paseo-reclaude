@@ -1,4 +1,5 @@
 import { router, usePathname } from "expo-router";
+import { useTranslation } from "react-i18next";
 import { FolderPlus, Home, MessagesSquare, Plus, Search, Settings, X } from "lucide-react-native";
 import {
   type Dispatch,
@@ -135,6 +136,7 @@ export const LeftSidebar = memo(function LeftSidebar({
   void _selectedAgentId;
 
   const { theme } = useUnistyles();
+  const { t } = useTranslation("app");
   const insets = useSafeAreaInsets();
   const isCompactLayout = useIsCompactFormFactor();
   const isOpen = usePanelStore((state) =>
@@ -149,10 +151,10 @@ export const LeftSidebar = memo(function LeftSidebar({
   );
   const activeServerId = activeDaemon?.serverId ?? null;
   const activeHostLabel = useMemo(() => {
-    if (!activeDaemon) return "No host";
+    if (!activeDaemon) return t("leftSidebar.noHost");
     const trimmed = activeDaemon.label?.trim();
     return trimmed && trimmed.length > 0 ? trimmed : activeDaemon.serverId;
-  }, [activeDaemon]);
+  }, [activeDaemon, t]);
   const activeHostSnapshot = useHostRuntimeSnapshot(activeServerId ?? "");
   const activeHostStatus = activeServerId
     ? (activeHostSnapshot?.connectionStatus ?? "connecting")
@@ -431,9 +433,10 @@ function AddProjectTooltipContent({
 }: {
   newAgentKeys: ReturnType<typeof useShortcutKeys>;
 }) {
+  const { t } = useTranslation("app");
   return (
     <View style={styles.tooltipRow}>
-      <Text style={styles.tooltipText}>Add project</Text>
+      <Text style={styles.tooltipText}>{t("leftSidebar.addProject")}</Text>
       {newAgentKeys ? <Shortcut chord={newAgentKeys} /> : null}
     </View>
   );
@@ -483,6 +486,7 @@ function SidebarFooter({
   handleHome: () => void;
   handleSettings: () => void;
 }) {
+  const { t } = useTranslation("app");
   const newAgentKeys = useShortcutKeys("new-agent");
   return (
     <View style={styles.sidebarFooter}>
@@ -501,7 +505,7 @@ function SidebarFooter({
             <FooterIconButton
               onPress={handleOpenProject}
               testID="sidebar-add-project"
-              accessibilityLabel="Add project"
+              accessibilityLabel={t("leftSidebar.addProject")}
               icon={FolderPlus}
               theme={theme}
             />
@@ -513,14 +517,14 @@ function SidebarFooter({
         <FooterIconButton
           onPress={handleHome}
           testID="sidebar-home"
-          accessibilityLabel="Home"
+          accessibilityLabel={t("leftSidebar.home")}
           icon={Home}
           theme={theme}
         />
         <FooterIconButton
           onPress={handleSettings}
           testID="sidebar-settings"
-          accessibilityLabel="Settings"
+          accessibilityLabel={t("leftSidebar.settings")}
           icon={Settings}
           theme={theme}
         />
@@ -531,8 +535,8 @@ function SidebarFooter({
         onSelect={handleHostSelect}
         renderOption={renderHostOption}
         searchable={false}
-        title="Switch host"
-        searchPlaceholder="Search hosts..."
+        title={t("leftSidebar.switchHost")}
+        searchPlaceholder={t("leftSidebar.searchHosts")}
         desktopMinWidth={280}
         open={isHostPickerOpen}
         onOpenChange={setIsHostPickerOpen}
@@ -572,6 +576,7 @@ function MobileSidebar({
   closeSidebar,
   handleViewMoreNavigate,
 }: MobileSidebarProps) {
+  const { t } = useTranslation("app");
   const pathname = usePathname();
   const isSessionsActive = pathname.includes("/sessions");
   const {
@@ -753,7 +758,7 @@ function MobileSidebar({
             <View style={styles.sidebarHeaderRow}>
               <SidebarHeaderRow
                 icon={MessagesSquare}
-                label="Sessions"
+                label={t("leftSidebar.sessions")}
                 onPress={handleViewMore}
                 isActive={isSessionsActive}
                 testID="sidebar-sessions"
@@ -770,7 +775,7 @@ function MobileSidebar({
               nativeID="sidebar-close"
               accessible
               accessibilityRole="button"
-              accessibilityLabel="Close sidebar"
+              accessibilityLabel={t("leftSidebar.closeSidebar")}
               hitSlop={8}
             >
               {({ hovered, pressed }) => (
@@ -851,6 +856,7 @@ function DesktopSidebar({
   isOpen,
   handleViewMore,
 }: DesktopSidebarProps) {
+  const { t } = useTranslation("app");
   const pathname = usePathname();
   const isSessionsActive = pathname.includes("/sessions");
   const padding = useWindowControlsPadding("sidebar");
@@ -924,7 +930,7 @@ function DesktopSidebar({
           <View style={styles.sidebarHeaderRow}>
             <SidebarHeaderRow
               icon={MessagesSquare}
-              label="Sessions"
+              label={t("leftSidebar.sessions")}
               onPress={handleViewMore}
               isActive={isSessionsActive}
               testID="sidebar-sessions"
@@ -987,6 +993,7 @@ function WorkspacesSectionHeader({
   onNewWorkspacePress: () => void;
 }) {
   const { theme } = useUnistyles();
+  const { t } = useTranslation("app");
   const setCommandCenterOpen = useKeyboardShortcutsStore((state) => state.setCommandCenterOpen);
   const commandCenterKeys = useShortcutKeys("toggle-command-center");
   const handleSearchPress = useCallback(() => setCommandCenterOpen(true), [setCommandCenterOpen]);
@@ -1000,13 +1007,13 @@ function WorkspacesSectionHeader({
 
   return (
     <View style={styles.workspacesSectionHeader}>
-      <Text style={styles.workspacesSectionTitle}>Workspaces</Text>
+      <Text style={styles.workspacesSectionTitle}>{t("leftSidebar.workspaces")}</Text>
       <View style={styles.workspacesSectionActions}>
         <Tooltip delayDuration={300}>
           <TooltipTrigger asChild>
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="New workspace"
+              accessibilityLabel={t("leftSidebar.newWorkspace")}
               testID="sidebar-new-workspace"
               style={searchButtonStyle}
               onPress={onNewWorkspacePress}
@@ -1022,14 +1029,14 @@ function WorkspacesSectionHeader({
             </Pressable>
           </TooltipTrigger>
           <TooltipContent side="bottom" align="center" offset={8}>
-            <HeaderIconTooltipContent label="New workspace" />
+            <HeaderIconTooltipContent label={t("leftSidebar.newWorkspace")} />
           </TooltipContent>
         </Tooltip>
         <Tooltip delayDuration={300}>
           <TooltipTrigger asChild>
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Open command center"
+              accessibilityLabel={t("leftSidebar.openCommandCenter")}
               testID="sidebar-command-center-search"
               style={searchButtonStyle}
               onPress={handleSearchPress}
@@ -1045,7 +1052,10 @@ function WorkspacesSectionHeader({
             </Pressable>
           </TooltipTrigger>
           <TooltipContent side="bottom" align="center" offset={8}>
-            <HeaderIconTooltipContent label="Search" shortcutKeys={commandCenterKeys} />
+            <HeaderIconTooltipContent
+              label={t("leftSidebar.search")}
+              shortcutKeys={commandCenterKeys}
+            />
           </TooltipContent>
         </Tooltip>
         <Tooltip delayDuration={300}>
@@ -1055,7 +1065,7 @@ function WorkspacesSectionHeader({
             </View>
           </TooltipTrigger>
           <TooltipContent side="bottom" align="center" offset={8}>
-            <HeaderIconTooltipContent label="Display preferences" />
+            <HeaderIconTooltipContent label={t("leftSidebar.displayPreferences")} />
           </TooltipContent>
         </Tooltip>
       </View>

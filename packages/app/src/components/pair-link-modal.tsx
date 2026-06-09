@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import { Alert, Text, TextInput, View } from "react-native";
+import { useTranslation } from "react-i18next";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { Link } from "lucide-react-native";
@@ -12,7 +13,6 @@ import { AdaptiveModalSheet, AdaptiveTextInput, type SheetHeader } from "./adapt
 import { Button } from "@/components/ui/button";
 
 const FLEX_ONE_STYLE = { flex: 1 } as const;
-const PAIR_LINK_HEADER: SheetHeader = { title: "Paste pairing link" };
 
 const styles = StyleSheet.create((theme) => ({
   helper: {
@@ -61,9 +61,12 @@ export interface PairLinkModalProps {
 
 export function PairLinkModal({ visible, onClose, onCancel, onSaved }: PairLinkModalProps) {
   const { theme } = useUnistyles();
+  const { t } = useTranslation("app");
   const daemons = useHosts();
   const { upsertConnectionFromOfferUrl: upsertDaemonFromOfferUrl } = useHostMutations();
   const isMobile = useIsCompactFormFactor();
+
+  const pairLinkHeader = useMemo<SheetHeader>(() => ({ title: t("pair.link.title") }), [t]);
 
   const offerUrlRef = useRef("");
   const inputRef = useRef<TextInput>(null);
@@ -98,11 +101,11 @@ export function PairLinkModal({ visible, onClose, onCancel, onSaved }: PairLinkM
     if (isSaving) return;
     const raw = offerUrlRef.current.trim();
     if (!raw) {
-      setErrorMessage("Paste a pairing link (…/#offer=...)");
+      setErrorMessage(t("pair.link.errors.empty"));
       return;
     }
     if (!raw.includes("#offer=")) {
-      setErrorMessage("Link must include #offer=...");
+      setErrorMessage(t("pair.link.errors.missingOffer"));
       return;
     }
 
@@ -111,15 +114,15 @@ export function PairLinkModal({ visible, onClose, onCancel, onSaved }: PairLinkM
         const idx = raw.indexOf("#offer=");
         const encoded = raw.slice(idx + "#offer=".length).trim();
         if (!encoded) {
-          throw new Error("Offer payload is empty");
+          throw new Error(t("pair.link.errors.payloadEmpty"));
         }
         const payload = decodeOfferFragmentPayload(encoded);
         return ConnectionOfferSchema.parse(payload);
       } catch (error) {
-        const message = error instanceof Error ? error.message : "Invalid pairing link";
+        const message = error instanceof Error ? error.message : t("pair.link.errors.invalid");
         setErrorMessage(message);
         if (!isMobile) {
-          Alert.alert("Pairing failed", message);
+          Alert.alert(t("pair.link.failure.title"), message);
         }
         return null;
       }
@@ -150,15 +153,15 @@ export function PairLinkModal({ visible, onClose, onCancel, onSaved }: PairLinkM
       onSaved?.({ profile, serverId: parsedOffer.serverId, hostname, isNewHost });
       handleClose();
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Unable to pair host";
+      const message = error instanceof Error ? error.message : t("pair.link.errors.unable");
       setErrorMessage(message);
       if (!isMobile) {
-        Alert.alert("Pairing failed", message);
+        Alert.alert(t("pair.link.failure.title"), message);
       }
     } finally {
       setIsSaving(false);
     }
-  }, [daemons, handleClose, isMobile, isSaving, onSaved, upsertDaemonFromOfferUrl]);
+  }, [daemons, handleClose, isMobile, isSaving, onSaved, t, upsertDaemonFromOfferUrl]);
 
   const handleChangeOfferUrl = useCallback((next: string) => {
     offerUrlRef.current = next;
@@ -170,15 +173,15 @@ export function PairLinkModal({ visible, onClose, onCancel, onSaved }: PairLinkM
 
   return (
     <AdaptiveModalSheet
-      header={PAIR_LINK_HEADER}
+      header={pairLinkHeader}
       visible={visible}
       onClose={handleClose}
       testID="pair-link-modal"
     >
-      <Text style={styles.helper}>Paste the pairing link from your server.</Text>
+      <Text style={styles.helper}>{t("pair.link.helper")}</Text>
 
       <View style={styles.field}>
-        <Text style={styles.label}>Pairing link</Text>
+        <Text style={styles.label}>{t("pair.link.fieldLabel")}</Text>
         <AdaptiveTextInput
           ref={inputRef}
           testID="pair-link-input"
@@ -204,9 +207,9 @@ export function PairLinkModal({ visible, onClose, onCancel, onSaved }: PairLinkM
           disabled={isSaving}
           testID="pair-link-cancel"
           accessibilityRole="button"
-          accessibilityLabel="Cancel"
+          accessibilityLabel={t("pair.link.cancel")}
         >
-          Cancel
+          {t("pair.link.cancel")}
         </Button>
         <Button
           style={FLEX_ONE_STYLE}
@@ -215,10 +218,10 @@ export function PairLinkModal({ visible, onClose, onCancel, onSaved }: PairLinkM
           disabled={isSaving}
           testID="pair-link-submit"
           accessibilityRole="button"
-          accessibilityLabel="Pair"
+          accessibilityLabel={t("pair.link.pair")}
           leftIcon={pairIcon}
         >
-          {isSaving ? "Pairing..." : "Pair"}
+          {isSaving ? t("pair.link.pairing") : t("pair.link.pair")}
         </Button>
       </View>
     </AdaptiveModalSheet>

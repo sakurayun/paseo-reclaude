@@ -1,5 +1,7 @@
 import { memo, useCallback, useMemo, useState, type ReactElement } from "react";
 import { Text, View } from "react-native";
+import { useTranslation } from "react-i18next";
+import type { ParseKeys } from "i18next";
 import { FileText, Layers, MessageSquare, Undo2 } from "lucide-react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import {
@@ -34,6 +36,12 @@ function getIcon(mode: RewindMode, color: string): ReactElement {
   }
 }
 
+const MODE_LABEL_KEYS: Record<RewindMode, ParseKeys<"app">> = {
+  conversation: "rewind.mode.conversation",
+  files: "rewind.mode.files",
+  both: "rewind.mode.both",
+};
+
 export const RewindMenu = memo(function RewindMenu({
   capabilities,
   rewoundText,
@@ -42,6 +50,7 @@ export const RewindMenu = memo(function RewindMenu({
   testID = "rewind-menu",
 }: RewindMenuProps) {
   const { theme } = useUnistyles();
+  const { t } = useTranslation("app");
   const items = useRewindCapabilities(capabilities);
   const [isOpen, setIsOpen] = useState(false);
   const [pendingMode, setPendingMode] = useState<RewindMode | null>(null);
@@ -79,10 +88,10 @@ export const RewindMenu = memo(function RewindMenu({
   const tooltipContent = useMemo(
     () => (
       <TooltipContent side="top" align="center" offset={8}>
-        <Text style={styles.tooltipText}>Rewind to this message</Text>
+        <Text style={styles.tooltipText}>{t("rewind.tooltip")}</Text>
       </TooltipContent>
     ),
-    [],
+    [t],
   );
 
   if (items.length === 0) {
@@ -95,7 +104,7 @@ export const RewindMenu = memo(function RewindMenu({
         <TooltipTrigger asChild>
           <View style={styles.triggerSlot} collapsable={false}>
             <DropdownMenuTrigger
-              accessibilityLabel="Rewind to this message"
+              accessibilityLabel={t("rewind.tooltip")}
               accessibilityRole="button"
               disabled={isLocked}
               style={triggerStyle}
@@ -114,7 +123,7 @@ export const RewindMenu = memo(function RewindMenu({
       </Tooltip>
       <DropdownMenuContent align="end" minWidth={220} side="bottom" testID={`${testID}-content`}>
         <View style={styles.warningHeader}>
-          <Text style={styles.warningText}>This action cannot be undone</Text>
+          <Text style={styles.warningText}>{t("rewind.warning")}</Text>
         </View>
         <DropdownMenuSeparator />
         {items.map((item) => (
@@ -127,7 +136,7 @@ export const RewindMenu = memo(function RewindMenu({
             status={pendingMode === item.mode ? "pending" : undefined}
             testID={item.testID}
           >
-            {item.label}
+            {t(MODE_LABEL_KEYS[item.mode])}
           </DropdownMenuItem>
         ))}
       </DropdownMenuContent>

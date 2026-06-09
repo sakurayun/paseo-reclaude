@@ -9,6 +9,7 @@ import {
 } from "react";
 import { Pressable, Text, View, type PressableStateCallbackType } from "react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
+import { useTranslation } from "react-i18next";
 import { useShallow } from "zustand/shallow";
 import { useStoreWithEqualityFn } from "zustand/traditional";
 import {
@@ -108,6 +109,7 @@ function AgentModeControlView({
   disabled = false,
 }: AgentModeControlViewProps) {
   const { theme } = useUnistyles();
+  const { t } = useTranslation("composer");
   const anchorRef = useRef<View>(null);
   const [open, setOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -182,14 +184,14 @@ function AgentModeControlView({
 
   const sheetHeader = useMemo<SheetHeader>(
     () => ({
-      title: "Mode",
+      title: t("controls.mode.sheetTitle"),
       search: {
         onChange: setSearchQuery,
-        placeholder: "Search modes...",
+        placeholder: t("controls.mode.searchPlaceholder"),
         testID: "mode-search-input",
       },
     }),
-    [],
+    [t],
   );
 
   if (!selectedMode) return null;
@@ -203,7 +205,9 @@ function AgentModeControlView({
         onPress={handlePress}
         style={pressableStyle}
         accessibilityRole="button"
-        accessibilityLabel={`Select agent mode (${selectedModeLabel})`}
+        accessibilityLabel={t("controls.mode.selectAccessibilityLabelWithValue", {
+          value: selectedModeLabel,
+        })}
         testID="mode-control"
       >
         {Icon ? <Icon size={theme.iconSize.md} color={iconColor} /> : null}

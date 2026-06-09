@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Pressable, type PressableStateCallbackType, ScrollView, Text, View } from "react-native";
 import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import type {
   DaemonClient,
   FetchRecentProviderSessionEntry,
@@ -103,33 +105,36 @@ function SheetStatusMessages({
   importErrored,
 }: SheetStatusMessagesProps) {
   const { theme } = useUnistyles();
+  const { t } = useTranslation("app");
   if (!isClientReady) {
-    return <Text style={styles.statusText}>Connect to a host to import sessions</Text>;
+    return <Text style={styles.statusText}>{t("importSession.status.connectToHost")}</Text>;
   }
   if (isSnapshotUnsupported) {
-    return <Text style={styles.statusText}>Update the host to import sessions.</Text>;
+    return <Text style={styles.statusText}>{t("importSession.status.updateHost")}</Text>;
   }
   return (
     <>
       {hasNoImportableProviders ? (
-        <Text style={styles.statusText}>No importable providers are enabled.</Text>
+        <Text style={styles.statusText}>{t("importSession.status.noImportableProviders")}</Text>
       ) : null}
       {isLoadingSessions ? (
         <View style={styles.statusRow}>
           <LoadingSpinner color={theme.colors.foregroundMuted} />
-          <Text style={styles.statusText}>Loading recent sessions...</Text>
+          <Text style={styles.statusText}>{t("importSession.status.loading")}</Text>
         </View>
       ) : null}
       {allQueriesErrored ? (
-        <Text style={styles.statusText}>Could not load recent sessions.</Text>
+        <Text style={styles.statusText}>{t("importSession.status.loadFailed")}</Text>
       ) : null}
       {!allQueriesErrored && erroredProviderLabels.length > 0 ? (
         <Text style={styles.statusText}>
-          Could not load sessions for {erroredProviderLabels.join(", ")}.
+          {t("importSession.status.loadFailedForProviders", {
+            providers: erroredProviderLabels.join(", "),
+          })}
         </Text>
       ) : null}
       {importErrored ? (
-        <Text style={styles.statusText}>Could not import selected session.</Text>
+        <Text style={styles.statusText}>{t("importSession.status.importFailed")}</Text>
       ) : null}
     </>
   );
@@ -137,6 +142,7 @@ function SheetStatusMessages({
 
 function RefreshAction({ isRefreshing, onPress }: { isRefreshing: boolean; onPress: () => void }) {
   const { theme } = useUnistyles();
+  const { t } = useTranslation("app");
   const pressableStyle = useCallback(
     ({ pressed }: PressableStateCallbackType) => [
       styles.refreshButton,
@@ -148,7 +154,7 @@ function RefreshAction({ isRefreshing, onPress }: { isRefreshing: boolean; onPre
     <Pressable
       onPress={onPress}
       disabled={isRefreshing}
-      accessibilityLabel="Refresh sessions"
+      accessibilityLabel={t("importSession.refreshAccessibility")}
       accessibilityRole="button"
       testID="import-session-refresh"
       style={pressableStyle}
@@ -179,9 +185,14 @@ function SheetEmptyState({ title }: { title: string }) {
 function buildProviderFilterOptions(
   providers: ReadonlyArray<string>,
   providerLabelById: ReadonlyMap<string, string>,
+  t: TFunction<"app">,
 ): SegmentedControlOption<string>[] {
   const options: SegmentedControlOption<string>[] = [
-    { value: ALL_FILTER_VALUE, label: "All", testID: "import-session-filter-all" },
+    {
+      value: ALL_FILTER_VALUE,
+      label: t("importSession.filterAll"),
+      testID: "import-session-filter-all",
+    },
   ];
   for (const provider of providers) {
     const ProviderIcon = getProviderIcon(provider);
@@ -209,6 +220,7 @@ function ImportSessionSheetRow({
   onImportSession: (entry: FetchRecentProviderSessionEntry) => void;
 }) {
   const { theme } = useUnistyles();
+  const { t } = useTranslation("app");
   const title = getSessionTitle(entry);
   const promptPreview = getPromptPreview(entry);
   const lastActivity = formatTimeAgo(new Date(entry.lastActivityAt));
@@ -246,7 +258,9 @@ function ImportSessionSheetRow({
           <Text style={styles.rowTitle} numberOfLines={1}>
             {title}
           </Text>
-          <Text style={styles.rowMeta}>{importing ? "Importing..." : lastActivity}</Text>
+          <Text style={styles.rowMeta}>
+            {importing ? t("importSession.importing") : lastActivity}
+          </Text>
         </View>
         <Text style={styles.rowPreview} numberOfLines={2}>
           {promptPreview}
@@ -270,6 +284,7 @@ export function ImportSessionSheet({
   onImportedAgent,
   onImported,
 }: ImportSessionSheetProps) {
+  const { t } = useTranslation("app");
   const queryClient = useQueryClient();
 
   const { entries: snapshotEntries, supportsSnapshot } = useProvidersSnapshot(serverId, {
@@ -331,8 +346,8 @@ export function ImportSessionSheet({
   }, [aggregatedEntries, selectedProvider]);
 
   const filterOptions = useMemo(
-    () => buildProviderFilterOptions(filterProviders, providerLabelById),
-    [filterProviders, providerLabelById],
+    () => buildProviderFilterOptions(filterProviders, providerLabelById, t),
+    [filterProviders, providerLabelById, t],
   );
 
   const importMutation = useMutation({
@@ -384,10 +399,10 @@ export function ImportSessionSheet({
 
   const header = useMemo<SheetHeader>(
     () => ({
-      title: "Import session",
+      title: t("importSession.title"),
       actions: <RefreshAction isRefreshing={isRefreshing} onPress={handleRefresh} />,
     }),
-    [isRefreshing, handleRefresh],
+    [isRefreshing, handleRefresh, t],
   );
 
   const isSnapshotUnsupported = !supportsSnapshot;

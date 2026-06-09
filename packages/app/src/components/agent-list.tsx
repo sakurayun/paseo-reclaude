@@ -10,6 +10,8 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useCallback, useMemo, useState, type ReactElement } from "react";
+import { useTranslation } from "react-i18next";
+import type { ParseKeys } from "i18next";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { formatTimeAgo } from "@/utils/time";
@@ -34,8 +36,18 @@ interface AgentListProps {
 }
 
 type FlatListItem =
-  | { type: "header"; key: string; title: string }
+  | { type: "header"; key: string; titleKey: ParseKeys<"agents"> }
   | { type: "agent"; key: string; agent: AggregatedAgent };
+
+const DATE_SECTION_KEYS = [
+  "dateSection.today",
+  "dateSection.yesterday",
+  "dateSection.thisWeek",
+  "dateSection.thisMonth",
+  "dateSection.older",
+] as const satisfies readonly ParseKeys<"agents">[];
+
+type DateSectionKey = (typeof DATE_SECTION_KEYS)[number];
 
 function buildHistoricalAgentDetail(agent: AggregatedAgent): Agent {
   return {
@@ -94,7 +106,7 @@ function rememberArchivedAgentDetail(agent: AggregatedAgent) {
   });
 }
 
-function deriveDateSectionLabel(lastActivityAt: Date): string {
+function deriveDateSectionKey(lastActivityAt: Date): DateSectionKey {
   const now = new Date();
   const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const yesterdayStart = new Date(todayStart.getTime() - 24 * 60 * 60 * 1000);
@@ -105,37 +117,37 @@ function deriveDateSectionLabel(lastActivityAt: Date): string {
   );
 
   if (activityStart.getTime() >= todayStart.getTime()) {
-    return "Today";
+    return "dateSection.today";
   }
   if (activityStart.getTime() >= yesterdayStart.getTime()) {
-    return "Yesterday";
+    return "dateSection.yesterday";
   }
 
   const diffTime = todayStart.getTime() - activityStart.getTime();
   const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
   if (diffDays <= 7) {
-    return "This week";
+    return "dateSection.thisWeek";
   }
   if (diffDays <= 30) {
-    return "This month";
+    return "dateSection.thisMonth";
   }
-  return "Older";
+  return "dateSection.older";
 }
 
-function formatStatusLabel(status: AggregatedAgent["status"]): string {
+function statusLabelKey(status: AggregatedAgent["status"]): ParseKeys<"agents"> | null {
   switch (status) {
     case "initializing":
-      return "Starting";
+      return "status.lifecycle.starting";
     case "idle":
-      return "Idle";
+      return "status.lifecycle.idle";
     case "running":
-      return "Running";
+      return "status.lifecycle.running";
     case "error":
-      return "Error";
+      return "status.lifecycle.error";
     case "closed":
-      return "Closed";
+      return "status.lifecycle.closed";
     default:
-      return status;
+      return null;
   }
 }
 
@@ -188,10 +200,12 @@ function SessionRow({
   onLongPress: (agent: AggregatedAgent) => void;
 }) {
   const { theme } = useUnistyles();
+  const { t } = useTranslation("agents");
   const timeAgo = formatTimeAgo(agent.lastActivityAt);
   const agentKey = `${agent.serverId}:${agent.id}`;
   const isSelected = selectedAgentId === agentKey;
-  const statusLabel = formatStatusLabel(agent.status);
+  const statusKey = statusLabelKey(agent.status);
+  const statusLabel = statusKey ? t(statusKey) : agent.status;
   const projectPath = shortenPath(agent.cwd);
   const ProviderIcon = getProviderIcon(agent.provider);
 
@@ -231,14 +245,19 @@ function SessionRow({
             <ProviderIcon size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
           </View>
           <Text style={sessionTitleStyle} numberOfLines={1}>
-            {agent.title || "New session"}
+            {agent.title || t("list.newSession")}
           </Text>
-          {agent.archivedAt ? <SessionBadge label="Archived" icon={archivedIcon} /> : null}
+          {agent.archivedAt ? (
+            <SessionBadge label={t("list.archivedBadge")} icon={archivedIcon} />
+          ) : null}
           {(agent.pendingPermissionCount ?? 0) > 0 ? (
-            <SessionBadge label={`${agent.pendingPermissionCount} pending`} tone="warning" />
+            <SessionBadge
+              label={t("list.pendingPermissions", { count: agent.pendingPermissionCount ?? 0 })}
+              tone="warning"
+            />
           ) : null}
           {!isMobile && showAttentionIndicator && agent.requiresAttention ? (
-            <SessionBadge label="Attention" tone="danger" />
+            <SessionBadge label={t("list.attentionBadge")} tone="danger" />
           ) : null}
         </View>
         {isMobile && (
@@ -272,7 +291,7 @@ function SessionRow({
       )}
       {isMobile && showAttentionIndicator && agent.requiresAttention ? (
         <View style={styles.rowTrailing}>
-          <SessionBadge label="Attention" tone="danger" />
+          <SessionBadge label={t("list.attentionBadge")} tone="danger" />
         </View>
       ) : null}
     </Pressable>
@@ -289,6 +308,7 @@ export function AgentList({
   showAttentionIndicator = true,
 }: AgentListProps) {
   const { theme } = useUnistyles();
+  const { t } = useTranslation("agents");
   const insets = useSafeAreaInsets();
   const [actionAgent, setActionAgent] = useState<AggregatedAgent | null>(null);
   const isMobile = useIsCompactFormFactor();
@@ -354,22 +374,21 @@ export function AgentList({
   }, [actionAgent, actionClient, archiveAgent]);
 
   const flatItems = useMemo((): FlatListItem[] => {
-    const order = ["Today", "Yesterday", "This week", "This month", "Older"] as const;
-    const buckets = new Map<string, AggregatedAgent[]>();
+    const buckets = new Map<DateSectionKey, AggregatedAgent[]>();
     for (const agent of agents) {
-      const label = deriveDateSectionLabel(agent.lastActivityAt);
-      const existing = buckets.get(label) ?? [];
+      const sectionKey = deriveDateSectionKey(agent.lastActivityAt);
+      const existing = buckets.get(sectionKey) ?? [];
       existing.push(agent);
-      buckets.set(label, existing);
+      buckets.set(sectionKey, existing);
     }
 
     const result: FlatListItem[] = [];
-    for (const label of order) {
-      const data = buckets.get(label);
+    for (const sectionKey of DATE_SECTION_KEYS) {
+      const data = buckets.get(sectionKey);
       if (!data || data.length === 0) {
         continue;
       }
-      result.push({ type: "header", key: `header:${label}`, title: label });
+      result.push({ type: "header", key: `header:${sectionKey}`, titleKey: sectionKey });
       for (const agent of data) {
         result.push({ type: "agent", key: `${agent.serverId}:${agent.id}`, agent });
       }
@@ -382,7 +401,7 @@ export function AgentList({
       if (item.type === "header") {
         return (
           <View style={styles.sectionHeading}>
-            <Text style={styles.sectionTitle}>{item.title}</Text>
+            <Text style={styles.sectionTitle}>{t(item.titleKey)}</Text>
           </View>
         );
       }
@@ -397,7 +416,7 @@ export function AgentList({
         />
       );
     },
-    [handleAgentLongPress, handleAgentPress, isMobile, selectedAgentId, showAttentionIndicator],
+    [handleAgentLongPress, handleAgentPress, isMobile, selectedAgentId, showAttentionIndicator, t],
   );
 
   const keyExtractor = useCallback((item: FlatListItem) => item.key, []);
@@ -453,9 +472,7 @@ export function AgentList({
           <View style={sheetContainerStyle}>
             <View style={styles.sheetHandle} />
             <Text style={styles.sheetTitle}>
-              {isActionDaemonUnavailable
-                ? "Host offline"
-                : "This agent is still running. Archiving it will stop the agent."}
+              {isActionDaemonUnavailable ? t("list.hostOffline") : t("list.archiveRunningPrompt")}
             </Text>
             <View style={styles.sheetButtonRow}>
               <Pressable
@@ -463,7 +480,7 @@ export function AgentList({
                 onPress={handleCloseActionSheet}
                 testID="agent-action-cancel"
               >
-                <Text style={styles.sheetCancelText}>Cancel</Text>
+                <Text style={styles.sheetCancelText}>{t("list.cancel")}</Text>
               </Pressable>
               <Pressable
                 disabled={isActionDaemonUnavailable}
@@ -471,7 +488,7 @@ export function AgentList({
                 onPress={handleArchiveAgent}
                 testID="agent-action-archive"
               >
-                <Text style={sheetArchiveTextStyle}>Archive</Text>
+                <Text style={sheetArchiveTextStyle}>{t("list.archive")}</Text>
               </Pressable>
             </View>
           </View>

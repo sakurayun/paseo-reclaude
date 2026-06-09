@@ -1,7 +1,10 @@
+import type { TFunction } from "i18next";
+
 import type {
   CheckoutPrStatusResponse,
   PullRequestTimelineResponse,
 } from "@getpaseo/protocol/messages";
+import i18n from "@/i18n";
 
 export type PrState = "open" | "draft" | "merged" | "closed";
 export type CheckStatus = "success" | "failure" | "pending" | "skipped";
@@ -92,29 +95,29 @@ export function formatAge(createdAtMs: number, nowMs = Date.now()): string {
   const elapsedSeconds = Math.floor(elapsedMs / 1000);
 
   if (elapsedSeconds < 60) {
-    return "just now";
+    return i18n.t("time:justNow");
   }
 
   const elapsedMinutes = Math.floor(elapsedSeconds / 60);
   if (elapsedMinutes < 60) {
-    return `${elapsedMinutes}m ago`;
+    return i18n.t("time:relative.minutesAgo", { value: elapsedMinutes });
   }
 
   const elapsedHours = Math.floor(elapsedMinutes / 60);
   if (elapsedHours < 24) {
-    return `${elapsedHours}h ago`;
+    return i18n.t("time:relative.hoursAgo", { value: elapsedHours });
   }
 
   const elapsedDays = Math.floor(elapsedHours / 24);
   if (elapsedDays < 30) {
-    return `${elapsedDays}d ago`;
+    return i18n.t("time:relative.daysAgo", { value: elapsedDays });
   }
 
   if (elapsedDays < 365) {
-    return `${Math.floor(elapsedDays / 30)}mo ago`;
+    return i18n.t("time:relative.monthsAgo", { value: Math.floor(elapsedDays / 30) });
   }
 
-  return `${Math.floor(elapsedDays / 365)}y ago`;
+  return i18n.t("time:relative.yearsAgo", { value: Math.floor(elapsedDays / 365) });
 }
 
 function derivePrState(status: NonNullable<CheckoutPrStatus>): PrState {
@@ -226,16 +229,19 @@ function hashLogin(login: string): number {
   return hash;
 }
 
-export function getStateLabel(state: PrState): string {
-  if (state === "draft") return "Draft";
-  if (state === "merged") return "Merged";
-  if (state === "closed") return "Closed";
-  return "Open";
+export function getStateLabel(state: PrState, t: TFunction<"git">): string {
+  if (state === "draft") return t("pr.state.draft");
+  if (state === "merged") return t("pr.state.merged");
+  if (state === "closed") return t("pr.state.closed");
+  return t("pr.state.open");
 }
 
-export function getActivityVerb(item: Pick<PrPaneActivity, "kind" | "reviewState">): string {
-  if (item.kind === "comment") return "Commented";
-  if (item.reviewState === "approved") return "Approved";
-  if (item.reviewState === "changes_requested") return "Requested changes";
-  return "Reviewed";
+export function getActivityVerb(
+  item: Pick<PrPaneActivity, "kind" | "reviewState">,
+  t: TFunction<"git">,
+): string {
+  if (item.kind === "comment") return t("pr.activity.commented");
+  if (item.reviewState === "approved") return t("pr.activity.approved");
+  if (item.reviewState === "changes_requested") return t("pr.activity.requestedChanges");
+  return t("pr.activity.reviewed");
 }

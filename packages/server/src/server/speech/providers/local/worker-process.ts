@@ -3,7 +3,11 @@ import pino from "pino";
 import type { StreamingTranscriptionSession } from "../../speech-provider.js";
 import type { TurnDetectionSession } from "../../turn-detection-provider.js";
 import { getLocalSpeechModelDir, type LocalSttModelId, type LocalTtsModelId } from "./models.js";
-import { SherpaOfflineRecognizerEngine } from "./sherpa/sherpa-offline-recognizer.js";
+import {
+  SherpaOfflineRecognizerEngine,
+  buildOfflineRecognizerModel,
+} from "./sherpa/sherpa-offline-recognizer.js";
+import { getSherpaOnnxModelSpec } from "./sherpa/model-catalog.js";
 import { SherpaOnnxParakeetSTT } from "./sherpa/sherpa-parakeet-stt.js";
 import { SherpaParakeetRealtimeTranscriptionSession } from "./sherpa/sherpa-parakeet-realtime-session.js";
 import { SherpaOnnxTTS } from "./sherpa/sherpa-tts.js";
@@ -83,15 +87,13 @@ function getSttEngine(
     return existing;
   }
   const modelDir = getLocalSpeechModelDir(config.modelsDir, modelId);
+  const spec = getSherpaOnnxModelSpec(modelId);
   const created = new SherpaOfflineRecognizerEngine(
     {
-      model: {
-        kind: "nemo_transducer",
-        encoder: `${modelDir}/encoder.int8.onnx`,
-        decoder: `${modelDir}/decoder.int8.onnx`,
-        joiner: `${modelDir}/joiner.int8.onnx`,
-        tokens: `${modelDir}/tokens.txt`,
-      },
+      // The recognizer wiring (transducer triple vs. single-file SenseVoice) is derived
+      // from the catalog entry's architecture. SenseVoice runs with language "auto",
+      // which auto-detects Chinese/Cantonese/English/Japanese/Korean.
+      model: buildOfflineRecognizerModel(modelDir, spec),
       numThreads: 2,
       debug: 0,
     },

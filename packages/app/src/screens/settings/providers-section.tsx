@@ -1,8 +1,9 @@
 import { useCallback, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Alert, Pressable, Text, View, type PressableStateCallbackType } from "react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { settingsStyles } from "@/styles/settings";
-import { useHostRuntimeIsConnected } from "@/runtime/host-runtime";
+import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
 import { useProvidersSnapshot } from "@/hooks/use-providers-snapshot";
 import { useDaemonConfig } from "@/hooks/use-daemon-config";
 import { buildProviderDefinitions } from "@/utils/provider-definitions";
@@ -23,24 +24,34 @@ type ProviderEntry = NonNullable<ReturnType<typeof useProvidersSnapshot>["entrie
 
 type StatusTone = "success" | "warning" | "danger" | "muted" | "loading";
 
+type ProviderStatusLabelKey = "disabled" | "loading" | "error" | "available" | "notInstalled";
+
+const STATUS_LABEL_KEYS = {
+  disabled: "providers.status.disabled",
+  loading: "providers.status.loading",
+  error: "providers.status.error",
+  available: "providers.status.available",
+  notInstalled: "providers.status.notInstalled",
+} as const;
+
 interface ProviderStatus {
   tone: StatusTone;
-  label: string;
+  labelKey: ProviderStatusLabelKey;
   modelCount: number | null;
 }
 
 function getProviderStatus(status: string, enabled: boolean, modelCount: number): ProviderStatus {
-  if (!enabled) return { tone: "muted", label: "Disabled", modelCount: null };
-  if (status === "loading") return { tone: "loading", label: "Loading", modelCount: null };
-  if (status === "error") return { tone: "danger", label: "Error", modelCount: null };
+  if (!enabled) return { tone: "muted", labelKey: "disabled", modelCount: null };
+  if (status === "loading") return { tone: "loading", labelKey: "loading", modelCount: null };
+  if (status === "error") return { tone: "danger", labelKey: "error", modelCount: null };
   if (status === "ready") {
     return {
       tone: "success",
-      label: "Available",
+      labelKey: "available",
       modelCount: modelCount > 0 ? modelCount : null,
     };
   }
-  return { tone: "warning", label: "Not installed", modelCount: null };
+  return { tone: "warning", labelKey: "notInstalled", modelCount: null };
 }
 
 interface ProviderRowProps {
@@ -49,6 +60,7 @@ interface ProviderRowProps {
   enabled: boolean;
   isToggling: boolean;
   isFirst: boolean;
+  serverId: string;
   onPress: (providerId: string) => void;
   onToggleEnabled: (providerId: string, enabled: boolean) => void;
 }
@@ -59,10 +71,12 @@ function ProviderRow({
   enabled,
   isToggling,
   isFirst,
+  serverId,
   onPress,
   onToggleEnabled,
 }: ProviderRowProps) {
   const { theme } = useUnistyles();
+  const { t } = useTranslation("settings");
   const ProviderIcon = getProviderIcon(def.id);
   const providerError =
     enabled &&
@@ -95,44 +109,93 @@ function ProviderRow({
   );
 
   return (
-    <Pressable
-      style={rowStyle}
-      onPress={handlePress}
-      accessibilityRole="button"
-      accessibilityLabel={`${def.label} provider details`}
-    >
-      {({ hovered }: PressableStateCallbackType & { hovered?: boolean }) => (
-        <>
-          <View style={styles.rowContent}>
-            <ChevronRight
-              size={theme.iconSize.sm}
-              color={hovered ? theme.colors.foreground : theme.colors.foregroundMuted}
-            />
-            <ProviderIcon size={theme.iconSize.md} color={theme.colors.foreground} />
-            <View style={styles.textColumn}>
-              <View style={styles.titleRow}>
-                <Text style={settingsStyles.rowTitle} numberOfLines={1}>
-                  {def.label}
-                </Text>
-                <Text style={styles.separator}>·</Text>
-                <StatusIndicator status={providerStatus} />
+    <>
+      <Pressable
+        style={rowStyle}
+        onPress={handlePress}
+        accessibilityRole="button"
+        accessibilityLabel={t("providers.detailsLabel", { label: def.label })}
+      >
+        {({ hovered }: PressableStateCallbackType & { hovered?: boolean }) => (
+          <>
+            <View style={styles.rowContent}>
+              <ChevronRight
+                size={theme.iconSize.sm}
+                color={hovered ? theme.colors.foreground : theme.colors.foregroundMuted}
+              />
+              <ProviderIcon size={theme.iconSize.md} color={theme.colors.foreground} />
+              <View style={styles.textColumn}>
+                <View style={styles.titleRow}>
+                  <Text style={settingsStyles.rowTitle} numberOfLines={1}>
+                    {def.label}
+                  </Text>
+                  <Text style={styles.separator}>·</Text>
+                  <StatusIndicator status={providerStatus} />
+                </View>
+                {providerError ? (
+                  <Text style={styles.errorText} numberOfLines={3}>
+                    {providerError}
+                  </Text>
+                ) : null}
               </View>
-              {providerError ? (
-                <Text style={styles.errorText} numberOfLines={3}>
-                  {providerError}
-                </Text>
-              ) : null}
             </View>
-          </View>
-          <Switch
-            value={enabled}
-            onValueChange={handleToggleValueChange}
-            disabled={isToggling}
-            accessibilityLabel={`Enable ${def.label}`}
-          />
-        </>
-      )}
-    </Pressable>
+            <Switch
+              value={enabled}
+              onValueChange={handleToggleValueChange}
+              disabled={isToggling}
+              accessibilityLabel={t("providers.enableLabel", { label: def.label })}
+            />
+          </>
+        )}
+      </Pressable>
+      {def.id === "claude" ? <ClaudeReclaudeRow serverId={serverId} /> : null}
+    </>
+  );
+}
+
+const RECLAUDE_COMMAND = ["reclaude"];
+
+function ClaudeReclaudeRow({ serverId }: { serverId: string }) {
+  const { t } = useTranslation("settings");
+  const { config, patchConfig } = useDaemonConfig(serverId);
+  const client = useHostRuntimeClient(serverId);
+  const [pending, setPending] = useState(false);
+  const command = config?.providers?.claude?.command ?? null;
+  const enabled = command?.[0] === "reclaude";
+  const rowStyle = useMemo(() => [settingsStyles.row, settingsStyles.rowBorder], []);
+
+  const handleChange = useCallback(
+    (value: boolean) => {
+      setPending(true);
+      // Set/clear the Claude launch command, then restart so the daemon picks it up.
+      void patchConfig({
+        providers: { claude: { command: value ? RECLAUDE_COMMAND : null } },
+      })
+        .then(() => client?.restartServer("provider_command_claude"))
+        .catch((error) => {
+          Alert.alert(
+            t("providers.reclaude.error"),
+            error instanceof Error ? error.message : String(error),
+          );
+        })
+        .finally(() => setPending(false));
+    },
+    [client, patchConfig, t],
+  );
+
+  return (
+    <View style={rowStyle}>
+      <View style={settingsStyles.rowContent}>
+        <Text style={settingsStyles.rowTitle}>{t("providers.reclaude.title")}</Text>
+        <Text style={settingsStyles.rowHint}>{t("providers.reclaude.hint")}</Text>
+      </View>
+      <Switch
+        value={enabled}
+        onValueChange={handleChange}
+        disabled={pending || !client}
+        accessibilityLabel={t("providers.reclaude.toggleLabel")}
+      />
+    </View>
   );
 }
 
@@ -151,6 +214,7 @@ function getDotColor(tone: StatusTone, theme: ReturnType<typeof useUnistyles>["t
 
 function StatusIndicator({ status }: { status: ProviderStatus }) {
   const { theme } = useUnistyles();
+  const { t } = useTranslation("settings");
   const dotStyle = useMemo(
     () => [styles.statusDot, { backgroundColor: getDotColor(status.tone, theme) }],
     [status.tone, theme],
@@ -163,12 +227,12 @@ function StatusIndicator({ status }: { status: ProviderStatus }) {
       ) : (
         <View style={dotStyle} />
       )}
-      <Text style={styles.statusLabel}>{status.label}</Text>
+      <Text style={styles.statusLabel}>{t(STATUS_LABEL_KEYS[status.labelKey])}</Text>
       {status.modelCount !== null ? (
         <>
           <Text style={styles.separator}>·</Text>
           <Text style={styles.statusLabel}>
-            {status.modelCount === 1 ? "1 model" : `${status.modelCount} models`}
+            {t("providers.model", { count: status.modelCount })}
           </Text>
         </>
       ) : null}
@@ -181,6 +245,7 @@ export interface ProvidersSectionProps {
 }
 
 export function ProvidersSection({ serverId }: ProvidersSectionProps) {
+  const { t } = useTranslation("settings");
   const isConnected = useHostRuntimeIsConnected(serverId);
   const { entries, isLoading, refresh } = useProvidersSnapshot(serverId);
   const { patchConfig } = useDaemonConfig(serverId);
@@ -205,14 +270,14 @@ export function ProvidersSection({ serverId }: ProvidersSectionProps) {
         await patchConfig({ providers: { [providerId]: { enabled } } });
       } catch (error) {
         Alert.alert(
-          "Unable to update provider",
+          t("providers.updateError"),
           error instanceof Error ? error.message : String(error),
         );
       } finally {
         setPendingProviderId((current) => (current === providerId ? null : current));
       }
     },
-    [patchConfig],
+    [patchConfig, t],
   );
 
   const handleInstall = useCallback(
@@ -224,31 +289,31 @@ export function ProvidersSection({ serverId }: ProvidersSectionProps) {
         await refresh([entry.id]);
       } catch (error) {
         Alert.alert(
-          "Unable to add provider",
+          t("providers.addError"),
           error instanceof Error ? error.message : String(error),
         );
       } finally {
         setInstallingProviderId((current) => (current === entry.id ? null : current));
       }
     },
-    [installingProviderId, patchConfig, refresh],
+    [installingProviderId, patchConfig, refresh, t],
   );
 
   return (
     <>
       <SettingsSection
-        title="Providers"
+        title={t("providers.title")}
         testID="host-page-providers-card"
         style={styles.sectionSpacing}
       >
         {!hasServer || !isConnected ? (
           <View style={EMPTY_CARD_STYLE}>
-            <Text style={styles.emptyText}>Connect to this host to see providers</Text>
+            <Text style={styles.emptyText}>{t("providers.empty")}</Text>
           </View>
         ) : null}
         {hasServer && isConnected && isLoading ? (
           <View style={EMPTY_CARD_STYLE}>
-            <Text style={styles.emptyText}>Loading...</Text>
+            <Text style={styles.emptyText}>{t("providers.loading")}</Text>
           </View>
         ) : null}
         {hasServer && isConnected && !isLoading && providerDefinitions.length > 0 ? (
@@ -264,6 +329,7 @@ export function ProvidersSection({ serverId }: ProvidersSectionProps) {
                   enabled={entry.enabled ?? true}
                   isToggling={pendingProviderId === def.id}
                   isFirst={index === 0}
+                  serverId={serverId}
                   onPress={handleOpenProviderSettings}
                   onToggleEnabled={handleToggleEnabled}
                 />
@@ -275,7 +341,7 @@ export function ProvidersSection({ serverId }: ProvidersSectionProps) {
 
       {hasServer && isConnected ? (
         <SettingsSection
-          title="Add provider"
+          title={t("providers.addTitle")}
           testID="host-page-add-provider-card"
           style={styles.addProviderSection}
         >

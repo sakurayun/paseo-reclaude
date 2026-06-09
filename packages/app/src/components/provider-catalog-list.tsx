@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Pressable, Text, View } from "react-native";
 import { SvgXml } from "react-native-svg";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
@@ -48,6 +49,7 @@ interface CatalogRowProps {
 }
 
 function CatalogRow({ entry, installing, onInstall }: CatalogRowProps) {
+  const { t } = useTranslation("settings");
   const handleInstall = useCallback(() => {
     onInstall(entry);
   }, [entry, onInstall]);
@@ -84,12 +86,14 @@ function CatalogRow({ entry, installing, onInstall }: CatalogRowProps) {
         </Text>
         <Pressable
           accessibilityRole="link"
-          accessibilityLabel={`${entry.title} install instructions`}
+          accessibilityLabel={t("providers.catalog.installInstructionsLabel", {
+            title: entry.title,
+          })}
           onPress={handleOpenInstallLink}
           style={styles.installLink}
         >
           <Text style={styles.installLinkText} numberOfLines={1}>
-            Install instructions
+            {t("providers.catalog.installInstructions")}
           </Text>
           <ThemedExternalLink size={12} uniProps={foregroundMutedColorMapping} />
         </Pressable>
@@ -103,7 +107,7 @@ function CatalogRow({ entry, installing, onInstall }: CatalogRowProps) {
         style={styles.actionButton}
         testID={`install-provider-${entry.id}`}
       >
-        {installing ? "Adding" : "Add"}
+        {installing ? t("providers.catalog.adding") : t("providers.catalog.add")}
       </Button>
     </View>
   );
@@ -114,6 +118,7 @@ export function ProviderCatalogList({
   installingProviderId,
   onInstall,
 }: ProviderCatalogListProps) {
+  const { t } = useTranslation("settings");
   const { entries: catalogEntries } = useAcpProviderCatalog();
   const { entries: providerEntries } = useProvidersSnapshot(serverId);
   const [search, setSearch] = useState("");
@@ -139,10 +144,10 @@ export function ProviderCatalogList({
         </View>
         <AdaptiveTextInput
           testID="provider-catalog-search"
-          accessibilityLabel="Search providers"
+          accessibilityLabel={t("providers.catalog.search")}
           value={search}
           onChangeText={setSearch}
-          placeholder="Search providers"
+          placeholder={t("providers.catalog.search")}
           style={styles.searchInput}
           autoCapitalize="none"
           autoCorrect={false}
@@ -152,7 +157,9 @@ export function ProviderCatalogList({
       {availableEntries.length === 0 ? (
         <View style={styles.stateBox}>
           <Text style={styles.stateText}>
-            {search.trim().length > 0 ? "No providers found" : "All providers are installed"}
+            {search.trim().length > 0
+              ? t("providers.catalog.noResults")
+              : t("providers.catalog.allInstalled")}
           </Text>
         </View>
       ) : (

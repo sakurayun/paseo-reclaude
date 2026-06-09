@@ -71,7 +71,10 @@
           "**/react-native",
           "**/@/styles/unistyles",
           "**/src/styles/unistyles",
-          "**/@/test/window-local-storage"
+          "**/@/test/window-local-storage",
+          "**/@formatjs/**",
+          "**/src/i18n",
+          "**/src/i18n/intl-polyfill"
         ]
       }
     ],

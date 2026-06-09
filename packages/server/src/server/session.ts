@@ -214,6 +214,7 @@ import {
 import type { LocalSpeechModelId } from "./speech/providers/local/models.js";
 import { toResolver, type Resolvable } from "./speech/provider-resolver.js";
 import type { SpeechReadinessSnapshot, SpeechReadinessState } from "./speech/speech-runtime.js";
+import type { DictationSettingsController } from "./speech/dictation-settings.js";
 import type pino from "pino";
 import {
   ChatServiceError,
@@ -605,6 +606,8 @@ export interface SessionOptions {
     sttLanguage?: string;
     getSpeechReadiness?: () => SpeechReadinessSnapshot;
   };
+  /** Controller backing the speech.dictation.* model-selection RPCs (daemon-scoped). */
+  dictationSettings?: DictationSettingsController | null;
   serverId?: string;
   daemonVersion?: string;
   daemonRuntimeConfig?: {
@@ -819,6 +822,7 @@ export class Session {
   private registerVoiceCallerContext?: (agentId: string, context: VoiceCallerContext) => void;
   private unregisterVoiceCallerContext?: (agentId: string) => void;
   private getSpeechReadiness?: () => SpeechReadinessSnapshot;
+  private readonly dictationSettings: DictationSettingsController | null;
   private readonly sttLanguage: string;
   private readonly serverId: string | undefined;
   private readonly daemonVersion: string | undefined;
@@ -871,6 +875,7 @@ export class Session {
       serverId,
       daemonVersion,
       daemonRuntimeConfig,
+      dictationSettings,
     } = options;
     this.clientId = clientId;
     this.appVersion = appVersion ?? null;
@@ -951,6 +956,7 @@ export class Session {
     this.getDaemonTcpHost = getDaemonTcpHost ?? null;
     this.serviceProxyPublicBaseUrl = serviceProxyPublicBaseUrl ?? null;
     this.resolveScriptHealth = resolveScriptHealth ?? null;
+    this.dictationSettings = dictationSettings ?? null;
     this.sttLanguage = sttLanguage ?? "en";
     this.subscribeToOptionalManagers();
     this.bindVoiceBridges({ voice, voiceBridge, dictation });
@@ -1766,6 +1772,10 @@ export class Session {
       case "dictation_stream_cancel":
         this.dictationStreamManager.handleCancel(msg.dictationId);
         return undefined;
+      case "speech.dictation.list_models.request":
+        return this.handleSpeechDictationListModels(msg);
+      case "speech.dictation.set_model.request":
+        return this.handleSpeechDictationSetModel(msg);
       case "restart_server_request":
         return this.handleRestartServerRequest(msg.requestId, msg.reason);
       case "shutdown_server_request":
@@ -1818,6 +1828,119 @@ export class Session {
       return;
     }
     await this.dictationStreamManager.handleStart(msg.dictationId, msg.format);
+  }
+
+  private async handleSpeechDictationListModels(
+    msg: Extract<SessionInboundMessage, { type: "speech.dictation.list_models.request" }>,
+  ): Promise<void> {
+    if (!this.dictationSettings) {
+      this.emit({
+        type: "speech.dictation.list_models.response",
+        payload: {
+          requestId: msg.requestId,
+          models: [],
+          current: { provider: "unavailable", model: "", language: "en" },
+          readiness: {
+            available: false,
+            downloading: false,
+            missingModelIds: [],
+            reasonCode: "disabled",
+            message: "Dictation is not available on this host.",
+          },
+          error: "Dictation model selection is not available on this host.",
+        },
+      });
+      return;
+    }
+    try {
+      const snapshot = await this.dictationSettings.getSnapshot();
+      this.emit({
+        type: "speech.dictation.list_models.response",
+        payload: {
+          requestId: msg.requestId,
+          models: snapshot.models,
+          current: snapshot.current,
+          readiness: snapshot.readiness,
+          error: null,
+        },
+      });
+    } catch (error) {
+      this.sessionLogger.error({ err: error }, "Failed to list dictation models");
+      this.emit({
+        type: "speech.dictation.list_models.response",
+        payload: {
+          requestId: msg.requestId,
+          models: [],
+          current: { provider: "unavailable", model: "", language: "en" },
+          readiness: {
+            available: false,
+            downloading: false,
+            missingModelIds: [],
+            reasonCode: "stt_unavailable",
+            message: "Failed to list dictation models.",
+          },
+          error: error instanceof Error ? error.message : "Failed to list dictation models",
+        },
+      });
+    }
+  }
+
+  private async handleSpeechDictationSetModel(
+    msg: Extract<SessionInboundMessage, { type: "speech.dictation.set_model.request" }>,
+  ): Promise<void> {
+    if (!this.dictationSettings) {
+      this.emit({
+        type: "speech.dictation.set_model.response",
+        payload: {
+          requestId: msg.requestId,
+          accepted: false,
+          models: [],
+          current: { provider: "unavailable", model: "", language: "en" },
+          readiness: {
+            available: false,
+            downloading: false,
+            missingModelIds: [],
+            reasonCode: "disabled",
+            message: "Dictation is not available on this host.",
+          },
+          error: "Dictation model selection is not available on this host.",
+        },
+      });
+      return;
+    }
+    try {
+      const snapshot = await this.dictationSettings.setModel(msg.model);
+      this.emit({
+        type: "speech.dictation.set_model.response",
+        payload: {
+          requestId: msg.requestId,
+          accepted: true,
+          models: snapshot.models,
+          current: snapshot.current,
+          readiness: snapshot.readiness,
+          error: null,
+        },
+      });
+    } catch (error) {
+      this.sessionLogger.warn({ err: error, model: msg.model }, "Failed to set dictation model");
+      this.emit({
+        type: "speech.dictation.set_model.response",
+        payload: {
+          requestId: msg.requestId,
+          accepted: false,
+          models: [],
+          current: { provider: "unavailable", model: "", language: "en" },
+          readiness: {
+            available: false,
+            downloading: false,
+            missingModelIds: [],
+            reasonCode: "stt_unavailable",
+            message: "Failed to set dictation model.",
+          },
+          error: error instanceof Error ? error.message : "Failed to set dictation model",
+        },
+      });
+    }
   }
 
   private dispatchAgentLifecycleMessage(msg: SessionInboundMessage): Promise<void> | undefined {

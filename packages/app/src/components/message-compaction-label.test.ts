@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { getCompactionMarkerLabel } from "./message-compaction-label";
+import i18n from "@/i18n";
+import { getCompactionMarkerLabel as getCompactionMarkerLabelRaw } from "./message-compaction-label";
+
+// Real English translator so label assertions read the en timeline catalog.
+const tTimeline = i18n.getFixedT("en", "timeline");
+function getCompactionMarkerLabel(input: Parameters<typeof getCompactionMarkerLabelRaw>[0]) {
+  return getCompactionMarkerLabelRaw(input, tTimeline);
+}
 
 describe("getCompactionMarkerLabel", () => {
   it("renders loading, automatic, manual, tokenized, and fallback labels", () => {

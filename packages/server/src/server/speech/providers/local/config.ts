@@ -5,10 +5,10 @@ import { z } from "zod";
 import type { PersistedConfig } from "../../../persisted-config.js";
 import type { RequestedSpeechProviders } from "../../speech-types.js";
 import {
-  DEFAULT_LOCAL_STT_MODEL,
   DEFAULT_LOCAL_TTS_MODEL,
   LocalSttModelIdSchema,
   LocalTtsModelIdSchema,
+  resolveDefaultLocalSttModel,
   type LocalSpeechModelId,
   type LocalSttModelId,
   type LocalTtsModelId,
@@ -52,8 +52,8 @@ const OptionalIntegerSchema = NumberLikeSchema.pipe(z.coerce.number().int()).opt
 const LocalSpeechResolutionSchema = z.object({
   includeProviderConfig: z.boolean(),
   modelsDir: z.string().trim().min(1),
-  dictationLocalSttModel: LocalSttModelIdSchema.default(DEFAULT_LOCAL_STT_MODEL),
-  voiceLocalSttModel: LocalSttModelIdSchema.default(DEFAULT_LOCAL_STT_MODEL),
+  dictationLocalSttModel: LocalSttModelIdSchema.optional(),
+  voiceLocalSttModel: LocalSttModelIdSchema.optional(),
   voiceLocalTtsModel: LocalTtsModelIdSchema.default(DEFAULT_LOCAL_TTS_MODEL),
   dictationLanguage: LanguageSchema,
   voiceLanguage: LanguageSchema,
@@ -153,7 +153,6 @@ function buildLocalSpeechResolutionInput(params: {
         providers.dictationStt.enabled,
         persisted.features?.dictation?.stt?.model,
       ),
-      DEFAULT_LOCAL_STT_MODEL,
     ]),
     voiceLocalSttModel: firstDefinedValue<string>([
       env.PASEO_VOICE_LOCAL_STT_MODEL,
@@ -162,7 +161,6 @@ function buildLocalSpeechResolutionInput(params: {
         providers.voiceStt.enabled,
         persisted.features?.voiceMode?.stt?.model,
       ),
-      DEFAULT_LOCAL_STT_MODEL,
     ]),
     voiceLocalTtsModel: firstDefinedValue<string>([
       env.PASEO_VOICE_LOCAL_TTS_MODEL,
@@ -209,8 +207,11 @@ export function resolveLocalSpeechConfig(params: {
       ? {
           modelsDir: parsed.modelsDir,
           models: {
-            dictationStt: parsed.dictationLocalSttModel,
-            voiceStt: parsed.voiceLocalSttModel,
+            dictationStt:
+              parsed.dictationLocalSttModel ??
+              resolveDefaultLocalSttModel(parsed.dictationLanguage),
+            voiceStt:
+              parsed.voiceLocalSttModel ?? resolveDefaultLocalSttModel(parsed.voiceLanguage),
             voiceTts: parsed.voiceLocalTtsModel,
             ...(resolvedVoiceTtsSpeakerId !== undefined
               ? { voiceTtsSpeakerId: resolvedVoiceTtsSpeakerId }

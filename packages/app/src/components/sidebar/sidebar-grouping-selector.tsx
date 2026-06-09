@@ -1,7 +1,9 @@
 import { useCallback } from "react";
 import { Text, View, type PressableStateCallbackType } from "react-native";
+import { useTranslation } from "react-i18next";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { Settings2 } from "lucide-react-native";
+import type { ParseKeys, TFunction } from "i18next";
 import type { Theme } from "@/styles/theme";
 import {
   DropdownMenu,
@@ -15,12 +17,13 @@ import { isWeb as platformIsWeb } from "@/constants/platform";
 const ThemedSettings2 = withUnistyles(Settings2);
 const filterColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
 
-const GROUP_MODE_ITEMS: Array<{ value: SidebarGroupMode; label: string }> = [
-  { value: "project", label: "Project" },
-  { value: "status", label: "Status" },
+const GROUP_MODE_ITEMS: Array<{ value: SidebarGroupMode; labelKey: ParseKeys<"workspaces"> }> = [
+  { value: "project", labelKey: "grouping.project" },
+  { value: "status", labelKey: "grouping.status" },
 ];
 
 export function SidebarGroupingSelector({ serverId }: { serverId: string | null }) {
+  const { t } = useTranslation("workspaces");
   const groupMode = useSidebarViewStore((state) =>
     serverId ? state.getGroupMode(serverId) : "project",
   );
@@ -47,14 +50,14 @@ export function SidebarGroupingSelector({ serverId }: { serverId: string | null 
       <DropdownMenuTrigger
         style={triggerStyle}
         accessibilityRole={platformIsWeb ? undefined : "button"}
-        accessibilityLabel="Sidebar grouping"
+        accessibilityLabel={t("grouping.accessibilityLabel")}
         testID="sidebar-grouping-selector"
       >
         <ThemedSettings2 size={14} uniProps={filterColorMapping} />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" width={180} testID="sidebar-grouping-menu">
         <View style={styles.menuHeader}>
-          <Text style={styles.menuHeaderLabel}>Group by</Text>
+          <Text style={styles.menuHeaderLabel}>{t("grouping.groupBy")}</Text>
         </View>
         {GROUP_MODE_ITEMS.map((item) => (
           <GroupModeMenuItem
@@ -62,6 +65,7 @@ export function SidebarGroupingSelector({ serverId }: { serverId: string | null 
             item={item}
             isSelected={groupMode === item.value}
             onSelect={handleSelect}
+            t={t}
           />
         ))}
       </DropdownMenuContent>
@@ -73,10 +77,12 @@ function GroupModeMenuItem({
   item,
   isSelected,
   onSelect,
+  t,
 }: {
-  item: { value: SidebarGroupMode; label: string };
+  item: { value: SidebarGroupMode; labelKey: ParseKeys<"workspaces"> };
   isSelected: boolean;
   onSelect: (mode: SidebarGroupMode) => void;
+  t: TFunction<"workspaces">;
 }) {
   const handleSelect = useCallback(() => onSelect(item.value), [item.value, onSelect]);
   return (
@@ -85,7 +91,7 @@ function GroupModeMenuItem({
       selected={isSelected}
       onSelect={handleSelect}
     >
-      {item.label}
+      {t(item.labelKey)}
     </DropdownMenuItem>
   );
 }

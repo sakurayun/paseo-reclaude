@@ -1,4 +1,5 @@
 import { useCallback, useMemo } from "react";
+import { useTranslation } from "react-i18next";
 import { Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { getIsElectronRuntime } from "@/constants/layout";
@@ -9,24 +10,25 @@ import { getShortcutOs } from "@/utils/shortcut-platform";
 import { buildKeyboardShortcutHelpSections } from "@/keyboard/keyboard-shortcuts";
 
 const SNAP_POINTS: string[] = ["70%", "92%"];
-const SHORTCUTS_HEADER: SheetHeader = { title: "Shortcuts" };
 
 export function KeyboardShortcutsDialog() {
+  const { t } = useTranslation("shortcuts");
   const open = useKeyboardShortcutsStore((s) => s.shortcutsDialogOpen);
   const setOpen = useKeyboardShortcutsStore((s) => s.setShortcutsDialogOpen);
 
   const isMac = getShortcutOs() === "mac";
   const isDesktopApp = getIsElectronRuntime();
+  const header = useMemo<SheetHeader>(() => ({ title: t("dialog.title") }), [t]);
   const sections = useMemo(
-    () => buildKeyboardShortcutHelpSections({ isMac, isDesktop: isDesktopApp }),
-    [isDesktopApp, isMac],
+    () => buildKeyboardShortcutHelpSections({ isMac, isDesktop: isDesktopApp }, t),
+    [isDesktopApp, isMac, t],
   );
 
   const handleClose = useCallback(() => setOpen(false), [setOpen]);
 
   return (
     <AdaptiveModalSheet
-      header={SHORTCUTS_HEADER}
+      header={header}
       visible={open}
       onClose={handleClose}
       testID="keyboard-shortcuts-dialog"

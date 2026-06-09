@@ -349,6 +349,16 @@ export interface SpeechService {
   resolveDictationSttLanguage: () => string;
   getReadiness: () => SpeechReadinessSnapshot;
   onReadinessChange: (listener: (snapshot: SpeechReadinessSnapshot) => void) => () => void;
+  /**
+   * Swap the active speech configuration at runtime (e.g. after the user picks a
+   * different dictation STT model) and re-reconcile providers in place. Resolvers
+   * read the live config lazily, so callers holding `resolveDictationStt` keep working.
+   * Missing models trigger the existing background-download + readiness flow.
+   */
+  reconfigure: (next: {
+    speechConfig: PaseoSpeechConfig | null;
+    openaiConfig?: PaseoOpenAIConfig;
+  }) => void;
   start: () => void;
   stop: () => void;
   ready: Promise<void>;
@@ -360,10 +370,11 @@ export function createSpeechService(params: {
   speechConfig?: PaseoSpeechConfig;
 }): SpeechService {
   const logger = params.logger.child({ module: "speech-runtime" });
-  const speechConfig = params.speechConfig ?? null;
-  const openaiConfig = params.openaiConfig;
-  const providers = resolveRequestedSpeechProviders(speechConfig);
-  const requestedProviders = describeRequestedProviders(providers);
+  // Mutable so reconfigure() can swap the active config at runtime; resolvers read these live.
+  let speechConfig = params.speechConfig ?? null;
+  let openaiConfig = params.openaiConfig;
+  let providers = resolveRequestedSpeechProviders(speechConfig);
+  let requestedProviders = describeRequestedProviders(providers);
 
   validateOpenAiCredentialRequirements({
     providers,
@@ -708,6 +719,39 @@ export function createSpeechService(params: {
     localCleanup();
   };
 
+  const reconfigure = (next: {
+    speechConfig: PaseoSpeechConfig | null;
+    openaiConfig?: PaseoOpenAIConfig;
+  }): void => {
+    if (stopped) {
+      return;
+    }
+    speechConfig = next.speechConfig;
+    if (next.openaiConfig !== undefined) {
+      openaiConfig = next.openaiConfig;
+    }
+    providers = resolveRequestedSpeechProviders(speechConfig);
+    requestedProviders = describeRequestedProviders(providers);
+    validateOpenAiCredentialRequirements({ providers, openaiConfig, logger });
+    logger.info({ requestedProviders }, "Speech provider reconfiguration requested");
+
+    void (async () => {
+      try {
+        await runReconcile();
+        // Mirror start(): kick off background downloads for any newly required models.
+        const snapshot = computeReadinessSnapshot();
+        if (snapshot.voiceFeature.enabled && !snapshot.voiceFeature.available) {
+          if (missingLocalModelIds.length > 0) {
+            startBackgroundDownload();
+          }
+          scheduleMonitor();
+        }
+      } catch (error) {
+        logger.error({ err: error }, "Speech reconfigure reconcile failed");
+      }
+    })();
+  };
+
   return {
     resolveTurnDetection: () => turnDetectionService,
     resolveStt: () => sttService,
@@ -717,6 +761,7 @@ export function createSpeechService(params: {
     resolveDictationSttLanguage: () => speechConfig?.sttLanguages?.dictation ?? "en",
     getReadiness: () => lastPublishedReadinessSnapshot ?? computeReadinessSnapshot(),
     onReadinessChange: subscribeSpeechReadiness,
+    reconfigure,
     start,
     stop,
     ready,

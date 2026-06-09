@@ -1,4 +1,5 @@
 import { useCallback, useMemo } from "react";
+import { useTranslation } from "react-i18next";
 import {
   View,
   Text,
@@ -74,6 +75,7 @@ function GitActionMenuItem({
 }
 
 export function GitActionsSplitButton({ gitActions, hideLabels }: GitActionsSplitButtonProps) {
+  const { t } = useTranslation("git");
   const { theme } = useUnistyles();
   const toast = useToast();
   const archiveShortcutKeys = useShortcutKeys("archive-worktree");
@@ -162,7 +164,7 @@ export function GitActionsSplitButton({ gitActions, hideLabels }: GitActionsSpli
                 testID="changes-primary-cta-caret"
                 style={caretTriggerStyle}
                 accessibilityRole="button"
-                accessibilityLabel="More options"
+                accessibilityLabel={t("actions.splitButton.moreOptions")}
               >
                 <ChevronDown size={16} color={theme.colors.foregroundMuted} />
               </DropdownMenuTrigger>
@@ -176,7 +178,7 @@ export function GitActionsSplitButton({ gitActions, hideLabels }: GitActionsSpli
                     needsSeparator={action.startsGroup}
                     showSeparator={index > 0}
                     closeOnSelect={
-                      action.status === "idle" && action.id === "pr" && action.label === "View PR"
+                      action.status === "idle" && action.id === "pr" && action.isViewPr === true
                     }
                   />
                 ))}
@@ -192,7 +194,7 @@ export function GitActionsSplitButton({ gitActions, hideLabels }: GitActionsSpli
             hitSlop={8}
             style={overflowMenuButtonStyle}
             accessibilityRole="button"
-            accessibilityLabel="More actions"
+            accessibilityLabel={t("actions.splitButton.moreActions")}
           >
             <MoreVertical size={16} color={theme.colors.foregroundMuted} />
           </DropdownMenuTrigger>

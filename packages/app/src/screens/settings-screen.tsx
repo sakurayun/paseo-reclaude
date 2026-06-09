@@ -46,6 +46,9 @@ import { ScreenTitle } from "@/components/headers/screen-title";
 import { HeaderIconBadge } from "@/components/headers/header-icon-badge";
 import { SettingsSection } from "@/screens/settings/settings-section";
 import { AppearanceSection } from "@/screens/settings/appearance/appearance-section";
+import { useTranslation } from "react-i18next";
+import type { ParseKeys, TFunction } from "i18next";
+import { LANGUAGE_ENDONYMS, type LanguageSetting } from "@/i18n/languages";
 import {
   useAppSettings,
   useSettings,
@@ -125,36 +128,38 @@ export type SettingsView =
   | { kind: "projects" }
   | { kind: "project"; projectKey: string };
 
+type SettingsKey = ParseKeys<"settings">;
+
 interface SidebarSectionItem {
   id: SettingsSectionSlug;
-  label: string;
+  labelKey: SettingsKey;
   icon: ComponentType<{ size: number; color: string }>;
   desktopOnly?: boolean;
 }
 
 const SIDEBAR_SECTION_ITEMS: SidebarSectionItem[] = [
-  { id: "general", label: "General", icon: Settings },
-  { id: "daemon", label: "Daemon", icon: Server, desktopOnly: true },
-  { id: "appearance", label: "Appearance", icon: Palette },
-  { id: "shortcuts", label: "Shortcuts", icon: Keyboard, desktopOnly: true },
-  { id: "integrations", label: "Integrations", icon: Puzzle, desktopOnly: true },
-  { id: "permissions", label: "Permissions", icon: Shield, desktopOnly: true },
-  { id: "diagnostics", label: "Diagnostics", icon: Stethoscope },
-  { id: "about", label: "About", icon: Info },
+  { id: "general", labelKey: "sidebar.general", icon: Settings },
+  { id: "daemon", labelKey: "sidebar.daemon", icon: Server, desktopOnly: true },
+  { id: "appearance", labelKey: "sidebar.appearance", icon: Palette },
+  { id: "shortcuts", labelKey: "sidebar.shortcuts", icon: Keyboard, desktopOnly: true },
+  { id: "integrations", labelKey: "sidebar.integrations", icon: Puzzle, desktopOnly: true },
+  { id: "permissions", labelKey: "sidebar.permissions", icon: Shield, desktopOnly: true },
+  { id: "diagnostics", labelKey: "sidebar.diagnostics", icon: Stethoscope },
+  { id: "about", labelKey: "sidebar.about", icon: Info },
 ];
 
 interface HostSectionItem {
   id: HostSectionSlug;
-  label: string;
+  labelKey: SettingsKey;
   icon: ComponentType<{ size: number; color: string }>;
 }
 
 const HOST_SECTION_ITEMS: HostSectionItem[] = [
-  { id: "connections", label: "Connections", icon: Network },
-  { id: "agents", label: "Agents", icon: Bot },
-  { id: "workspaces", label: "Workspaces", icon: FolderGit2 },
-  { id: "providers", label: "Providers", icon: Boxes },
-  { id: "host", label: "Host", icon: Server },
+  { id: "connections", labelKey: "sidebar.connections", icon: Network },
+  { id: "agents", labelKey: "sidebar.agents", icon: Bot },
+  { id: "workspaces", labelKey: "sidebar.workspaces", icon: FolderGit2 },
+  { id: "providers", labelKey: "sidebar.providers", icon: Boxes },
+  { id: "host", labelKey: "sidebar.host", icon: Server },
 ];
 
 function renderHostSettingsContent(
@@ -197,23 +202,51 @@ function selectedSidebarItemStyle({ hovered }: PressableStateCallbackType & { ho
 
 const ROW_WITH_BORDER_STYLE = [settingsStyles.row, settingsStyles.rowBorder];
 
-const SEND_BEHAVIOR_OPTIONS = [
-  { value: "interrupt" as const, label: "Interrupt" },
-  { value: "queue" as const, label: "Queue" },
+const SEND_BEHAVIOR_OPTIONS: { value: SendBehavior; labelKey: SettingsKey }[] = [
+  { value: "interrupt", labelKey: "general.sendBehavior.interrupt" },
+  { value: "queue", labelKey: "general.sendBehavior.queue" },
 ];
 
-const RELEASE_CHANNEL_OPTIONS = [
-  { value: "stable" as const, label: "Stable" },
-  { value: "beta" as const, label: "Beta" },
+const RELEASE_CHANNEL_OPTIONS: {
+  value: EffectiveSettings["releaseChannel"];
+  labelKey: SettingsKey;
+}[] = [
+  { value: "stable", labelKey: "daemon.releaseChannel.stable" },
+  { value: "beta", labelKey: "daemon.releaseChannel.beta" },
 ];
 
-const SERVICE_URL_BEHAVIOR_LABELS: Record<ServiceUrlBehavior, string> = {
-  ask: "Ask",
-  "in-app": "In Paseo",
-  external: "External browser",
+const SERVICE_URL_BEHAVIOR_LABEL_KEYS: Record<ServiceUrlBehavior, SettingsKey> = {
+  ask: "general.serviceUrlBehavior.ask",
+  "in-app": "general.serviceUrlBehavior.inApp",
+  external: "general.serviceUrlBehavior.external",
 };
 
 const SERVICE_URL_BEHAVIOR_VALUES: ServiceUrlBehavior[] = ["ask", "in-app", "external"];
+
+const LANGUAGE_OPTIONS: LanguageSetting[] = ["auto", "en", "zh", "ja", "es"];
+
+// "auto" reads as a localized "System" label; concrete languages use their endonym.
+function languageLabel(value: LanguageSetting, autoLabel: string): string {
+  return value === "auto" ? autoLabel : LANGUAGE_ENDONYMS[value];
+}
+
+interface LanguageMenuItemProps {
+  value: LanguageSetting;
+  label: string;
+  selected: boolean;
+  onChange: (value: LanguageSetting) => void;
+}
+
+function LanguageMenuItem({ value, label, selected, onChange }: LanguageMenuItemProps) {
+  const handleSelect = useCallback(() => {
+    onChange(value);
+  }, [onChange, value]);
+  return (
+    <DropdownMenuItem selected={selected} onSelect={handleSelect}>
+      {label}
+    </DropdownMenuItem>
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Section components
@@ -238,12 +271,13 @@ function ServiceUrlBehaviorMenuItem({
   selected,
   onChange,
 }: ServiceUrlBehaviorMenuItemProps) {
+  const { t } = useTranslation("settings");
   const handleSelect = useCallback(() => {
     onChange(value);
   }, [onChange, value]);
   return (
     <DropdownMenuItem selected={selected} onSelect={handleSelect}>
-      {SERVICE_URL_BEHAVIOR_LABELS[value]}
+      {t(SERVICE_URL_BEHAVIOR_LABEL_KEYS[value])}
     </DropdownMenuItem>
   );
 }
@@ -257,6 +291,15 @@ function GeneralSection({
 }: GeneralSectionProps) {
   const { theme } = useUnistyles();
   const iconColor = theme.colors.foregroundMuted;
+  const { t } = useTranslation("settings");
+  const { updateSettings } = useAppSettings();
+  const handleLanguageChange = useCallback(
+    (language: LanguageSetting) => {
+      void updateSettings({ language });
+    },
+    [updateSettings],
+  );
+  const languageAutoLabel = t("language.auto");
   const [terminalScrollbackValue, setTerminalScrollbackValue] = useState(
     String(settings.terminalScrollbackLines),
   );
@@ -282,33 +325,62 @@ function GeneralSection({
     setTerminalScrollbackValue(String(settings.terminalScrollbackLines));
   }, [settings.terminalScrollbackLines]);
 
+  const sendBehaviorOptions = useMemo(
+    () =>
+      SEND_BEHAVIOR_OPTIONS.map((option) => ({ value: option.value, label: t(option.labelKey) })),
+    [t],
+  );
+
   return (
-    <SettingsSection title="General">
+    <SettingsSection title={t("general.title")}>
       <View style={settingsStyles.card}>
         <View style={settingsStyles.row}>
           <View style={settingsStyles.rowContent}>
-            <Text style={settingsStyles.rowTitle}>Default send</Text>
-            <Text style={settingsStyles.rowHint}>
-              What happens when you press Enter while the agent is running
-            </Text>
+            <Text style={settingsStyles.rowTitle}>{t("language.title")}</Text>
+            <Text style={settingsStyles.rowHint}>{t("language.hint")}</Text>
+          </View>
+          <DropdownMenu>
+            <DropdownMenuTrigger style={themeTriggerStyle}>
+              <Text style={styles.themeTriggerText}>
+                {languageLabel(settings.language, languageAutoLabel)}
+              </Text>
+              <ChevronDown size={theme.iconSize.sm} color={iconColor} />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent side="bottom" align="end" width={200}>
+              {LANGUAGE_OPTIONS.map((value) => (
+                <LanguageMenuItem
+                  key={value}
+                  value={value}
+                  label={languageLabel(value, languageAutoLabel)}
+                  selected={settings.language === value}
+                  onChange={handleLanguageChange}
+                />
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </View>
+        <View style={ROW_WITH_BORDER_STYLE}>
+          <View style={settingsStyles.rowContent}>
+            <Text style={settingsStyles.rowTitle}>{t("general.sendBehavior.title")}</Text>
+            <Text style={settingsStyles.rowHint}>{t("general.sendBehavior.hint")}</Text>
           </View>
           <SegmentedControl
             size="sm"
             value={settings.sendBehavior}
             onValueChange={handleSendBehaviorChange}
-            options={SEND_BEHAVIOR_OPTIONS}
+            options={sendBehaviorOptions}
           />
         </View>
         {isDesktopApp ? (
           <View style={ROW_WITH_BORDER_STYLE}>
             <View style={settingsStyles.rowContent}>
-              <Text style={settingsStyles.rowTitle}>Service URLs</Text>
-              <Text style={settingsStyles.rowHint}>Where to open URLs from running scripts</Text>
+              <Text style={settingsStyles.rowTitle}>{t("general.serviceUrls.title")}</Text>
+              <Text style={settingsStyles.rowHint}>{t("general.serviceUrls.hint")}</Text>
             </View>
             <DropdownMenu>
               <DropdownMenuTrigger style={themeTriggerStyle}>
                 <Text style={styles.themeTriggerText}>
-                  {SERVICE_URL_BEHAVIOR_LABELS[settings.serviceUrlBehavior]}
+                  {t(SERVICE_URL_BEHAVIOR_LABEL_KEYS[settings.serviceUrlBehavior])}
                 </Text>
                 <ChevronDown size={theme.iconSize.sm} color={iconColor} />
               </DropdownMenuTrigger>
@@ -327,8 +399,8 @@ function GeneralSection({
         ) : null}
         <View style={ROW_WITH_BORDER_STYLE}>
           <View style={settingsStyles.rowContent}>
-            <Text style={settingsStyles.rowTitle}>Terminal scrollback</Text>
-            <Text style={settingsStyles.rowHint}>Lines kept in the built-in terminal buffer</Text>
+            <Text style={settingsStyles.rowTitle}>{t("general.terminalScrollback.title")}</Text>
+            <Text style={settingsStyles.rowHint}>{t("general.terminalScrollback.hint")}</Text>
           </View>
           <TextInput
             value={terminalScrollbackValue}
@@ -339,7 +411,7 @@ function GeneralSection({
             inputMode="numeric"
             selectTextOnFocus
             style={styles.terminalScrollbackInput}
-            accessibilityLabel="Terminal scrollback lines"
+            accessibilityLabel={t("general.terminalScrollback.accessibilityLabel")}
           />
         </View>
       </View>
@@ -360,15 +432,16 @@ function DiagnosticsSection({
   playbackTestResult,
   handlePlaybackTest,
 }: DiagnosticsSectionProps) {
+  const { t } = useTranslation("settings");
   const handlePlayPress = useCallback(() => {
     void handlePlaybackTest();
   }, [handlePlaybackTest]);
   return (
-    <SettingsSection title="Diagnostics">
+    <SettingsSection title={t("diagnostics.title")}>
       <View style={settingsStyles.card}>
         <View style={settingsStyles.row}>
           <View style={settingsStyles.rowContent}>
-            <Text style={settingsStyles.rowTitle}>Test audio</Text>
+            <Text style={settingsStyles.rowTitle}>{t("diagnostics.testAudio.title")}</Text>
             {playbackTestResult ? (
               <Text style={settingsStyles.rowHint}>{playbackTestResult}</Text>
             ) : null}
@@ -379,7 +452,9 @@ function DiagnosticsSection({
             onPress={handlePlayPress}
             disabled={!voiceAudioEngine || isPlaybackTestRunning}
           >
-            {isPlaybackTestRunning ? "Playing..." : "Play test"}
+            {isPlaybackTestRunning
+              ? t("diagnostics.testAudio.playing")
+              : t("diagnostics.testAudio.play")}
           </Button>
         </View>
       </View>
@@ -394,14 +469,15 @@ interface AboutSectionProps {
 }
 
 function AboutSection({ appVersion, appVersionText, isDesktopApp }: AboutSectionProps) {
+  const { t } = useTranslation("settings");
   return (
     <>
-      <SettingsSection title="About">
+      <SettingsSection title={t("about.title")}>
         <View style={settingsStyles.card}>
           <View style={settingsStyles.row}>
             <View style={settingsStyles.rowContent}>
-              <Text style={settingsStyles.rowTitle}>App version</Text>
-              <Text style={settingsStyles.rowHint}>This device</Text>
+              <Text style={settingsStyles.rowTitle}>{t("about.appVersion.title")}</Text>
+              <Text style={settingsStyles.rowHint}>{t("about.appVersion.hint")}</Text>
             </View>
             <Text style={styles.aboutValue}>{appVersionText}</Text>
           </View>
@@ -423,12 +499,13 @@ function normalizeVersion(version: string | null | undefined): string | null {
 }
 
 function ConnectedHostsSection({ clientVersion }: { clientVersion: string | null }) {
+  const { t } = useTranslation("settings");
   const hosts = useHosts();
   if (hosts.length === 0) {
     return null;
   }
   return (
-    <SettingsSection title="Connected hosts">
+    <SettingsSection title={t("about.connectedHosts.title")}>
       <View style={settingsStyles.card}>
         {hosts.map((host, index) => (
           <HostVersionRow
@@ -452,6 +529,7 @@ function HostVersionRow({
   showBorder: boolean;
   clientVersion: string | null;
 }) {
+  const { t } = useTranslation("settings");
   const isConnected = useHostRuntimeIsConnected(host.serverId);
   const daemonVersion = useSessionStore(
     (state) => state.sessions[host.serverId]?.serverInfo?.version ?? null,
@@ -469,7 +547,7 @@ function HostVersionRow({
 
   let valueText: string;
   if (!isConnected) {
-    valueText = "Offline";
+    valueText = t("about.connectedHosts.offline");
   } else if (normalizedHost) {
     valueText = formatVersionWithPrefix(normalizedHost);
   } else {
@@ -488,7 +566,7 @@ function HostVersionRow({
           {host.label}
         </Text>
         {isMismatch ? (
-          <Text style={settingsStyles.rowHint}>Version differs from this device</Text>
+          <Text style={settingsStyles.rowHint}>{t("about.connectedHosts.versionMismatch")}</Text>
         ) : null}
       </View>
       <Text style={valueStyle}>{valueText}</Text>
@@ -497,15 +575,18 @@ function HostVersionRow({
 }
 
 function getUpdateButtonLabel(
+  t: TFunction<"settings">,
   isInstalling: boolean,
   latestVersion: string | null | undefined,
 ): string {
-  if (isInstalling) return "Installing...";
-  if (latestVersion) return `Update to ${formatVersionWithPrefix(latestVersion)}`;
-  return "Update";
+  if (isInstalling) return t("daemon.appUpdates.installing");
+  if (latestVersion)
+    return t("daemon.appUpdates.updateTo", { version: formatVersionWithPrefix(latestVersion) });
+  return t("daemon.appUpdates.update");
 }
 
 function DesktopAppUpdateRow() {
+  const { t } = useTranslation("settings");
   const { settings, updateSettings } = useSettings();
   const {
     isDesktopApp,
@@ -542,16 +623,22 @@ function DesktopAppUpdateRow() {
     [updateSettings],
   );
 
+  const releaseChannelOptions = useMemo(
+    () =>
+      RELEASE_CHANNEL_OPTIONS.map((option) => ({ value: option.value, label: t(option.labelKey) })),
+    [t],
+  );
+
   const handleInstallUpdate = useCallback(() => {
     if (!isDesktopApp) {
       return;
     }
 
     void confirmDialog({
-      title: "Install desktop update",
-      message: "This updates Paseo on this computer",
-      confirmLabel: "Install update",
-      cancelLabel: "Cancel",
+      title: t("daemon.installUpdate.title"),
+      message: t("daemon.installUpdate.message"),
+      confirmLabel: t("daemon.installUpdate.confirm"),
+      cancelLabel: t("daemon.installUpdate.cancel"),
     })
       .then((confirmed) => {
         if (!confirmed) {
@@ -562,9 +649,9 @@ function DesktopAppUpdateRow() {
       })
       .catch((error) => {
         console.error("[Settings] Failed to open app update confirmation", error);
-        Alert.alert("Error", "Unable to open the update confirmation dialog.");
+        Alert.alert(t("daemon.installUpdate.errorTitle"), t("daemon.installUpdate.errorMessage"));
       });
-  }, [installUpdate, isDesktopApp]);
+  }, [installUpdate, isDesktopApp, t]);
 
   if (!isDesktopApp) {
     return null;
@@ -574,25 +661,25 @@ function DesktopAppUpdateRow() {
     <>
       <View style={ROW_WITH_BORDER_STYLE}>
         <View style={settingsStyles.rowContent}>
-          <Text style={settingsStyles.rowTitle}>Release channel</Text>
-          <Text style={settingsStyles.rowHint}>
-            Switch to Beta to get updates sooner and help shape them
-          </Text>
+          <Text style={settingsStyles.rowTitle}>{t("daemon.releaseChannel.title")}</Text>
+          <Text style={settingsStyles.rowHint}>{t("daemon.releaseChannel.hint")}</Text>
         </View>
         <SegmentedControl
           size="sm"
           value={settings.releaseChannel}
           onValueChange={handleReleaseChannelChange}
-          options={RELEASE_CHANNEL_OPTIONS}
+          options={releaseChannelOptions}
         />
       </View>
       <View style={ROW_WITH_BORDER_STYLE}>
         <View style={settingsStyles.rowContent}>
-          <Text style={settingsStyles.rowTitle}>App updates</Text>
+          <Text style={settingsStyles.rowTitle}>{t("daemon.appUpdates.title")}</Text>
           <Text style={settingsStyles.rowHint}>{statusText}</Text>
           {availableUpdate?.latestVersion ? (
             <Text style={settingsStyles.rowHint}>
-              Ready to install: {formatVersionWithPrefix(availableUpdate.latestVersion)}
+              {t("daemon.appUpdates.readyToInstall", {
+                version: formatVersionWithPrefix(availableUpdate.latestVersion),
+              })}
             </Text>
           ) : null}
           {errorMessage ? <Text style={styles.aboutErrorText}>{errorMessage}</Text> : null}
@@ -604,7 +691,7 @@ function DesktopAppUpdateRow() {
             onPress={handleCheckForUpdates}
             disabled={isChecking || isInstalling}
           >
-            {isChecking ? "Checking..." : "Check"}
+            {isChecking ? t("daemon.appUpdates.checking") : t("daemon.appUpdates.check")}
           </Button>
           <Button
             variant="default"
@@ -612,7 +699,7 @@ function DesktopAppUpdateRow() {
             onPress={handleInstallUpdate}
             disabled={isChecking || isInstalling || !availableUpdate}
           >
-            {getUpdateButtonLabel(isInstalling, availableUpdate?.latestVersion)}
+            {getUpdateButtonLabel(t, isInstalling, availableUpdate?.latestVersion)}
           </Button>
         </View>
       </View>
@@ -760,6 +847,7 @@ interface SidebarProjectsButtonProps {
 
 function SidebarProjectsButton({ isSelected, onSelect }: SidebarProjectsButtonProps) {
   const { theme } = useUnistyles();
+  const { t } = useTranslation("settings");
   const accessibilityState = useMemo(() => ({ selected: isSelected }), [isSelected]);
   const labelStyle = useMemo(
     () => [sidebarStyles.label, isSelected && { color: theme.colors.foreground }],
@@ -778,7 +866,7 @@ function SidebarProjectsButton({ isSelected, onSelect }: SidebarProjectsButtonPr
         color={isSelected ? theme.colors.foreground : theme.colors.foregroundMuted}
       />
       <Text style={labelStyle} numberOfLines={1}>
-        Projects
+        {t("sidebar.projects")}
       </Text>
     </Pressable>
   );
@@ -805,6 +893,7 @@ function HostPickerOption({
   onPress,
 }: HostPickerOptionProps) {
   const { theme } = useUnistyles();
+  const { t } = useTranslation("settings");
   const leadingSlot = useMemo(
     () => <Server size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />,
     [theme.iconSize.sm, theme.colors.foregroundMuted],
@@ -815,10 +904,10 @@ function HostPickerOption({
     () =>
       isLocal ? (
         <Text style={sidebarStyles.localMarker} testID="settings-host-local-marker">
-          Local
+          {t("sidebar.localMarker")}
         </Text>
       ) : undefined,
-    [isLocal],
+    [isLocal, t],
   );
   return (
     <ComboboxItem
@@ -835,13 +924,14 @@ function HostPickerOption({
 
 function AddHostOption({ active, onPress }: { active: boolean; onPress: () => void }) {
   const { theme } = useUnistyles();
+  const { t } = useTranslation("settings");
   const leadingSlot = useMemo(
     () => <Plus size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />,
     [theme.iconSize.sm, theme.colors.foregroundMuted],
   );
   return (
     <ComboboxItem
-      label="Add host"
+      label={t("sidebar.addHost")}
       leadingSlot={leadingSlot}
       active={active}
       onPress={onPress}
@@ -872,6 +962,7 @@ function HostPicker({
   onAddHost,
 }: HostPickerProps) {
   const { theme } = useUnistyles();
+  const { t } = useTranslation("settings");
   const [isOpen, setIsOpen] = useState(false);
   const triggerRef = useRef<View | null>(null);
   const activeHost =
@@ -879,8 +970,8 @@ function HostPicker({
 
   const options = useMemo<ComboboxOption[]>(() => {
     const hostOptions = sortedHosts.map((host) => ({ id: host.serverId, label: host.label }));
-    return [...hostOptions, { id: ADD_HOST_OPTION_ID, label: "Add host" }];
-  }, [sortedHosts]);
+    return [...hostOptions, { id: ADD_HOST_OPTION_ID, label: t("sidebar.addHost") }];
+  }, [sortedHosts, t]);
 
   const handleSelect = useCallback(
     (id: string) => {
@@ -938,12 +1029,12 @@ function HostPicker({
         style={triggerStyle}
         onPress={handleOpen}
         accessibilityRole="button"
-        accessibilityLabel="Switch host"
+        accessibilityLabel={t("sidebar.switchHost")}
         testID="settings-host-picker"
       >
         <Monitor size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
         <Text style={sidebarStyles.pickerTriggerLabel} numberOfLines={1}>
-          {activeHost?.label ?? "Host"}
+          {activeHost?.label ?? t("sidebar.hostFallback")}
         </Text>
         <ChevronDown size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
       </Pressable>
@@ -953,7 +1044,7 @@ function HostPicker({
         onSelect={handleSelect}
         renderOption={renderOption}
         searchable={false}
-        title="Switch host"
+        title={t("sidebar.switchHost")}
         desktopMinWidth={240}
         open={isOpen}
         onOpenChange={setIsOpen}
@@ -987,6 +1078,7 @@ function SettingsSidebar({
   layout,
 }: SettingsSidebarProps) {
   const { theme } = useUnistyles();
+  const { t } = useTranslation("settings");
   const hosts = useHosts();
   const localServerId = useLocalDaemonServerId();
   const sortedHosts = useSortedHosts(hosts, localServerId);
@@ -1019,18 +1111,18 @@ function SettingsSidebar({
       {isDesktop ? (
         <SidebarHeaderRow
           icon={ArrowLeft}
-          label="Back"
+          label={t("header.back")}
           onPress={onBackToWorkspace}
           testID="settings-back-to-workspace"
         />
       ) : null}
       <View style={sidebarStyles.list}>
-        <Text style={sidebarStyles.groupLabel}>App</Text>
+        <Text style={sidebarStyles.groupLabel}>{t("sidebar.groupApp")}</Text>
         {items.map((item) => (
           <Fragment key={item.id}>
             <SidebarSectionButton
               itemId={item.id}
-              label={item.label}
+              label={t(item.labelKey)}
               icon={item.icon}
               isSelected={selectedSectionId === item.id}
               onSelect={onSelectSection}
@@ -1044,7 +1136,7 @@ function SettingsSidebar({
       <SidebarSeparator />
       {hasHosts ? (
         <View style={sidebarStyles.list}>
-          <Text style={sidebarStyles.groupLabel}>Host</Text>
+          <Text style={sidebarStyles.groupLabel}>{t("sidebar.groupHost")}</Text>
           <HostPicker
             activeServerId={activeHostServerId}
             sortedHosts={sortedHosts}
@@ -1056,7 +1148,7 @@ function SettingsSidebar({
             <SidebarHostSectionButton
               key={item.id}
               itemId={item.id}
-              label={item.label}
+              label={t(item.labelKey)}
               icon={item.icon}
               isSelected={selectedHostSection === item.id}
               onSelect={onSelectHostSection}
@@ -1067,14 +1159,14 @@ function SettingsSidebar({
         <View style={sidebarStyles.list}>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Add host"
+            accessibilityLabel={t("sidebar.addHost")}
             onPress={onAddHost}
             testID="settings-add-host"
             style={sidebarItemStyle}
           >
             <Plus size={theme.iconSize.md} color={theme.colors.foregroundMuted} />
             <Text style={sidebarStyles.label} numberOfLines={1}>
-              Add host
+              {t("sidebar.addHost")}
             </Text>
           </Pressable>
         </View>
@@ -1094,6 +1186,7 @@ export interface SettingsScreenProps {
 export default function SettingsScreen({ view }: SettingsScreenProps) {
   const router = useRouter();
   const { theme } = useUnistyles();
+  const { t } = useTranslation("settings");
   const voiceAudioEngine = useVoiceAudioEngineOptional();
   const { settings, isLoading: settingsLoading, updateSettings } = useAppSettings();
   const [isAddHostMethodVisible, setIsAddHostMethodVisible] = useState(false);
@@ -1186,11 +1279,11 @@ export default function SettingsScreen({ view }: SettingsScreenProps) {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       console.error("[Settings] Playback test failed", error);
-      setPlaybackTestResult(`Playback failed: ${message}`);
+      setPlaybackTestResult(t("diagnostics.testAudio.failed", { message }));
     } finally {
       setIsPlaybackTestRunning(false);
     }
-  }, [isPlaybackTestRunning, voiceAudioEngine]);
+  }, [isPlaybackTestRunning, voiceAudioEngine, t]);
 
   const closeAddConnectionFlow = useCallback(() => {
     setIsAddHostMethodVisible(false);
@@ -1330,15 +1423,15 @@ export default function SettingsScreen({ view }: SettingsScreenProps) {
     if (view.kind === "host") {
       const item = HOST_SECTION_ITEMS.find((s) => s.id === view.section);
       if (!item) return null;
-      return { title: item.label, Icon: item.icon };
+      return { title: t(item.labelKey), Icon: item.icon };
     }
     if (view.kind === "section") {
       const item = SIDEBAR_SECTION_ITEMS.find((s) => s.id === view.section);
       if (!item) return null;
-      return { title: item.label, Icon: item.icon };
+      return { title: t(item.labelKey), Icon: item.icon };
     }
     if (view.kind === "project" || view.kind === "projects") {
-      return { title: "Projects", Icon: FolderGit2 };
+      return { title: t("sidebar.projects"), Icon: FolderGit2 };
     }
     return null;
   })();
@@ -1400,7 +1493,7 @@ export default function SettingsScreen({ view }: SettingsScreenProps) {
   if (settingsLoading) {
     return (
       <View style={styles.loadingContainer}>
-        <Text style={styles.loadingText}>Loading settings...</Text>
+        <Text style={styles.loadingText}>{t("header.loading")}</Text>
       </View>
     );
   }
@@ -1433,7 +1526,7 @@ export default function SettingsScreen({ view }: SettingsScreenProps) {
   if (isCompactLayout && view.kind === "root") {
     return (
       <View style={styles.container}>
-        <BackHeader title="Settings" onBack={handleBackToWorkspace} />
+        <BackHeader title={t("header.title")} onBack={handleBackToWorkspace} />
         <ScrollView style={scrollViewStyle} contentContainerStyle={insetBottomStyle}>
           <SettingsSidebar
             view={view}
