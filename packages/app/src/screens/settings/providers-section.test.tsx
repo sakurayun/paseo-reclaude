@@ -169,6 +169,7 @@ vi.mock("@/hooks/use-daemon-config", () => ({
 
 vi.mock("@/runtime/host-runtime", () => ({
   useHostRuntimeIsConnected: () => true,
+  useHostRuntimeClient: () => null,
 }));
 
 import { ProvidersSection } from "./providers-section";
