@@ -285,7 +285,13 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: desktop-linux
-          path: ${{ env.DESKTOP_PACKAGE_PATH }}/release/*
+          # Only the packages — not electron-builder's linux-unpacked dir,
+          # which is a full unpacked copy of the app and bloats the artifact.
+          path: |
+            ${{ env.DESKTOP_PACKAGE_PATH }}/release/*.AppImage
+            ${{ env.DESKTOP_PACKAGE_PATH }}/release/*.deb
+            ${{ env.DESKTOP_PACKAGE_PATH }}/release/*.rpm
+            ${{ env.DESKTOP_PACKAGE_PATH }}/release/*.tar.gz
           retention-days: 7
 
       - name: Upload manifest artifact
@@ -380,7 +386,11 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: desktop-windows
-          path: ${{ env.DESKTOP_PACKAGE_PATH }}/release/*
+          # Only the installers/archives — not electron-builder's *-unpacked dirs,
+          # which are full unpacked copies of the app and bloat the artifact ~2x.
+          path: |
+            ${{ env.DESKTOP_PACKAGE_PATH }}/release/*.exe
+            ${{ env.DESKTOP_PACKAGE_PATH }}/release/*.zip
           retention-days: 7
 
       - name: Upload manifest artifact
