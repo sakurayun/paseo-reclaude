@@ -49,7 +49,7 @@ const variant = variants[appVariant] ?? variants.production;
 export default {
   expo: {
     name: variant.name,
-    slug: "voice-mobile",
+    slug: "paseo-reclaude",
     version: pkg.version,
     orientation: "portrait",
     icon: "./assets/images/icon.png",
@@ -148,9 +148,9 @@ export default {
     extra: {
       router: {},
       eas: {
-        projectId: "0e7f65ce-0367-46c8-a238-2b65963d235a",
+        projectId: "58537a79-e9dc-4f7c-b9bf-931fb7af4647",
       },
     },
-    owner: "getpaseo",
+    owner: "yuners-team",
   },
 };
