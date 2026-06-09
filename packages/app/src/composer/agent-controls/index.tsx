@@ -66,6 +66,7 @@ import type { AgentProviderDefinition } from "@getpaseo/protocol/provider-manife
 import {
   getFeatureHighlightColor,
   getFeatureTooltip,
+  getFeatureTooltipI18nKey,
   getAgentControlHint,
   formatThinkingOptionLabel,
   resolveFeatureImpliedThinkingOptionId,
@@ -1143,7 +1144,10 @@ function DesktopFeatureItem({
   onSetFeature?: (featureId: string, value: unknown) => void;
 }) {
   const { theme } = useUnistyles();
+  const { t } = useTranslation("composer");
   const featureSelector: AgentControlSelector = `feature-${feature.id}`;
+  const tooltipKey = getFeatureTooltipI18nKey(feature.id);
+  const featureTooltip = tooltipKey ? t(tooltipKey) : getFeatureTooltip(feature);
 
   const handleFeatureOpenChange = useMemo(
     () => handleOpenChange(featureSelector),
@@ -1193,7 +1197,7 @@ function DesktopFeatureItem({
             onPress={handleTogglePress}
             style={togglePressableStyle}
             accessibilityRole="button"
-            accessibilityLabel={getFeatureTooltip(feature)}
+            accessibilityLabel={featureTooltip}
             testID={`agent-feature-${feature.id}`}
           >
             <FeatureIcon
@@ -1208,7 +1212,7 @@ function DesktopFeatureItem({
           </Pressable>
         </TooltipTrigger>
         <TooltipContent side="top" align="center" offset={8}>
-          <Text style={styles.tooltipText}>{getFeatureTooltip(feature)}</Text>
+          <Text style={styles.tooltipText}>{featureTooltip}</Text>
         </TooltipContent>
       </Tooltip>
     );
@@ -1225,7 +1229,7 @@ function DesktopFeatureItem({
               disabled={disabled}
               style={selectPressableStyle}
               accessibilityRole="button"
-              accessibilityLabel={getFeatureTooltip(feature)}
+              accessibilityLabel={featureTooltip}
               testID={`agent-feature-${feature.id}`}
             >
               <FeatureIcon size={theme.iconSize.md} color={theme.colors.foregroundMuted} />
@@ -1234,7 +1238,7 @@ function DesktopFeatureItem({
             </DropdownMenuTrigger>
           </TooltipTrigger>
           <TooltipContent side="top" align="center" offset={8}>
-            <Text style={styles.tooltipText}>{getFeatureTooltip(feature)}</Text>
+            <Text style={styles.tooltipText}>{featureTooltip}</Text>
           </TooltipContent>
         </Tooltip>
         <DropdownMenuContent side="top" align="start">
@@ -1270,6 +1274,8 @@ function SheetFeatureItem({
   const { theme } = useUnistyles();
   const { t } = useTranslation("composer");
   const featureSelector: AgentControlSelector = `feature-${feature.id}`;
+  const tooltipKey = getFeatureTooltipI18nKey(feature.id);
+  const featureTooltip = tooltipKey ? t(tooltipKey) : getFeatureTooltip(feature);
 
   const handleFeatureOpenChange = useMemo(
     () => handleOpenChange(featureSelector),
@@ -1307,7 +1313,7 @@ function SheetFeatureItem({
           onPress={handleTogglePress}
           style={togglePressableStyle}
           accessibilityRole="button"
-          accessibilityLabel={getFeatureTooltip(feature)}
+          accessibilityLabel={featureTooltip}
           testID={`agent-feature-${feature.id}`}
         >
           <FeatureIcon
@@ -1340,7 +1346,7 @@ function SheetFeatureItem({
             disabled={disabled}
             style={togglePressableStyle}
             accessibilityRole="button"
-            accessibilityLabel={getFeatureTooltip(feature)}
+            accessibilityLabel={featureTooltip}
             testID={`agent-feature-${feature.id}`}
           >
             <Text style={styles.sheetSelectText}>{selectedOption?.label ?? feature.label}</Text>

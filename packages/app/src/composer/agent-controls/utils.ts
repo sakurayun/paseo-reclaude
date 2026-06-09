@@ -31,6 +31,16 @@ export function getFeatureTooltip(feature: Pick<AgentFeature, "label" | "tooltip
   return feature.tooltip ?? feature.label;
 }
 
+// The composer i18n key for a feature's app-localized tooltip, or null to fall back to the
+// server-provided text. The daemon ships feature labels/tooltips in English only; for known
+// features (e.g. Ultracode) we translate the description app-side while leaving the brand
+// label ("Ultracode") untranslated. Returning a literal keeps t() compile-time key-checked.
+export function getFeatureTooltipI18nKey(
+  featureId: string,
+): "controls.features.ultracode.tooltip" | null {
+  return featureId === CLAUDE_ULTRACODE_FEATURE_ID ? "controls.features.ultracode.tooltip" : null;
+}
+
 export function getFeatureHighlightColor(featureId: string): FeatureHighlightColor {
   switch (featureId) {
     case "fast_mode":

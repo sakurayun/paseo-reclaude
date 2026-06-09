@@ -69,6 +69,10 @@ export default {
       openAccessibilityLabel: "打开 Agent 功能",
       toggleOn: "开",
       toggleOff: "关",
+      // “Ultracode” 是品牌名，保留不译；仅本地化描述文案。
+      ultracode: {
+        tooltip: "切换 Ultracode",
+      },
     },
   },
   input: {

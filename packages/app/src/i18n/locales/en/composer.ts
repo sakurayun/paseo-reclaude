@@ -69,6 +69,10 @@ export default {
       openAccessibilityLabel: "Open agent features",
       toggleOn: "On",
       toggleOff: "Off",
+      // "Ultracode" is a brand name and stays untranslated; only the description is localized.
+      ultracode: {
+        tooltip: "Toggle Ultracode",
+      },
     },
   },
   input: {
