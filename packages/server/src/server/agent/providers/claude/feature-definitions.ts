@@ -1,6 +1,7 @@
 import type { AgentFeature, AgentFeatureToggle } from "../../agent-sdk-types.js";
 
 const CLAUDE_FAST_MODE_SUPPORTED_MODEL_PREFIXES = [
+  "claude-fable-5",
   "claude-opus-4-8",
   "claude-opus-4-7",
   "claude-opus-4-6",
@@ -10,7 +11,7 @@ export const CLAUDE_FAST_MODE_FEATURE: Omit<AgentFeatureToggle, "value"> = {
   type: "toggle",
   id: "fast_mode",
   label: "Fast",
-  description: "Lower latency Opus responses at higher token cost",
+  description: "Lower latency responses at higher token cost",
   tooltip: "Toggle fast mode",
   icon: "zap",
 };

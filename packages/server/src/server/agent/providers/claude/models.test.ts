@@ -35,6 +35,8 @@ describe("getClaudeModels", () => {
   it("returns all claude models", () => {
     const models = getClaudeModels();
     expect(models.map((m) => m.id)).toEqual([
+      "claude-fable-5[1m]",
+      "claude-fable-5",
       "claude-opus-4-8[1m]",
       "claude-opus-4-8",
       "claude-opus-4-7[1m]",
@@ -52,6 +54,37 @@ describe("getClaudeModels", () => {
     const defaults = models.filter((m) => m.isDefault);
     expect(defaults).toHaveLength(1);
     expect(defaults[0].id).toBe("claude-opus-4-8");
+  });
+
+  it("gives every thinking-capable model thinking options", () => {
+    const models = getClaudeModels();
+    for (const model of models) {
+      if (model.id.startsWith("claude-haiku")) {
+        expect(model.thinkingOptions).toBeUndefined();
+        continue;
+      }
+      expect(model.thinkingOptions?.map((option) => option.id)).toContain("max");
+    }
+  });
+
+  it("gives fable models the extended thinking options including xhigh", () => {
+    const models = getClaudeModels();
+    const fable = models.find((m) => m.id === "claude-fable-5");
+    const fable1m = models.find((m) => m.id === "claude-fable-5[1m]");
+    expect(fable?.thinkingOptions?.map((option) => option.id)).toEqual([
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max",
+    ]);
+    expect(fable1m?.thinkingOptions?.map((option) => option.id)).toEqual([
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max",
+    ]);
   });
 
   it("returns fresh copies each call", () => {
@@ -86,12 +119,25 @@ describe("ClaudeAgentClient.listModels", () => {
         id: "us.anthropic.claude-opus-4-7[1m]",
         label: "us.anthropic.claude-opus-4-7[1m]",
         description: "From Claude settings.json model",
+        thinkingOptions: [
+          { id: "low", label: "Low" },
+          { id: "medium", label: "Medium" },
+          { id: "high", label: "High" },
+          { id: "xhigh", label: "Extra High" },
+          { id: "max", label: "Max" },
+        ],
       },
       {
         provider: "claude",
         id: "openrouter/anthropic/claude-sonnet-4.5",
         label: "openrouter/anthropic/claude-sonnet-4.5",
         description: "From Claude settings.json env.ANTHROPIC_MODEL",
+        thinkingOptions: [
+          { id: "low", label: "Low" },
+          { id: "medium", label: "Medium" },
+          { id: "high", label: "High" },
+          { id: "max", label: "Max" },
+        ],
       },
       {
         provider: "claude",
@@ -104,6 +150,12 @@ describe("ClaudeAgentClient.listModels", () => {
         id: "bedrock-opus-from-env",
         label: "bedrock-opus-from-env",
         description: "From Claude settings.json env.ANTHROPIC_DEFAULT_OPUS_MODEL",
+        thinkingOptions: [
+          { id: "low", label: "Low" },
+          { id: "medium", label: "Medium" },
+          { id: "high", label: "High" },
+          { id: "max", label: "Max" },
+        ],
       },
       {
         provider: "claude",
@@ -189,6 +241,15 @@ describe("normalizeClaudeRuntimeModelId", () => {
     expect(normalizeClaudeRuntimeModelId("claude-opus-4-6-20260101")).toBe("claude-opus-4-6");
     expect(normalizeClaudeRuntimeModelId("claude-sonnet-4-6-20260101")).toBe("claude-sonnet-4-6");
     expect(normalizeClaudeRuntimeModelId("claude-haiku-4-5-20251001")).toBe("claude-haiku-4-5");
+  });
+
+  it("normalizes fable model IDs with single-segment versions", () => {
+    expect(normalizeClaudeRuntimeModelId("claude-fable-5")).toBe("claude-fable-5");
+    expect(normalizeClaudeRuntimeModelId("claude-fable-5[1m]")).toBe("claude-fable-5[1m]");
+    expect(normalizeClaudeRuntimeModelId("claude-fable-5-20260101")).toBe("claude-fable-5");
+    expect(normalizeClaudeRuntimeModelId("us.anthropic.claude-fable-5[1m]")).toBe(
+      "claude-fable-5[1m]",
+    );
   });
 
   it("preserves [1m] suffix from runtime model strings", () => {

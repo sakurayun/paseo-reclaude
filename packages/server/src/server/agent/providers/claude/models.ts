@@ -12,7 +12,7 @@ const CLAUDE_THINKING_OPTIONS = [
   { id: "max", label: "Max" },
 ] as const;
 
-const CLAUDE_OPUS_EXTENDED_THINKING_OPTIONS = [
+const CLAUDE_EXTENDED_THINKING_OPTIONS = [
   { id: "low", label: "Low" },
   { id: "medium", label: "Medium" },
   { id: "high", label: "High" },
@@ -23,10 +23,24 @@ const CLAUDE_OPUS_EXTENDED_THINKING_OPTIONS = [
 const CLAUDE_MODELS: AgentModelDefinition[] = [
   {
     provider: "claude",
+    id: "claude-fable-5[1m]",
+    label: "Fable 5 1M",
+    description: "Fable 5 with 1M context window",
+    thinkingOptions: [...CLAUDE_EXTENDED_THINKING_OPTIONS],
+  },
+  {
+    provider: "claude",
+    id: "claude-fable-5",
+    label: "Fable 5",
+    description: "Fable 5 · Newest model",
+    thinkingOptions: [...CLAUDE_EXTENDED_THINKING_OPTIONS],
+  },
+  {
+    provider: "claude",
     id: "claude-opus-4-8[1m]",
     label: "Opus 4.8 1M",
     description: "Opus 4.8 with 1M context window",
-    thinkingOptions: [...CLAUDE_OPUS_EXTENDED_THINKING_OPTIONS],
+    thinkingOptions: [...CLAUDE_EXTENDED_THINKING_OPTIONS],
   },
   {
     provider: "claude",
@@ -34,21 +48,21 @@ const CLAUDE_MODELS: AgentModelDefinition[] = [
     label: "Opus 4.8",
     description: "Opus 4.8 · Latest release",
     isDefault: true,
-    thinkingOptions: [...CLAUDE_OPUS_EXTENDED_THINKING_OPTIONS],
+    thinkingOptions: [...CLAUDE_EXTENDED_THINKING_OPTIONS],
   },
   {
     provider: "claude",
     id: "claude-opus-4-7[1m]",
     label: "Opus 4.7 1M",
     description: "Opus 4.7 with 1M context window",
-    thinkingOptions: [...CLAUDE_OPUS_EXTENDED_THINKING_OPTIONS],
+    thinkingOptions: [...CLAUDE_EXTENDED_THINKING_OPTIONS],
   },
   {
     provider: "claude",
     id: "claude-opus-4-7",
     label: "Opus 4.7",
     description: "Opus 4.7 · Previous release",
-    thinkingOptions: [...CLAUDE_OPUS_EXTENDED_THINKING_OPTIONS],
+    thinkingOptions: [...CLAUDE_EXTENDED_THINKING_OPTIONS],
   },
   {
     provider: "claude",
@@ -179,12 +193,40 @@ function addSettingsModel(
     return;
   }
 
+  const thinkingOptions = inferClaudeThinkingOptions(id);
   models.push({
     provider: "claude",
     id,
     label: id,
     description: `From Claude settings.json ${settingsKey}`,
+    ...(thinkingOptions ? { thinkingOptions } : {}),
   });
+}
+
+/**
+ * Infer thinking options for Claude model IDs discovered outside the hardcoded
+ * list (settings.json, env overrides). Any model from a thinking-capable
+ * family gets the selector; unknown/non-Anthropic IDs get none.
+ */
+function inferClaudeThinkingOptions(
+  modelId: string,
+): AgentModelDefinition["thinkingOptions"] | null {
+  const lowered = modelId.toLowerCase();
+  if (lowered.includes("fable")) {
+    return [...CLAUDE_EXTENDED_THINKING_OPTIONS];
+  }
+  const opusMatch = lowered.match(/opus[-_ ]+(\d+)[-.](\d+)/);
+  if (opusMatch) {
+    const major = Number(opusMatch[1]);
+    const minor = Number(opusMatch[2]);
+    // Opus 4.7+ supports the extra-high effort level
+    const supportsXhigh = major > 4 || (major === 4 && minor >= 7);
+    return supportsXhigh ? [...CLAUDE_EXTENDED_THINKING_OPTIONS] : [...CLAUDE_THINKING_OPTIONS];
+  }
+  if (lowered.includes("opus") || lowered.includes("sonnet")) {
+    return [...CLAUDE_THINKING_OPTIONS];
+  }
+  return null;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -206,9 +248,11 @@ export function normalizeClaudeRuntimeModelId(value: string | null | undefined):
     return trimmed;
   }
 
-  // Match: claude-{family}-{major}-{minor}[1m]? possibly followed by a date suffix
+  // Match: claude-{family}-{major}[-{minor}][1m]? possibly followed by a date suffix.
+  // The minor segment is capped at 2 digits so an 8-digit date suffix (e.g.
+  // claude-fable-5-20260101) is not mistaken for a minor version.
   const runtimeMatch = trimmed.match(
-    /(?:claude-)?(opus|sonnet|haiku)[-_ ]+(\d+)[-.](\d+)(\[1m\])?/i,
+    /(?:claude-)?(opus|sonnet|haiku|fable)[-_ ]+(\d+)(?:[-.](\d{1,2})(?!\d))?(\[1m\])?/i,
   );
   if (!runtimeMatch) {
     return null;
@@ -218,5 +262,5 @@ export function normalizeClaudeRuntimeModelId(value: string | null | undefined):
   const major = runtimeMatch[2];
   const minor = runtimeMatch[3];
   const suffix = runtimeMatch[4] ?? "";
-  return `claude-${family}-${major}-${minor}${suffix}`;
+  return `claude-${family}-${major}${minor ? `-${minor}` : ""}${suffix}`;
 }
