@@ -308,6 +308,7 @@ function useDraftModelGatewaySelection(
   selectedId: string;
   setSelectedId: (id: string) => void;
 } {
+  const { t } = useTranslation("composer");
   const { config: daemonConfig } = useDaemonConfig(serverId);
   const modelGateways = daemonConfig?.modelGateways ?? EMPTY_MODEL_GATEWAYS;
   const entries = useMemo(
@@ -335,13 +336,13 @@ function useDraftModelGatewaySelection(
 
   const options = useMemo(
     () => [
-      { id: NATIVE_MODEL_GATEWAY_ID, label: "Native" },
+      { id: NATIVE_MODEL_GATEWAY_ID, label: t("controls.gateway.nativeLabel") },
       ...entries.map(([id, gateway]) => ({
         id,
         label: gateway.label?.trim() || id,
       })),
     ],
-    [entries],
+    [entries, t],
   );
 
   const rawModelGateway =
@@ -559,7 +560,9 @@ export function WorkspaceDraftAgentTab({
     setSelectedId: setSelectedModelGatewayId,
   } = useDraftModelGatewaySelection(serverId, composerState.selectedProvider);
   const selectedModelGatewayLabel =
-    selectedModelGateway?.label?.trim() || selectedModelGatewayId || "Model gateway";
+    selectedModelGateway?.label?.trim() ||
+    selectedModelGatewayId ||
+    t("controls.gateway.fallbackLabel");
   const selectedModelGatewaySelectorProviders = useMemo(
     () =>
       buildModelGatewaySelectorProviders({

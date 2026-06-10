@@ -51,6 +51,14 @@ export default {
       thinking: "思考模式",
       model: "更换模型",
       mode: "更改权限模式",
+      gateway: "模型网关",
+    },
+    gateway: {
+      nativeLabel: "原生",
+      fallbackLabel: "模型网关",
+      sheetTitle: "模型网关",
+      selectAccessibilityLabel: "选择模型网关",
+      selectAccessibilityLabelWithValue: "选择模型网关（{{value}}）",
     },
     provider: {
       fallbackLabel: "提供方",

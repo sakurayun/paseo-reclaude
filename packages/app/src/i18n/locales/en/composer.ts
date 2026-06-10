@@ -51,6 +51,14 @@ export default {
       thinking: "Thinking mode",
       model: "Change model",
       mode: "Change permission mode",
+      gateway: "Model gateway",
+    },
+    gateway: {
+      nativeLabel: "Native",
+      fallbackLabel: "Model gateway",
+      sheetTitle: "Model Gateway",
+      selectAccessibilityLabel: "Select model gateway",
+      selectAccessibilityLabelWithValue: "Select model gateway ({{value}})",
     },
     provider: {
       fallbackLabel: "Provider",

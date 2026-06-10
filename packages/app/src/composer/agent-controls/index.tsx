@@ -427,12 +427,13 @@ function selectAgentControlsSlice(
 function buildActiveModelGatewayOptions(
   id: string | undefined,
   label: string | undefined,
+  nativeLabel: string,
 ): AgentControlOption[] | undefined {
   if (!id) {
     return undefined;
   }
   return [
-    { id: NATIVE_MODEL_GATEWAY_ID, label: "Native" },
+    { id: NATIVE_MODEL_GATEWAY_ID, label: nativeLabel },
     {
       id,
       label: label?.trim() || id,
@@ -441,11 +442,17 @@ function buildActiveModelGatewayOptions(
 }
 
 function useActiveModelGatewayStatus(agent: AgentControlsSlice) {
+  const { t } = useTranslation("composer");
   const modelGatewayId = agent?.modelGatewayId ?? undefined;
   const modelGatewayLabel = agent?.modelGatewayLabel ?? undefined;
   const options = useMemo(
-    () => buildActiveModelGatewayOptions(modelGatewayId, modelGatewayLabel),
-    [modelGatewayId, modelGatewayLabel],
+    () =>
+      buildActiveModelGatewayOptions(
+        modelGatewayId,
+        modelGatewayLabel,
+        t("controls.gateway.nativeLabel"),
+      ),
+    [modelGatewayId, modelGatewayLabel, t],
   );
   return {
     options,
@@ -612,7 +619,7 @@ function ControlledAgentControls({
   const displayModelGateway = findOptionLabel(
     modelGatewayOptions,
     selectedModelGatewayId,
-    "Native",
+    t("controls.gateway.nativeLabel"),
   );
   const formattedThinkingOptions = useMemo(
     () => toThinkingControlOptions(thinkingOptions, t),
@@ -1419,6 +1426,7 @@ function DesktopModelGatewaySelector({
   handleGatewayOpenChange: (open: boolean) => void;
 }) {
   const { theme } = useUnistyles();
+  const { t } = useTranslation("composer");
   if (!modelGatewayOptions?.length) {
     return null;
   }
@@ -1433,7 +1441,9 @@ function DesktopModelGatewaySelector({
             onPress={handleGatewayPress}
             style={gatewayPressableStyle}
             accessibilityRole="button"
-            accessibilityLabel={`Select model gateway (${displayModelGateway})`}
+            accessibilityLabel={t("controls.gateway.selectAccessibilityLabelWithValue", {
+              value: displayModelGateway,
+            })}
             testID="agent-model-gateway-selector"
           >
             <Route size={theme.iconSize.md} color={theme.colors.foregroundMuted} />
@@ -1442,7 +1452,7 @@ function DesktopModelGatewaySelector({
           </Pressable>
         </TooltipTrigger>
         <TooltipContent side="top" align="center" offset={8}>
-          <Text style={styles.tooltipText}>{getAgentControlHint("gateway")}</Text>
+          <Text style={styles.tooltipText}>{getAgentControlHint("gateway", t)}</Text>
         </TooltipContent>
       </Tooltip>
       <Combobox
@@ -1481,6 +1491,7 @@ function SheetModelGatewaySelector({
   comboboxModelGatewayOptions: ComboboxOption[];
 }) {
   const { theme } = useUnistyles();
+  const { t } = useTranslation("composer");
   const gatewayAnchorRef = useRef<View | null>(null);
   const hasGateway = Boolean(
     canSelectModelGateway && modelGatewayOptions && modelGatewayOptions.length > 0,
@@ -1515,7 +1526,7 @@ function SheetModelGatewaySelector({
         disabled={disabled || !canSelectModelGateway}
         style={gatewayButtonStyle}
         accessibilityRole="button"
-        accessibilityLabel="Select model gateway"
+        accessibilityLabel={t("controls.gateway.selectAccessibilityLabel")}
         testID="agent-controls-gateway"
       >
         <Route size={theme.iconSize.md} color={theme.colors.foregroundMuted} />
@@ -1525,7 +1536,7 @@ function SheetModelGatewaySelector({
         value={selectedModelGatewayId ?? ""}
         onSelect={handleSelectGatewayAndClose}
         searchable={false}
-        title="Model Gateway"
+        title={t("controls.gateway.sheetTitle")}
         open={activeSheet === "gateway"}
         onOpenChange={handleGatewaySheetOpenChange}
         anchorRef={gatewayAnchorRef}
@@ -1870,7 +1881,9 @@ export const AgentControls = memo(function AgentControls({
       return buildModelGatewaySelectorProviders({
         provider: agent?.provider,
         providerLabel:
-          configuredModelGateway?.label?.trim() || agent?.modelGatewayLabel || "Model gateway",
+          configuredModelGateway?.label?.trim() ||
+          agent?.modelGatewayLabel ||
+          t("controls.gateway.fallbackLabel"),
         models: gatewayModels,
       });
     }
@@ -1889,6 +1902,7 @@ export const AgentControls = memo(function AgentControls({
     configuredModelGateway,
     gatewayModels,
     snapshotSelectedEntry,
+    t,
   ]);
 
   const modelSelection = resolveAgentModelSelection({

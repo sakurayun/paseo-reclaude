@@ -15,7 +15,7 @@ export function getStatusSelectorHint(
 ): string {
   switch (selector) {
     case "gateway":
-      return "Model gateway";
+      return t ? t("controls.hints.gateway") : "Model gateway";
     case "thinking":
       return t ? t("controls.hints.thinking") : "Thinking mode";
     case "model":

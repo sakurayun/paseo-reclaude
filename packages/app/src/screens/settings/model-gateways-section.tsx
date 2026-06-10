@@ -1,5 +1,7 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import { Alert, Pressable, Text, View } from "react-native";
+import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { ChevronDown, Plus, Pencil, RefreshCw, Trash2 } from "lucide-react-native";
 import {
@@ -20,7 +22,6 @@ type ModelGateways = NonNullable<MutableDaemonConfig["modelGateways"]>;
 type ModelGatewayConfig = ModelGateways[string];
 
 const EMPTY_GATEWAYS: ModelGateways = {};
-const GATEWAY_SHEET_HEADER: SheetHeader = { title: "Model gateway" };
 const CODEX_PROVIDER_LABEL = "Codex";
 const CODEX_GATEWAY_PROTOCOL = "responses";
 const CODEX_PROTOCOL_OPTIONS = [{ id: CODEX_GATEWAY_PROTOCOL, label: "OpenAI Responses" }];
@@ -45,7 +46,7 @@ function getGatewayLabel(id: string, gateway: ModelGatewayConfig): string {
   return gateway.label?.trim() || id;
 }
 
-function getGatewaySubtitle(gateway: ModelGatewayConfig): string {
+function getGatewaySubtitle(gateway: ModelGatewayConfig, t: TFunction<"settings">): string {
   if (gateway.type === "openai-compatible") {
     const model = gateway.model?.trim();
     const protocol = gateway.protocol?.trim() || CODEX_GATEWAY_PROTOCOL;
@@ -55,7 +56,7 @@ function getGatewaySubtitle(gateway: ModelGatewayConfig): string {
       ? `${provider} · ${protocol} · ${gateway.baseUrl} · model ${model}`
       : `${provider} · ${protocol} · ${gateway.baseUrl}`;
   }
-  return "Native provider routing";
+  return t("modelGateways.nativeSubtitle");
 }
 
 function toOpenAICompatibleDraft(gateway: ModelGatewayConfig | null): {
@@ -79,6 +80,7 @@ function toOpenAICompatibleDraft(gateway: ModelGatewayConfig | null): {
 
 export function ModelGatewaysSection({ serverId }: { serverId: string }) {
   const { theme } = useUnistyles();
+  const { t } = useTranslation("settings");
   const client = useHostRuntimeClient(serverId);
   const supportsModelGateways = useSessionStore(
     (state) => state.sessions[serverId]?.serverInfo?.features?.modelGateways === true,
@@ -179,16 +181,16 @@ export function ModelGatewaysSection({ serverId }: { serverId: string }) {
   );
   const modelDiscoveryStatus = useMemo(() => {
     if (isDiscoveringModels) {
-      return "Loading models...";
+      return t("modelGateways.discovery.loading");
     }
     if (modelDiscoveryError) {
       return modelDiscoveryError;
     }
     if (discoveredModels.length > 0) {
-      return `${discoveredModels.length} models available`;
+      return t("modelGateways.discovery.available", { count: discoveredModels.length });
     }
-    return "Load available routes or enter an ID manually.";
-  }, [discoveredModels.length, isDiscoveringModels, modelDiscoveryError]);
+    return t("modelGateways.discovery.idle");
+  }, [discoveredModels.length, isDiscoveringModels, modelDiscoveryError, t]);
 
   const handleSave = useCallback(() => {
     const nextLabel = label.trim();
@@ -197,17 +199,23 @@ export function ModelGatewaysSection({ serverId }: { serverId: string }) {
     const nextModel = model.trim();
     const nextApiKey = apiKey.trim();
     if (!nextLabel) {
-      Alert.alert("Name required", "Enter a name for this gateway.");
+      Alert.alert(
+        t("modelGateways.alerts.nameRequiredTitle"),
+        t("modelGateways.alerts.nameRequiredMessage"),
+      );
       return;
     }
     if (!nextBaseUrl) {
-      Alert.alert("Base URL required", "Enter the gateway base URL.");
+      Alert.alert(
+        t("modelGateways.alerts.baseUrlRequiredTitle"),
+        t("modelGateways.alerts.baseUrlRequiredMessage"),
+      );
       return;
     }
     if (nextProtocol !== CODEX_GATEWAY_PROTOCOL) {
       Alert.alert(
-        "Unsupported protocol",
-        "Codex currently supports only the OpenAI Responses protocol for model gateways.",
+        t("modelGateways.alerts.unsupportedProtocolTitle"),
+        t("modelGateways.alerts.unsupportedProtocolMessage"),
       );
       return;
     }
@@ -233,12 +241,12 @@ export function ModelGatewaysSection({ serverId }: { serverId: string }) {
       .then(() => setIsSheetOpen(false))
       .catch((error) => {
         Alert.alert(
-          "Unable to save gateway",
+          t("modelGateways.alerts.saveFailedTitle"),
           error instanceof Error ? error.message : String(error),
         );
       })
       .finally(() => setIsSaving(false));
-  }, [apiKey, baseUrl, editingId, gateways, label, model, patchConfig, protocol]);
+  }, [apiKey, baseUrl, editingId, gateways, label, model, patchConfig, protocol, t]);
 
   const handleRemove = useCallback(
     (id: string) => {
@@ -246,12 +254,12 @@ export function ModelGatewaysSection({ serverId }: { serverId: string }) {
       delete nextGateways[id];
       void patchConfig({ modelGateways: nextGateways }).catch((error) => {
         Alert.alert(
-          "Unable to remove gateway",
+          t("modelGateways.alerts.removeFailedTitle"),
           error instanceof Error ? error.message : String(error),
         );
       });
     },
-    [gateways, patchConfig],
+    [gateways, patchConfig, t],
   );
 
   const trailing = useMemo(
@@ -261,14 +269,19 @@ export function ModelGatewaysSection({ serverId }: { serverId: string }) {
         hitSlop={8}
         style={settingsStyles.sectionHeaderLink}
         accessibilityRole="button"
-        accessibilityLabel="Add model gateway"
+        accessibilityLabel={t("modelGateways.addAccessibilityLabel")}
         testID="add-model-gateway-button"
       >
         <Plus size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
-        <Text style={settingsStyles.sectionHeaderLinkText}>Add gateway</Text>
+        <Text style={settingsStyles.sectionHeaderLinkText}>{t("modelGateways.add")}</Text>
       </Pressable>
     ),
-    [handleAdd, theme.colors.foregroundMuted, theme.iconSize.sm],
+    [handleAdd, theme.colors.foregroundMuted, theme.iconSize.sm, t],
+  );
+
+  const gatewaySheetHeader = useMemo<SheetHeader>(
+    () => ({ title: t("modelGateways.sheetTitle") }),
+    [t],
   );
 
   if (!supportsModelGateways) {
@@ -276,14 +289,16 @@ export function ModelGatewaysSection({ serverId }: { serverId: string }) {
   }
 
   return (
-    <SettingsSection title="Model Gateways" trailing={trailing} testID="model-gateways-section">
+    <SettingsSection
+      title={t("modelGateways.title")}
+      trailing={trailing}
+      testID="model-gateways-section"
+    >
       <View style={settingsStyles.card}>
         {entries.length === 0 ? (
           <View style={styles.emptyState}>
-            <Text style={settingsStyles.rowTitle}>No gateways</Text>
-            <Text style={settingsStyles.rowHint}>
-              Add an OpenAI-compatible endpoint to route model requests through a gateway.
-            </Text>
+            <Text style={settingsStyles.rowTitle}>{t("modelGateways.emptyTitle")}</Text>
+            <Text style={settingsStyles.rowHint}>{t("modelGateways.emptyHint")}</Text>
           </View>
         ) : (
           entries.map(([id, gateway], index) => (
@@ -301,35 +316,33 @@ export function ModelGatewaysSection({ serverId }: { serverId: string }) {
 
       <AdaptiveModalSheet
         visible={isSheetOpen}
-        header={GATEWAY_SHEET_HEADER}
+        header={gatewaySheetHeader}
         onClose={handleClose}
         testID="model-gateway-sheet"
       >
         <View style={styles.form}>
           <View style={styles.fieldGroup}>
-            <Text style={styles.fieldLabel}>Provider</Text>
+            <Text style={styles.fieldLabel}>{t("modelGateways.fields.provider")}</Text>
             <View style={styles.readOnlyField}>
               <Text style={styles.readOnlyFieldText}>{CODEX_PROVIDER_LABEL}</Text>
             </View>
-            <Text style={styles.fieldHint}>
-              Model gateways use the native config format for the selected provider.
-            </Text>
+            <Text style={styles.fieldHint}>{t("modelGateways.fields.providerHint")}</Text>
           </View>
           <View style={styles.fieldGroup}>
-            <Text style={styles.fieldLabel}>Name</Text>
+            <Text style={styles.fieldLabel}>{t("modelGateways.fields.name")}</Text>
             <AdaptiveTextInput
               value={label}
               initialValue={label}
               resetKey={`gateway-label-${editingId ?? "new"}-${draftResetKey}`}
               onChangeText={setLabel}
-              placeholder="Local 9Router"
+              placeholder={t("modelGateways.fields.namePlaceholder")}
               autoCapitalize="none"
               autoCorrect={false}
               testID="model-gateway-label-input"
             />
           </View>
           <View style={styles.fieldGroup}>
-            <Text style={styles.fieldLabel}>Base URL</Text>
+            <Text style={styles.fieldLabel}>{t("modelGateways.fields.baseUrl")}</Text>
             <AdaptiveTextInput
               value={baseUrl}
               initialValue={baseUrl}
@@ -343,13 +356,13 @@ export function ModelGatewaysSection({ serverId }: { serverId: string }) {
             />
           </View>
           <View style={styles.fieldGroup}>
-            <Text style={styles.fieldLabel}>Protocol</Text>
+            <Text style={styles.fieldLabel}>{t("modelGateways.fields.protocol")}</Text>
             <View ref={protocolAnchorRef} collapsable={false}>
               <Pressable
                 onPress={handleOpenProtocolSelector}
                 style={styles.modelSelector}
                 accessibilityRole="button"
-                accessibilityLabel="Select gateway protocol"
+                accessibilityLabel={t("modelGateways.fields.protocolSelectAccessibilityLabel")}
                 testID="model-gateway-protocol-input"
               >
                 <Text style={styles.modelSelectorText} numberOfLines={1}>
@@ -363,9 +376,9 @@ export function ModelGatewaysSection({ serverId }: { serverId: string }) {
                 onSelect={setProtocol}
                 searchable
                 placeholder="responses"
-                searchPlaceholder="Search protocols"
-                emptyText="No supported protocols found."
-                title="Protocol"
+                searchPlaceholder={t("modelGateways.fields.protocolSearchPlaceholder")}
+                emptyText={t("modelGateways.fields.protocolEmpty")}
+                title={t("modelGateways.fields.protocol")}
                 open={isProtocolSelectorOpen}
                 onOpenChange={setIsProtocolSelectorOpen}
                 anchorRef={protocolAnchorRef}
@@ -374,19 +387,17 @@ export function ModelGatewaysSection({ serverId }: { serverId: string }) {
                 desktopMinWidth={320}
               />
             </View>
-            <Text style={styles.fieldHint}>
-              Codex currently supports the OpenAI Responses protocol for model gateways.
-            </Text>
+            <Text style={styles.fieldHint}>{t("modelGateways.fields.protocolHint")}</Text>
           </View>
           <View style={styles.fieldGroup}>
-            <Text style={styles.fieldLabel}>API key</Text>
+            <Text style={styles.fieldLabel}>{t("modelGateways.fields.apiKey")}</Text>
             <AdaptiveTextInput
               value={apiKey}
               initialValue={apiKey}
               resetKey={`gateway-api-key-${editingId ?? "new"}-${draftResetKey}`}
               onChangeText={setApiKey}
               onBlur={handleTriggerModelDiscovery}
-              placeholder="Optional"
+              placeholder={t("modelGateways.fields.apiKeyPlaceholder")}
               autoCapitalize="none"
               autoCorrect={false}
               secureTextEntry
@@ -394,17 +405,17 @@ export function ModelGatewaysSection({ serverId }: { serverId: string }) {
             />
           </View>
           <View style={styles.fieldGroup}>
-            <Text style={styles.fieldLabel}>Model / combo</Text>
+            <Text style={styles.fieldLabel}>{t("modelGateways.fields.model")}</Text>
             <View ref={modelAnchorRef} collapsable={false}>
               <Pressable
                 onPress={handleOpenModelSelector}
                 style={styles.modelSelector}
                 accessibilityRole="button"
-                accessibilityLabel="Select gateway model"
+                accessibilityLabel={t("modelGateways.fields.modelSelectAccessibilityLabel")}
                 testID="model-gateway-model-input"
               >
                 <Text style={styles.modelSelectorText} numberOfLines={1}>
-                  {model.trim() || "Select or enter a model ID"}
+                  {model.trim() || t("modelGateways.fields.modelPlaceholder")}
                 </Text>
                 <ChevronDown size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
               </Pressable>
@@ -414,15 +425,15 @@ export function ModelGatewaysSection({ serverId }: { serverId: string }) {
                 onSelect={setModel}
                 searchable
                 allowCustomValue
-                customValuePrefix="Use model ID"
-                placeholder="Select or enter a model ID"
-                searchPlaceholder="Search models or enter an ID"
+                customValuePrefix={t("modelGateways.fields.modelCustomValuePrefix")}
+                placeholder={t("modelGateways.fields.modelPlaceholder")}
+                searchPlaceholder={t("modelGateways.fields.modelSearchPlaceholder")}
                 emptyText={
                   isDiscoveringModels
-                    ? "Loading models..."
-                    : "No discovered models. Enter a model ID."
+                    ? t("modelGateways.discovery.loading")
+                    : t("modelGateways.fields.modelEmpty")
                 }
-                title="Model / combo"
+                title={t("modelGateways.fields.model")}
                 open={isModelSelectorOpen}
                 onOpenChange={setIsModelSelectorOpen}
                 anchorRef={modelAnchorRef}
@@ -442,19 +453,17 @@ export function ModelGatewaysSection({ serverId }: { serverId: string }) {
                 disabled={!baseUrl.trim()}
                 testID="refresh-model-gateway-models-button"
               >
-                Refresh
+                {t("modelGateways.refresh")}
               </Button>
             </View>
-            <Text style={styles.fieldHint}>
-              Default gateway route, alias, or combo. Available models are read from the gateway.
-            </Text>
+            <Text style={styles.fieldHint}>{t("modelGateways.fields.modelHint")}</Text>
           </View>
           <View style={styles.formActions}>
             <Button variant="ghost" onPress={handleClose} disabled={isSaving}>
-              Cancel
+              {t("modelGateways.cancel")}
             </Button>
             <Button variant="default" onPress={handleSave} loading={isSaving}>
-              Save
+              {t("modelGateways.save")}
             </Button>
           </View>
         </View>
@@ -477,6 +486,7 @@ function ModelGatewayRow({
   onRemove: (id: string) => void;
 }) {
   const { theme } = useUnistyles();
+  const { t } = useTranslation("settings");
   const label = getGatewayLabel(id, gateway);
   const rowStyle = useMemo(
     () => [settingsStyles.row, !isFirst && settingsStyles.rowBorder],
@@ -490,7 +500,7 @@ function ModelGatewayRow({
       <View style={settingsStyles.rowContent}>
         <Text style={settingsStyles.rowTitle}>{label}</Text>
         <Text style={settingsStyles.rowHint} numberOfLines={2}>
-          {getGatewaySubtitle(gateway)}
+          {getGatewaySubtitle(gateway, t)}
         </Text>
       </View>
       <View style={styles.rowActions}>
@@ -498,7 +508,7 @@ function ModelGatewayRow({
           hitSlop={8}
           onPress={handleEdit}
           accessibilityRole="button"
-          accessibilityLabel={`Edit ${label}`}
+          accessibilityLabel={t("modelGateways.row.editAccessibilityLabel", { label })}
           testID={`edit-model-gateway-${id}`}
         >
           <Pencil size={theme.iconSize.md} color={theme.colors.foregroundMuted} />
@@ -507,7 +517,7 @@ function ModelGatewayRow({
           hitSlop={8}
           onPress={handleRemove}
           accessibilityRole="button"
-          accessibilityLabel={`Remove ${label}`}
+          accessibilityLabel={t("modelGateways.row.removeAccessibilityLabel", { label })}
           testID={`remove-model-gateway-${id}`}
         >
           <Trash2 size={theme.iconSize.md} color={theme.colors.destructive} />
