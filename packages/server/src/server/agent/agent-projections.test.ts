@@ -194,6 +194,36 @@ describe("toStoredAgentRecord", () => {
     expect(record.lastUserMessageAt).toBeNull();
   });
 
+  it("persists model gateway config without secrets", () => {
+    const agent = createManagedAgent({
+      config: {
+        modelGateway: {
+          type: "openai-compatible",
+          provider: "codex",
+          id: "9router",
+          label: "9Router",
+          baseUrl: "http://100.107.234.45:20128/v1",
+          model: "openai-all",
+          apiKey: "sk-router",
+        },
+      },
+    });
+
+    const record = toStoredAgentRecord(agent);
+
+    expect(record.config).toMatchObject({
+      modelGateway: {
+        type: "openai-compatible",
+        provider: "codex",
+        id: "9router",
+        label: "9Router",
+        baseUrl: "http://100.107.234.45:20128/v1",
+        model: "openai-all",
+      },
+    });
+    expect(record.config?.modelGateway).not.toHaveProperty("apiKey");
+  });
+
   it("omits config when no serializable fields exist", () => {
     const agent = createManagedAgent({
       config: {

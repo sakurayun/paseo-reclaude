@@ -18,6 +18,7 @@ const SERIALIZABLE_CONFIG_SCHEMA = z
     extra: z.record(z.any()).nullable().optional(),
     systemPrompt: z.string().nullable().optional(),
     mcpServers: z.record(z.any()).nullable().optional(),
+    modelGateway: z.record(z.any()).nullable().optional(),
   })
   .nullable()
   .optional();
@@ -74,6 +75,7 @@ export type SerializableAgentConfig = Pick<
   | "extra"
   | "systemPrompt"
   | "mcpServers"
+  | "modelGateway"
 >;
 
 export type StoredAgentRecord = z.infer<typeof STORED_AGENT_SCHEMA>;

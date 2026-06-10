@@ -87,6 +87,7 @@ import type {
   AgentSessionConfig,
 } from "@getpaseo/protocol/agent-types";
 import type {
+  ModelGatewayConfig,
   MutableDaemonConfig,
   MutableDaemonConfigPatch,
   SpeechDictationListModelsResponse,
@@ -3513,6 +3514,26 @@ export class DaemonClient {
       },
       responseType: "get_daemon_config_response",
       timeout: 10000,
+    });
+  }
+
+  async listModelGatewayModels(
+    gateway: ModelGatewayConfig,
+    requestId?: string,
+  ): Promise<{
+    requestId: string;
+    models: string[];
+    error: string | null;
+    fetchedAt: string;
+  }> {
+    return this.sendCorrelatedSessionRequest({
+      requestId,
+      message: {
+        type: "model_gateway.models.list.request",
+        gateway,
+      },
+      responseType: "model_gateway.models.list.response",
+      timeout: 15_000,
     });
   }
 

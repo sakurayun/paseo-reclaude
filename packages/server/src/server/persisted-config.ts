@@ -69,6 +69,29 @@ const WorktreesConfigSchema = z
   })
   .strict();
 
+const ModelGatewayConfigSchema = z.discriminatedUnion("type", [
+  z
+    .object({
+      type: z.literal("native"),
+      id: z.string().optional(),
+      label: z.string().optional(),
+      provider: z.string().optional(),
+    })
+    .passthrough(),
+  z
+    .object({
+      type: z.literal("openai-compatible"),
+      id: z.string().optional(),
+      label: z.string().optional(),
+      provider: z.string().optional(),
+      baseUrl: z.string().trim().min(1),
+      protocol: z.string().trim().min(1).optional(),
+      model: z.string().trim().min(1).optional(),
+      apiKey: z.string().optional(),
+    })
+    .passthrough(),
+]);
+
 const BcryptHashSchema = z.string().regex(/^\$2[aby]\$\d{2}\$[./A-Za-z0-9]{53}$/, {
   message: "Expected a bcrypt hash",
 });
@@ -266,6 +289,7 @@ export const PersistedConfigSchema = z
       .strict()
       .optional(),
 
+    modelGateways: z.record(z.string(), ModelGatewayConfigSchema).optional(),
     providers: ProvidersSchema.optional(),
     worktrees: WorktreesConfigSchema.optional(),
     agents: z

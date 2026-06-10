@@ -228,13 +228,13 @@ requires_openai_auth = false
 ```
 
 - `base_url` — taken from `OPENAI_BASE_URL`. If it does not already end in `/v1`, Paseo appends `/v1`. Trailing slashes are stripped.
-- `wire_api` — always `"responses"` (OpenAI Responses API protocol).
+- `wire_api` — derived from the gateway protocol. Codex currently supports only `"responses"` (OpenAI Responses API protocol).
 - `env_key` — set to `"OPENAI_API_KEY"` when that env var is present and non-empty, so Codex reads the key from the same env var Paseo passes through.
 - `requires_openai_auth` — forced to `false` when `OPENAI_API_KEY` is provided, so Codex skips its built-in OpenAI login flow.
 
 ### Notes
 
-- The endpoint must speak the OpenAI **Responses API**, not just chat completions. Many gateways (OpenRouter, LiteLLM) support both — pick the Responses-compatible route.
+- The endpoint must speak the OpenAI **Responses API**, not just chat completions. Many gateways (including 9Router, OpenRouter, and LiteLLM) can expose multiple protocols; the Codex gateway form lists the provider-supported protocol and validates that Codex launches only with `responses`.
 - Set `models` explicitly. Custom endpoints expose their own model IDs (`anthropic/claude-opus-4-7`, `qwen/qwen3-coder`, `local/llama`, etc.), and Paseo does not discover them automatically for Codex.
 - To run multiple endpoints side-by-side, define multiple entries that each extend `"codex"` with different IDs, labels, and env. Each appears as its own provider in the app.
 - If you only want to override the binary (e.g. a nightly Codex build) without changing the endpoint, omit `OPENAI_BASE_URL` and use `command` instead — see [Custom binary for a provider](#custom-binary-for-a-provider).

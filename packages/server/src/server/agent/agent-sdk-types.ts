@@ -57,6 +57,26 @@ export interface McpSseServerConfig {
  */
 export type McpServerConfig = McpStdioServerConfig | McpHttpServerConfig | McpSseServerConfig;
 
+export interface NativeModelGatewayConfig {
+  type: "native";
+  id?: string;
+  label?: string;
+  provider?: AgentProvider;
+}
+
+export interface OpenAICompatibleModelGatewayConfig {
+  type: "openai-compatible";
+  id?: string;
+  label?: string;
+  provider?: AgentProvider;
+  baseUrl: string;
+  protocol?: string;
+  model?: string;
+  apiKey?: string;
+}
+
+export type ModelGatewayConfig = NativeModelGatewayConfig | OpenAICompatibleModelGatewayConfig;
+
 export interface AgentMode {
   id: string;
   label: string;
@@ -561,6 +581,7 @@ export interface AgentSessionConfig {
   sandboxMode?: string;
   networkAccess?: boolean;
   webSearch?: boolean;
+  modelGateway?: ModelGatewayConfig;
   extra?: {
     codex?: AgentMetadata;
     claude?: Partial<ClaudeAgentOptions>;

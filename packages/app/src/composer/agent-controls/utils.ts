@@ -5,14 +5,17 @@ import type { AgentFeature, AgentModelDefinition } from "@getpaseo/protocol/agen
 const CLAUDE_ULTRACODE_FEATURE_ID = "ultracode";
 const CLAUDE_ULTRACODE_THINKING_OPTION_ID = "xhigh";
 
-export type ExplainedAgentControl = "mode" | "model" | "thinking";
+export type ExplainedStatusSelector = "gateway" | "mode" | "model" | "thinking";
+export type ExplainedAgentControl = ExplainedStatusSelector;
 export type FeatureHighlightColor = "blue" | "default" | "green" | "purple" | "yellow";
 
-export function getAgentControlHint(
-  selector: ExplainedAgentControl,
+export function getStatusSelectorHint(
+  selector: ExplainedStatusSelector,
   t?: TFunction<"composer">,
 ): string {
   switch (selector) {
+    case "gateway":
+      return "Model gateway";
     case "thinking":
       return t ? t("controls.hints.thinking") : "Thinking mode";
     case "model":
@@ -23,6 +26,8 @@ export function getAgentControlHint(
       throw new Error("unreachable");
   }
 }
+
+export const getAgentControlHint = getStatusSelectorHint;
 
 export function normalizeModelId(modelId: string | null | undefined): string | null {
   const normalized = typeof modelId === "string" ? modelId.trim() : "";

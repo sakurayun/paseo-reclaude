@@ -26,6 +26,7 @@ import {
   useHostRuntimeSnapshot,
   useHosts,
 } from "@/runtime/host-runtime";
+import { ModelGatewaysSection } from "@/screens/settings/model-gateways-section";
 import { ProvidersSection } from "@/screens/settings/providers-section";
 import { SettingsSection } from "@/screens/settings/settings-section";
 import { useSessionStore } from "@/stores/session-store";
@@ -253,6 +254,8 @@ export function HostProvidersPage({ serverId }: { serverId: string }) {
 
   return (
     <View>
+      <ModelGatewaysSection serverId={serverId} />
+
       <ProvidersSection serverId={serverId} />
     </View>
   );

@@ -36,6 +36,7 @@ import {
   type ImportedTimelineEntry,
   type ImportableProviderSession,
   type ListImportableSessionsOptions,
+  type ModelGatewayConfig,
 } from "./agent-sdk-types.js";
 import { buildArchivedAgentRecord, type ArchivedStoredAgentRecord } from "./agent-archive.js";
 import type { StoredAgentRecord, AgentStorage } from "./agent-storage.js";
@@ -92,6 +93,50 @@ function formatProviderList(providers: readonly string[]): string {
   return providers.length > 0 ? providers.join(", ") : "none";
 }
 
+function remapRuntimeExtraModelGateway(
+  extra: AgentRuntimeInfo["extra"],
+  normalizedModelId: string | null,
+): AgentRuntimeInfo["extra"] | undefined {
+  if (!extra || typeof extra !== "object") {
+    return undefined;
+  }
+  const next = { ...extra };
+  if (next.modelGateway && typeof next.modelGateway === "object") {
+    const { model: _model, ...modelGateway } = next.modelGateway as Record<string, unknown>;
+    next.modelGateway = {
+      ...modelGateway,
+      ...(normalizedModelId ? { model: normalizedModelId } : {}),
+    };
+  }
+  return next;
+}
+
+function parseStoredModelGateway(value: unknown): ModelGatewayConfig | undefined {
+  if (!value || typeof value !== "object") {
+    return undefined;
+  }
+  const record = value as Record<string, unknown>;
+  const id = typeof record.id === "string" ? record.id : undefined;
+  const label = typeof record.label === "string" ? record.label : undefined;
+  const provider =
+    typeof record.provider === "string" ? (record.provider as AgentProvider) : undefined;
+  if (record.type === "native") {
+    return { type: "native", id, label, provider };
+  }
+  if (record.type === "openai-compatible" && typeof record.baseUrl === "string") {
+    const model = typeof record.model === "string" ? record.model : undefined;
+    return {
+      type: "openai-compatible",
+      id,
+      label,
+      provider,
+      baseUrl: record.baseUrl,
+      model,
+    };
+  }
+  return undefined;
+}
+
 function buildStoredAgentConfig(record: StoredAgentRecord): AgentSessionConfig {
   const config: AgentSessionConfig = {
     provider: record.provider,
@@ -113,6 +158,12 @@ function buildStoredAgentConfig(record: StoredAgentRecord): AgentSessionConfig {
     config.systemPrompt = record.config.systemPrompt;
   }
   if (record.config.mcpServers != null) config.mcpServers = record.config.mcpServers;
+  if (record.config.modelGateway != null) {
+    const modelGateway = parseStoredModelGateway(record.config.modelGateway);
+    if (modelGateway) {
+      config.modelGateway = modelGateway;
+    }
+  }
   return stripInternalPaseoMcpServer(config);
 }
 
@@ -1249,11 +1300,20 @@ export class AgentManager {
     if (update?.featureValues !== undefined) {
       agent.config.featureValues = update.featureValues;
     }
+    if (agent.config.modelGateway?.type === "openai-compatible") {
+      const { model: _model, ...modelGateway } = agent.config.modelGateway;
+      agent.config.modelGateway = {
+        ...modelGateway,
+        ...(normalizedModelId ? { model: normalizedModelId } : {}),
+      };
+    }
     if (agent.runtimeInfo) {
+      const extra = remapRuntimeExtraModelGateway(agent.runtimeInfo.extra, normalizedModelId);
       agent.runtimeInfo = {
         ...agent.runtimeInfo,
         model: normalizedModelId,
         thinkingOptionId: agent.config.thinkingOptionId ?? null,
+        ...(extra ? { extra } : {}),
       };
     }
     this.touchUpdatedAt(agent);

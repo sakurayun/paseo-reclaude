@@ -1,4 +1,4 @@
-import type { AgentAttachment } from "./messages.js";
+import type { AgentAttachment, ModelGatewayConfig } from "./messages.js";
 
 export type AgentProvider = string;
 
@@ -452,6 +452,7 @@ export interface AgentSessionConfig {
   systemPrompt?: string;
   modeId?: string;
   model?: string;
+  modelGateway?: ModelGatewayConfig;
   thinkingOptionId?: string;
   featureValues?: Record<string, unknown>;
   title?: string | null;

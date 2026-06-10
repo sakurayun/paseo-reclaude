@@ -141,6 +141,50 @@ describe("DaemonConfigStore", () => {
     expect(persisted.daemon?.appendSystemPrompt).toBe("Prefer terse replies.");
   });
 
+  test("patch replaces model gateways in config.json", () => {
+    const paseoHome = mkdtempSync(path.join(tmpdir(), "paseo-daemon-config-store-"));
+    tempDirs.push(paseoHome);
+
+    const store = new DaemonConfigStore(
+      paseoHome,
+      {
+        mcp: { injectIntoAgents: false },
+        providers: {},
+        modelGateways: {},
+      },
+      undefined,
+    );
+
+    store.patch({
+      modelGateways: {
+        "9router": {
+          type: "openai-compatible",
+          id: "9router",
+          provider: "codex",
+          label: "9Router",
+          baseUrl: "http://127.0.0.1:20128/v1",
+          model: "openai-all",
+          apiKey: "test-key",
+        },
+      },
+    });
+
+    const persisted = loadPersistedConfig(paseoHome);
+    expect(persisted.modelGateways?.["9router"]).toEqual({
+      type: "openai-compatible",
+      id: "9router",
+      provider: "codex",
+      label: "9Router",
+      baseUrl: "http://127.0.0.1:20128/v1",
+      model: "openai-all",
+      apiKey: "test-key",
+    });
+
+    store.patch({ modelGateways: {} });
+
+    expect(loadPersistedConfig(paseoHome).modelGateways).toEqual({});
+  });
+
   test("patch persists provider additional models into config.json", () => {
     const paseoHome = mkdtempSync(path.join(tmpdir(), "paseo-daemon-config-store-"));
     tempDirs.push(paseoHome);

@@ -46,6 +46,26 @@ describe("PersistedConfigSchema daemon append system prompt config", () => {
   });
 });
 
+describe("PersistedConfigSchema model gateways", () => {
+  test("accepts optional model gateways", () => {
+    const parsed = PersistedConfigSchema.parse({
+      modelGateways: {
+        "9router": {
+          type: "openai-compatible",
+          id: "9router",
+          provider: "codex",
+          label: "9Router",
+          baseUrl: "http://127.0.0.1:20128/v1",
+          model: "openai-all",
+          apiKey: "test-key",
+        },
+      },
+    });
+
+    expect(parsed.modelGateways?.["9router"]?.model).toBe("openai-all");
+  });
+});
+
 describe("PersistedConfigSchema daemon relay config", () => {
   test("accepts optional relay TLS setting", () => {
     const parsed = PersistedConfigSchema.parse({
