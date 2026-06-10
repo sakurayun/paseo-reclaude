@@ -19,7 +19,7 @@ import {
 } from "react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
-import type { ParseKeys } from "i18next";
+import type { ParseKeys, TFunction } from "i18next";
 import { useShallow } from "zustand/shallow";
 import {
   Brain,
@@ -67,11 +67,14 @@ import {
   getFeatureHighlightColor,
   getFeatureTooltip,
   getAgentControlHint,
-  formatThinkingOptionLabel,
   resolveFeatureImpliedThinkingOptionId,
   resolveThinkingImpliedFeatureUpdates,
   resolveAgentModelSelection,
 } from "@/composer/agent-controls/utils";
+import {
+  localizeAgentFeature,
+  localizeThinkingOptionLabel,
+} from "@/composer/agent-controls/localize";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { useToast } from "@/contexts/toast-context";
 import { toErrorMessage } from "@/utils/error-messages";
@@ -239,10 +242,13 @@ function toComboboxOptions(options: AgentControlOption[] | undefined): ComboboxO
   return (options ?? []).map((o) => ({ id: o.id, label: o.label }));
 }
 
-function toThinkingControlOptions(options: AgentControlOption[] | undefined): AgentControlOption[] {
+function toThinkingControlOptions(
+  options: AgentControlOption[] | undefined,
+  t: TFunction<"composer">,
+): AgentControlOption[] {
   return (options ?? []).map((option) => ({
     id: option.id,
-    label: formatThinkingOptionLabel(option),
+    label: localizeThinkingOptionLabel(t, option),
   }));
 }
 
@@ -459,8 +465,8 @@ function ControlledAgentControls({
     t("controls.provider.fallbackLabel"),
   );
   const formattedThinkingOptions = useMemo(
-    () => toThinkingControlOptions(thinkingOptions),
-    [thinkingOptions],
+    () => toThinkingControlOptions(thinkingOptions, t),
+    [thinkingOptions, t],
   );
   const displayThinking = findOptionLabel(
     formattedThinkingOptions,
@@ -1130,7 +1136,7 @@ function SheetAgentControlsContent(props: SheetAgentControlsContentProps) {
 }
 
 function DesktopFeatureItem({
-  feature,
+  feature: rawFeature,
   disabled,
   openSelector,
   handleOpenChange,
@@ -1143,6 +1149,8 @@ function DesktopFeatureItem({
   onSetFeature?: (featureId: string, value: unknown) => void;
 }) {
   const { theme } = useUnistyles();
+  const { t } = useTranslation("composer");
+  const feature = useMemo(() => localizeAgentFeature(t, rawFeature), [t, rawFeature]);
   const featureSelector: AgentControlSelector = `feature-${feature.id}`;
 
   const handleFeatureOpenChange = useMemo(
@@ -1255,7 +1263,7 @@ function DesktopFeatureItem({
 }
 
 function SheetFeatureItem({
-  feature,
+  feature: rawFeature,
   disabled,
   openSelector,
   handleOpenChange,
@@ -1269,6 +1277,7 @@ function SheetFeatureItem({
 }) {
   const { theme } = useUnistyles();
   const { t } = useTranslation("composer");
+  const feature = useMemo(() => localizeAgentFeature(t, rawFeature), [t, rawFeature]);
   const featureSelector: AgentControlSelector = `feature-${feature.id}`;
 
   const handleFeatureOpenChange = useMemo(
@@ -1418,6 +1427,7 @@ export const AgentControls = memo(function AgentControls({
   isCompactLayout,
 }: AgentControlsProps) {
   const { preferences, updatePreferences } = useFormPreferences();
+  const { t } = useTranslation("composer");
   const agent = useSessionStore(
     useShallow((state) => selectAgentControlsSlice(state, serverId, agentId)),
   );
@@ -1480,9 +1490,9 @@ export const AgentControls = memo(function AgentControls({
   const thinkingOptions = useMemo<AgentControlOption[]>(() => {
     return (modelSelection.thinkingOptions ?? []).map((option) => ({
       id: option.id,
-      label: formatThinkingOptionLabel(option),
+      label: localizeThinkingOptionLabel(t, option),
     }));
-  }, [modelSelection.thinkingOptions]);
+  }, [modelSelection.thinkingOptions, t]);
 
   const agentProvider = agent?.provider;
   const activeModelId = modelSelection.activeModelId;
@@ -1659,12 +1669,13 @@ export function DraftAgentControls({
   isCompactLayout,
 }: DraftAgentControlsProps) {
   const { preferences, updatePreferences } = useFormPreferences();
+  const { t } = useTranslation("composer");
   const isCompactFormFactor = useIsCompactFormFactor();
   const isCompact = isCompactLayout ?? isCompactFormFactor;
 
   const mappedThinkingOptions = useMemo<AgentControlOption[]>(() => {
-    return toThinkingControlOptions(thinkingOptions);
-  }, [thinkingOptions]);
+    return toThinkingControlOptions(thinkingOptions, t);
+  }, [thinkingOptions, t]);
   const favoriteKeys = useMemo(
     () =>
       new Set(

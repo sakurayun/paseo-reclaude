@@ -63,12 +63,31 @@ export default {
       unknownLabel: "Unknown",
       selectAccessibilityLabel: "Select thinking option",
       selectAccessibilityLabelWithValue: "Select thinking option ({{value}})",
+      levels: {
+        low: "Low",
+        medium: "Medium",
+        high: "High",
+        xhigh: "Extra high",
+        max: "Max",
+      },
     },
     features: {
       sheetTitle: "Features",
       openAccessibilityLabel: "Open agent features",
       toggleOn: "On",
       toggleOff: "Off",
+      known: {
+        fast_mode: {
+          label: "Fast",
+          description: "Lower latency responses at higher token cost",
+          tooltip: "Toggle fast mode",
+        },
+        ultracode: {
+          label: "Ultracode",
+          description: "Use extra-high effort with Claude's dynamic workflow orchestration",
+          tooltip: "Toggle Ultracode",
+        },
+      },
     },
   },
   input: {

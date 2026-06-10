@@ -63,12 +63,31 @@ export default {
       unknownLabel: "未知",
       selectAccessibilityLabel: "选择思考选项",
       selectAccessibilityLabelWithValue: "选择思考选项（{{value}}）",
+      levels: {
+        low: "低",
+        medium: "中",
+        high: "高",
+        xhigh: "超高",
+        max: "最高",
+      },
     },
     features: {
       sheetTitle: "功能",
       openAccessibilityLabel: "打开 Agent 功能",
       toggleOn: "开",
       toggleOff: "关",
+      known: {
+        fast_mode: {
+          label: "极速",
+          description: "更低延迟的响应，但消耗更多 Token",
+          tooltip: "切换极速模式",
+        },
+        ultracode: {
+          label: "Ultracode",
+          description: "以超高思考强度启用 Claude 的动态工作流编排",
+          tooltip: "切换 Ultracode",
+        },
+      },
     },
   },
   input: {
