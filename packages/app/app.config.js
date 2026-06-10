@@ -60,7 +60,7 @@ export default {
       policy: "appVersion",
     },
     updates: {
-      url: "https://u.expo.dev/0e7f65ce-0367-46c8-a238-2b65963d235a",
+      url: "https://u.expo.dev/58537a79-e9dc-4f7c-b9bf-931fb7af4647",
     },
     ios: {
       supportsTablet: true,

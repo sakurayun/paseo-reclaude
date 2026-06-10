@@ -22,8 +22,8 @@ extraResources:
     to: skills
 publish:
   provider: github
-  owner: getpaseo
-  repo: paseo
+  owner: sakurayun
+  repo: paseo-reclaude
 mac:
   artifactName: "Paseo-${version}-${arch}.${ext}"
   category: public.app-category.developer-tools
