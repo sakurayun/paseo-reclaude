@@ -436,10 +436,12 @@ describe("ClaudeAgentClient.listModels", () => {
 
   test("returns bedrock-compatible models when CLAUDE_CODE_USE_BEDROCK is set", async () => {
     vi.stubEnv("CLAUDE_CODE_USE_BEDROCK", "1");
+    const emptyConfigDir = await fs.mkdtemp(path.join(os.tmpdir(), "paseo-claude-models-empty-"));
     try {
       const client = new ClaudeAgentClient({
         logger,
         resolveBinary: async () => "/test/claude/bin",
+        configDir: emptyConfigDir,
       });
       const models = await client.listModels({ cwd: "/tmp/claude-models", force: false });
 
@@ -449,6 +451,7 @@ describe("ClaudeAgentClient.listModels", () => {
       expect(defaultModel?.id).toBe("opus");
     } finally {
       vi.unstubAllEnvs();
+      await fs.rm(emptyConfigDir, { recursive: true, force: true });
     }
   });
 });
