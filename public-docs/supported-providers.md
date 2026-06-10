@@ -2,7 +2,7 @@
 title: Supported providers
 description: Every coding agent Paseo can launch, natively supported providers and the ACP catalog.
 nav: Supported providers
-order: 4
+order: 6
 ---
 
 # Supported providers
