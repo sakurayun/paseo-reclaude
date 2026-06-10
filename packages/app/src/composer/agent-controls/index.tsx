@@ -21,7 +21,15 @@ import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
 import type { ParseKeys } from "i18next";
 import { useShallow } from "zustand/shallow";
-import { Brain, ChevronDown, ListTodo, Settings2, ShieldCheck, Zap } from "lucide-react-native";
+import {
+  Brain,
+  ChevronDown,
+  Code2,
+  ListTodo,
+  Settings2,
+  ShieldCheck,
+  Zap,
+} from "lucide-react-native";
 import { getProviderIcon } from "@/components/provider-icons";
 import { CombinedModelSelector } from "@/components/combined-model-selector";
 import {
@@ -60,6 +68,8 @@ import {
   getFeatureTooltip,
   getAgentControlHint,
   formatThinkingOptionLabel,
+  resolveFeatureImpliedThinkingOptionId,
+  resolveThinkingImpliedFeatureUpdates,
   resolveAgentModelSelection,
 } from "@/composer/agent-controls/utils";
 import { useIsCompactFormFactor } from "@/constants/layout";
@@ -155,7 +165,13 @@ const FEATURE_ICONS: Record<string, typeof Zap> = {
   zap: Zap,
 };
 
-function getFeatureIcon(icon?: string) {
+const ULTRACODE_ACTIVE_COLOR = "#A06AF5";
+
+function getFeatureIcon(featureId: string, icon?: string) {
+  if (featureId === "ultracode") {
+    return Code2;
+  }
+
   return (icon && FEATURE_ICONS[icon]) || Settings2;
 }
 
@@ -178,6 +194,8 @@ function getFeatureIconColor(
       return palette.blue[400];
     case "green":
       return palette.green[400];
+    case "purple":
+      return ULTRACODE_ACTIVE_COLOR;
     case "yellow":
       return palette.yellow[400];
     default:
@@ -510,9 +528,40 @@ function ControlledAgentControls({
     (id: string) => onSelectProvider?.(id),
     [onSelectProvider],
   );
+
+  const applyThinkingImpliedFeatureUpdates = useCallback(
+    (thinkingOptionId: string) => {
+      for (const update of resolveThinkingImpliedFeatureUpdates({
+        thinkingOptionId,
+        features,
+      })) {
+        onSetFeature?.(update.featureId, update.value);
+      }
+    },
+    [features, onSetFeature],
+  );
+
   const handleThinkingSelect = useCallback(
-    (id: string) => onSelectThinkingOption?.(id),
-    [onSelectThinkingOption],
+    (id: string) => {
+      onSelectThinkingOption?.(id);
+      applyThinkingImpliedFeatureUpdates(id);
+    },
+    [applyThinkingImpliedFeatureUpdates, onSelectThinkingOption],
+  );
+
+  const handleSetFeature = useCallback(
+    (featureId: string, value: unknown) => {
+      onSetFeature?.(featureId, value);
+      const impliedThinkingOptionId = resolveFeatureImpliedThinkingOptionId({
+        featureId,
+        value,
+        thinkingOptions: formattedThinkingOptions,
+      });
+      if (impliedThinkingOptionId && selectedThinkingOptionId !== impliedThinkingOptionId) {
+        onSelectThinkingOption?.(impliedThinkingOptionId);
+      }
+    },
+    [formattedThinkingOptions, onSelectThinkingOption, onSetFeature, selectedThinkingOptionId],
   );
 
   const handleDesktopModelSelect = useCallback(
@@ -555,10 +604,10 @@ function ControlledAgentControls({
 
   const handleSelectThinkingAndClose = useCallback(
     (thinkingOptionId: string) => {
-      onSelectThinkingOption?.(thinkingOptionId);
+      handleThinkingSelect(thinkingOptionId);
       setActiveSheet(null);
     },
-    [onSelectThinkingOption],
+    [handleThinkingSelect],
   );
 
   const handleSheetModelSelect = useCallback(
@@ -591,7 +640,7 @@ function ControlledAgentControls({
           thinkingOptions={formattedThinkingOptions}
           selectedThinkingOptionId={selectedThinkingOptionId}
           features={features}
-          onSetFeature={onSetFeature}
+          onSetFeature={handleSetFeature}
           onToggleFavoriteModel={onToggleFavoriteModel}
           onDropdownClose={onDropdownClose}
           onModelSelectorOpen={onModelSelectorOpen}
@@ -632,7 +681,7 @@ function ControlledAgentControls({
           selectedModelId={selectedModelId}
           selectedThinkingOptionId={selectedThinkingOptionId}
           features={features}
-          onSetFeature={onSetFeature}
+          onSetFeature={handleSetFeature}
           onToggleFavoriteModel={onToggleFavoriteModel}
           onDropdownClose={onDropdownClose}
           onModelSelectorOpen={onModelSelectorOpen}
@@ -1135,7 +1184,7 @@ function DesktopFeatureItem({
   );
 
   if (feature.type === "toggle") {
-    const FeatureIcon = getFeatureIcon(feature.icon);
+    const FeatureIcon = getFeatureIcon(feature.id, feature.icon);
     return (
       <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
         <TooltipTrigger asChild triggerRefProp="ref">
@@ -1166,7 +1215,7 @@ function DesktopFeatureItem({
   }
 
   if (feature.type === "select") {
-    const FeatureIcon = getFeatureIcon(feature.icon);
+    const FeatureIcon = getFeatureIcon(feature.id, feature.icon);
     const selectedOption = feature.options.find((o) => o.id === feature.value);
     return (
       <DropdownMenu open={openSelector === featureSelector} onOpenChange={handleFeatureOpenChange}>
@@ -1250,7 +1299,7 @@ function SheetFeatureItem({
   );
 
   if (feature.type === "toggle") {
-    const FeatureIcon = getFeatureIcon(feature.icon);
+    const FeatureIcon = getFeatureIcon(feature.id, feature.icon);
     return (
       <View style={styles.sheetSection}>
         <Pressable

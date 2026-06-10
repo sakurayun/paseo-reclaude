@@ -257,15 +257,20 @@ async function resolveMcpCreateAgent(
     initialPrompt: input.initialPrompt,
   });
 
-  const { modeId: resolvedMode, featureValues: resolvedFeatures } =
-    await dependencies.providerSnapshotManager.resolveCreateConfig({
-      cwd: resolvedCwd,
-      provider,
-      requestedMode: input.mode,
-      featureValues: input.features,
-      parent: parentAgent,
-      unattended: false,
-    });
+  const {
+    modeId: resolvedMode,
+    featureValues: resolvedFeatures,
+    thinkingOptionId: resolvedThinkingOptionId,
+  } = await dependencies.providerSnapshotManager.resolveCreateConfig({
+    cwd: resolvedCwd,
+    provider,
+    requestedMode: input.mode,
+    model: resolvedProviderModel.model,
+    thinkingOptionId: input.thinking,
+    featureValues: input.features,
+    parent: parentAgent,
+    unattended: false,
+  });
 
   const labels = mergeLabels({
     callerAgentId: input.callerAgentId,
@@ -282,7 +287,10 @@ async function resolveMcpCreateAgent(
       modeId: resolvedMode,
       title: input.title.trim(),
       model: resolvedProviderModel.model,
-      thinkingOptionId: input.thinking,
+      thinkingOptionId:
+        resolvedThinkingOptionId === undefined
+          ? input.thinking
+          : (resolvedThinkingOptionId ?? undefined),
       ...(resolvedFeatures ? { featureValues: resolvedFeatures } : {}),
     },
     createOptions: labels ? { labels } : undefined,

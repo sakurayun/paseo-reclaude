@@ -48,6 +48,18 @@ PASEO_DEV_RESET_HOME=1 npm run dev            # clear and reseed the derived wor
 
 In Paseo-managed worktree services, use the injected service environment rather than hardcoded root checkout ports.
 
+### CLI provider settings
+
+Use the dev daemon host when testing CLI changes against this checkout:
+
+```bash
+npm run cli -- --host 127.0.0.1:6768 provider features claude/opus
+npm run cli -- --host 127.0.0.1:6768 run --provider claude/opus --feature ultracode "check the repo"
+npm run cli -- --host 127.0.0.1:6768 agent feature <id> --list
+```
+
+Provider feature flags are generic. Use `--feature <id[=value]>` for create-time settings and `paseo agent feature <id> <feature-id> [value]` for runtime changes. Do not encode provider settings as ad hoc CLI flags.
+
 ### Desktop renderer profiling
 
 `npm run dev:desktop` starts Electron with Chromium remote debugging enabled on

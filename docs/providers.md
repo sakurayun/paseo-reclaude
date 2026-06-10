@@ -40,6 +40,22 @@ Provider session import has its own contract. The picker calls `listImportableSe
 
 ---
 
+## Provider Features
+
+Provider features are runtime controls exposed as `AgentFeature` toggles or selects. They are intentionally provider-owned: the UI, CLI, MCP tools, and schedules should only set IDs returned by `listFeatures`/`inspect_provider`.
+
+Implementation rules:
+
+- Implement `AgentClient.listFeatures(config)` when the provider can answer without creating a native session. Avoid scratch sessions for feature discovery.
+- Toggle feature values must be booleans. Do not coerce strings with `Boolean(value)`, because `"false"` would enable the feature.
+- Validate create-time `featureValues` against the advertised features before opening a provider session.
+- If a feature implies another persisted config value, return it from `resolveCreateConfig`. For example, Claude `ultracode=true` returns `thinkingOptionId: "xhigh"` so stored state and launch state match.
+- Keep feature controls generic. Do not add provider-specific CLI flags such as `--ultracode`; use `--feature ultracode`.
+
+Claude Ultracode is a Claude Code setting, not a model effort ID. It is exposed as a feature only on supported xhigh-capable Opus models and pins the session to `xhigh` while enabling Claude Code's dynamic workflow orchestration.
+
+---
+
 ## Provider Snapshot Refresh Contract
 
 The daemon keeps provider snapshots per resolved working directory. Missing or blank cwd resolves to the user's home directory. Workspace selectors and old model/mode list requests should pass the cwd that will launch the provider so providers with project-specific models or modes are probed in the right context. Settings/provider management intentionally uses the home-directory snapshot.
@@ -387,11 +403,17 @@ paseo run --provider my-provider
 # Launch with a specific model and mode
 paseo run --provider my-provider --model some-model --mode default
 
+# Launch with a provider feature
+paseo run --provider claude/opus --feature ultracode
+
 # List running agents
 paseo ls -a -g
 
 # Check if the provider reports models
-paseo models --provider my-provider
+paseo provider models my-provider
+
+# Check if the provider reports features for a model
+paseo provider features my-provider --model some-model
 ```
 
 ### E2E test patterns

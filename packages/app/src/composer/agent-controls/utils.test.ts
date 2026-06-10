@@ -6,6 +6,8 @@ import {
   getAgentControlHint,
   formatThinkingOptionLabel,
   normalizeModelId,
+  resolveFeatureImpliedThinkingOptionId,
+  resolveThinkingImpliedFeatureUpdates,
   resolveAgentModelSelection,
 } from "./utils";
 
@@ -37,8 +39,55 @@ describe("feature metadata helpers", () => {
 
   it("maps feature highlight colors by feature id", () => {
     expect(getFeatureHighlightColor("fast_mode")).toBe("yellow");
+    expect(getFeatureHighlightColor("ultracode")).toBe("purple");
     expect(getFeatureHighlightColor("plan_mode")).toBe("blue");
     expect(getFeatureHighlightColor("other")).toBe("default");
+  });
+
+  it("maps Ultracode enablement to xhigh when the model exposes that effort", () => {
+    expect(
+      resolveFeatureImpliedThinkingOptionId({
+        featureId: "ultracode",
+        value: true,
+        thinkingOptions: [{ id: "high" }, { id: "xhigh" }],
+      }),
+    ).toBe("xhigh");
+    expect(
+      resolveFeatureImpliedThinkingOptionId({
+        featureId: "ultracode",
+        value: true,
+        thinkingOptions: [{ id: "high" }],
+      }),
+    ).toBeNull();
+  });
+
+  it("turns Ultracode off when the selected thinking option is not xhigh", () => {
+    expect(
+      resolveThinkingImpliedFeatureUpdates({
+        thinkingOptionId: "medium",
+        features: [
+          {
+            type: "toggle",
+            id: "ultracode",
+            label: "Ultracode",
+            value: true,
+          },
+        ],
+      }),
+    ).toEqual([{ featureId: "ultracode", value: false }]);
+    expect(
+      resolveThinkingImpliedFeatureUpdates({
+        thinkingOptionId: "xhigh",
+        features: [
+          {
+            type: "toggle",
+            id: "ultracode",
+            label: "Ultracode",
+            value: true,
+          },
+        ],
+      }),
+    ).toEqual([]);
   });
 });
 

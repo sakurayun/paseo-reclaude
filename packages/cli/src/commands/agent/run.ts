@@ -13,6 +13,11 @@ import { resolve } from "node:path";
 import { lookup } from "mime-types";
 import { parseDuration } from "../../utils/duration.js";
 import { collectMultiple } from "../../utils/command-options.js";
+import {
+  hasFeatureValues,
+  parseFeatureFlagValues,
+  validateFeatureValuesForFeatures,
+} from "../../utils/provider-features.js";
 import { resolveProviderAndModel } from "../../utils/provider-model.js";
 
 export { resolveProviderAndModel } from "../../utils/provider-model.js";
@@ -34,6 +39,12 @@ export function addRunOptions(cmd: Command): Command {
     )
     .option("--thinking <id>", "Thinking option ID to use for this run")
     .option("--mode <mode>", "Provider-specific mode (e.g., plan, default, bypass)")
+    .option(
+      "--feature <id[=value]>",
+      "Set provider feature(s) for this run (can be used multiple times)",
+      collectMultiple,
+      [],
+    )
     .option("--worktree <name>", "Create agent in a new git worktree")
     .option("--base <branch>", "Base branch for worktree (default: current branch)")
     .option(
@@ -94,6 +105,7 @@ export interface AgentRunOptions extends CommandOptions {
   model?: string;
   thinking?: string;
   mode?: string;
+  feature?: string[];
   worktree?: string;
   base?: string;
   image?: string[];
@@ -217,6 +229,45 @@ export interface StructuredResponseTimelineClient {
   fetchAgentTimeline: ConnectedDaemonClient["fetchAgentTimeline"];
 }
 
+interface ResolveRunFeatureValuesOptions {
+  client: ConnectedDaemonClient;
+  provider: string;
+  cwd: string;
+  model: string | undefined;
+  modeId: string | undefined;
+  thinkingOptionId: string | undefined;
+  featureFlags: string[] | undefined;
+}
+
+async function resolveRunFeatureValues(
+  options: ResolveRunFeatureValuesOptions,
+): Promise<Record<string, unknown> | undefined> {
+  const featureValues = parseFeatureFlagValues(options.featureFlags);
+  if (!hasFeatureValues(featureValues)) {
+    return undefined;
+  }
+
+  const result = await options.client.listProviderFeatures({
+    provider: options.provider,
+    cwd: options.cwd,
+    ...(options.model ? { model: options.model } : {}),
+    ...(options.modeId ? { modeId: options.modeId } : {}),
+    ...(options.thinkingOptionId ? { thinkingOptionId: options.thinkingOptionId } : {}),
+    featureValues,
+  });
+
+  if (result.error) {
+    throw {
+      code: "PROVIDER_FEATURE_ERROR",
+      message: `Failed to validate provider features for ${options.provider}: ${result.error}`,
+    } satisfies CommandError;
+  }
+
+  return validateFeatureValuesForFeatures(featureValues, result.features ?? [], {
+    source: "--feature",
+  });
+}
+
 export async function resolveStructuredResponseMessage(options: {
   client: StructuredResponseTimelineClient;
   agentId: string;
@@ -280,6 +331,26 @@ function validateRunOptions(prompt: string, options: AgentRunOptions, outputSche
       details: "Structured output requires waiting for the agent to finish",
     } satisfies CommandError;
   }
+}
+
+function parseRunThinkingOption(options: AgentRunOptions): string | undefined {
+  const thinkingOptionId = options.thinking?.trim();
+  if (options.thinking !== undefined && !thinkingOptionId) {
+    throw {
+      code: "INVALID_THINKING_OPTION",
+      message: "--thinking cannot be empty",
+      details:
+        'Provide a thinking option ID. Use "paseo provider models <provider> --thinking" to list valid IDs.',
+    } satisfies CommandError;
+  }
+  if (thinkingOptionId?.toLowerCase() === "ultracode") {
+    throw {
+      code: "INVALID_THINKING_OPTION",
+      message: "Ultracode is a provider feature, not a thinking option",
+      details: "Use --feature ultracode instead of --thinking ultracode",
+    } satisfies CommandError;
+  }
+  return thinkingOptionId;
 }
 
 function parseWaitTimeoutOption(waitTimeout: string | undefined): number {
@@ -402,16 +473,17 @@ export async function runRunCommand(
   try {
     // Resolve working directory
     const cwd = options.cwd ?? process.cwd();
-    const thinkingOptionId = options.thinking?.trim();
-    if (options.thinking !== undefined && !thinkingOptionId) {
-      const error: CommandError = {
-        code: "INVALID_THINKING_OPTION",
-        message: "--thinking cannot be empty",
-        details:
-          'Provide a thinking option ID. Use "paseo provider models <provider> --thinking" to list valid IDs.',
-      };
-      throw error;
-    }
+    const thinkingOptionId = parseRunThinkingOption(options);
+
+    const featureValues = await resolveRunFeatureValues({
+      client,
+      provider: resolvedProviderModel.provider,
+      cwd,
+      model: resolvedProviderModel.model,
+      modeId: options.mode,
+      thinkingOptionId,
+      featureFlags: options.feature,
+    });
 
     const images = loadRunImages(options.image);
 
@@ -439,6 +511,7 @@ export async function runRunCommand(
             modeId: options.mode,
             model: resolvedProviderModel.model,
             thinkingOptionId,
+            ...(featureValues ? { featureValues } : {}),
             initialPrompt: structuredPrompt,
             outputSchema,
             images,
@@ -510,6 +583,7 @@ export async function runRunCommand(
       modeId: options.mode,
       model: resolvedProviderModel.model,
       thinkingOptionId,
+      ...(featureValues ? { featureValues } : {}),
       initialPrompt: prompt,
       images,
       env: requestEnv,

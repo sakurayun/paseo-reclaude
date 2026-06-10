@@ -1,21 +1,113 @@
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
+import type { ModelInfo, Query, SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createTestLogger } from "../../../../test-utils/test-logger.js";
 import { ClaudeAgentClient } from "./agent.js";
-import { getClaudeModels, normalizeClaudeRuntimeModelId } from "./models.js";
+import type { ClaudeQueryFactory, ClaudeQueryInput } from "./query.js";
+import {
+  decorateClaudeModelsWithSdkEfforts,
+  getClaudeModels,
+  normalizeClaudeRuntimeModelId,
+} from "./models.js";
 
 const createdClaudeConfigDirs: string[] = [];
 
 afterEach(async () => {
   vi.unstubAllEnvs();
+  vi.useRealTimers();
   await Promise.all(
     createdClaudeConfigDirs.map((dir) => fs.rm(dir, { recursive: true, force: true })),
   );
   createdClaudeConfigDirs.length = 0;
 });
+
+interface TestQuery extends Query {
+  return: ReturnType<typeof vi.fn<() => Promise<IteratorResult<SDKMessage, void>>>>;
+}
+
+interface TestQueryHandle {
+  query: TestQuery;
+  supportedModels: ReturnType<typeof vi.fn<() => Promise<ModelInfo[]>>>;
+  returnQuery: ReturnType<typeof vi.fn<() => Promise<IteratorResult<SDKMessage, void>>>>;
+}
+
+function createTestQuery(supportedModels: () => Promise<ModelInfo[]>): TestQueryHandle {
+  const supportedModelsMock = vi.fn(supportedModels);
+  const returnQuery = vi.fn(async () => ({ done: true, value: undefined }) as const);
+  const query: TestQuery = {
+    async next() {
+      return { done: true, value: undefined };
+    },
+    return: returnQuery,
+    async throw(error?: unknown) {
+      throw error;
+    },
+    [Symbol.asyncIterator]() {
+      return this;
+    },
+    interrupt: vi.fn(async () => undefined),
+    setPermissionMode: vi.fn(async () => undefined),
+    setModel: vi.fn(async () => undefined),
+    setMaxThinkingTokens: vi.fn(async () => undefined),
+    applyFlagSettings: vi.fn(async () => undefined),
+    initializationResult: vi.fn(async () => {
+      throw new Error("not implemented in test query");
+    }),
+    supportedCommands: vi.fn(async () => []),
+    supportedModels: supportedModelsMock,
+    supportedAgents: vi.fn(async () => []),
+    mcpServerStatus: vi.fn(async () => []),
+    reconnectMcpServer: vi.fn(async () => undefined),
+    toggleMcpServer: vi.fn(async () => undefined),
+    enableChannel: vi.fn(async () => undefined),
+    mcpAuthenticate: vi.fn(async () => undefined),
+    mcpClearAuth: vi.fn(async () => undefined),
+    mcpSubmitOAuthCallbackUrl: vi.fn(async () => undefined),
+    claudeAuthenticate: vi.fn(async () => undefined),
+    claudeOAuthCallback: vi.fn(async () => undefined),
+    claudeOAuthWaitForCompletion: vi.fn(async () => undefined),
+    getContextUsage: vi.fn(async () => ({
+      contextSize: 0,
+      contextUsed: 0,
+      contextRemaining: 0,
+    })),
+    readFile: vi.fn(async () => null),
+    reloadPlugins: vi.fn(async () => undefined),
+    setMcpServers: vi.fn(async () => undefined),
+    accountInfo: vi.fn(async () => undefined),
+  };
+
+  return { query, supportedModels: supportedModelsMock, returnQuery };
+}
+
+function createQueryFactory(handle: TestQueryHandle): {
+  queryFactory: ClaudeQueryFactory;
+  inputs: ClaudeQueryInput[];
+} {
+  const inputs: ClaudeQueryInput[] = [];
+  return {
+    inputs,
+    queryFactory: (input) => {
+      inputs.push(input);
+      return handle.query;
+    },
+  };
+}
+
+function createStaticFallbackClaudeClient(): ClaudeAgentClient {
+  const handle = createTestQuery(async () => {
+    throw new Error("SDK discovery disabled for this unit test");
+  });
+  const { queryFactory } = createQueryFactory(handle);
+  return new ClaudeAgentClient({
+    logger: createTestLogger(),
+    queryFactory,
+    resolveBinary: async () => "/bin/claude",
+  });
+}
 
 async function createClaudeConfigDir(settings: unknown): Promise<string> {
   const configDir = await fs.mkdtemp(path.join(os.tmpdir(), "paseo-claude-models-"));
@@ -95,7 +187,333 @@ describe("getClaudeModels", () => {
   });
 });
 
+describe("decorateClaudeModelsWithSdkEfforts", () => {
+  it("unions SDK effort levels without removing static Opus xhigh", () => {
+    const models = decorateClaudeModelsWithSdkEfforts(getClaudeModels(), [
+      {
+        value: "claude-opus-4-8",
+        displayName: "Opus",
+        description: "Opus",
+        supportedEffortLevels: ["low", "medium", "high", "max"],
+      },
+    ]);
+
+    expect(models.find((model) => model.id === "claude-opus-4-8")?.thinkingOptions).toEqual([
+      { id: "low", label: "Low" },
+      { id: "medium", label: "Medium" },
+      { id: "high", label: "High" },
+      { id: "xhigh", label: "Extra High" },
+      { id: "max", label: "Max" },
+    ]);
+  });
+
+  it("does not decorate Haiku even if the SDK reports effort levels", () => {
+    const models = decorateClaudeModelsWithSdkEfforts(getClaudeModels(), [
+      {
+        value: "haiku",
+        displayName: "Haiku",
+        description: "Haiku",
+        supportedEffortLevels: ["low", "medium", "high", "max"],
+      },
+      {
+        value: "claude-haiku-4-5",
+        displayName: "Haiku 4.5",
+        description: "Haiku 4.5",
+        supportedEffortLevels: ["low", "medium", "high", "max"],
+      },
+    ]);
+
+    expect(
+      models.find((model) => model.id === "claude-haiku-4-5")?.thinkingOptions,
+    ).toBeUndefined();
+  });
+
+  it("matches exact normalized values before family and default fallbacks", () => {
+    const models = decorateClaudeModelsWithSdkEfforts(
+      [
+        {
+          provider: "claude",
+          id: "claude-sonnet-4-6",
+          label: "Sonnet",
+          thinkingOptions: [{ id: "low", label: "Low" }],
+        },
+      ],
+      [
+        {
+          value: "sonnet",
+          displayName: "Sonnet",
+          description: "Sonnet",
+          supportedEffortLevels: ["medium"],
+        },
+        {
+          value: "claude-sonnet-4-6-20260101",
+          displayName: "Pinned Sonnet",
+          description: "Pinned Sonnet",
+          supportedEffortLevels: ["high"],
+        },
+      ],
+    );
+
+    expect(models[0].thinkingOptions).toEqual([
+      { id: "low", label: "Low" },
+      { id: "high", label: "High" },
+    ]);
+  });
+
+  it("matches abstract family values and strips the one-million context suffix", () => {
+    const models = decorateClaudeModelsWithSdkEfforts(
+      [
+        {
+          provider: "claude",
+          id: "anthropic/claude-sonnet-4.6[1m]",
+          label: "Configured Sonnet",
+        },
+      ],
+      [
+        {
+          value: "sonnet",
+          displayName: "Sonnet",
+          description: "Sonnet",
+          supportedEffortLevels: ["low", "medium"],
+        },
+      ],
+    );
+
+    expect(models[0].thinkingOptions).toEqual([
+      { id: "low", label: "Low" },
+      { id: "medium", label: "Medium" },
+    ]);
+  });
+
+  it("does not family-match concrete SDK values into unrelated settings models", () => {
+    const models = decorateClaudeModelsWithSdkEfforts(
+      [
+        {
+          provider: "claude",
+          id: "openrouter/anthropic/claude-opus-4.4",
+          label: "Configured Opus",
+        },
+      ],
+      [
+        {
+          value: "claude-opus-4-5-20251101",
+          displayName: "Pinned Opus",
+          description: "Pinned Opus",
+          supportedEffortLevels: ["low", "medium"],
+        },
+      ],
+    );
+
+    expect(models[0].thinkingOptions).toBeUndefined();
+  });
+
+  it("uses the default SDK model only for the default static model", () => {
+    const models = decorateClaudeModelsWithSdkEfforts(
+      [
+        { provider: "claude", id: "claude-opus-4-8", label: "Opus", isDefault: true },
+        { provider: "claude", id: "claude-opus-4-7", label: "Older Opus" },
+      ],
+      [
+        {
+          value: "default",
+          displayName: "Default",
+          description: "Default",
+          supportedEffortLevels: ["max"],
+        },
+      ],
+    );
+
+    expect(models[0].thinkingOptions).toEqual([{ id: "max", label: "Max" }]);
+    expect(models[1].thinkingOptions).toBeUndefined();
+  });
+
+  it("keeps model thinking options unchanged when family matching is ambiguous", () => {
+    const models = decorateClaudeModelsWithSdkEfforts(
+      [
+        {
+          provider: "claude",
+          id: "claude-sonnet-4-6",
+          label: "Sonnet",
+          thinkingOptions: [{ id: "low", label: "Low" }],
+        },
+        {
+          provider: "claude",
+          id: "openrouter/anthropic/claude-sonnet-4.4",
+          label: "Configured Sonnet",
+        },
+      ],
+      [
+        {
+          value: "sonnet",
+          displayName: "Sonnet",
+          description: "Sonnet",
+          supportedEffortLevels: ["medium"],
+        },
+        {
+          value: "SONNET",
+          displayName: "Uppercase Sonnet",
+          description: "Uppercase Sonnet",
+          supportedEffortLevels: ["high"],
+        },
+      ],
+    );
+
+    expect(models[0].thinkingOptions).toEqual([{ id: "low", label: "Low" }]);
+    expect(models[1].thinkingOptions).toBeUndefined();
+  });
+});
+
 describe("ClaudeAgentClient.listModels", () => {
+  it("decorates static and settings models with SDK effort levels", async () => {
+    const configDir = await createClaudeConfigDir({
+      model: "openrouter/anthropic/claude-sonnet-4.6",
+    });
+    vi.stubEnv("CLAUDE_CONFIG_DIR", configDir);
+    const handle = createTestQuery(async () => [
+      {
+        value: "default",
+        displayName: "Default",
+        description: "Default",
+        supportedEffortLevels: ["low", "medium", "high", "xhigh", "max"],
+      },
+      {
+        value: "sonnet",
+        displayName: "Sonnet",
+        description: "Sonnet",
+        supportedEffortLevels: ["low", "medium", "high", "max"],
+      },
+    ]);
+    const { queryFactory, inputs } = createQueryFactory(handle);
+    const client = new ClaudeAgentClient({
+      logger: createTestLogger(),
+      queryFactory,
+      resolveBinary: async () => "/bin/claude",
+    });
+
+    const models = await client.listModels({ cwd: os.tmpdir(), force: true });
+
+    expect(inputs).toHaveLength(1);
+    expect(inputs[0].options).toMatchObject({
+      permissionMode: "plan",
+      includePartialMessages: false,
+      settingSources: ["user", "project"],
+      pathToClaudeCodeExecutable: "/bin/claude",
+      persistSession: false,
+    });
+    expect(models.find((model) => model.id === "claude-opus-4-8")?.thinkingOptions).toEqual([
+      { id: "low", label: "Low" },
+      { id: "medium", label: "Medium" },
+      { id: "high", label: "High" },
+      { id: "xhigh", label: "Extra High" },
+      { id: "max", label: "Max" },
+    ]);
+    expect(
+      models.find((model) => model.id === "openrouter/anthropic/claude-sonnet-4.6")
+        ?.thinkingOptions,
+    ).toEqual([
+      { id: "low", label: "Low" },
+      { id: "medium", label: "Medium" },
+      { id: "high", label: "High" },
+      { id: "max", label: "Max" },
+    ]);
+    expect(handle.returnQuery).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not decorate settings models below the documented Claude Code effort floor", async () => {
+    const configDir = await createClaudeConfigDir({
+      model: "openrouter/anthropic/claude-sonnet-4.5",
+      env: {
+        ANTHROPIC_DEFAULT_HAIKU_MODEL: "claude-haiku-4-5",
+      },
+    });
+    vi.stubEnv("CLAUDE_CONFIG_DIR", configDir);
+    const handle = createTestQuery(async () => [
+      {
+        value: "sonnet",
+        displayName: "Sonnet",
+        description: "Sonnet",
+        supportedEffortLevels: ["low", "medium", "high", "max"],
+      },
+      {
+        value: "haiku",
+        displayName: "Haiku",
+        description: "Haiku",
+        supportedEffortLevels: ["low", "medium", "high", "max"],
+      },
+    ]);
+    const { queryFactory } = createQueryFactory(handle);
+    const client = new ClaudeAgentClient({
+      logger: createTestLogger(),
+      queryFactory,
+      resolveBinary: async () => "/bin/claude",
+    });
+
+    const models = await client.listModels({ cwd: os.tmpdir(), force: true });
+
+    expect(
+      models.find((model) => model.id === "openrouter/anthropic/claude-sonnet-4.5")
+        ?.thinkingOptions,
+    ).toBeUndefined();
+    expect(
+      models.find((model) => model.id === "claude-haiku-4-5")?.thinkingOptions,
+    ).toBeUndefined();
+    expect(handle.returnQuery).toHaveBeenCalledTimes(1);
+  });
+
+  it("falls back to settings-aware static models when SDK discovery fails", async () => {
+    const handle = createTestQuery(async () => {
+      throw new Error("SDK discovery failed");
+    });
+    const { queryFactory } = createQueryFactory(handle);
+    const client = new ClaudeAgentClient({
+      logger: createTestLogger(),
+      queryFactory,
+      resolveBinary: async () => "/bin/claude",
+    });
+
+    const models = await client.listModels({ cwd: os.tmpdir(), force: true });
+
+    expect(models).toEqual(getClaudeModels());
+    expect(handle.returnQuery).toHaveBeenCalledTimes(1);
+  });
+
+  it("falls back to settings-aware static models when SDK discovery times out", async () => {
+    vi.useFakeTimers();
+    const handle = createTestQuery(() => new Promise<ModelInfo[]>(() => undefined));
+    const { queryFactory } = createQueryFactory(handle);
+    const client = new ClaudeAgentClient({
+      logger: createTestLogger(),
+      queryFactory,
+      resolveBinary: async () => "/bin/claude",
+    });
+
+    const modelsPromise = client.listModels({ cwd: os.tmpdir(), force: true });
+    await vi.waitFor(() => expect(handle.supportedModels).toHaveBeenCalledTimes(1));
+    await vi.advanceTimersByTimeAsync(15_000);
+
+    await expect(modelsPromise).resolves.toEqual(getClaudeModels());
+    expect(handle.returnQuery).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns in-flight scratch queries during shutdown", async () => {
+    vi.useFakeTimers();
+    const handle = createTestQuery(() => new Promise<ModelInfo[]>(() => undefined));
+    const { queryFactory } = createQueryFactory(handle);
+    const client = new ClaudeAgentClient({
+      logger: createTestLogger(),
+      queryFactory,
+      resolveBinary: async () => "/bin/claude",
+    });
+
+    const modelsPromise = client.listModels({ cwd: os.tmpdir(), force: true });
+    await vi.waitFor(() => expect(handle.supportedModels).toHaveBeenCalledTimes(1));
+
+    await client.shutdown();
+    await vi.advanceTimersByTimeAsync(15_000);
+    await expect(modelsPromise).resolves.toEqual(getClaudeModels());
+    expect(handle.returnQuery).toHaveBeenCalledTimes(1);
+  });
+
   it("appends concrete models from Claude settings.json", async () => {
     const configDir = await createClaudeConfigDir({
       model: "us.anthropic.claude-opus-4-7[1m]",
@@ -108,7 +526,7 @@ describe("ClaudeAgentClient.listModels", () => {
       },
     });
     vi.stubEnv("CLAUDE_CONFIG_DIR", configDir);
-    const client = new ClaudeAgentClient({ logger: createTestLogger() });
+    const client = createStaticFallbackClaudeClient();
 
     const models = await client.listModels({ cwd: os.tmpdir(), force: true });
 
@@ -176,7 +594,7 @@ describe("ClaudeAgentClient.listModels", () => {
     const configDir = await fs.mkdtemp(path.join(os.tmpdir(), "paseo-claude-models-"));
     createdClaudeConfigDirs.push(configDir);
     vi.stubEnv("CLAUDE_CONFIG_DIR", configDir);
-    const client = new ClaudeAgentClient({ logger: createTestLogger() });
+    const client = createStaticFallbackClaudeClient();
 
     const models = await client.listModels({ cwd: os.tmpdir(), force: true });
 
@@ -186,7 +604,7 @@ describe("ClaudeAgentClient.listModels", () => {
   it("falls back to hardcoded models when settings.json is malformed", async () => {
     const configDir = await createClaudeConfigDirWithRawSettings("{ nope");
     vi.stubEnv("CLAUDE_CONFIG_DIR", configDir);
-    const client = new ClaudeAgentClient({ logger: createTestLogger() });
+    const client = createStaticFallbackClaudeClient();
 
     const models = await client.listModels({ cwd: os.tmpdir(), force: true });
 
@@ -202,7 +620,7 @@ describe("ClaudeAgentClient.listModels", () => {
       },
     });
     vi.stubEnv("CLAUDE_CONFIG_DIR", configDir);
-    const client = new ClaudeAgentClient({ logger: createTestLogger() });
+    const client = createStaticFallbackClaudeClient();
 
     const models = await client.listModels({ cwd: os.tmpdir(), force: true });
 
@@ -218,7 +636,7 @@ describe("ClaudeAgentClient.listModels", () => {
       },
     });
     vi.stubEnv("CLAUDE_CONFIG_DIR", configDir);
-    const client = new ClaudeAgentClient({ logger: createTestLogger() });
+    const client = createStaticFallbackClaudeClient();
 
     const models = await client.listModels({ cwd: os.tmpdir(), force: true });
 

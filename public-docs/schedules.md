@@ -54,6 +54,19 @@ paseo schedule create \
   "Check the release build. If it failed, inspect logs, fix the cause, and rerun."
 ```
 
+Claude Ultracode schedule for a difficult audit:
+
+```bash
+paseo schedule create \
+  --every 30m \
+  --name ultracode-audit \
+  --provider claude/opus \
+  --feature ultracode \
+  --cwd ~/dev/my-app \
+  --max-runs 4 \
+  "Continue the security audit and verify every finding before reporting."
+```
+
 Daily GitHub triage on GLM through OpenCode:
 
 ```bash

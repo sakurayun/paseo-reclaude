@@ -65,6 +65,32 @@ describe("parseScheduleCreateInput cwd/host validation", () => {
       parseScheduleCreateInput({ ...baseOptions, host: "dev:6767", cwd: "   " }),
     ).toThrow(expect.objectContaining({ code: "MISSING_CWD" }));
   });
+
+  test("parses new-agent feature flags", () => {
+    const input = parseScheduleCreateInput({
+      ...baseOptions,
+      feature: ["ultracode", "fast_mode=false"],
+    });
+
+    expect(input.target).toEqual({
+      type: "new-agent",
+      config: {
+        provider: "claude",
+        cwd: "/local/project",
+        featureValues: { ultracode: true, fast_mode: false },
+      },
+    });
+  });
+
+  test("rejects feature flags on existing-agent targets", () => {
+    expect(() =>
+      parseScheduleCreateInput({
+        ...baseOptions,
+        target: "agent-123",
+        feature: ["ultracode"],
+      }),
+    ).toThrow(expect.objectContaining({ code: "INVALID_TARGET" }));
+  });
 });
 
 describe("parseScheduleCreateInput first-run timing", () => {

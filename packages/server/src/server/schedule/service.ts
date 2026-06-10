@@ -557,22 +557,32 @@ export class ScheduleService {
     }
 
     const targetConfig = schedule.target.config;
-    const resolvedUnattendedConfig = targetConfig.modeId
-      ? { modeId: targetConfig.modeId, featureValues: targetConfig.featureValues }
-      : await this.resolveProviderCreateConfig({
-          provider: targetConfig.provider,
-          cwd: targetConfig.cwd,
-          requestedMode: undefined,
-          featureValues: targetConfig.featureValues,
-          parent: null,
-          unattended: true,
-        });
+    const resolvedUnattendedConfig =
+      targetConfig.modeId && !targetConfig.featureValues
+        ? {
+            modeId: targetConfig.modeId,
+            thinkingOptionId: undefined,
+            featureValues: targetConfig.featureValues,
+          }
+        : await this.resolveProviderCreateConfig({
+            provider: targetConfig.provider,
+            cwd: targetConfig.cwd,
+            requestedMode: targetConfig.modeId,
+            model: targetConfig.model,
+            thinkingOptionId: targetConfig.thinkingOptionId,
+            featureValues: targetConfig.featureValues,
+            parent: null,
+            unattended: true,
+          });
     const config: AgentSessionConfig = {
       provider: targetConfig.provider,
       cwd: targetConfig.cwd,
       modeId: resolvedUnattendedConfig.modeId,
       model: targetConfig.model,
-      thinkingOptionId: targetConfig.thinkingOptionId,
+      thinkingOptionId:
+        resolvedUnattendedConfig.thinkingOptionId === undefined
+          ? targetConfig.thinkingOptionId
+          : (resolvedUnattendedConfig.thinkingOptionId ?? undefined),
       title: targetConfig.title,
       approvalPolicy: targetConfig.approvalPolicy,
       sandboxMode: targetConfig.sandboxMode,
