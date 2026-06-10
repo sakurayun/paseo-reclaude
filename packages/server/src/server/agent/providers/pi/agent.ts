@@ -26,11 +26,14 @@ import {
   type AgentSlashCommandKind,
   type AgentStreamEvent,
   type AgentUsage,
-  type ListPersistedAgentsOptions,
+  type ImportableProviderSession,
+  type ImportProviderSessionContext,
+  type ImportProviderSessionInput,
+  type ListImportableSessionsOptions,
   type ListModesOptions,
   type ListModelsOptions,
-  type PersistedAgentDescriptor,
 } from "../../agent-sdk-types.js";
+import { importSessionFromPersistence } from "../../provider-session-import.js";
 import { runProviderTurn } from "../provider-runner.js";
 import {
   checkProviderLaunchAvailable,
@@ -54,7 +57,7 @@ import {
 } from "./history-mapper.js";
 import { PiCliRuntime } from "./cli-runtime.js";
 import { revertPiConversation } from "./rewind.js";
-import { listPiPersistedAgents } from "./session-descriptor.js";
+import { listPiImportableSessions } from "./session-descriptor.js";
 import type { PiRuntime, PiRuntimeSession } from "./runtime.js";
 import type {
   PiAgentSessionEvent,
@@ -122,6 +125,7 @@ function mapPiCommandKind(source: PiRpcSlashCommand["source"]): AgentSlashComman
 const PI_CAPABILITIES: AgentCapabilityFlags = {
   supportsStreaming: true,
   supportsSessionPersistence: true,
+  supportsSessionListing: true,
   supportsDynamicModes: true,
   supportsMcpServers: false,
   supportsReasoningStream: true,
@@ -1969,14 +1973,22 @@ export class PiRpcAgentClient implements AgentClient {
     return [];
   }
 
-  async listPersistedAgents(
-    options?: ListPersistedAgentsOptions,
-  ): Promise<PersistedAgentDescriptor[]> {
-    return await listPiPersistedAgents({
+  async listImportableSessions(
+    options?: ListImportableSessionsOptions,
+  ): Promise<ImportableProviderSession[]> {
+    return await listPiImportableSessions({
       ...options,
-      provider: PI_PROVIDER,
       sessionDir: this.providerParams.sessionDir,
       runtimeSettings: this.runtimeSettings,
+    });
+  }
+
+  async importSession(input: ImportProviderSessionInput, context: ImportProviderSessionContext) {
+    return importSessionFromPersistence({
+      provider: PI_PROVIDER,
+      request: input,
+      context,
+      resumeSession: this.resumeSession.bind(this),
     });
   }
 

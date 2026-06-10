@@ -108,7 +108,9 @@ export default {
   importSession: {
     title: "Import session",
     refreshAccessibility: "Refresh sessions",
-    filterAll: "All",
+    filterAllProviders: "All providers",
+    filterByProvider: "Filter by provider",
+    filterAccessibility: "Filter: {{label}}",
     importing: "Importing...",
     status: {
       connectToHost: "Connect to a host to import sessions",

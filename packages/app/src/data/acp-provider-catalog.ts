@@ -9,6 +9,7 @@ export interface AcpProviderCatalogEntry {
   installLink: string;
   command: readonly [string, ...string[]];
   env?: Readonly<Record<string, string>>;
+  params?: Readonly<Record<string, unknown>>;
 }
 
 const CATALOG_DATA = [
@@ -73,6 +74,15 @@ const CATALOG_DATA = [
     command: ["npx", "-y", "@tencent-ai/codebuddy-code@2.103.4", "--acp"],
   },
   {
+    id: "codewhale",
+    title: "CodeWhale",
+    description: "Terminal coding agent for DeepSeek V4 and open models",
+    version: "0.8.55",
+    iconId: "codewhale",
+    installLink: "https://codewhale.net/",
+    command: ["codewhale", "serve", "--acp"],
+  },
+  {
     id: "cortex-code",
     title: "Cortex Code",
     description: "Snowflake's Cortex Code coding agent",
@@ -118,15 +128,6 @@ const CATALOG_DATA = [
     command: ["npx", "-y", "deepagents-acp@0.1.12"],
   },
   {
-    id: "deepseek-tui",
-    title: "DeepSeek TUI",
-    description: "Terminal coding agent for DeepSeek V4",
-    version: "0.8.39",
-    iconId: "deepseek-tui",
-    installLink: "https://github.com/Hmbown/DeepSeek-TUI",
-    command: ["deepseek", "serve", "--acp"],
-  },
-  {
     id: "devin",
     title: "Devin CLI",
     description: "Cognition's Devin for Terminal via Agent Client Protocol",
@@ -166,6 +167,7 @@ const CATALOG_DATA = [
       DROID_DISABLE_AUTO_UPDATE: "true",
       FACTORY_DROID_AUTO_UPDATE_ENABLED: "false",
     },
+    params: { supportsMcpServers: false },
   },
   {
     id: "fast-agent",
@@ -357,5 +359,6 @@ export const ACP_PROVIDER_CATALOG: AcpProviderCatalogEntry[] = CATALOG_DATA.map(
   installLink: entry.installLink,
   command: entry.command,
   env: "env" in entry ? entry.env : undefined,
+  params: "params" in entry ? entry.params : undefined,
   iconSvg: entry.iconId ? (ACP_PROVIDER_ICON_SVGS[entry.iconId] ?? null) : null,
 }));

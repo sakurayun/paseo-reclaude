@@ -1,18 +1,17 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Pressable, type PressableStateCallbackType, ScrollView, Text, View } from "react-native";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Pressable, type PressableStateCallbackType, Text, View } from "react-native";
 import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import type { TFunction } from "i18next";
 import type {
   DaemonClient,
   FetchRecentProviderSessionEntry,
 } from "@getpaseo/client/internal/daemon-client";
 import type { AgentProvider } from "@getpaseo/protocol/agent-types";
-import { Inbox, RotateCw } from "lucide-react-native";
+import { ChevronDown, Inbox, Layers, RotateCw } from "lucide-react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { AdaptiveModalSheet, type SheetHeader } from "@/components/adaptive-modal-sheet";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
-import { SegmentedControl, type SegmentedControlOption } from "@/components/ui/segmented-control";
+import { Combobox, ComboboxItem, type ComboboxOption } from "@/components/ui/combobox";
 import { getProviderIcon } from "@/components/provider-icons";
 import { formatTimeAgo } from "@/utils/time";
 import { useProvidersSnapshot } from "@/hooks/use-providers-snapshot";
@@ -90,6 +89,7 @@ interface SheetStatusMessagesProps {
   isSnapshotUnsupported: boolean;
   hasNoImportableProviders: boolean;
   isLoadingSessions: boolean;
+  hasRows: boolean;
   allQueriesErrored: boolean;
   erroredProviderLabels: ReadonlyArray<string>;
   importErrored: boolean;
@@ -100,6 +100,7 @@ function SheetStatusMessages({
   isSnapshotUnsupported,
   hasNoImportableProviders,
   isLoadingSessions,
+  hasRows,
   allQueriesErrored,
   erroredProviderLabels,
   importErrored,
@@ -117,7 +118,7 @@ function SheetStatusMessages({
       {hasNoImportableProviders ? (
         <Text style={styles.statusText}>{t("importSession.status.noImportableProviders")}</Text>
       ) : null}
-      {isLoadingSessions ? (
+      {isLoadingSessions && !hasRows ? (
         <View style={styles.statusRow}>
           <LoadingSpinner color={theme.colors.foregroundMuted} />
           <Text style={styles.statusText}>{t("importSession.status.loading")}</Text>
@@ -180,30 +181,6 @@ function SheetEmptyState({ title }: { title: string }) {
       <Text style={styles.emptyStateTitle}>{title}</Text>
     </View>
   );
-}
-
-function buildProviderFilterOptions(
-  providers: ReadonlyArray<string>,
-  providerLabelById: ReadonlyMap<string, string>,
-  t: TFunction<"app">,
-): SegmentedControlOption<string>[] {
-  const options: SegmentedControlOption<string>[] = [
-    {
-      value: ALL_FILTER_VALUE,
-      label: t("importSession.filterAll"),
-      testID: "import-session-filter-all",
-    },
-  ];
-  for (const provider of providers) {
-    const ProviderIcon = getProviderIcon(provider);
-    options.push({
-      value: provider,
-      label: providerLabelById.get(provider) ?? provider,
-      testID: `import-session-filter-${provider}`,
-      icon: ({ color, size }) => <ProviderIcon color={color} size={size} />,
-    });
-  }
-  return options;
 }
 
 function ImportSessionSheetRow({
@@ -286,6 +263,7 @@ export function ImportSessionSheet({
 }: ImportSessionSheetProps) {
   const { t } = useTranslation("app");
   const queryClient = useQueryClient();
+  const { theme } = useUnistyles();
 
   const { entries: snapshotEntries, supportsSnapshot } = useProvidersSnapshot(serverId, {
     cwd,
@@ -330,6 +308,8 @@ export function ImportSessionSheet({
   const filterProviders = useMemo(() => [...(providersToFetch ?? [])].sort(), [providersToFetch]);
 
   const [selectedProvider, setSelectedProvider] = useState<string>(ALL_FILTER_VALUE);
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const filterAnchorRef = useRef<View>(null);
 
   useEffect(() => {
     if (
@@ -345,9 +325,71 @@ export function ImportSessionSheet({
     return aggregatedEntries.filter((entry) => entry.providerId === selectedProvider);
   }, [aggregatedEntries, selectedProvider]);
 
-  const filterOptions = useMemo(
-    () => buildProviderFilterOptions(filterProviders, providerLabelById, t),
+  const filterComboboxOptions = useMemo<ComboboxOption[]>(
+    () => [
+      { id: ALL_FILTER_VALUE, label: t("importSession.filterAllProviders") },
+      ...filterProviders.map((provider) => ({
+        id: provider,
+        label: providerLabelById.get(provider) ?? provider,
+      })),
+    ],
     [filterProviders, providerLabelById, t],
+  );
+
+  const selectedProviderLabel = useMemo(
+    () =>
+      filterComboboxOptions.find((opt) => opt.id === selectedProvider)?.label ??
+      t("importSession.filterAllProviders"),
+    [filterComboboxOptions, selectedProvider, t],
+  );
+
+  const handleFilterOpen = useCallback(() => setIsFilterOpen(true), []);
+
+  const filterTriggerStyle = useCallback(
+    ({ pressed, hovered = false }: PressableStateCallbackType & { hovered?: boolean }) => [
+      styles.filterTrigger,
+      Boolean(hovered) && styles.filterTriggerHovered,
+      pressed && styles.filterTriggerPressed,
+    ],
+    [],
+  );
+
+  const handleFilterSelect = useCallback((id: string) => {
+    setSelectedProvider(id);
+    setIsFilterOpen(false);
+  }, []);
+
+  const filterOptionIcons = useMemo(() => {
+    const map = new Map<string, React.ReactNode>();
+    map.set(ALL_FILTER_VALUE, <Layers size={14} color={theme.colors.foregroundMuted} />);
+    for (const provider of filterProviders) {
+      const ProviderIcon = getProviderIcon(provider);
+      map.set(provider, <ProviderIcon size={14} color={theme.colors.foregroundMuted} />);
+    }
+    return map;
+  }, [filterProviders, theme.colors.foregroundMuted]);
+
+  const renderFilterOption = useCallback(
+    ({
+      option,
+      selected,
+      active,
+      onPress,
+    }: {
+      option: ComboboxOption;
+      selected: boolean;
+      active: boolean;
+      onPress: () => void;
+    }) => (
+      <ComboboxItem
+        label={option.label}
+        selected={selected}
+        active={active}
+        onPress={onPress}
+        leadingSlot={filterOptionIcons.get(option.id)}
+      />
+    ),
+    [filterOptionIcons],
   );
 
   const importMutation = useMutation({
@@ -355,14 +397,13 @@ export function ImportSessionSheet({
       if (!client) {
         throw new Error("Host is not connected");
       }
-      const effectiveCwd = cwd ?? entry.cwd;
-      if (!effectiveCwd) {
+      if (!entry.cwd) {
         throw new Error("Session is missing a working directory");
       }
       const agent = await client.importAgent({
         providerId: entry.providerId,
         providerHandleId: entry.providerHandleId,
-        cwd: effectiveCwd,
+        cwd: entry.cwd,
       });
       return agent;
     },
@@ -438,25 +479,50 @@ export function ImportSessionSheet({
       snapPoints={IMPORT_SHEET_SNAP_POINTS}
     >
       {showFilter ? (
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.filterRow}
-        >
-          <SegmentedControl
-            testID="import-session-filters"
-            size="sm"
-            options={filterOptions}
+        <View ref={filterAnchorRef} collapsable={false} style={styles.filterTriggerWrap}>
+          <Pressable
+            onPress={handleFilterOpen}
+            style={filterTriggerStyle}
+            testID="import-session-filter-trigger"
+            accessibilityRole="button"
+            accessibilityLabel={t("importSession.filterAccessibility", {
+              label: selectedProviderLabel,
+            })}
+          >
+            {selectedProvider === ALL_FILTER_VALUE ? (
+              <Layers size={14} color={theme.colors.foregroundMuted} />
+            ) : (
+              (() => {
+                const ProviderIcon = getProviderIcon(selectedProvider);
+                return <ProviderIcon size={14} color={theme.colors.foregroundMuted} />;
+              })()
+            )}
+            <Text style={styles.filterTriggerText} numberOfLines={1}>
+              {selectedProviderLabel}
+            </Text>
+            <ChevronDown size={14} color={theme.colors.foregroundMuted} />
+          </Pressable>
+          <Combobox
+            options={filterComboboxOptions}
             value={selectedProvider}
-            onValueChange={setSelectedProvider}
+            onSelect={handleFilterSelect}
+            renderOption={renderFilterOption}
+            searchable={false}
+            title={t("importSession.filterByProvider")}
+            open={isFilterOpen}
+            onOpenChange={setIsFilterOpen}
+            anchorRef={filterAnchorRef}
+            desktopPlacement="bottom-start"
+            desktopPreventInitialFlash
           />
-        </ScrollView>
+        </View>
       ) : null}
       <SheetStatusMessages
         isClientReady={Boolean(client)}
         isSnapshotUnsupported={isSnapshotUnsupported}
         hasNoImportableProviders={hasNoImportableProviders}
         isLoadingSessions={isLoadingSessions}
+        hasRows={visibleEntries.length > 0}
         allQueriesErrored={allQueriesErrored}
         erroredProviderLabels={erroredProviderLabels}
         importErrored={importMutation.isError}
@@ -481,9 +547,31 @@ export function ImportSessionSheet({
 }
 
 const styles = StyleSheet.create((theme) => ({
-  filterRow: {
-    flexDirection: "row",
+  filterTriggerWrap: {
     paddingBottom: theme.spacing[2],
+  },
+  filterTrigger: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[1.5],
+    alignSelf: "flex-start",
+    paddingVertical: theme.spacing[1.5],
+    paddingHorizontal: theme.spacing[3],
+    borderRadius: theme.borderRadius.md,
+    backgroundColor: theme.colors.surface1,
+    borderWidth: theme.borderWidth[1],
+    borderColor: theme.colors.border,
+  },
+  filterTriggerHovered: {
+    backgroundColor: theme.colors.surface2,
+  },
+  filterTriggerPressed: {
+    backgroundColor: theme.colors.surface3,
+  },
+  filterTriggerText: {
+    color: theme.colors.foreground,
+    fontSize: theme.fontSize.sm,
+    fontWeight: theme.fontWeight.medium,
   },
   list: {
     gap: theme.spacing[1],

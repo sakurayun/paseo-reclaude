@@ -201,13 +201,13 @@ export const AGENT_PAGES = [
   },
   {
     slug: "deepseek-tui",
-    name: "DeepSeek TUI",
-    title: "Open source app for DeepSeek TUI",
+    name: "CodeWhale",
+    title: "Open source app for CodeWhale",
     subtitle:
-      "Run DeepSeek V4's terminal coding agent on your machine, drive it from your phone or desktop.",
-    metaTitle: "DeepSeek TUI Mobile and Desktop App, Open Source",
+      "Run CodeWhale's DeepSeek V4 terminal coding agent on your machine, drive it from your phone or desktop.",
+    metaTitle: "CodeWhale Mobile and Desktop App, Open Source",
     metaDescription:
-      "Open source mobile and desktop app for DeepSeek TUI. Launch coding sessions on your machine, monitor progress, ship from anywhere.",
+      "Open source mobile and desktop app for CodeWhale. Launch coding sessions on your machine, monitor progress, ship from anywhere.",
   },
   {
     slug: "dimcode",

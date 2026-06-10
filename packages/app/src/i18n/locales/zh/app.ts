@@ -108,7 +108,9 @@ export default {
   importSession: {
     title: "导入会话",
     refreshAccessibility: "刷新会话",
-    filterAll: "全部",
+    filterAllProviders: "全部提供方",
+    filterByProvider: "按提供方筛选",
+    filterAccessibility: "筛选：{{label}}",
     importing: "正在导入……",
     status: {
       connectToHost: "请连接到主机以导入会话",

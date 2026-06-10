@@ -2671,8 +2671,8 @@ describe("Codex app-server provider", () => {
   });
 });
 
-describe("Codex persisted sessions", () => {
-  test("listPersistedAgents uses thread list metadata without hydrating thread history", async () => {
+describe("Codex importable sessions", () => {
+  test("listImportableSessions uses thread list metadata without hydrating thread history", async () => {
     const allThreads = [
       {
         id: "thread-a1",
@@ -2725,15 +2725,19 @@ describe("Codex persisted sessions", () => {
       return child;
     };
 
-    const descriptors = await provider.listPersistedAgents({ cwd: "/workspace/project-a" });
+    const sessions = await provider.listImportableSessions({ cwd: "/workspace/project-a" });
 
-    expect(descriptors.map((d) => d.sessionId).sort()).toEqual(["thread-a1", "thread-a2"]);
-    expect(descriptors.every((d) => d.cwd === "/workspace/project-a")).toBe(true);
-    expect(descriptors[0]).toEqual(
+    expect(sessions.map((session) => session.providerHandleId).sort()).toEqual([
+      "thread-a1",
+      "thread-a2",
+    ]);
+    expect(sessions.every((session) => session.cwd === "/workspace/project-a")).toBe(true);
+    expect(sessions[0]).toEqual(
       expect.objectContaining({
-        sessionId: "thread-a1",
+        providerHandleId: "thread-a1",
         title: "Named first A session",
-        timeline: [{ type: "user_message", text: "First A session" }],
+        firstPromptPreview: "First A session",
+        lastPromptPreview: "First A session",
       }),
     );
     expect(calls).toEqual([
