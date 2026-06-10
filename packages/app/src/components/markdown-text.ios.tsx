@@ -51,6 +51,16 @@ interface MarkdownParagraphViewProps {
 
 const MARKDOWN_PARAGRAPH_RESET: ViewStyle = { marginBottom: 0 };
 
+// UITextView re-wraps its text inside the frame Yoga assigns, while the
+// paragraph's height was measured by RN's TextLayoutManager at the (possibly
+// fractionally wider) pre-rounding content width. When a line ends flush with
+// that measured width, the rounded-down frame pushes its last character onto
+// an extra line that falls outside the measured height and is clipped by the
+// host view (clipsToBounds). Reserving 1pt of right padding keeps the measure
+// width <= the native render width, so the re-wrap can never produce more
+// lines than were measured.
+const MARKDOWN_PARAGRAPH_WRAP_SLACK: ViewStyle = { paddingRight: 1 };
+
 // iOS-only: paragraph wraps in UITextView so the entire paragraph is one
 // native text view. That's what unlocks cross-inline drag selection — handles
 // can span every MarkdownTextSpan child inside this paragraph.
@@ -67,6 +77,7 @@ export function MarkdownParagraphView({
       resolvePlainMarkdownTextStyle([
         paragraphStyle,
         MARKDOWN_PARAGRAPH_RESET,
+        MARKDOWN_PARAGRAPH_WRAP_SLACK,
       ] as StyleProp<TextStyle>),
     [paragraphStyle],
   );

@@ -630,6 +630,16 @@ const assistantTurnFooterStylesheet = StyleSheet.create((theme) => ({
     fontSize: STREAM_METADATA_FONT_SIZE,
     opacity: 0,
   },
+  // Holds the alternate label in normal flow so it widens the wrapper to
+  // whichever label renders wider, while collapsing to zero height so only
+  // one line shows. Comparing label string lengths is not enough: rendered
+  // width depends on the glyphs (a CJK character is ~2x a digit), and an
+  // under-sized wrapper clips the absolutely-positioned overlay's tail (the
+  // minutes of the timestamp).
+  labelAlternateSizer: {
+    height: 0,
+    overflow: "hidden",
+  },
   labelOverlay: {
     position: "absolute",
     top: 0,
@@ -714,11 +724,17 @@ export const AssistantTurnFooter = memo(function AssistantTurnFooter({
           }
         >
           <View style={assistantTurnFooterStylesheet.labelWrapper}>
-            {/* Sizer reserves space for whichever label is longer so the
-                container width is stable across hover transitions. */}
+            {/* Sizers reserve space for whichever label renders wider so the
+                container width is stable across hover transitions and the
+                overlay text is never clipped. */}
             <Text style={assistantTurnFooterStylesheet.labelSizer} aria-hidden>
-              {durationLabel.length >= timestampLabel.length ? durationLabel : timestampLabel}
+              {durationLabel}
             </Text>
+            {canSwap ? (
+              <View style={assistantTurnFooterStylesheet.labelAlternateSizer} aria-hidden>
+                <Text style={assistantTurnFooterStylesheet.labelSizer}>{timestampLabel}</Text>
+              </View>
+            ) : null}
             <Text style={assistantTurnFooterStylesheet.labelOverlay}>
               {showTimestamp ? timestampLabel : durationLabel}
             </Text>
