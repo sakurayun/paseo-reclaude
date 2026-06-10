@@ -243,4 +243,20 @@ export default {
     project: "项目",
     status: "状态",
   },
+  filePanel: {
+    executionDirectoryNotFound: "未找到工作区执行目录。",
+  },
+  setupPanel: {
+    status: {
+      running: "运行中",
+      completed: "已完成",
+      failed: "失败",
+      waiting: "等待设置输出",
+    },
+    settingUp: "正在设置工作区……",
+    noCommands: "此工作区没有运行任何设置命令。",
+    noCommandsAccessibilityLabel: "此工作区没有运行任何设置命令",
+    logAccessibilityLabel: "工作区设置日志",
+    noOutput: "无输出",
+  },
 } as const;

@@ -1,5 +1,6 @@
 import { useCallback, useMemo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import i18n from "@/i18n";
 import { useStableEvent } from "@/hooks/use-stable-event";
 import type { OpenFileDisposition } from "@/workspace/file-open";
 import { openExternalUrl } from "@/utils/open-external-url";
@@ -336,7 +337,7 @@ async function dispatchUnresolvedError(input: {
   }
   const token =
     input.error instanceof UnresolvedFileLinkError ? input.error.token : input.fallbackToken;
-  current.toast?.show(`No file found for ${token}`, {
+  current.toast?.show(i18n.t("timeline:fileLink.notFound", { token }), {
     variant: "error",
     testID: "assistant-file-link-not-found-toast",
   });

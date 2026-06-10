@@ -10,6 +10,8 @@ import React, {
   type ComponentProps,
   type ReactNode,
 } from "react";
+import { useTranslation } from "react-i18next";
+import i18n from "@/i18n";
 import {
   View,
   Text,
@@ -170,7 +172,7 @@ function renderListEmptyComponent(input: {
 
   return (
     <View style={input.emptyStateStyle}>
-      <Text style={stylesheet.emptyStateText}>Start chatting with this agent...</Text>
+      <Text style={stylesheet.emptyStateText}>{i18n.t("agents:stream.emptyState")}</Text>
     </View>
   );
 }
@@ -245,6 +247,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     },
     ref,
   ) {
+    const { t } = useTranslation("agents");
     const viewportRef = useRef<StreamViewportHandle | null>(null);
     const isMobile = useIsCompactFormFactor();
     const streamRenderStrategy = useMemo(
@@ -745,7 +748,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
                   style={stylesheet.scrollToBottomButton}
                   onPress={scrollToBottom}
                   accessibilityRole="button"
-                  accessibilityLabel="Scroll to bottom"
+                  accessibilityLabel={t("stream.scrollToBottom")}
                   testID="scroll-to-bottom-button"
                 >
                   <ChevronDown size={24} color={stylesheet.scrollToBottomIcon.color} />
@@ -906,6 +909,7 @@ function PermissionRequestCard({
   permission: PendingPermission;
   client: DaemonClient | null;
 }) {
+  const { t } = useTranslation("agents");
   const isMobile = useIsCompactFormFactor();
 
   const { request } = permission;
@@ -1094,7 +1098,7 @@ function PermissionRequestCard({
 
       {planMarkdown ? (
         <PlanCard
-          title="Proposed plan"
+          title={t("stream.proposedPlanTitle")}
           text={planMarkdown}
           testID="permission-plan-card"
           disableOuterSpacing

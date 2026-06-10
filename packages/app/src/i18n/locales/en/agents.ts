@@ -63,4 +63,22 @@ export default {
     calloutText: "This agent is archived",
     unarchive: "Unarchive",
   },
+  stream: {
+    emptyState: "Start chatting with this agent...",
+    scrollToBottom: "Scroll to bottom",
+    proposedPlanTitle: "Proposed plan",
+  },
+  subagents: {
+    archiveTooltip: "Archive subagent",
+    archiveDialog: {
+      fallbackLabel: "this subagent",
+      runningTitle: "Archive running subagent?",
+      title: "Archive subagent?",
+      runningMessage:
+        "{{label}} is still running. Archiving it will stop the subagent and remove it from the track.",
+      message: "Remove {{label}} from the track. The subagent will be archived.",
+      confirmLabel: "Archive",
+      cancelLabel: "Cancel",
+    },
+  },
 } as const;

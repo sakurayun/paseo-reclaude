@@ -182,4 +182,15 @@ export default {
       cancelLabel: "取消",
     },
   },
+  reviewComment: {
+    addAccessibilityLabel: "添加评审评论",
+    editAccessibilityLabel: "编辑评审评论",
+    deleteAccessibilityLabel: "删除评审评论",
+    inputAccessibilityLabel: "评审评论",
+    placeholder: "留下评论",
+    cancelAccessibilityLabel: "取消评审评论",
+    cancel: "取消",
+    saveAccessibilityLabel: "保存评审评论",
+    save: "评论",
+  },
 } as const;

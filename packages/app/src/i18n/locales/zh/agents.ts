@@ -63,4 +63,21 @@ export default {
     calloutText: "此 Agent 已归档",
     unarchive: "取消归档",
   },
+  stream: {
+    emptyState: "开始与此 Agent 对话……",
+    scrollToBottom: "滚动到底部",
+    proposedPlanTitle: "拟定计划",
+  },
+  subagents: {
+    archiveTooltip: "归档子 Agent",
+    archiveDialog: {
+      fallbackLabel: "此子 Agent",
+      runningTitle: "归档运行中的子 Agent？",
+      title: "归档子 Agent？",
+      runningMessage: "{{label}} 仍在运行。归档将停止该子 Agent 并将其从轨道中移除。",
+      message: "将 {{label}} 从轨道中移除。该子 Agent 将被归档。",
+      confirmLabel: "归档",
+      cancelLabel: "取消",
+    },
+  },
 } as const;

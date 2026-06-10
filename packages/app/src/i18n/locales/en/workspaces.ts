@@ -245,4 +245,20 @@ export default {
     project: "Project",
     status: "Status",
   },
+  filePanel: {
+    executionDirectoryNotFound: "Workspace execution directory not found.",
+  },
+  setupPanel: {
+    status: {
+      running: "Running",
+      completed: "Completed",
+      failed: "Failed",
+      waiting: "Waiting for setup output",
+    },
+    settingUp: "Setting up workspace...",
+    noCommands: "No setup commands ran for this workspace.",
+    noCommandsAccessibilityLabel: "No setup commands ran for this workspace",
+    logAccessibilityLabel: "Workspace setup log",
+    noOutput: "No output",
+  },
 } as const;

@@ -55,6 +55,8 @@ export default {
     provider: {
       fallbackLabel: "提供方",
       selectAccessibilityLabel: "选择 Agent 提供方",
+      unavailable: "不可用",
+      unknownError: "未知错误",
     },
     model: {
       selectAccessibilityLabel: "选择模型",

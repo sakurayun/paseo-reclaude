@@ -198,4 +198,15 @@ export default {
       cancelLabel: "Cancel",
     },
   },
+  reviewComment: {
+    addAccessibilityLabel: "Add review comment",
+    editAccessibilityLabel: "Edit review comment",
+    deleteAccessibilityLabel: "Delete review comment",
+    inputAccessibilityLabel: "Review comment",
+    placeholder: "Leave a comment",
+    cancelAccessibilityLabel: "Cancel review comment",
+    cancel: "Cancel",
+    saveAccessibilityLabel: "Save review comment",
+    save: "Comment",
+  },
 } as const;

@@ -5,6 +5,7 @@ import type {
   ProviderSnapshotEntry,
 } from "@getpaseo/protocol/agent-types";
 import type { AgentProviderDefinition } from "@getpaseo/protocol/provider-manifest";
+import i18n from "@/i18n";
 import type { DraftCommandConfig } from "@/hooks/use-agent-commands-query";
 import { buildFavoriteModelKey, type FavoriteModelRow } from "@/hooks/use-form-preferences";
 import { compareMatchScores, scoreTextFields } from "@/utils/score-match";
@@ -96,7 +97,11 @@ function buildEntryModelSelection(
   }
   return {
     kind: "error",
-    message: entry.error ?? (entry.status === "unavailable" ? "Unavailable" : "Unknown error"),
+    message:
+      entry.error ??
+      (entry.status === "unavailable"
+        ? i18n.t("composer:controls.provider.unavailable")
+        : i18n.t("composer:controls.provider.unknownError")),
   };
 }
 

@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { TFunction } from "i18next";
+import { useTranslation } from "react-i18next";
 import { CheckCircle2, ChevronRight, CircleAlert, SquareTerminal } from "lucide-react-native";
 import {
   ActivityIndicator,
@@ -108,11 +110,11 @@ function resolveAutoExpandIndex(commands: { index: number; status: string }[]): 
   return null;
 }
 
-function resolveSetupStatusLabel(status: string | undefined): string {
-  if (status === "running") return "Running";
-  if (status === "completed") return "Completed";
-  if (status === "failed") return "Failed";
-  return "Waiting for setup output";
+function resolveSetupStatusLabel(status: string | undefined, t: TFunction<"workspaces">): string {
+  if (status === "running") return t("setupPanel.status.running");
+  if (status === "completed") return t("setupPanel.status.completed");
+  if (status === "failed") return t("setupPanel.status.failed");
+  return t("setupPanel.status.waiting");
 }
 
 function resolveCommandLog(
@@ -150,6 +152,7 @@ function buildCommandRowState(args: BuildCommandRowPropsArgs) {
 }
 
 function SetupPanel() {
+  const { t } = useTranslation("workspaces");
   const { serverId, target } = usePaneContext();
   invariant(target.kind === "setup", "SetupPanel requires setup target");
 
@@ -214,7 +217,7 @@ function SetupPanel() {
   }, []);
 
   const autoExpandIndex = resolveAutoExpandIndex(commands);
-  const statusLabel = resolveSetupStatusLabel(snapshot?.status);
+  const statusLabel = resolveSetupStatusLabel(snapshot?.status, t);
 
   return (
     <ScrollView
@@ -230,7 +233,7 @@ function SetupPanel() {
       {isWaiting ? (
         <View style={styles.waitingContainer}>
           <ThemedActivityIndicator size="large" uniProps={foregroundMutedColorMapping} />
-          <Text style={styles.waitingText}>Setting up workspace...</Text>
+          <Text style={styles.waitingText}>{t("setupPanel.settingUp")}</Text>
         </View>
       ) : null}
       {!isWaiting && hasNoSetupCommands ? (
@@ -238,9 +241,9 @@ function SetupPanel() {
           <Text
             style={styles.emptyText}
             accessible
-            accessibilityLabel="No setup commands ran for this workspace"
+            accessibilityLabel={t("setupPanel.noCommandsAccessibilityLabel")}
           >
-            No setup commands ran for this workspace.
+            {t("setupPanel.noCommands")}
           </Text>
         </View>
       ) : null}
@@ -303,6 +306,7 @@ function SetupCommandRow({
   errorMessage,
   onToggle,
 }: SetupCommandRowProps) {
+  const { t } = useTranslation("workspaces");
   const handlePress = useCallback(() => {
     if (!isExpandable) return;
     onToggle(command.index, isAutoExpanded);
@@ -348,7 +352,7 @@ function SetupCommandRow({
               showsVerticalScrollIndicator
               testID="workspace-setup-log"
               accessible
-              accessibilityLabel="Workspace setup log"
+              accessibilityLabel={t("setupPanel.logAccessibilityLabel")}
             >
               <Text selectable dataSet={CODE_SURFACE_DATASET} style={styles.logText}>
                 {processedLog}
@@ -359,9 +363,9 @@ function SetupCommandRow({
               style={styles.logScrollContent}
               testID="workspace-setup-log"
               accessible
-              accessibilityLabel="Workspace setup log"
+              accessibilityLabel={t("setupPanel.logAccessibilityLabel")}
             >
-              <Text style={styles.emptyLogText}>No output</Text>
+              <Text style={styles.emptyLogText}>{t("setupPanel.noOutput")}</Text>
             </View>
           )}
           {hasError && errorMessage ? (
@@ -394,6 +398,7 @@ function SetupCommandChevron({ showDetail }: { showDetail: boolean }) {
 }
 
 function StandaloneLogView({ commands, log }: { commands: SetupCommand[]; log: string }) {
+  const { t } = useTranslation("workspaces");
   if (commands.length !== 0 || log.trim().length === 0) return null;
   return (
     <ScrollView
@@ -402,7 +407,7 @@ function StandaloneLogView({ commands, log }: { commands: SetupCommand[]; log: s
       showsVerticalScrollIndicator
       testID="workspace-setup-log"
       accessible
-      accessibilityLabel="Workspace setup log"
+      accessibilityLabel={t("setupPanel.logAccessibilityLabel")}
     >
       <Text selectable dataSet={CODE_SURFACE_DATASET} style={styles.logText}>
         {log}

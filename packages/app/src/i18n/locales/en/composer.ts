@@ -55,6 +55,8 @@ export default {
     provider: {
       fallbackLabel: "Provider",
       selectAccessibilityLabel: "Select agent provider",
+      unavailable: "Unavailable",
+      unknownError: "Unknown error",
     },
     model: {
       selectAccessibilityLabel: "Select model",

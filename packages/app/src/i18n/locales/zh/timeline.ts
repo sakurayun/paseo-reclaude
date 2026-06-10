@@ -44,4 +44,10 @@ export default {
       output: "输出",
     },
   },
+  fileLink: {
+    notFound: "未找到与 {{token}} 对应的文件",
+  },
+  activityLog: {
+    unknownError: "未知错误",
+  },
 } as const;

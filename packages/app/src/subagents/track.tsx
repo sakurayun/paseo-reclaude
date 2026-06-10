@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState, type ReactElement } from "react";
+import { useTranslation } from "react-i18next";
 import { Pressable, ScrollView, Text, View, type PressableStateCallbackType } from "react-native";
 import { Archive, ChevronDown, ChevronRight } from "lucide-react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
@@ -179,6 +180,7 @@ function SubagentArchiveButton({
   visible: boolean;
   onPress: () => void;
 }): ReactElement {
+  const { t } = useTranslation("agents");
   return (
     <View
       style={visible ? styles.archiveSlotVisible : styles.archiveSlotHidden}
@@ -203,7 +205,7 @@ function SubagentArchiveButton({
           </Pressable>
         </TooltipTrigger>
         <TooltipContent side="top" align="center" offset={8}>
-          <Text style={styles.tooltipText}>Archive subagent</Text>
+          <Text style={styles.tooltipText}>{t("subagents.archiveTooltip")}</Text>
         </TooltipContent>
       </Tooltip>
     </View>
