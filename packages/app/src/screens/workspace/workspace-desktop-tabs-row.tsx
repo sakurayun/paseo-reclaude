@@ -841,9 +841,11 @@ function ResolvedDesktopTabChip({
   showDropIndicatorBefore: boolean;
   showDropIndicatorAfter: boolean;
 }) {
+  const { t } = useTranslation("workspaces");
   const resolvedTab = useMemo(
     () =>
       buildWorkspaceDesktopTabActions({
+        t,
         tab: item.tab,
         index,
         tabCount,
@@ -859,6 +861,7 @@ function ResolvedDesktopTabChip({
     [
       index,
       item.tab,
+      t,
       onCloseOtherTabs,
       onCloseTab,
       onCloseTabsToLeft,
@@ -879,7 +882,9 @@ function ResolvedDesktopTabChip({
     >
       {(presentation) => {
         const tooltipLabel =
-          presentation.titleState === "loading" ? "Loading agent title" : presentation.label;
+          presentation.titleState === "loading"
+            ? t("screen.tab.loadingAgentTitle")
+            : presentation.label;
 
         return (
           <View style={styles.tabSlot}>
