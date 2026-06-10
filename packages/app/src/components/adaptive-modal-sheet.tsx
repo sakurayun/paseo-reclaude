@@ -23,6 +23,7 @@ import {
 import { getCompactSheetSafeAreaPadding } from "@/components/adaptive-modal-sheet-layout";
 import { isNative, isWeb } from "@/constants/platform";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useTranslation } from "react-i18next";
 
 // Horizontal indent token shared by the sheet header (title, back arrow,
 // leading icon, search input icon) and any row primitive rendered inside the
@@ -304,6 +305,7 @@ export function SheetHeaderView({
   testID?: string;
 }) {
   const { theme } = useUnistyles();
+  const { t } = useTranslation();
   const titleStyle = useMemo(
     () => [styles.title, { color: theme.colors.foreground }],
     [theme.colors.foreground],
@@ -327,7 +329,7 @@ export function SheetHeaderView({
             hitSlop={8}
             style={styles.headerBackButton}
             accessibilityRole="button"
-            accessibilityLabel={back?.accessibilityLabel ?? back?.label ?? "Back"}
+            accessibilityLabel={back?.accessibilityLabel ?? back?.label ?? t("action.back")}
             testID="sheet-header-back"
           >
             {({ pressed }) => (
@@ -347,7 +349,11 @@ export function SheetHeaderView({
         </View>
         {header.actions ? <View style={styles.headerActions}>{header.actions}</View> : null}
         {showCloseButton ? (
-          <Pressable accessibilityLabel="Close" style={styles.closeButton} onPress={onClose}>
+          <Pressable
+            accessibilityLabel={t("action.close")}
+            style={styles.closeButton}
+            onPress={onClose}
+          >
             {({ pressed }) => (
               <X
                 size={16}
@@ -363,7 +369,7 @@ export function SheetHeaderView({
           <AdaptiveTextInput
             // @ts-expect-error - outlineStyle is web-only
             style={SEARCH_INPUT_STYLE}
-            placeholder={search.placeholder ?? "Search"}
+            placeholder={search.placeholder ?? t("action.search")}
             resetKey={search.resetKey}
             onChangeText={handleSearchChange}
             autoCapitalize="none"
@@ -379,6 +385,7 @@ export function SheetHeaderView({
 
 export function InlineHeaderView({ header }: { header: SheetHeader }) {
   const { theme } = useUnistyles();
+  const { t } = useTranslation();
   const back = header.back;
   const handleBackPress = back?.onPress;
   const hasInlineRow = Boolean(handleBackPress || header.leading || header.actions);
@@ -393,7 +400,7 @@ export function InlineHeaderView({ header }: { header: SheetHeader }) {
               hitSlop={8}
               style={styles.headerBackButton}
               accessibilityRole="button"
-              accessibilityLabel={back?.accessibilityLabel ?? back?.label ?? "Back"}
+              accessibilityLabel={back?.accessibilityLabel ?? back?.label ?? t("action.back")}
               testID="sheet-header-back"
             >
               {({ pressed }) => (
@@ -417,7 +424,7 @@ export function InlineHeaderView({ header }: { header: SheetHeader }) {
           <AdaptiveTextInput
             // @ts-expect-error - outlineStyle is web-only
             style={SEARCH_INPUT_STYLE}
-            placeholder={header.search.placeholder ?? "Search"}
+            placeholder={header.search.placeholder ?? t("action.search")}
             resetKey={header.search.resetKey}
             onChangeText={header.search.onChange}
             autoCapitalize="none"

@@ -1,4 +1,5 @@
 import { useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import { useMutation } from "@tanstack/react-query";
 import { useToast } from "@/contexts/toast-context";
 import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
@@ -24,6 +25,7 @@ export function useRewindAgentMutation(input: UseRewindAgentMutationInput): {
   rewindAgent: (input: RewindAgentInput) => Promise<void>;
   isPending: boolean;
 } {
+  const { t } = useTranslation("app");
   const toast = useToast();
   const composerRestore = useRewindComposerRestore();
   const { isPending, mutateAsync } = useMutation({
@@ -59,7 +61,7 @@ export function useRewindAgentMutation(input: UseRewindAgentMutationInput): {
       composerRestore?.restoreTextIfComposerEmpty(variables.rewoundText);
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : "Failed to rewind agent");
+      toast.error(error instanceof Error ? error.message : t("rewind.failedError"));
     },
   });
 

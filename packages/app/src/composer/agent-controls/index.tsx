@@ -868,7 +868,7 @@ function DesktopAgentControlsContent(props: DesktopAgentControlsContentProps) {
             </View>
           </TooltipTrigger>
           <TooltipContent side="top" align="center" offset={8}>
-            <Text style={styles.tooltipText}>{getAgentControlHint("model")}</Text>
+            <Text style={styles.tooltipText}>{getAgentControlHint("model", t)}</Text>
           </TooltipContent>
         </Tooltip>
       ) : null}
@@ -895,7 +895,7 @@ function DesktopAgentControlsContent(props: DesktopAgentControlsContentProps) {
               </Pressable>
             </TooltipTrigger>
             <TooltipContent side="top" align="center" offset={8}>
-              <Text style={styles.tooltipText}>{getAgentControlHint("thinking")}</Text>
+              <Text style={styles.tooltipText}>{getAgentControlHint("thinking", t)}</Text>
             </TooltipContent>
           </Tooltip>
           <Combobox
@@ -1474,6 +1474,7 @@ export const AgentControls = memo(function AgentControls({
     runtimeModelId: agent?.runtimeModelId,
     configuredModelId: agent?.model,
     explicitThinkingOptionId: agent?.thinkingOptionId,
+    t,
   });
 
   const modelOptions = useMemo<AgentControlOption[]>(() => {

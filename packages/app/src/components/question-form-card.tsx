@@ -7,6 +7,7 @@ import {
   ActivityIndicator,
   type PressableStateCallbackType,
 } from "react-native";
+import { useTranslation } from "react-i18next";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { Check, X } from "lucide-react-native";
@@ -237,6 +238,7 @@ function QuestionOtherInput({
 }
 
 export function QuestionFormCard({ permission, onRespond, isResponding }: QuestionFormCardProps) {
+  const { t } = useTranslation();
   const { theme } = useUnistyles();
   const isMobile = useIsCompactFormFactor();
   const questions = useMemo(
@@ -488,7 +490,7 @@ export function QuestionFormCard({ permission, onRespond, isResponding }: Questi
           onPress={handleSubmit}
           disabled={submitDisabled}
           accessibilityRole="button"
-          accessibilityLabel="Submit"
+          accessibilityLabel={t("action.submit")}
           testID="question-form-primary-action"
         >
           {respondingAction === "submit" ? (
@@ -496,7 +498,7 @@ export function QuestionFormCard({ permission, onRespond, isResponding }: Questi
           ) : (
             <View style={styles.actionContent}>
               <Check size={14} color={submitActionTextColor} />
-              <Text style={submitActionTextStyle}>Submit</Text>
+              <Text style={submitActionTextStyle}>{t("action.submit")}</Text>
             </View>
           )}
         </Pressable>

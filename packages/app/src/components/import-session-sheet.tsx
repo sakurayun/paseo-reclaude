@@ -198,8 +198,8 @@ function ImportSessionSheetRow({
 }) {
   const { theme } = useUnistyles();
   const { t } = useTranslation("app");
-  const title = getSessionTitle(entry);
-  const promptPreview = getPromptPreview(entry);
+  const title = getSessionTitle(entry, t);
+  const promptPreview = getPromptPreview(entry, t);
   const lastActivity = formatTimeAgo(new Date(entry.lastActivityAt));
   const ProviderIcon = getProviderIcon(entry.providerId);
   const accessibilityState = useMemo(

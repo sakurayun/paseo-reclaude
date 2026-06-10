@@ -11,6 +11,8 @@ export default {
     add: "添加",
     copy: "复制",
     copied: "已复制",
+    copyCode: "复制代码",
+    submit: "提交",
     retry: "重试",
     confirm: "确认",
     dismiss: "忽略",
@@ -21,7 +23,11 @@ export default {
   state: {
     loading: "加载中…",
     error: "错误",
+    errorWithMessage: "错误：{{message}}",
     empty: "暂无内容",
+  },
+  menu: {
+    backdropAccessibilityLabel: "菜单背景",
   },
   term: {
     project: "项目",

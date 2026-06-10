@@ -1194,6 +1194,7 @@ export function Composer({
         },
         setSendError,
         setIsProcessing,
+        fallbackErrorMessage: t("flow.sendMessageFailedError"),
         onSubmitError: (error) => {
           console.error("[AgentInput] Failed to send message:", error);
         },
@@ -1214,6 +1215,7 @@ export function Composer({
       setUserInput,
       submitBehavior,
       submitMessage,
+      t,
     ],
   );
 

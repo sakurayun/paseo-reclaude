@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useRef } from "react";
 import { Pressable, View, type PressableStateCallbackType } from "react-native";
 import { useQueryClient } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
 import { ChevronDown, GitBranch } from "lucide-react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { Combobox, ComboboxItem } from "@/components/ui/combobox";
@@ -26,6 +27,7 @@ export function BranchSwitcher({
   workspaceId,
   isGitCheckout,
 }: BranchSwitcherProps) {
+  const { t } = useTranslation("app");
   const { theme } = useUnistyles();
   const isCompact = useIsCompactFormFactor();
   const anchorRef = useRef<View>(null);
@@ -91,7 +93,9 @@ export function BranchSwitcher({
         onPress={handleOpen}
         style={triggerStyle}
         accessibilityRole="button"
-        accessibilityLabel={`Current branch: ${currentBranchName}. Press to switch branch.`}
+        accessibilityLabel={t("branchSwitcher.triggerAccessibilityLabel", {
+          branch: currentBranchName,
+        })}
       >
         {titleContent}
         {!isCompact ? <ChevronDown size={12} color={theme.colors.foregroundMuted} /> : null}
@@ -101,10 +105,10 @@ export function BranchSwitcher({
         value={currentBranchName}
         onSelect={handleBranchSelect}
         searchable
-        placeholder="Switch branch..."
-        searchPlaceholder="Filter branches..."
-        emptyText="No branches found."
-        title="Switch branch"
+        placeholder={t("branchSwitcher.placeholder")}
+        searchPlaceholder={t("branchSwitcher.searchPlaceholder")}
+        emptyText={t("branchSwitcher.emptyText")}
+        title={t("branchSwitcher.title")}
         open={isOpen}
         onOpenChange={setIsOpen}
         anchorRef={anchorRef}

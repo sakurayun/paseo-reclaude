@@ -44,14 +44,21 @@ export default {
       accessibilityLabel: "Import session",
       label: "Import session",
     },
+    agentTitle: "Agent",
   },
   controls: {
+    hints: {
+      thinking: "Thinking mode",
+      model: "Change model",
+      mode: "Change permission mode",
+    },
     provider: {
       fallbackLabel: "Provider",
       selectAccessibilityLabel: "Select agent provider",
     },
     model: {
       selectAccessibilityLabel: "Select model",
+      unknownLabel: "Unknown model",
     },
     mode: {
       sheetTitle: "Mode",

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Modal, Pressable, Text, View } from "react-native";
+import { useTranslation } from "react-i18next";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Image as ExpoImage } from "expo-image";
@@ -14,6 +15,7 @@ interface AttachmentLightboxProps {
 }
 
 export function AttachmentLightbox({ metadata, onClose }: AttachmentLightboxProps) {
+  const { t } = useTranslation("app");
   const { theme } = useUnistyles();
   const insets = useSafeAreaInsets();
   const url = useAttachmentPreviewUrl(metadata);
@@ -63,14 +65,14 @@ export function AttachmentLightbox({ metadata, onClose }: AttachmentLightboxProp
         <Pressable
           testID="attachment-lightbox-backdrop"
           accessibilityRole="button"
-          accessibilityLabel="Dismiss image"
+          accessibilityLabel={t("attachmentLightbox.dismissAccessibilityLabel")}
           onPress={onClose}
           style={styles.backdrop}
         />
         <View style={styles.contentLayer}>
           <View style={styles.imageArea}>
             {hasError ? (
-              <Text style={styles.errorText}>Couldn&apos;t load image</Text>
+              <Text style={styles.errorText}>{t("attachmentLightbox.loadError")}</Text>
             ) : (
               <Pressable onPress={noopPress} style={styles.imagePressable}>
                 <ExpoImage
@@ -86,7 +88,7 @@ export function AttachmentLightbox({ metadata, onClose }: AttachmentLightboxProp
           <Pressable
             testID="attachment-lightbox-close"
             accessibilityRole="button"
-            accessibilityLabel="Close image"
+            accessibilityLabel={t("attachmentLightbox.closeAccessibilityLabel")}
             hitSlop={8}
             onPress={onClose}
             style={closeButtonStyle}

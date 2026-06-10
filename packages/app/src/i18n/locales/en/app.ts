@@ -112,6 +112,8 @@ export default {
     filterByProvider: "Filter by provider",
     filterAccessibility: "Filter: {{label}}",
     importing: "Importing...",
+    untitledSession: "Untitled session",
+    noPromptPreview: "No prompt preview",
     status: {
       connectToHost: "Connect to a host to import sessions",
       updateHost: "Update the host to import sessions.",
@@ -166,6 +168,7 @@ export default {
   rewind: {
     tooltip: "Rewind to this message",
     warning: "This action cannot be undone",
+    failedError: "Failed to rewind agent",
     mode: {
       conversation: "Rewind conversation",
       files: "Rewind files",
@@ -238,6 +241,11 @@ export default {
     },
   },
   branchSwitcher: {
+    triggerAccessibilityLabel: "Current branch: {{branch}}. Press to switch branch.",
+    placeholder: "Switch branch...",
+    searchPlaceholder: "Filter branches...",
+    emptyText: "No branches found.",
+    title: "Switch branch",
     error: {
       daemonUnavailable: "Daemon client unavailable",
       stashFailed: "Failed to stash changes",
@@ -259,6 +267,11 @@ export default {
     toast: {
       stashRestored: "Stashed changes restored",
     },
+  },
+  attachmentLightbox: {
+    dismissAccessibilityLabel: "Dismiss image",
+    loadError: "Couldn't load image",
+    closeAccessibilityLabel: "Close image",
   },
   imagePicker: {
     permission: {

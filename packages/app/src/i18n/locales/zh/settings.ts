@@ -401,6 +401,7 @@ export default {
       updated: "更新于 {{time}}",
       removeModel: "移除 {{modelId}}",
       cancel: "取消",
+      unknownError: "未知错误",
     },
     addModel: {
       title: "添加自定义模型",
@@ -425,6 +426,7 @@ export default {
       refreshing: "正在刷新诊断",
       running: "正在运行诊断…",
       unavailable: "暂无诊断信息",
+      fetchError: "获取诊断信息失败",
     },
     catalog: {
       search: "搜索提供方",

@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, View, type StyleProp, type TextStyle, type ViewStyle } from "react-native";
+import { useTranslation } from "react-i18next";
 import { StyleSheet } from "react-native-unistyles";
 import { MarkdownTextSpan } from "@/components/markdown-text";
 import * as Clipboard from "expo-clipboard";
@@ -153,6 +154,7 @@ interface CopyButtonProps {
 const COPIED_RESET_MS = 1500;
 
 const CopyButton = React.memo(function CopyButton({ getCode, visible }: CopyButtonProps) {
+  const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
   const resetRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -189,7 +191,7 @@ const CopyButton = React.memo(function CopyButton({ getCode, visible }: CopyButt
       style={wrapperStyle}
       pointerEvents={visible ? "auto" : "none"}
       accessibilityRole="button"
-      accessibilityLabel={copied ? "Copied" : "Copy code"}
+      accessibilityLabel={copied ? t("action.copied") : t("action.copyCode")}
       hitSlop={8}
     >
       {({ hovered }) => {

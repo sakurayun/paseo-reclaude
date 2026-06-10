@@ -13,6 +13,8 @@ export default {
     add: "Add",
     copy: "Copy",
     copied: "Copied",
+    copyCode: "Copy code",
+    submit: "Submit",
     retry: "Retry",
     confirm: "Confirm",
     dismiss: "Dismiss",
@@ -23,7 +25,11 @@ export default {
   state: {
     loading: "Loading…",
     error: "Error",
+    errorWithMessage: "Error: {{message}}",
     empty: "Nothing here yet",
+  },
+  menu: {
+    backdropAccessibilityLabel: "Menu backdrop",
   },
   // Canonical product terminology (docs/glossary.md). Referenced from other keys via
   // i18next nesting — `$t(common:term.workspace)` — so every locale stays 1:1 consistent.

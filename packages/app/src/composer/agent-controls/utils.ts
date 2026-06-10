@@ -1,3 +1,5 @@
+import type { TFunction } from "i18next";
+
 import type { AgentFeature, AgentModelDefinition } from "@getpaseo/protocol/agent-types";
 
 const CLAUDE_ULTRACODE_FEATURE_ID = "ultracode";
@@ -6,14 +8,17 @@ const CLAUDE_ULTRACODE_THINKING_OPTION_ID = "xhigh";
 export type ExplainedAgentControl = "mode" | "model" | "thinking";
 export type FeatureHighlightColor = "blue" | "default" | "green" | "purple" | "yellow";
 
-export function getAgentControlHint(selector: ExplainedAgentControl): string {
+export function getAgentControlHint(
+  selector: ExplainedAgentControl,
+  t?: TFunction<"composer">,
+): string {
   switch (selector) {
     case "thinking":
-      return "Thinking mode";
+      return t ? t("controls.hints.thinking") : "Thinking mode";
     case "model":
-      return "Change model";
+      return t ? t("controls.hints.model") : "Change model";
     case "mode":
-      return "Change permission mode";
+      return t ? t("controls.hints.mode") : "Change permission mode";
     default:
       throw new Error("unreachable");
   }
@@ -180,17 +185,20 @@ function resolveModelDisplay(
   selectedModel: AgentModelDefinition | null,
   preferredModelId: string | null,
   fallbackModel: AgentModelDefinition | null,
+  t?: TFunction<"composer">,
 ): { activeModelId: string | null; displayModel: string } {
+  const unknownModelLabel = t ? t("controls.model.unknownLabel") : "Unknown model";
   return {
     activeModelId: selectedModel?.id ?? preferredModelId ?? null,
     displayModel:
-      selectedModel?.label ?? preferredModelId ?? fallbackModel?.label ?? "Unknown model",
+      selectedModel?.label ?? preferredModelId ?? fallbackModel?.label ?? unknownModelLabel,
   };
 }
 
 function resolveThinkingDisplay(
   effectiveThinking: ThinkingOption | null,
   selectedThinkingId: string | null,
+  t?: TFunction<"composer">,
 ): string {
   if (effectiveThinking) {
     return formatThinkingOptionLabel(effectiveThinking);
@@ -200,7 +208,7 @@ function resolveThinkingDisplay(
     return formatThinkingOptionLabel({ id: selectedThinkingId });
   }
 
-  return "Unknown";
+  return t ? t("controls.thinking.unknownLabel") : "Unknown";
 }
 
 export function resolveAgentModelSelection(input: {
@@ -208,8 +216,9 @@ export function resolveAgentModelSelection(input: {
   runtimeModelId: string | null | undefined;
   configuredModelId: string | null | undefined;
   explicitThinkingOptionId: string | null | undefined;
+  t?: TFunction<"composer">;
 }) {
-  const { models, runtimeModelId, configuredModelId, explicitThinkingOptionId } = input;
+  const { models, runtimeModelId, configuredModelId, explicitThinkingOptionId, t } = input;
   const normalizedRuntimeModelId = normalizeModelId(runtimeModelId);
   const normalizedConfiguredModelId = normalizeModelId(configuredModelId);
 
@@ -226,13 +235,14 @@ export function resolveAgentModelSelection(input: {
     selectedModel,
     preferredModelId,
     fallbackModel,
+    t,
   );
 
   const thinkingOptions = selectedModel?.thinkingOptions ?? null;
   const resolvedThinkingId = resolveThinkingId(explicitThinkingOptionId, selectedModel);
   const effectiveThinking = resolveEffectiveThinking(thinkingOptions, resolvedThinkingId);
   const selectedThinkingId = effectiveThinking?.id ?? null;
-  const displayThinking = resolveThinkingDisplay(effectiveThinking, selectedThinkingId);
+  const displayThinking = resolveThinkingDisplay(effectiveThinking, selectedThinkingId, t);
 
   return {
     selectedModel,

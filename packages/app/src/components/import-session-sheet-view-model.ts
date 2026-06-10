@@ -1,3 +1,4 @@
+import type { TFunction } from "i18next";
 import type { FetchRecentProviderSessionEntry } from "@getpaseo/client/internal/daemon-client";
 import type { AgentProvider } from "@getpaseo/protocol/agent-types";
 
@@ -88,7 +89,10 @@ export function collectErroredProviderLabels(
   return labels;
 }
 
-export function getSessionTitle(entry: FetchRecentProviderSessionEntry): string {
+export function getSessionTitle(
+  entry: FetchRecentProviderSessionEntry,
+  t?: TFunction<"app">,
+): string {
   const title = entry.title?.trim();
   if (title) {
     return title;
@@ -97,11 +101,18 @@ export function getSessionTitle(entry: FetchRecentProviderSessionEntry): string 
   if (firstPromptPreview) {
     return firstPromptPreview;
   }
-  return "Untitled session";
+  return t ? t("importSession.untitledSession") : "Untitled session";
 }
 
-export function getPromptPreview(entry: FetchRecentProviderSessionEntry): string {
-  return entry.lastPromptPreview?.trim() || entry.firstPromptPreview?.trim() || "No prompt preview";
+export function getPromptPreview(
+  entry: FetchRecentProviderSessionEntry,
+  t?: TFunction<"app">,
+): string {
+  return (
+    entry.lastPromptPreview?.trim() ||
+    entry.firstPromptPreview?.trim() ||
+    (t ? t("importSession.noPromptPreview") : "No prompt preview")
+  );
 }
 
 export interface EmptyStateInputs {

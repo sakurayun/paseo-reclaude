@@ -44,14 +44,21 @@ export default {
       accessibilityLabel: "导入会话",
       label: "导入会话",
     },
+    agentTitle: "Agent",
   },
   controls: {
+    hints: {
+      thinking: "思考模式",
+      model: "更换模型",
+      mode: "更改权限模式",
+    },
     provider: {
       fallbackLabel: "提供方",
       selectAccessibilityLabel: "选择 Agent 提供方",
     },
     model: {
       selectAccessibilityLabel: "选择模型",
+      unknownLabel: "未知模型",
     },
     mode: {
       sheetTitle: "模式",

@@ -15,6 +15,7 @@ export interface AgentInputSubmitActionInput<TAttachment> {
   setUserInput: (text: string) => void;
   setAttachments: (attachments: TAttachment[]) => void;
   setSendError: (message: string | null) => void;
+  fallbackErrorMessage?: string;
   setIsProcessing: (isProcessing: boolean) => void;
   onSubmitError?: (error: unknown) => void;
 }
@@ -67,7 +68,11 @@ export async function submitAgentInput<TAttachment>(
       input.setUserInput(trimmedMessage);
       input.setAttachments(attachments);
     }
-    input.setSendError(error instanceof Error ? error.message : "Failed to send message");
+    input.setSendError(
+      error instanceof Error
+        ? error.message
+        : (input.fallbackErrorMessage ?? "Failed to send message"),
+    );
     input.setIsProcessing(false);
     return "failed";
   }

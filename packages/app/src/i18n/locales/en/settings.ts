@@ -407,6 +407,7 @@ export default {
       updated: "Updated {{time}}",
       removeModel: "Remove {{modelId}}",
       cancel: "Cancel",
+      unknownError: "Unknown error",
     },
     addModel: {
       title: "Add custom model",
@@ -431,6 +432,7 @@ export default {
       refreshing: "Refreshing diagnostic",
       running: "Running diagnostic…",
       unavailable: "No diagnostic available",
+      fetchError: "Failed to fetch diagnostic",
     },
     catalog: {
       search: "Search providers",

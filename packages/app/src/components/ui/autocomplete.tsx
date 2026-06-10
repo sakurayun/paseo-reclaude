@@ -9,6 +9,7 @@ import {
   type NativeSyntheticEvent,
   type PressableStateCallbackType,
 } from "react-native";
+import { useTranslation } from "react-i18next";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { File, Folder } from "lucide-react-native";
 import type { Theme } from "@/styles/theme";
@@ -126,6 +127,7 @@ export function Autocomplete({
   emptyText = "No results found",
   maxHeight = 220,
 }: AutocompleteProps) {
+  const { t } = useTranslation();
   const { theme } = useUnistyles();
   const scrollRef = useRef<ScrollView>(null);
   const rowLayoutsRef = useRef<Map<number, { top: number; height: number }>>(new Map());
@@ -223,7 +225,9 @@ export function Autocomplete({
     return (
       <View style={containerStyle}>
         <View style={styles.emptyItem}>
-          <Text style={styles.emptyText}>Error: {errorMessage}</Text>
+          <Text style={styles.emptyText}>
+            {t("state.errorWithMessage", { message: errorMessage })}
+          </Text>
         </View>
       </View>
     );

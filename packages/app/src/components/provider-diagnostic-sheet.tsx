@@ -360,11 +360,11 @@ function DiagnosticSubSheet({
       const result = await client.getProviderDiagnostic(provider);
       setDiagnostic(result.diagnostic);
     } catch (err) {
-      setDiagnostic(err instanceof Error ? err.message : "Failed to fetch diagnostic");
+      setDiagnostic(err instanceof Error ? err.message : t("providers.diagnostic.fetchError"));
     } finally {
       setLoading(false);
     }
-  }, [client, provider]);
+  }, [client, provider, t]);
 
   useEffect(() => {
     if (visible) {
@@ -662,7 +662,9 @@ export function ProviderDiagnosticSheet({
   );
   const providerSnapshotRefreshing = providerEntry?.status === "loading";
   const providerErrorMessage =
-    providerEntry?.status === "error" ? (providerEntry.error ?? "Unknown error") : null;
+    providerEntry?.status === "error"
+      ? (providerEntry.error ?? t("providers.sheet.unknownError"))
+      : null;
   const modelsRefreshing = isRefreshing || providerSnapshotRefreshing;
 
   const stableDiscoveredRef = useRef<AgentModelDefinition[]>([]);

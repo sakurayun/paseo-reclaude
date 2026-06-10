@@ -112,6 +112,8 @@ export default {
     filterByProvider: "按提供方筛选",
     filterAccessibility: "筛选：{{label}}",
     importing: "正在导入……",
+    untitledSession: "未命名会话",
+    noPromptPreview: "暂无提示词预览",
     status: {
       connectToHost: "请连接到主机以导入会话",
       updateHost: "请更新主机以导入会话。",
@@ -166,6 +168,7 @@ export default {
   rewind: {
     tooltip: "回溯到此消息",
     warning: "此操作无法撤销",
+    failedError: "回溯 Agent 失败",
     mode: {
       conversation: "回溯对话",
       files: "回溯文件",
@@ -238,6 +241,11 @@ export default {
     },
   },
   branchSwitcher: {
+    triggerAccessibilityLabel: "当前分支：{{branch}}。点按以切换分支。",
+    placeholder: "切换分支……",
+    searchPlaceholder: "筛选分支……",
+    emptyText: "未找到分支。",
+    title: "切换分支",
     error: {
       daemonUnavailable: "守护进程客户端不可用",
       stashFailed: "暂存更改失败",
@@ -258,6 +266,11 @@ export default {
     toast: {
       stashRestored: "已恢复暂存的更改",
     },
+  },
+  attachmentLightbox: {
+    dismissAccessibilityLabel: "关闭图片",
+    loadError: "无法加载图片",
+    closeAccessibilityLabel: "关闭图片",
   },
   imagePicker: {
     permission: {

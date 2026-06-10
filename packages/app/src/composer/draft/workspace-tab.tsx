@@ -236,7 +236,7 @@ function buildDraftAgentSnapshot(input: {
     pendingPermissions: [],
     persistence: null,
     runtimeInfo: { provider, sessionId: null, model, modeId },
-    title: "Agent",
+    title: t("draft.agentTitle"),
     cwd: workspaceDirectory,
     model,
     features: composerState.agentControls.features,
