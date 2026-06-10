@@ -201,16 +201,15 @@ function PushNotificationRouter() {
         | Record<string, unknown>
         | undefined;
       openNotification(data);
+      Notifications.clearLastNotificationResponse();
     };
 
     const subscription = Notifications.addNotificationResponseReceivedListener(openFromResponse);
 
-    void Notifications.getLastNotificationResponseAsync().then((response) => {
-      if (response) {
-        openFromResponse(response);
-      }
-      return;
-    });
+    const response = Notifications.getLastNotificationResponse();
+    if (response) {
+      openFromResponse(response);
+    }
 
     return () => {
       subscription.remove();
