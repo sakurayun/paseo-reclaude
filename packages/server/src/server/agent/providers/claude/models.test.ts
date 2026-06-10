@@ -550,12 +550,6 @@ describe("ClaudeAgentClient.listModels", () => {
         id: "openrouter/anthropic/claude-sonnet-4.5",
         label: "openrouter/anthropic/claude-sonnet-4.5",
         description: "From Claude settings.json env.ANTHROPIC_MODEL",
-        thinkingOptions: [
-          { id: "low", label: "Low" },
-          { id: "medium", label: "Medium" },
-          { id: "high", label: "High" },
-          { id: "max", label: "Max" },
-        ],
       },
       {
         provider: "claude",
@@ -649,6 +643,7 @@ describe("ClaudeAgentClient.listModels", () => {
 
 describe("normalizeClaudeRuntimeModelId", () => {
   it("returns exact match for known model IDs", () => {
+    expect(normalizeClaudeRuntimeModelId("claude-fable-5")).toBe("claude-fable-5");
     expect(normalizeClaudeRuntimeModelId("claude-opus-4-6")).toBe("claude-opus-4-6");
     expect(normalizeClaudeRuntimeModelId("claude-opus-4-6[1m]")).toBe("claude-opus-4-6[1m]");
     expect(normalizeClaudeRuntimeModelId("claude-sonnet-4-6")).toBe("claude-sonnet-4-6");
@@ -656,6 +651,7 @@ describe("normalizeClaudeRuntimeModelId", () => {
   });
 
   it("normalizes dated model IDs to base model", () => {
+    expect(normalizeClaudeRuntimeModelId("claude-fable-5-20260301")).toBe("claude-fable-5");
     expect(normalizeClaudeRuntimeModelId("claude-opus-4-6-20260101")).toBe("claude-opus-4-6");
     expect(normalizeClaudeRuntimeModelId("claude-sonnet-4-6-20260101")).toBe("claude-sonnet-4-6");
     expect(normalizeClaudeRuntimeModelId("claude-haiku-4-5-20251001")).toBe("claude-haiku-4-5");

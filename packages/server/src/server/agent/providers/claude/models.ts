@@ -64,7 +64,7 @@ const CLAUDE_MODELS: AgentModelDefinition[] = [
     provider: "claude",
     id: "claude-fable-5",
     label: "Fable 5",
-    description: "Fable 5 · Newest model",
+    description: "Fable 5 · Most powerful model",
     thinkingOptions: [...CLAUDE_EXTENDED_THINKING_OPTIONS],
   },
   {
@@ -286,12 +286,17 @@ function inferClaudeThinkingOptions(
   if (lowered.includes("fable")) {
     return [...CLAUDE_EXTENDED_THINKING_OPTIONS];
   }
-  const opusMatch = lowered.match(/opus[-_ ]+(\d+)[-.](\d+)/);
-  if (opusMatch) {
-    const major = Number(opusMatch[1]);
-    const minor = Number(opusMatch[2]);
+  const versionMatch = lowered.match(/(opus|sonnet)[-_ ]+(\d+)[-.](\d{1,2})(?!\d)/);
+  if (versionMatch) {
+    const family = versionMatch[1];
+    const major = Number(versionMatch[2]);
+    const minor = Number(versionMatch[3]);
+    // Claude Code documents effort support from Opus 4.6 and Sonnet 4.6 onward.
+    if (major < 4 || (major === 4 && minor < 6)) {
+      return null;
+    }
     // Opus 4.7+ supports the extra-high effort level
-    const supportsXhigh = major > 4 || (major === 4 && minor >= 7);
+    const supportsXhigh = family === "opus" && (major > 4 || minor >= 7);
     return supportsXhigh ? [...CLAUDE_EXTENDED_THINKING_OPTIONS] : [...CLAUDE_THINKING_OPTIONS];
   }
   if (lowered.includes("opus") || lowered.includes("sonnet")) {
