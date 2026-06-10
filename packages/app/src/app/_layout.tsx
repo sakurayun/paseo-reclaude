@@ -23,6 +23,7 @@ import { Extrapolation, interpolate, runOnJS, useSharedValue } from "react-nativ
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { StyleSheet, UnistylesRuntime, useUnistyles } from "react-native-unistyles";
 import { CommandCenter } from "@/components/command-center";
+import { GrabRoot, GrabScreen } from "@/components/grab-devtool";
 import { WorktreeSetupCalloutSource } from "@/components/worktree-setup-callout-source";
 import { DownloadToast } from "@/components/download-toast";
 import { QuittingOverlay } from "@/components/quitting-overlay";
@@ -861,6 +862,14 @@ function FaviconStatusSync() {
 
 const AGENT_SCREEN_OPTIONS = { gestureEnabled: false };
 
+// Wraps every route for react-native-grab element selection. Screens render
+// in native-stack containers outside the root grab owner, so each one needs
+// its own owner; `screenLayout` applies it navigator-wide. Passthrough on
+// web and in production builds.
+const renderGrabScreenLayout = ({ children }: { children: ReactNode }) => (
+  <GrabScreen>{children}</GrabScreen>
+);
+
 function RootStack() {
   const storeReady = useStoreReady();
   const { theme } = useUnistyles();
@@ -875,7 +884,7 @@ function RootStack() {
     [theme.colors.surface0],
   );
   return (
-    <Stack screenOptions={stackScreenOptions}>
+    <Stack screenOptions={stackScreenOptions} screenLayout={renderGrabScreenLayout}>
       <Stack.Screen name="index" />
       <Stack.Protected guard={storeReady}>
         <Stack.Screen name="welcome" />
@@ -953,13 +962,15 @@ function RootProviders({ children }: { children: ReactNode }) {
 export default function RootLayout() {
   return (
     <GestureHandlerRootView style={flexStyle}>
-      <View style={layoutStyles.surfaceFill}>
-        <RootProviders>
-          <RuntimeProviders>
-            <AppShell />
-          </RuntimeProviders>
-        </RootProviders>
-      </View>
+      <GrabRoot>
+        <View style={layoutStyles.surfaceFill}>
+          <RootProviders>
+            <RuntimeProviders>
+              <AppShell />
+            </RuntimeProviders>
+          </RootProviders>
+        </View>
+      </GrabRoot>
     </GestureHandlerRootView>
   );
 }

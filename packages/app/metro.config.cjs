@@ -1,4 +1,5 @@
 const { getDefaultConfig } = require("expo/metro-config");
+const { withReactNativeGrab } = require("react-native-grab/metro");
 const { resolve } = require("metro-resolver");
 const fs = require("fs");
 const path = require("path");
@@ -78,4 +79,6 @@ config.resolver.resolveRequest = (context, moduleName, platform) => {
   return resolveWithCustomWebOverlay(context, moduleName, platform);
 };
 
-module.exports = config;
+// Dev-only middleware for react-native-grab (element selection → clipboard
+// context for agents). Preserves the resolver/middleware configured above.
+module.exports = withReactNativeGrab(config);

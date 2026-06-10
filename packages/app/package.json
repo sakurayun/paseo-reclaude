@@ -97,6 +97,7 @@
     "react-native-draggable-flatlist": "^4.0.3",
     "react-native-edge-to-edge": "^1.7.0",
     "react-native-gesture-handler": "~2.28.0",
+    "react-native-grab": "^1.1.1",
     "react-native-keyboard-controller": "^1.19.2",
     "react-native-markdown-display": "^7.0.2",
     "react-native-nitro-modules": "0.35.5",
