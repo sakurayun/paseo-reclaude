@@ -77,8 +77,8 @@ export interface BuildGitActionsInput {
   baseRefLabel: string;
   aheadCount: number;
   behindBaseCount: number;
-  aheadOfOrigin: number;
-  behindOfOrigin: number;
+  aheadOfOrigin: number | null;
+  behindOfOrigin: number | null;
   shouldPromoteArchive: boolean;
   shipDefault: "merge" | "pr";
   runtime: Record<GitActionId, GitActionRuntimeState>;
@@ -508,11 +508,20 @@ function buildDisablePullRequestAutoMergeAction(
 }
 
 function canPull(input: BuildGitActionsInput): boolean {
-  return input.hasRemote && !input.hasUncommittedChanges && input.behindOfOrigin > 0;
+  return input.hasRemote && !input.hasUncommittedChanges && (input.behindOfOrigin ?? 0) > 0;
 }
 
 function canPush(input: BuildGitActionsInput): boolean {
-  return input.hasRemote && input.aheadOfOrigin > 0 && input.behindOfOrigin === 0;
+  return input.hasRemote && hasPushableCommits(input) && (input.behindOfOrigin ?? 0) === 0;
+}
+
+function hasPushableCommits(input: BuildGitActionsInput): boolean {
+  if ((input.aheadOfOrigin ?? 0) > 0) {
+    return true;
+  }
+  // No-upstream Paseo worktrees are first-pushable: the daemon push sets upstream with `git push -u`.
+  // Do not fold this into aheadOfOrigin; null also covers deleted/pruned upstream branches.
+  return input.isPaseoOwnedWorktree && input.aheadOfOrigin === null && input.aheadCount > 0;
 }
 
 function canMergeFromBase(input: BuildGitActionsInput): boolean {
@@ -609,6 +618,9 @@ function getPullUnavailableMessage(
   if (input.hasUncommittedChanges) {
     return t("policy.unavailable.pullLocalChanges");
   }
+  if (input.behindOfOrigin === null) {
+    return t("policy.unavailable.pullNoRemote");
+  }
   if (input.behindOfOrigin === 0) {
     return t("policy.unavailable.pullUpToDate");
   }
@@ -622,10 +634,10 @@ function getPushUnavailableMessage(
   if (!input.hasRemote) {
     return t("policy.unavailable.pushNoRemote");
   }
-  if (input.behindOfOrigin > 0) {
+  if ((input.behindOfOrigin ?? 0) > 0) {
     return t("policy.unavailable.pushBehind");
   }
-  if (input.aheadOfOrigin === 0) {
+  if (!hasPushableCommits(input)) {
     return t("policy.unavailable.pushNothingNew");
   }
   return undefined;
@@ -641,13 +653,16 @@ function getPullAndPushUnavailableMessage(
   if (input.hasUncommittedChanges) {
     return t("policy.unavailable.pullAndPushLocalChanges");
   }
+  if (input.behindOfOrigin === null) {
+    return t("policy.unavailable.pullAndPushNoIncoming");
+  }
   if (input.behindOfOrigin === 0 && input.aheadOfOrigin === 0) {
     return t("policy.unavailable.pullAndPushInSync");
   }
   if (input.behindOfOrigin === 0) {
     return t("policy.unavailable.pullAndPushNoIncoming");
   }
-  if (input.aheadOfOrigin === 0) {
+  if ((input.aheadOfOrigin ?? 0) === 0) {
     return t("policy.unavailable.pullAndPushNothingNew");
   }
   return undefined;
