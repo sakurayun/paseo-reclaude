@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Pressable, Text, View } from "react-native";
 import type { PressableStateCallbackType } from "react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
@@ -163,6 +164,7 @@ function RefPickerTrigger({
   iconColor: string;
   iconSize: number;
 }) {
+  const { t } = useTranslation("workspaces");
   return (
     <Tooltip>
       <TooltipTrigger asChild triggerRefProp="ref">
@@ -173,7 +175,7 @@ function RefPickerTrigger({
           disabled={disabled}
           style={badgePressableStyle}
           accessibilityRole="button"
-          accessibilityLabel="Starting ref"
+          accessibilityLabel={t("newWorkspace.ref.accessibilityLabel")}
         >
           <RefPickerBadgeContent
             selectedItem={selectedItem}
@@ -184,7 +186,7 @@ function RefPickerTrigger({
         </Pressable>
       </TooltipTrigger>
       <TooltipContent side="top" align="center" offset={8}>
-        <Text style={styles.tooltipText}>Choose where to start from</Text>
+        <Text style={styles.tooltipText}>{t("newWorkspace.ref.tooltip")}</Text>
       </TooltipContent>
     </Tooltip>
   );
@@ -211,6 +213,7 @@ function ProjectPickerTrigger({
   iconColor: string;
   iconSize: number;
 }) {
+  const { t } = useTranslation("workspaces");
   const placeholderLabel = projectIconPlaceholderLabelFromDisplayName(label);
   const placeholderInitial = placeholderLabel.charAt(0).toUpperCase() || "?";
   return (
@@ -223,7 +226,7 @@ function ProjectPickerTrigger({
           disabled={disabled}
           style={badgePressableStyle}
           accessibilityRole="button"
-          accessibilityLabel="Workspace project"
+          accessibilityLabel={t("newWorkspace.project.accessibilityLabel")}
         >
           <View style={styles.badgeIconBox}>
             {projectKey ? (
@@ -246,7 +249,7 @@ function ProjectPickerTrigger({
         </Pressable>
       </TooltipTrigger>
       <TooltipContent side="top" align="center" offset={8}>
-        <Text style={styles.tooltipText}>Choose project</Text>
+        <Text style={styles.tooltipText}>{t("newWorkspace.project.tooltip")}</Text>
       </TooltipContent>
     </Tooltip>
   );
@@ -769,6 +772,7 @@ export function NewWorkspaceScreen({
   projectId,
   displayName: displayNameProp,
 }: NewWorkspaceScreenProps) {
+  const { t } = useTranslation("workspaces");
   const { theme } = useUnistyles();
   const insets = useSafeAreaInsets();
   const isCompact = useIsCompactFormFactor();
@@ -1197,8 +1201,8 @@ export function NewWorkspaceScreen({
 
   const pickerEmptyText =
     branchSuggestionsQuery.isFetching || githubPrSearchQuery.isFetching
-      ? "Searching..."
-      : "No matching refs.";
+      ? t("newWorkspace.ref.searching")
+      : t("newWorkspace.ref.empty");
 
   const composerFooter = useMemo(
     () => (
@@ -1225,12 +1229,12 @@ export function NewWorkspaceScreen({
             onSelect={handleSelectProjectOption}
             searchable
             searchPlaceholder="Search projects"
-            title="Project"
+            title={t("newWorkspace.project.title")}
             open={projectPickerOpen}
             onOpenChange={handleProjectPickerOpenChange}
             desktopPlacement="bottom-start"
             anchorRef={projectPickerAnchorRef}
-            emptyText="No projects available."
+            emptyText={t("newWorkspace.project.empty")}
             renderOption={renderProjectOption}
           />
         </View>
@@ -1251,7 +1255,7 @@ export function NewWorkspaceScreen({
             onSelect={handleSelectOption}
             searchable
             searchPlaceholder="Search branches and PRs"
-            title="Start from"
+            title={t("newWorkspace.ref.title")}
             open={pickerOpen}
             onOpenChange={handlePickerOpenChange}
             onSearchQueryChange={setPickerSearchQuery}
@@ -1302,6 +1306,7 @@ export function NewWorkspaceScreen({
       selectedProjectOptionId,
       selectedSourceDirectory,
       setPickerSearchQuery,
+      t,
       agentControlsWithDisabled,
       theme.colors.foregroundMuted,
       theme.iconSize.sm,

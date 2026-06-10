@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { Text, View } from "react-native";
 import { ArrowLeftToLine, RotateCw, Settings } from "lucide-react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
@@ -54,13 +55,14 @@ function getWorkspaceHostStateTitle(
 }
 
 function WorkspaceConnecting({ hostName }: { hostName: string }) {
+  const { t } = useTranslation("workspaces");
   const { theme } = useUnistyles();
 
   return (
     <View style={styles.emptyState}>
       <LoadingSpinner size="small" color={theme.colors.foregroundMuted} />
       <View style={styles.textStack}>
-        <Text style={styles.title}>Loading workspace</Text>
+        <Text style={styles.title}>{t("routeState.loading")}</Text>
         <Text style={styles.description}>{hostName}</Text>
       </View>
     </View>
@@ -119,10 +121,11 @@ function WorkspaceUnreachable({
 }
 
 function WorkspaceMissing({ hostName, onDismiss }: { hostName: string; onDismiss: () => void }) {
+  const { t } = useTranslation("workspaces");
   return (
     <View style={styles.emptyState}>
       <View style={styles.textStack}>
-        <Text style={styles.title}>Workspace not found</Text>
+        <Text style={styles.title}>{t("routeState.notFound")}</Text>
         <Text style={styles.description}>{hostName}</Text>
       </View>
       <View style={styles.actions}>

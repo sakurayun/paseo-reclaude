@@ -283,6 +283,42 @@ export default {
       message: "Failed to select image",
     },
   },
+  home: {
+    addProject: {
+      title: "Add a project",
+      description: "Open a folder on your machine",
+    },
+    importSession: {
+      title: "Import session",
+      description: "Bring in recent external CLI sessions",
+    },
+    setupProviders: {
+      title: "Setup providers",
+      description: "Configure Claude Code, Codex, and more",
+    },
+    pairDevice: {
+      title: "Pair device",
+      description: "Connect your phone to this daemon",
+    },
+  },
+  sessions: {
+    title: "Sessions",
+    loading: "Loading...",
+    loadMore: "Load more",
+    empty: "No sessions yet",
+    back: "Back",
+  },
+  startup: {
+    error: {
+      title: "Something went wrong",
+      description:
+        "The local server failed to start. If this keeps happening, please report the issue on GitHub and include the logs below.",
+      copyLogs: "Copy logs",
+      openGithubIssue: "Open GitHub issue",
+      docs: "Docs",
+      retry: "Retry",
+    },
+  },
   daemon: {
     pause: {
       title: "Pause built-in daemon",

@@ -282,6 +282,41 @@ export default {
       message: "选择图片失败",
     },
   },
+  home: {
+    addProject: {
+      title: "添加项目",
+      description: "打开本机上的文件夹",
+    },
+    importSession: {
+      title: "导入会话",
+      description: "导入最近的外部 CLI 会话",
+    },
+    setupProviders: {
+      title: "设置提供方",
+      description: "配置 Claude Code、Codex 等",
+    },
+    pairDevice: {
+      title: "配对设备",
+      description: "将手机连接到此守护进程",
+    },
+  },
+  sessions: {
+    title: "会话",
+    loading: "加载中...",
+    loadMore: "加载更多",
+    empty: "暂无会话",
+    back: "返回",
+  },
+  startup: {
+    error: {
+      title: "出了点问题",
+      description: "本地服务器启动失败。如果该问题持续出现，请在 GitHub 上报告并附上下面的日志。",
+      copyLogs: "复制日志",
+      openGithubIssue: "打开 GitHub Issue",
+      docs: "文档",
+      retry: "重试",
+    },
+  },
   daemon: {
     pause: {
       title: "暂停内置守护进程",

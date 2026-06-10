@@ -1,4 +1,5 @@
 import { Fragment, useCallback, useMemo, type ReactElement } from "react";
+import { useTranslation } from "react-i18next";
 import type { GestureResponderEvent } from "react-native";
 import { Pressable, Text, View } from "react-native";
 import { useMutation } from "@tanstack/react-query";
@@ -204,10 +205,11 @@ function HostLinkRow({ label, url, scriptName, onOpenInBrowserTab }: HostLinkPro
 }
 
 function ExitCodeBadge({ code }: { code: number }): ReactElement {
+  const { t } = useTranslation("workspaces");
   const exitTextStyle = code === 0 ? styles.exitBadgeText : exitBadgeTextErrorStyle;
   return (
     <View style={styles.exitBadge}>
-      <Text style={exitTextStyle}>exit {code}</Text>
+      <Text style={exitTextStyle}>{t("scripts.exitCode", { code })}</Text>
     </View>
   );
 }
@@ -257,6 +259,7 @@ function ScriptRow({
   onViewTerminal,
   onOpenUrlInBrowserTab,
 }: ScriptRowProps): ReactElement {
+  const { t } = useTranslation("workspaces");
   const isRunning = script.lifecycle === "running";
   const isService = (script.type ?? "service") === "service";
   const exitCode = script.exitCode ?? null;
@@ -312,7 +315,7 @@ function ScriptRow({
         accessibilityLabel={`View ${script.scriptName} terminal`}
         testID={`workspace-scripts-view-${script.scriptName}`}
         icon="view"
-        label="View"
+        label={t("scripts.view")}
         onPress={handleView}
       />
     );
@@ -323,7 +326,7 @@ function ScriptRow({
         testID={`workspace-scripts-start-${script.scriptName}`}
         disabled={isStartPending}
         icon="start"
-        label="Run"
+        label={t("scripts.run")}
         onPress={handleRun}
       />
     );
@@ -372,6 +375,7 @@ export function WorkspaceScriptsButton({
   hideLabels,
   presentation = "split",
 }: WorkspaceScriptsButtonProps): ReactElement | null {
+  const { t } = useTranslation("workspaces");
   const toast = useToast();
   const client = useSessionStore((state) => state.sessions[serverId]?.client ?? null);
   const activeConnection = useHostRuntimeSnapshot(serverId)?.activeConnection ?? null;
@@ -440,7 +444,7 @@ export function WorkspaceScriptsButton({
                 uniProps={triggerPlayMapping}
                 {...triggerPlayProps}
               />
-              {!hideLabels && <Text style={styles.splitButtonText}>Scripts</Text>}
+              {!hideLabels && <Text style={styles.splitButtonText}>{t("scripts.trigger")}</Text>}
               {presentation === "split" ? (
                 <ThemedChevronDown size={14} uniProps={mutedColorMapping} />
               ) : null}

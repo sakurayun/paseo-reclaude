@@ -15,6 +15,15 @@ export default {
       switchTab: "Switch tab",
       searchTabs: "Search tabs",
     },
+    tabActions: {
+      newAgentTab: "New agent tab",
+      preparingTerminalTab: "Preparing terminal tab",
+      newTerminalTab: "New terminal tab",
+      preparingTerminal: "Preparing terminal...",
+      newBrowserTab: "New browser tab",
+      splitPaneRight: "Split pane right",
+      splitPaneDown: "Split pane down",
+    },
     header: {
       workspaceActions: "Workspace actions",
       newAgent: "New agent",
@@ -200,6 +209,35 @@ export default {
     empty: "No projects yet",
     hostError: "Couldn't load projects from host {{serverName}}: {{message}}",
     editAccessibilityLabel: "Edit {{projectName}}",
+  },
+  newWorkspace: {
+    project: {
+      accessibilityLabel: "Workspace project",
+      tooltip: "Choose project",
+      title: "Project",
+      empty: "No projects available.",
+    },
+    ref: {
+      accessibilityLabel: "Starting ref",
+      tooltip: "Choose where to start from",
+      title: "Start from",
+      searching: "Searching...",
+      empty: "No matching refs.",
+    },
+  },
+  routeState: {
+    loading: "Loading workspace",
+    notFound: "Workspace not found",
+  },
+  openInEditor: {
+    open: "Open",
+    chooseEditor: "Choose editor",
+  },
+  scripts: {
+    trigger: "Scripts",
+    view: "View",
+    run: "Run",
+    exitCode: "exit {{code}}",
   },
   grouping: {
     accessibilityLabel: "Sidebar grouping",

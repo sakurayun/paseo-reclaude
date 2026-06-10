@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState, type ComponentType } from "react";
+import { useTranslation } from "react-i18next";
 import { View, Text, Pressable } from "react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { useRouter } from "expo-router";
@@ -24,6 +25,7 @@ import { useOpenProject } from "@/hooks/use-open-project";
 import type { Href } from "expo-router";
 
 export function OpenProjectScreen({ serverId }: { serverId: string }) {
+  const { t } = useTranslation("app");
   const router = useRouter();
   const openDesktopAgentList = usePanelStore((s) => s.openDesktopAgentList);
   const openProjectPicker = useOpenProjectPicker(serverId);
@@ -76,31 +78,31 @@ export function OpenProjectScreen({ serverId }: { serverId: string }) {
         <View style={styles.tiles}>
           <HomeTile
             icon={FolderOpen}
-            title="Add a project"
-            description="Open a folder on your machine"
+            title={t("home.addProject.title")}
+            description={t("home.addProject.description")}
             onPress={handleOpenPicker}
             testID="open-project-submit"
             accent
           />
           <HomeTile
             icon={Inbox}
-            title="Import session"
-            description="Bring in recent external CLI sessions"
+            title={t("home.importSession.title")}
+            description={t("home.importSession.description")}
             onPress={handleOpenImportSession}
             testID="open-project-import-session"
           />
           <HomeTile
             icon={Plug}
-            title="Setup providers"
-            description="Configure Claude Code, Codex, and more"
+            title={t("home.setupProviders.title")}
+            description={t("home.setupProviders.description")}
             onPress={handleOpenProviders}
             testID="open-project-setup-providers"
           />
           {isLocalDaemon ? (
             <HomeTile
               icon={Smartphone}
-              title="Pair device"
-              description="Connect your phone to this daemon"
+              title={t("home.pairDevice.title")}
+              description={t("home.pairDevice.description")}
               onPress={handleOpenPairDevice}
               testID="open-project-pair-device"
             />

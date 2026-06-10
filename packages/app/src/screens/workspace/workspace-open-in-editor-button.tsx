@@ -1,4 +1,5 @@
 import { type ReactElement, useCallback, useMemo } from "react";
+import { useTranslation } from "react-i18next";
 import {
   ActivityIndicator,
   Pressable,
@@ -83,6 +84,7 @@ export function WorkspaceOpenInEditorButton({
   activeFile,
   hideLabels,
 }: WorkspaceOpenInEditorButtonProps) {
+  const { t } = useTranslation("workspaces");
   const toast = useToast();
   const isConnected = useHostRuntimeIsConnected(serverId);
   const isLocalDaemon = useIsLocalDaemon(serverId);
@@ -220,7 +222,7 @@ export function WorkspaceOpenInEditorButton({
           ) : (
             <View style={styles.splitButtonContent}>
               {primaryOption.icon}
-              {!hideLabels && <Text style={styles.splitButtonText}>Open</Text>}
+              {!hideLabels && <Text style={styles.splitButtonText}>{t("openInEditor.open")}</Text>}
             </View>
           )}
         </Pressable>
@@ -230,7 +232,7 @@ export function WorkspaceOpenInEditorButton({
               testID="workspace-open-in-editor-caret"
               style={caretTriggerStyle}
               accessibilityRole="button"
-              accessibilityLabel="Choose editor"
+              accessibilityLabel={t("openInEditor.chooseEditor")}
             >
               <ThemedChevronDown size={16} uniProps={mutedColorMapping} />
             </DropdownMenuTrigger>

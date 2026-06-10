@@ -15,6 +15,15 @@ export default {
       switchTab: "切换标签页",
       searchTabs: "搜索标签页",
     },
+    tabActions: {
+      newAgentTab: "新建 Agent 标签页",
+      preparingTerminalTab: "正在准备终端标签页",
+      newTerminalTab: "新建终端标签页",
+      preparingTerminal: "正在准备终端...",
+      newBrowserTab: "新建浏览器标签页",
+      splitPaneRight: "向右拆分窗格",
+      splitPaneDown: "向下拆分窗格",
+    },
     header: {
       workspaceActions: "工作区操作",
       newAgent: "新建 Agent",
@@ -198,6 +207,35 @@ export default {
     empty: "暂无项目",
     hostError: "无法从主机 {{serverName}} 加载项目：{{message}}",
     editAccessibilityLabel: "编辑 {{projectName}}",
+  },
+  newWorkspace: {
+    project: {
+      accessibilityLabel: "工作区项目",
+      tooltip: "选择项目",
+      title: "项目",
+      empty: "暂无可用项目。",
+    },
+    ref: {
+      accessibilityLabel: "起始引用",
+      tooltip: "选择从哪里开始",
+      title: "起始位置",
+      searching: "搜索中...",
+      empty: "没有匹配的引用。",
+    },
+  },
+  routeState: {
+    loading: "正在加载工作区",
+    notFound: "未找到工作区",
+  },
+  openInEditor: {
+    open: "打开",
+    chooseEditor: "选择编辑器",
+  },
+  scripts: {
+    trigger: "脚本",
+    view: "查看",
+    run: "运行",
+    exitCode: "exit {{code}}",
   },
   grouping: {
     accessibilityLabel: "侧边栏分组",
