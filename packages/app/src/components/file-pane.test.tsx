@@ -33,7 +33,9 @@ const { queryState, theme } = vi.hoisted(() => ({
   theme: {
     spacing: { 1: 4, 2: 8, 3: 12, 4: 16 },
     fontSize: { sm: 13, code: 13 },
+    fontFamily: { ui: "system-ui", mono: "monospace" },
     colors: {
+      accentBorder: "#444",
       destructive: "#f43f5e",
       foreground: "#fff",
       foregroundMuted: "#aaa",
@@ -172,6 +174,19 @@ vi.mock("react-native-unistyles", () => ({
       typeof factory === "function" ? (factory as (t: typeof theme) => unknown)(theme) : factory,
   },
   useUnistyles: () => ({ theme }),
+  withUnistyles: (component: unknown) => component,
+}));
+
+// expo-clipboard ships untranspiled JSX in its build output (ClipboardPasteButton),
+// which vitest's node transform can't parse — stub the whole module.
+vi.mock("expo-clipboard", () => ({
+  setStringAsync: vi.fn(async () => true),
+  getStringAsync: vi.fn(async () => ""),
+}));
+
+// Pure styling boundary (withUnistyles wrapper) — pass children through.
+vi.mock("@/components/appearance-style-boundary", () => ({
+  AppearanceStyleBoundary: ({ children }: { children: unknown }) => children,
 }));
 
 vi.mock("@/styles/syntax-token-styles", () => ({

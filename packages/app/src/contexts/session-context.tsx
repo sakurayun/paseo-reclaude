@@ -5,7 +5,11 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { useClientActivity } from "@/hooks/use-client-activity";
 import { usePushTokenRegistration } from "@/hooks/use-push-token-registration";
-import { clearArchiveAgentPending } from "@/hooks/use-archive-agent";
+import { agentHistoryQueryKey } from "@/hooks/agent-history-query-key";
+import {
+  clearArchiveAgentPending,
+  markAgentArchivedInHistoryCache,
+} from "@/hooks/use-archive-agent";
 import { prefetchProvidersSnapshot } from "@/hooks/use-providers-snapshot";
 import { generateMessageId, type StreamItem } from "@/types/stream";
 import {
@@ -1025,6 +1029,13 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
           return next;
         });
         setAgentAuthoritativeHistoryApplied(serverId, agentId, false);
+
+        // A "remove" means the agent left this subscription's filter —
+        // usually because it was archived (possibly by another client or a
+        // daemon-side RPC) or deleted. The cached agent history cannot tell;
+        // invalidate it so sessions UIs refetch the authoritative state
+        // (e.g. archivedAt) instead of showing a stale row.
+        void queryClient.invalidateQueries({ queryKey: agentHistoryQueryKey(serverId) });
         return;
       }
 
@@ -1641,6 +1652,12 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
         });
         return next;
       });
+
+      // Archives can originate outside this client (daemon RPC, another
+      // device). Patch the cached agent history so sessions UIs reflect
+      // archivedAt immediately, then invalidate to reconcile with the daemon.
+      markAgentArchivedInHistoryCache(queryClient, { serverId, agentId, archivedAt });
+      void queryClient.invalidateQueries({ queryKey: agentHistoryQueryKey(serverId) });
     });
 
     const unsubProviderQuota = client.on("provider_quota", (message) => {

@@ -594,8 +594,7 @@ describe("keyboard-shortcut help sections", () => {
   ];
 
   it.each(helpCases)("$name", ({ context, expectedKeys }) => {
-    // Labels aren't asserted here, so an identity translator stub is sufficient.
-    const sections = buildKeyboardShortcutHelpSections(context, ((key: string) => key) as never);
+    const sections = buildKeyboardShortcutHelpSections(context);
 
     for (const [id, keys] of Object.entries(expectedKeys)) {
       expect(findRow(sections, id)?.keys).toEqual(keys);
