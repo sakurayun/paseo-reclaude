@@ -1985,8 +1985,6 @@ const styles = StyleSheet.create((theme: Theme) => ({
     flexDirection: "column",
     gap: theme.spacing[3],
     backgroundColor: theme.colors.surface1,
-    borderWidth: theme.borderWidth[1],
-    borderColor: theme.colors.borderAccent,
     borderRadius: theme.borderRadius["2xl"],
     paddingVertical: {
       xs: theme.spacing[2],
