@@ -8,6 +8,7 @@ import {
   useState,
 } from "react";
 import type { ReactElement, ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import {
   View,
   Text,
@@ -1240,15 +1241,15 @@ export function Combobox({
   renderOption,
   onSearchQueryChange,
   searchable = true,
-  placeholder = "Search...",
+  placeholder,
   searchPlaceholder,
-  emptyText = "No options match your search.",
+  emptyText,
   allowCustomValue = false,
-  customValuePrefix = "Use",
+  customValuePrefix,
   customValueDescription,
   customValueKind,
   optionsPosition = "below-search",
-  title = "Select",
+  title,
   header,
   mobileChildrenScrollEnabled = true,
   presentation,
@@ -1264,6 +1265,11 @@ export function Combobox({
   children,
 }: ComboboxProps): ReactElement | null {
   const { theme } = useUnistyles();
+  const { t } = useTranslation();
+  const resolvedPlaceholder = placeholder ?? t("combobox.searchPlaceholder");
+  const resolvedEmptyText = emptyText ?? t("combobox.empty");
+  const resolvedCustomValuePrefix = customValuePrefix ?? t("combobox.useCustomPrefix");
+  const resolvedTitle = title ?? t("combobox.title");
   const isMobile = useIsCompactFormFactor();
   const titleColor = theme.colors.foreground;
   const effectiveOptionsPosition = resolveEffectiveOptionsPosition(isMobile, optionsPosition);
@@ -1397,7 +1403,7 @@ export function Combobox({
         searchQuery,
         searchable,
         allowCustomValue,
-        customValuePrefix,
+        customValuePrefix: resolvedCustomValuePrefix,
         customValueDescription,
         customValueKind,
       }),
@@ -1405,7 +1411,7 @@ export function Combobox({
       allowCustomValue,
       customValueDescription,
       customValueKind,
-      customValuePrefix,
+      resolvedCustomValuePrefix,
       options,
       searchQuery,
       searchable,
@@ -1519,7 +1525,7 @@ export function Combobox({
     [],
   );
 
-  const effectiveSearchPlaceholder = searchPlaceholder ?? placeholder;
+  const effectiveSearchPlaceholder = searchPlaceholder ?? resolvedPlaceholder;
   const hasChildren = Boolean(children);
 
   if (isMobile) {
@@ -1531,7 +1537,7 @@ export function Combobox({
         handleSheetDismiss={handleSheetDismiss}
         handleIndicatorStyle={handleIndicatorStyle}
         titleColor={titleColor}
-        title={title}
+        title={resolvedTitle}
         header={header}
         onClose={handleClose}
         stickyHeader={stickyHeader}
@@ -1547,7 +1553,7 @@ export function Combobox({
         orderedVisibleOptions={orderedVisibleOptions}
         value={value}
         activeIndex={activeIndex}
-        emptyText={emptyText}
+        emptyText={resolvedEmptyText}
         handleSelect={handleSelect}
         renderOption={renderOption}
       >
@@ -1580,7 +1586,7 @@ export function Combobox({
       orderedVisibleOptions={orderedVisibleOptions}
       value={value}
       activeIndex={activeIndex}
-      emptyText={emptyText}
+      emptyText={resolvedEmptyText}
       handleSelect={handleSelect}
       renderOption={renderOption}
       hasChildren={hasChildren}

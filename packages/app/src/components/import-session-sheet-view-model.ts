@@ -127,7 +127,10 @@ export interface EmptyStateInputs {
   providerLabelById: ReadonlyMap<string, string>;
 }
 
-export function computeEmptyState(input: EmptyStateInputs): {
+export function computeEmptyState(
+  input: EmptyStateInputs,
+  t: TFunction<"app">,
+): {
   showEmptyState: boolean;
   emptyStateTitle: string;
 } {
@@ -143,10 +146,13 @@ export function computeEmptyState(input: EmptyStateInputs): {
   const isFilteredEmpty = input.selectedProvider !== ALL_FILTER_VALUE && input.aggregatedCount > 0;
   if (isFilteredEmpty) {
     const label = input.providerLabelById.get(input.selectedProvider) ?? input.selectedProvider;
-    return { showEmptyState, emptyStateTitle: `No ${label} sessions found.` };
+    return {
+      showEmptyState,
+      emptyStateTitle: t("importSession.empty.noProviderSessions", { provider: label }),
+    };
   }
   if (input.totalAlreadyImportedCount > 0) {
-    return { showEmptyState, emptyStateTitle: "All recent sessions are already imported." };
+    return { showEmptyState, emptyStateTitle: t("importSession.empty.allImported") };
   }
-  return { showEmptyState, emptyStateTitle: "No recent sessions to import." };
+  return { showEmptyState, emptyStateTitle: t("importSession.empty.nothingToImport") };
 }

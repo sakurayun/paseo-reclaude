@@ -28,6 +28,7 @@ import {
 } from "@dnd-kit/core";
 import { arrayMove, sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 import { View, Text } from "react-native";
+import { useTranslation } from "react-i18next";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { ResizeHandle } from "@/components/resize-handle";
 import { shouldFocusPaneFromEventTarget } from "@/components/split-container-pane-focus";
@@ -661,6 +662,7 @@ function DragOverlayTabChipInner({
   normalizedWorkspaceId: string;
 }) {
   const { theme } = useUnistyles();
+  const { t } = useTranslation("workspaces");
 
   const chipStyle = useMemo(
     () => [
@@ -684,7 +686,8 @@ function DragOverlayTabChipInner({
       workspaceId={normalizedWorkspaceId}
     >
       {(presentation) => {
-        const label = presentation.titleState === "loading" ? "Loading..." : presentation.label;
+        const label =
+          presentation.titleState === "loading" ? t("screen.loading") : presentation.label;
 
         return (
           <View style={chipStyle}>

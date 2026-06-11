@@ -23,6 +23,7 @@ export default {
     noVisibleChanges: "No visible changes after hiding whitespace",
     noUncommittedChanges: "No uncommitted changes",
     noChangesVsBase: "No changes vs {{baseRefLabel}}",
+    noChangesToDisplay: "No changes to display",
   },
   errors: {
     refreshFailed: "Failed to refresh git state.",

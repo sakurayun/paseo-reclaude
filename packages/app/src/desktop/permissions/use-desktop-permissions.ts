@@ -6,6 +6,7 @@ import {
   type DesktopPermissionKind,
   type DesktopPermissionSnapshot,
 } from "@/desktop/permissions/desktop-permissions";
+import i18n from "@/i18n";
 import { sendOsNotification } from "@/utils/os-notifications";
 
 export interface UseDesktopPermissionsReturn {
@@ -20,15 +21,19 @@ export interface UseDesktopPermissionsReturn {
   sendTestNotification: () => Promise<void>;
 }
 
-const EMPTY_NOTIFICATION_STATUS = {
-  state: "unknown" as const,
-  detail: "Notification status has not been checked yet.",
-};
+function emptyNotificationStatus() {
+  return {
+    state: "unknown" as const,
+    detail: i18n.t("settings:permissions.detail.notificationsUnchecked"),
+  };
+}
 
-const EMPTY_MICROPHONE_STATUS = {
-  state: "unknown" as const,
-  detail: "Microphone status has not been checked yet.",
-};
+function emptyMicrophoneStatus() {
+  return {
+    state: "unknown" as const,
+    detail: i18n.t("settings:permissions.detail.microphoneUnchecked"),
+  };
+}
 
 export function useDesktopPermissions(): UseDesktopPermissionsReturn {
   const isDesktopApp = shouldShowDesktopPermissionSection();
@@ -83,8 +88,8 @@ export function useDesktopPermissions(): UseDesktopPermissionsReturn {
         setSnapshot((previous) => {
           const base: DesktopPermissionSnapshot = previous ?? {
             checkedAt: Date.now(),
-            notifications: EMPTY_NOTIFICATION_STATUS,
-            microphone: EMPTY_MICROPHONE_STATUS,
+            notifications: emptyNotificationStatus(),
+            microphone: emptyMicrophoneStatus(),
           };
 
           if (kind === "notifications") {
@@ -124,16 +129,14 @@ export function useDesktopPermissions(): UseDesktopPermissionsReturn {
     setTestNotificationError(null);
     try {
       const sent = await sendOsNotification({
-        title: "Paseo notification test",
-        body: "If you can see this, desktop notifications work.",
+        title: i18n.t("settings:permissions.testNotification.title"),
+        body: i18n.t("settings:permissions.testNotification.body"),
       });
       if (!sent) {
-        setTestNotificationError(
-          "Notification was not delivered. Check System Settings > Notifications.",
-        );
+        setTestNotificationError(i18n.t("settings:permissions.testNotification.notDelivered"));
       }
     } catch {
-      setTestNotificationError("Failed to send notification.");
+      setTestNotificationError(i18n.t("settings:permissions.testNotification.sendFailed"));
     } finally {
       if (isMountedRef.current) {
         setIsSendingTestNotification(false);

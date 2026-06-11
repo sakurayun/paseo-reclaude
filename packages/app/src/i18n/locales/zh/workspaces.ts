@@ -15,6 +15,7 @@ export default {
       switchTab: "切换标签页",
       searchTabs: "搜索标签页",
       loadingAgentTitle: "正在加载 Agent 标题",
+      creatingAgent: "正在创建 Agent",
     },
     tabMenu: {
       copyResumeCommand: "复制恢复命令",
@@ -52,6 +53,8 @@ export default {
       toggle: "切换资源管理器",
       openAccessibility: "打开资源管理器",
       closeAccessibility: "关闭资源管理器",
+      tabChanges: "变更",
+      tabFiles: "文件",
     },
     empty: {
       executionDirectoryMissing: "工作区执行目录缺失。请在打开标签页前重新加载工作区数据。",

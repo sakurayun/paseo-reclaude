@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import i18n from "@/i18n";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import type { AutocompleteOption } from "@/components/ui/autocomplete";
 import {
@@ -260,7 +261,9 @@ function resolveAutocompleteErrorMessage(args: {
   fileSuggestionsError: unknown;
 }): string | undefined {
   if (args.mode === "command") {
-    return args.isCommandError ? (args.commandError?.message ?? "Failed to load") : undefined;
+    return args.isCommandError
+      ? (args.commandError?.message ?? i18n.t("composer:autocomplete.loadFailed"))
+      : undefined;
   }
   if (args.mode === "file") {
     return args.fileSuggestionsError instanceof Error
@@ -490,8 +493,14 @@ export function useAgentAutocomplete(input: UseAgentAutocompleteInput): AgentAut
     fileSuggestionsError: fileSuggestionsQuery.error,
   });
 
-  const loadingText = mode === "file" ? "Searching workspace..." : "Loading commands...";
-  const emptyText = mode === "file" ? "No files or directories found" : "No commands found";
+  const loadingText =
+    mode === "file"
+      ? i18n.t("composer:autocomplete.searchingWorkspace")
+      : i18n.t("composer:autocomplete.loadingCommands");
+  const emptyText =
+    mode === "file"
+      ? i18n.t("composer:autocomplete.noFilesFound")
+      : i18n.t("composer:autocomplete.noCommandsFound");
 
   return {
     isVisible,

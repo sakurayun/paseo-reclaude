@@ -68,6 +68,7 @@ export default {
     },
     model: {
       selectAccessibilityLabel: "Select model",
+      selectLabel: "Select model",
       unknownLabel: "Unknown model",
     },
     mode: {
@@ -153,5 +154,16 @@ export default {
     createAgentFailedError: "Failed to create agent",
     initialPromptRequiredError: "Initial prompt is required",
     sendMessageFailedError: "Failed to send message",
+    noProvidersError: "No available providers on the selected host",
+    modelDefaultsLoadingError: "Model defaults are still loading",
+    noModelForProviderError: "No model is available for the selected provider",
+    workspaceDirectoryMissingError: "Workspace directory not found",
+  },
+  autocomplete: {
+    loadFailed: "Failed to load",
+    searchingWorkspace: "Searching workspace...",
+    loadingCommands: "Loading commands...",
+    noFilesFound: "No files or directories found",
+    noCommandsFound: "No commands found",
   },
 } as const;

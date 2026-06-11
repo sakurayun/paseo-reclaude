@@ -456,17 +456,20 @@ export function ImportSessionSheet({
   const allQueriesErrored = isQueryingProviders && queries.every((query) => query.isError);
   const allQueriesSettled =
     isQueryingProviders && queries.every((query) => !query.isLoading && !query.isPending);
-  const { showEmptyState, emptyStateTitle } = computeEmptyState({
-    isLoadingSessions,
-    allQueriesErrored,
-    isQueryingProviders,
-    allQueriesSettled,
-    selectedProvider,
-    aggregatedCount: aggregatedEntries.length,
-    visibleCount: visibleEntries.length,
-    totalAlreadyImportedCount,
-    providerLabelById,
-  });
+  const { showEmptyState, emptyStateTitle } = computeEmptyState(
+    {
+      isLoadingSessions,
+      allQueriesErrored,
+      isQueryingProviders,
+      allQueriesSettled,
+      selectedProvider,
+      aggregatedCount: aggregatedEntries.length,
+      visibleCount: visibleEntries.length,
+      totalAlreadyImportedCount,
+      providerLabelById,
+    },
+    t,
+  );
   const showFilter = filterProviders.length > 1;
 
   return (

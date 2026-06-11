@@ -341,7 +341,7 @@ export function StartupSplashScreen({ bootstrapState }: StartupSplashScreenProps
         }
         const message = error instanceof Error ? error.message : String(error);
         setDaemonLogs(null);
-        setLogsError(`Unable to load daemon logs: ${message}`);
+        setLogsError(t("startup.logs.loadFailed", { message }));
       })
       .finally(() => {
         if (!isCancelled) {
@@ -352,11 +352,11 @@ export function StartupSplashScreen({ bootstrapState }: StartupSplashScreenProps
     return () => {
       isCancelled = true;
     };
-  }, [isError]);
+  }, [isError, t]);
 
   const logsText = useMemo(() => {
     if (isLoadingLogs) {
-      return "Loading daemon logs...";
+      return t("startup.logs.loading");
     }
     if (daemonLogs?.contents) {
       return daemonLogs.contents;
@@ -364,8 +364,8 @@ export function StartupSplashScreen({ bootstrapState }: StartupSplashScreenProps
     if (logsError) {
       return logsError;
     }
-    return "No daemon logs available.";
-  }, [daemonLogs?.contents, isLoadingLogs, logsError]);
+    return t("startup.logs.empty");
+  }, [daemonLogs?.contents, isLoadingLogs, logsError, t]);
 
   const handleCopyLogs = useCallback(() => {
     const payload = daemonLogs?.logPath

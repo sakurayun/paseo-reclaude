@@ -6,6 +6,7 @@ import type { HostProfile } from "@/types/host-connection";
 import { buildDaemonWebSocketUrl } from "@/utils/daemon-endpoints";
 import { openExternalUrl } from "@/utils/open-external-url";
 import { isWeb } from "@/constants/platform";
+import i18n from "@/i18n";
 
 interface DownloadProgress {
   percent: number;
@@ -148,11 +149,14 @@ export const useDownloadStore = create<DownloadState>()((set, get) => ({
       if (await Sharing.isAvailableAsync()) {
         await Sharing.shareAsync(result.uri, {
           mimeType: tokenResponse.mimeType ?? undefined,
-          dialogTitle: resolvedFileName ? `Share ${resolvedFileName}` : "Share file",
+          dialogTitle: resolvedFileName
+            ? i18n.t("app:files.entry.shareNamed", { name: resolvedFileName })
+            : i18n.t("app:files.entry.shareFile"),
         });
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to download file.";
+      const message =
+        error instanceof Error ? error.message : i18n.t("app:files.error.downloadFailed");
       if (isWeb) {
         console.warn("[DownloadStore] Download failed:", message);
         get().failDownload(id, message);

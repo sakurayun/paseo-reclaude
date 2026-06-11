@@ -19,15 +19,33 @@ export default {
     back: "返回",
     next: "下一步",
     search: "搜索",
+    rename: "重命名",
   },
   state: {
     loading: "加载中…",
     error: "错误",
     errorWithMessage: "错误：{{message}}",
     empty: "暂无内容",
+    saving: "保存中...",
+    saveFailed: "无法保存",
+  },
+  form: {
+    nameRequired: "名称不能为空",
+  },
+  autocomplete: {
+    noResults: "未找到结果",
+  },
+  combobox: {
+    searchPlaceholder: "搜索...",
+    empty: "没有匹配搜索的选项。",
+    useCustomPrefix: "使用",
+    title: "选择",
   },
   menu: {
     backdropAccessibilityLabel: "菜单背景",
+    open: "打开菜单",
+    close: "关闭菜单",
+    toggleSidebar: "切换侧边栏",
   },
   term: {
     project: "项目",

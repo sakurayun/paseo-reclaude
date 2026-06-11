@@ -123,11 +123,13 @@ export function Autocomplete({
   onSelect,
   isLoading = false,
   errorMessage,
-  loadingText = "Loading...",
-  emptyText = "No results found",
+  loadingText,
+  emptyText,
   maxHeight = 220,
 }: AutocompleteProps) {
   const { t } = useTranslation();
+  const resolvedLoadingText = loadingText ?? t("state.loading");
+  const resolvedEmptyText = emptyText ?? t("autocomplete.noResults");
   const { theme } = useUnistyles();
   const scrollRef = useRef<ScrollView>(null);
   const rowLayoutsRef = useRef<Map<number, { top: number; height: number }>>(new Map());
@@ -215,7 +217,7 @@ export function Autocomplete({
     return (
       <View style={containerStyle}>
         <View style={styles.emptyItem}>
-          <Text style={styles.emptyText}>{loadingText}</Text>
+          <Text style={styles.emptyText}>{resolvedLoadingText}</Text>
         </View>
       </View>
     );
@@ -237,7 +239,7 @@ export function Autocomplete({
     return (
       <View style={containerStyle}>
         <View style={styles.emptyItem}>
-          <Text style={styles.emptyText}>{emptyText}</Text>
+          <Text style={styles.emptyText}>{resolvedEmptyText}</Text>
         </View>
       </View>
     );

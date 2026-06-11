@@ -1,3 +1,4 @@
+import i18n from "@/i18n";
 import type { DesktopAppUpdateStatus } from "@/desktop/updates/use-desktop-app-updater";
 
 export type UpdateCalloutBody =
@@ -57,23 +58,27 @@ export function resolveUpdateCalloutDescriptor(
   let title: string;
   let body: UpdateCalloutBody;
   if (isInstalling) {
-    title = "Installing update";
+    title = i18n.t("app:update.installingTitle");
     body = { kind: "installing" };
   } else if (isError) {
-    title = "Update failed";
-    body = { kind: "error", message: input.errorMessage ?? "Something went wrong." };
+    title = i18n.t("app:update.failedTitle");
+    body = { kind: "error", message: input.errorMessage ?? i18n.t("app:update.genericError") };
   } else {
-    title = "Update available";
+    title = i18n.t("app:update.availableTitle");
     body = { kind: "available", versionLabel: formatVersionLabel(latestVersion) };
   }
 
-  const actions: UpdateCalloutActionDescriptor[] = [{ role: "changelog", label: "What's new" }];
+  const actions: UpdateCalloutActionDescriptor[] = [
+    { role: "changelog", label: i18n.t("app:update.whatsNew") },
+  ];
   if (isError) {
-    actions.push({ role: "retry", label: "Retry", variant: "primary" });
+    actions.push({ role: "retry", label: i18n.t("common:action.retry"), variant: "primary" });
   } else {
     actions.push({
       role: "install",
-      label: isInstalling ? "Installing..." : "Install & restart",
+      label: isInstalling
+        ? i18n.t("app:update.installing")
+        : i18n.t("app:update.installAndRestart"),
       variant: "primary",
       disabled: isInstalling,
     });

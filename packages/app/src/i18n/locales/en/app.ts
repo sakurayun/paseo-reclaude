@@ -123,6 +123,11 @@ export default {
       loadFailedForProviders: "Could not load sessions for {{providers}}.",
       importFailed: "Could not import selected session.",
     },
+    empty: {
+      noProviderSessions: "No {{provider}} sessions found.",
+      allImported: "All recent sessions are already imported.",
+      nothingToImport: "No recent sessions to import.",
+    },
   },
   leftSidebar: {
     noHost: "No host",
@@ -189,6 +194,7 @@ export default {
       hostNotConnected: "Host is not connected",
       loadFailed: "Failed to load file",
       workspaceUnavailable: "Workspace is unavailable",
+      downloadFailed: "Failed to download file.",
     },
     sort: {
       name: "Name",
@@ -200,6 +206,8 @@ export default {
       modified: "Modified",
       copyPath: "Copy path",
       download: "Download",
+      shareFile: "Share file",
+      shareNamed: "Share {{name}}",
     },
     list: {
       loading: "Loading files…",
@@ -318,6 +326,20 @@ export default {
       docs: "Docs",
       retry: "Retry",
     },
+    logs: {
+      loading: "Loading daemon logs...",
+      empty: "No daemon logs available.",
+      loadFailed: "Unable to load daemon logs: {{message}}",
+    },
+  },
+  update: {
+    availableTitle: "Update available",
+    installingTitle: "Installing update",
+    failedTitle: "Update failed",
+    genericError: "Something went wrong.",
+    whatsNew: "What's new",
+    installing: "Installing...",
+    installAndRestart: "Install & restart",
   },
   daemon: {
     pause: {

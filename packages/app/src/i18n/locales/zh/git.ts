@@ -23,6 +23,7 @@ export default {
     noVisibleChanges: "隐藏空白字符后没有可见的更改",
     noUncommittedChanges: "没有未提交的更改",
     noChangesVsBase: "与 {{baseRefLabel}} 相比没有更改",
+    noChangesToDisplay: "没有可显示的更改",
   },
   errors: {
     refreshFailed: "刷新 git 状态失败。",

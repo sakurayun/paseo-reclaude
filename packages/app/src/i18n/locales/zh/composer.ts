@@ -68,6 +68,7 @@ export default {
     },
     model: {
       selectAccessibilityLabel: "选择模型",
+      selectLabel: "选择模型",
       unknownLabel: "未知模型",
     },
     mode: {
@@ -153,5 +154,16 @@ export default {
     createAgentFailedError: "创建 Agent 失败",
     initialPromptRequiredError: "需要填写初始提示词",
     sendMessageFailedError: "发送消息失败",
+    noProvidersError: "所选主机上没有可用的提供方",
+    modelDefaultsLoadingError: "模型默认值仍在加载中",
+    noModelForProviderError: "所选提供方没有可用的模型",
+    workspaceDirectoryMissingError: "未找到工作区目录",
+  },
+  autocomplete: {
+    loadFailed: "加载失败",
+    searchingWorkspace: "正在搜索工作区...",
+    loadingCommands: "正在加载命令...",
+    noFilesFound: "未找到文件或目录",
+    noCommandsFound: "未找到命令",
   },
 } as const;

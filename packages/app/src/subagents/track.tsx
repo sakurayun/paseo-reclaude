@@ -125,9 +125,11 @@ function SubagentsTrackRow({
   onArchiveSubagent,
 }: SubagentsTrackRowProps): ReactElement {
   const isCompact = useIsCompactFormFactor();
+  const { t } = useTranslation();
   const [hovered, setHovered] = useState(false);
   const presentation = useMemo(() => buildRowPresentation(row), [row]);
-  const displayLabel = presentation.titleState === "loading" ? "Loading..." : presentation.label;
+  const displayLabel =
+    presentation.titleState === "loading" ? t("state.loading") : presentation.label;
   const handlePress = useCallback(() => {
     onOpenSubagent(row.id);
   }, [onOpenSubagent, row.id]);

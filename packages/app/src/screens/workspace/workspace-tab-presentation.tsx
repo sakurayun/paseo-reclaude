@@ -1,4 +1,5 @@
 import { useCallback, useMemo, type ReactElement, type ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import { Pressable, Text, View, type PressableStateCallbackType } from "react-native";
 import { Check } from "lucide-react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
@@ -181,6 +182,7 @@ export function WorkspaceTabOptionRow({
   onPress,
   trailingAccessory,
 }: WorkspaceTabOptionRowProps): ReactElement {
+  const { t } = useTranslation("workspaces");
   const pressableStyle = useCallback(
     ({ hovered, pressed }: PressableStateCallbackType & { hovered?: boolean }) => [
       styles.optionMainPressable,
@@ -200,7 +202,7 @@ export function WorkspaceTabOptionRow({
         </View>
         <View style={styles.optionContent}>
           <Text numberOfLines={1} style={styles.optionLabel}>
-            {presentation.titleState === "loading" ? "Loading..." : presentation.label}
+            {presentation.titleState === "loading" ? t("screen.loading") : presentation.label}
           </Text>
         </View>
       </Pressable>

@@ -123,6 +123,11 @@ export default {
       loadFailedForProviders: "无法加载 {{providers}} 的会话。",
       importFailed: "无法导入所选会话。",
     },
+    empty: {
+      noProviderSessions: "未找到 {{provider}} 会话。",
+      allImported: "最近的会话都已导入。",
+      nothingToImport: "没有可导入的最近会话。",
+    },
   },
   leftSidebar: {
     noHost: "无主机",
@@ -189,6 +194,7 @@ export default {
       hostNotConnected: "主机未连接",
       loadFailed: "加载文件失败",
       workspaceUnavailable: "工作区不可用",
+      downloadFailed: "下载文件失败。",
     },
     sort: {
       name: "名称",
@@ -200,6 +206,8 @@ export default {
       modified: "修改时间",
       copyPath: "复制路径",
       download: "下载",
+      shareFile: "分享文件",
+      shareNamed: "分享 {{name}}",
     },
     list: {
       loading: "正在加载文件…",
@@ -316,6 +324,20 @@ export default {
       docs: "文档",
       retry: "重试",
     },
+    logs: {
+      loading: "正在加载守护进程日志...",
+      empty: "暂无守护进程日志。",
+      loadFailed: "无法加载守护进程日志：{{message}}",
+    },
+  },
+  update: {
+    availableTitle: "有可用更新",
+    installingTitle: "正在安装更新",
+    failedTitle: "更新失败",
+    genericError: "出了点问题。",
+    whatsNew: "更新内容",
+    installing: "安装中...",
+    installAndRestart: "安装并重启",
   },
   daemon: {
     pause: {

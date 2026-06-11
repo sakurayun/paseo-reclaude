@@ -21,15 +21,33 @@ export default {
     back: "Back",
     next: "Next",
     search: "Search",
+    rename: "Rename",
   },
   state: {
     loading: "Loading…",
     error: "Error",
     errorWithMessage: "Error: {{message}}",
     empty: "Nothing here yet",
+    saving: "Saving...",
+    saveFailed: "Unable to save",
+  },
+  form: {
+    nameRequired: "Name is required",
+  },
+  autocomplete: {
+    noResults: "No results found",
+  },
+  combobox: {
+    searchPlaceholder: "Search...",
+    empty: "No options match your search.",
+    useCustomPrefix: "Use",
+    title: "Select",
   },
   menu: {
     backdropAccessibilityLabel: "Menu backdrop",
+    open: "Open menu",
+    close: "Close menu",
+    toggleSidebar: "Toggle sidebar",
   },
   // Canonical product terminology (docs/glossary.md). Referenced from other keys via
   // i18next nesting — `$t(common:term.workspace)` — so every locale stays 1:1 consistent.

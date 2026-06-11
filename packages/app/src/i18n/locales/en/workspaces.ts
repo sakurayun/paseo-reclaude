@@ -15,6 +15,7 @@ export default {
       switchTab: "Switch tab",
       searchTabs: "Search tabs",
       loadingAgentTitle: "Loading agent title",
+      creatingAgent: "Creating agent",
     },
     tabMenu: {
       copyResumeCommand: "Copy resume command",
@@ -52,6 +53,8 @@ export default {
       toggle: "Toggle explorer",
       openAccessibility: "Open explorer",
       closeAccessibility: "Close explorer",
+      tabChanges: "Changes",
+      tabFiles: "Files",
     },
     empty: {
       executionDirectoryMissing:
