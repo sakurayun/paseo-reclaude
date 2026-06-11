@@ -169,6 +169,50 @@ export default {
     used: "已使用 {{percent}}%",
     tokens: "{{used}} / {{max}} token",
     sessionCost: "会话费用 {{cost}}",
+    quota: {
+      loading: "套餐用量加载中……",
+      planUsage: "套餐用量",
+      usage: "用量",
+      used: "已用 {{used}} / {{limit}}",
+      resettingNow: "即将重置",
+      resetsDays: "{{value}} 天后重置",
+      resetsHours: "{{value}} 小时后重置",
+      resetsMinutes: "{{value}} 分钟后重置",
+      claude: {
+        fiveHour: "5 小时限额",
+        weeklyAll: "每周 · 全部模型",
+        weeklyOpus: "每周 · Opus",
+        weeklyDesign: "每周 · Design",
+        overageEnabled: "超额用量：已启用",
+      },
+      codex: {
+        session: "会话",
+        weekly: "每周",
+        codeReview: "代码审查",
+        creditsRemaining: "剩余额度：${{amount}}",
+      },
+      copilot: {
+        title: "GitHub Copilot",
+        resets: "重置：{{label}}",
+      },
+      cursor: {
+        title: "Cursor 用量",
+        spent: "已花费 {{spent}} / {{limit}}",
+        billingResets: "账单周期于 {{date}} 重置",
+      },
+      zai: {
+        title: "Z.ai",
+        status: "状态：{{status}}",
+        valid: "有效期：{{valid}}",
+      },
+      grok: {
+        title: "Grok Build 额度",
+      },
+      kimi: {
+        title: "Kimi Code 额度",
+        noData: "暂无额度数据",
+      },
+    },
   },
   rewind: {
     tooltip: "回溯到此消息",

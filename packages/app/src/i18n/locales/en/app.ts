@@ -169,6 +169,50 @@ export default {
     used: "{{percent}}% used",
     tokens: "{{used}} / {{max}} tokens",
     sessionCost: "Session cost {{cost}}",
+    quota: {
+      loading: "Loading plan usage…",
+      planUsage: "Plan usage",
+      usage: "Usage",
+      used: "Used {{used}} / {{limit}}",
+      resettingNow: "resetting now",
+      resetsDays: "resets {{value}}d",
+      resetsHours: "resets {{value}}h",
+      resetsMinutes: "resets {{value}}m",
+      claude: {
+        fiveHour: "5-hour limit",
+        weeklyAll: "Weekly · all models",
+        weeklyOpus: "Weekly · Opus",
+        weeklyDesign: "Weekly · Design",
+        overageEnabled: "Overage credits: Enabled",
+      },
+      codex: {
+        session: "Session",
+        weekly: "Weekly",
+        codeReview: "Code Review",
+        creditsRemaining: "Credits remaining: ${{amount}}",
+      },
+      copilot: {
+        title: "GitHub Copilot",
+        resets: "Resets: {{label}}",
+      },
+      cursor: {
+        title: "Cursor usage",
+        spent: "Spent {{spent}} / {{limit}}",
+        billingResets: "Billing resets {{date}}",
+      },
+      zai: {
+        title: "Z.ai",
+        status: "Status: {{status}}",
+        valid: "Valid: {{valid}}",
+      },
+      grok: {
+        title: "Grok Build Quota",
+      },
+      kimi: {
+        title: "Kimi Code Quota",
+        noData: "No quota data available",
+      },
+    },
   },
   rewind: {
     tooltip: "Rewind to this message",

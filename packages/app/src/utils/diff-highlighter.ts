@@ -22,6 +22,14 @@ export interface ParsedDiffFile {
   additions: number;
   deletions: number;
   hunks: DiffHunk[];
+  status?: "ok" | "too_large" | "binary";
+  isSubmodule?: boolean;
+  submodule?: {
+    oldCommit: string | null;
+    newCommit: string | null;
+    isDirty?: boolean;
+    logSummary?: string;
+  };
 }
 
 const DIFF_METADATA_PREFIXES = ["index ", "--- ", "+++ ", "new file mode", "deleted file mode"];

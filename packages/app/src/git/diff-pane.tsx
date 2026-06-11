@@ -89,6 +89,7 @@ import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { inlineUnistylesStyle } from "@/styles/unistyles-inline-style";
 import { usePanelStore } from "@/stores/panel-store";
 import { buildWorkspaceExplorerStateKey } from "@/hooks/use-file-explorer-actions";
+import { buildAbsoluteExplorerPath } from "@/utils/explorer-paths";
 import {
   formatDiffContentText,
   formatDiffGutterText,
@@ -895,7 +896,19 @@ const DiffFileHeader = memo(function DiffFileHeader({
               )}
             </View>
             <View style={styles.fileHeaderRight}>
-              <DiffStat additions={file.additions} deletions={file.deletions} />
+              {file.isSubmodule ? (
+                <>
+                  {file.submodule?.isDirty && <Text style={styles.additions}>+dirty</Text>}
+                  <Text style={styles.additions}>
+                    +{file.submodule?.newCommit?.slice(0, 7) ?? "?"}
+                  </Text>
+                  <Text style={styles.deletions}>
+                    -{file.submodule?.oldCommit?.slice(0, 7) ?? "?"}
+                  </Text>
+                </>
+              ) : (
+                <DiffStat additions={file.additions} deletions={file.deletions} />
+              )}
             </View>
           </Pressable>
         </TooltipTrigger>
@@ -907,6 +920,129 @@ const DiffFileHeader = memo(function DiffFileHeader({
   );
 });
 
+function NestedDiffList({
+  serverId,
+  cwd,
+  layout,
+  wrapLines,
+  codeFontSize,
+}: {
+  serverId: string;
+  cwd: string;
+  layout: "unified" | "split";
+  wrapLines: boolean;
+  codeFontSize: number;
+}) {
+  const { status, isLoading: isStatusLoading } = useCheckoutStatusQuery({ serverId, cwd });
+  const gitStatus = status && status.isGit ? status : null;
+  const baseRef = gitStatus?.baseRef ?? undefined;
+  const hasUncommittedChanges = Boolean(gitStatus?.isDirty);
+  const diffMode = hasUncommittedChanges ? "uncommitted" : "base";
+
+  const { files, isLoading: isDiffLoading } = useCheckoutDiffQuery({
+    serverId,
+    cwd,
+    mode: diffMode,
+    baseRef,
+    enabled: Boolean(gitStatus),
+  });
+
+  const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set());
+
+  const handleToggle = useCallback((path: string) => {
+    setExpandedPaths((prev) => {
+      const next = new Set(prev);
+      if (next.has(path)) {
+        next.delete(path);
+      } else {
+        next.add(path);
+      }
+      return next;
+    });
+  }, []);
+
+  if (isStatusLoading || isDiffLoading) {
+    return (
+      <View style={styles.nestedDiffLoading}>
+        <ActivityIndicator size="small" />
+      </View>
+    );
+  }
+
+  if (files.length === 0) {
+    return (
+      <View style={styles.nestedDiffEmpty}>
+        <Text style={styles.nestedDiffEmptyText}>No changes in submodule</Text>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.nestedDiffList}>
+      {files.map((nestedFile) => {
+        const isExpanded = expandedPaths.has(nestedFile.path);
+        return (
+          <View key={nestedFile.path}>
+            <DiffFileHeader
+              file={nestedFile}
+              isExpanded={isExpanded}
+              onToggle={handleToggle}
+              testID={undefined}
+            />
+            {isExpanded && (
+              <DiffFileBody
+                file={nestedFile}
+                layout={layout}
+                wrapLines={wrapLines}
+                codeFontSize={codeFontSize}
+                testID={undefined}
+                cwd={cwd}
+                serverId={serverId}
+              />
+            )}
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
+function SubmoduleDiffBody({
+  file,
+  cwd,
+  serverId,
+  layout,
+  wrapLines,
+  codeFontSize,
+}: {
+  file: ParsedDiffFile;
+  cwd: string;
+  serverId: string;
+  layout: "unified" | "split";
+  wrapLines: boolean;
+  codeFontSize: number;
+}) {
+  const submodulePath = buildAbsoluteExplorerPath({
+    workspaceRoot: cwd,
+    entryPath: file.path,
+  });
+
+  return (
+    <View style={styles.submoduleBody}>
+      {file.submodule?.logSummary && (
+        <Text style={styles.submoduleLogSummary}>{file.submodule.logSummary}</Text>
+      )}
+      <NestedDiffList
+        serverId={serverId}
+        cwd={submodulePath}
+        layout={layout}
+        wrapLines={wrapLines}
+        codeFontSize={codeFontSize}
+      />
+    </View>
+  );
+}
+
 function DiffFileBody({
   file,
   layout,
@@ -915,6 +1051,8 @@ function DiffFileBody({
   reviewActions,
   onBodyHeightChange,
   testID,
+  cwd,
+  serverId,
 }: {
   file: ParsedDiffFile;
   layout: "unified" | "split";
@@ -923,6 +1061,8 @@ function DiffFileBody({
   reviewActions?: InlineReviewActions;
   onBodyHeightChange?: (file: ParsedDiffFile, height: number) => void;
   testID?: string;
+  cwd: string;
+  serverId: string;
 }) {
   const { t } = useTranslation("git");
   const [scrollViewWidth, setScrollViewWidth] = useState(0);
@@ -949,6 +1089,19 @@ function DiffFileBody({
   return (
     <View style={FILE_SECTION_BODY_STYLE} onLayout={handleLayout} testID={testID}>
       {(() => {
+        if (file.isSubmodule) {
+          return (
+            <SubmoduleDiffBody
+              file={file}
+              cwd={cwd}
+              serverId={serverId}
+              layout={layout}
+              wrapLines={wrapLines}
+              codeFontSize={codeFontSize}
+            />
+          );
+        }
+
         if (file.status === "too_large" || file.status === "binary") {
           return (
             <View style={styles.statusMessageContainer}>
@@ -2005,6 +2158,8 @@ export function GitDiffPane({
           reviewActions={reviewActions}
           onBodyHeightChange={handleBodyHeightChange}
           testID={`diff-file-${item.fileIndex}-body`}
+          cwd={cwd}
+          serverId={serverId}
         />
       );
     },
@@ -2016,6 +2171,8 @@ export function GitDiffPane({
       handleToggleExpanded,
       reviewActions,
       wrapLines,
+      cwd,
+      serverId,
     ],
   );
 
@@ -2512,6 +2669,37 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.xs,
     fontWeight: theme.fontWeight.normal,
     color: theme.colors.diffDeletion,
+  },
+  submoduleBody: {
+    padding: theme.spacing[4],
+    gap: theme.spacing[3],
+    borderTopWidth: theme.borderWidth[1],
+    borderTopColor: theme.colors.border,
+    backgroundColor: theme.colors.surface1,
+  },
+  submoduleLogSummary: {
+    fontSize: theme.fontSize.xs,
+    color: theme.colors.foregroundMuted,
+    lineHeight: theme.fontSize.xs * 1.5,
+  },
+  nestedDiffList: {
+    marginTop: theme.spacing[2],
+    borderRadius: theme.borderRadius.base,
+    borderWidth: theme.borderWidth[1],
+    borderColor: theme.colors.border,
+    overflow: "hidden",
+  },
+  nestedDiffLoading: {
+    padding: theme.spacing[4],
+    alignItems: "center",
+  },
+  nestedDiffEmpty: {
+    padding: theme.spacing[4],
+    alignItems: "center",
+  },
+  nestedDiffEmptyText: {
+    fontSize: theme.fontSize.xs,
+    color: theme.colors.foregroundMuted,
   },
   diffContent: {
     borderTopWidth: theme.borderWidth[1],
