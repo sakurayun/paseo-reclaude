@@ -245,6 +245,11 @@ export function createMarkdownStyles(theme: Theme) {
     tr: {
       flexDirection: "row" as const,
       marginRight: -1,
+      // react-native-markdown-display merges these styles over its defaults,
+      // and the default `tr` ships borderBottomWidth: 1 + black borderColor —
+      // zero it explicitly or every row grows a dark bottom line.
+      borderBottomWidth: 0,
+      borderColor: theme.colors.border,
     },
 
     td: {
