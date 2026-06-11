@@ -71,6 +71,7 @@ import type { AgentAttachment } from "@getpaseo/protocol/messages";
 import type { ToolCallDetail } from "@getpaseo/protocol/agent-types";
 import { buildToolCallPresentation } from "@/tool-calls/presentation";
 import { resolveToolCallIcon } from "@/utils/tool-call-icon";
+import type { ToolCallSchemeColor } from "@/utils/tool-call-colors";
 import { getMarkdownListMarker, getMarkdownListSpacing } from "@/utils/markdown-list";
 import { markdownNodeContainsType } from "@/utils/markdown-ast";
 import { useStableEvent } from "@/hooks/use-stable-event";
@@ -1382,7 +1383,7 @@ export const TurnCopyButton = memo(function TurnCopyButton({
   );
 });
 
-const expandableBadgeStylesheet = StyleSheet.create((theme) => ({
+const expandableBadgeStylesheet = StyleSheet.create((theme, rt) => ({
   container: {
     marginHorizontal: -13,
   },
@@ -1393,11 +1394,11 @@ const expandableBadgeStylesheet = StyleSheet.create((theme) => ({
     marginBottom: theme.spacing[4],
   },
   containerExpanded: {
-    marginTop: theme.spacing[2],
-    marginBottom: theme.spacing[3],
+    marginTop: theme.spacing[1],
+    marginBottom: theme.spacing[2],
   },
   pressable: {
-    borderRadius: theme.borderRadius.lg,
+    borderRadius: theme.borderRadius.xl,
     borderWidth: theme.borderWidth[1],
     borderColor: "transparent",
     paddingHorizontal: theme.spacing[2],
@@ -1439,6 +1440,13 @@ const expandableBadgeStylesheet = StyleSheet.create((theme) => ({
     color: theme.colors.foreground,
     opacity: 0.72,
   },
+  // Scheme selection must go through the runtime, not `theme.colorScheme`:
+  // unistyles web runs in CSSVars mode, where every string leaf on `theme`
+  // (including colorScheme) is rewritten to a `var(--…)` reference, so using
+  // it as an object key silently resolves to undefined.
+  labelTinted: (tint: ToolCallSchemeColor) => ({
+    color: String(rt.themeName).startsWith("light") ? tint.light : tint.dark,
+  }),
   secondaryLabel: {
     flexShrink: 1,
     minWidth: 0,
@@ -1476,8 +1484,8 @@ const expandableBadgeStylesheet = StyleSheet.create((theme) => ({
     transform: [{ scale: 1.3 }, { rotate: "90deg" }],
   },
   detailWrapper: {
-    borderBottomLeftRadius: theme.borderRadius.lg,
-    borderBottomRightRadius: theme.borderRadius.lg,
+    borderBottomLeftRadius: theme.borderRadius.xl,
+    borderBottomRightRadius: theme.borderRadius.xl,
     backgroundColor: theme.colors.surface1,
     padding: 0,
     gap: 0,
@@ -2573,6 +2581,7 @@ interface ExpandableBadgeProps {
   label: string;
   secondaryLabel?: string;
   icon?: ComponentType<{ size?: number; color?: string }>;
+  labelColor?: ToolCallSchemeColor;
   isExpanded: boolean;
   style?: StyleProp<ViewStyle>;
   onToggle?: () => void;
@@ -2781,19 +2790,28 @@ function ExpandableBadgeLabelRow({
 const LUCIDE_TOOL_ICON_NUDGE_LEFT: ViewStyle = { marginLeft: -1 };
 const LUCIDE_CHEVRON_NUDGE_LEFT: ViewStyle = { marginLeft: -4 };
 
+// Glyph size inside the 22×22 iconBadge circle.
+const TOOL_CALL_BADGE_ICON_SIZE = 15;
+
 function renderExpandableBadgeIcon({
   isError,
   isActive,
   ThemedIcon,
+  tintColorMapping,
 }: {
   isError: boolean;
   isActive: boolean;
   ThemedIcon: ComponentType<{ size?: number; uniProps?: typeof foregroundColorMapping }> | null;
+  tintColorMapping?: typeof foregroundColorMapping;
 }): ReactNode {
   if (isError) {
     return (
       <View style={LUCIDE_TOOL_ICON_NUDGE_LEFT}>
-        <ThemedTriangleAlertIcon size={12} opacity={0.8} uniProps={destructiveColorMapping} />
+        <ThemedTriangleAlertIcon
+          size={TOOL_CALL_BADGE_ICON_SIZE}
+          opacity={0.8}
+          uniProps={destructiveColorMapping}
+        />
       </View>
     );
   }
@@ -2801,8 +2819,10 @@ function renderExpandableBadgeIcon({
     return (
       <View style={LUCIDE_TOOL_ICON_NUDGE_LEFT}>
         <ThemedIcon
-          size={12}
-          uniProps={isActive ? foregroundColorMapping : mutedForegroundColorMapping}
+          size={TOOL_CALL_BADGE_ICON_SIZE}
+          uniProps={
+            tintColorMapping ?? (isActive ? foregroundColorMapping : mutedForegroundColorMapping)
+          }
         />
       </View>
     );
@@ -2932,6 +2952,7 @@ const ExpandableBadge = memo(function ExpandableBadge({
   style,
   secondaryLabel,
   icon,
+  labelColor,
   isExpanded,
   onToggle,
   onOpenFile,
@@ -3128,8 +3149,9 @@ const ExpandableBadge = memo(function ExpandableBadge({
       expandableBadgeStylesheet.label,
       isActive && expandableBadgeStylesheet.labelActive,
       isLoading && expandableBadgeStylesheet.labelLoading,
+      labelColor ? expandableBadgeStylesheet.labelTinted(labelColor) : null,
     ],
-    [isActive, isLoading],
+    [isActive, isLoading, labelColor],
   );
 
   const secondaryLabelStyle = useMemo(
@@ -3169,7 +3191,11 @@ const ExpandableBadge = memo(function ExpandableBadge({
   );
 
   const ThemedIcon = useMemo(() => (icon ? withUnistyles(icon) : null), [icon]);
-  const iconNode = renderExpandableBadgeIcon({ isError, isActive, ThemedIcon });
+  const tintColorMapping = useMemo(
+    () => (labelColor ? (theme: Theme) => ({ color: labelColor[theme.colorScheme] }) : undefined),
+    [labelColor],
+  );
+  const iconNode = renderExpandableBadgeIcon({ isError, isActive, ThemedIcon, tintColorMapping });
   const iconSlotNode = renderExpandableBadgeIconSlot({
     showChevron: isInteractive && isHovered,
     chevronStyle,
@@ -3241,10 +3267,18 @@ const ExpandableBadge = memo(function ExpandableBadge({
   );
 }, areExpandableBadgePropsEqual);
 
+function areToolCallSchemeColorsEqual(
+  previous: ToolCallSchemeColor | undefined,
+  next: ToolCallSchemeColor | undefined,
+) {
+  return previous?.light === next?.light && previous?.dark === next?.dark;
+}
+
 function areExpandableBadgePropsEqual(previous: ExpandableBadgeProps, next: ExpandableBadgeProps) {
   if (previous.label !== next.label) return false;
   if (previous.secondaryLabel !== next.secondaryLabel) return false;
   if (previous.icon !== next.icon) return false;
+  if (!areToolCallSchemeColorsEqual(previous.labelColor, next.labelColor)) return false;
   if (previous.isExpanded !== next.isExpanded) return false;
   if (previous.style !== next.style) return false;
   if (previous.isLoading !== next.isLoading) return false;
@@ -3339,6 +3373,7 @@ export const ToolCall = memo(function ToolCall({
         detail: effectiveDetail,
         errorText: presentation.errorText,
         icon: presentation.icon,
+        tintColor: presentation.labelColor,
         showLoadingSkeleton: presentation.isLoadingDetails,
       });
     } else {
@@ -3351,6 +3386,7 @@ export const ToolCall = memo(function ToolCall({
     presentation.summary,
     presentation.errorText,
     presentation.icon,
+    presentation.labelColor,
     presentation.isLoadingDetails,
     effectiveDetail,
   ]);
@@ -3412,6 +3448,7 @@ export const ToolCall = memo(function ToolCall({
       label={presentation.displayName}
       secondaryLabel={presentation.summary}
       icon={presentation.icon}
+      labelColor={presentation.labelColor}
       isExpanded={!isMobile && isExpanded}
       onToggle={presentation.canOpenDetails ? handleToggle : undefined}
       onOpenFile={handleOpenFile}

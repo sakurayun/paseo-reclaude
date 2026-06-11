@@ -766,10 +766,14 @@ const styles = StyleSheet.create((theme) => {
     paddedContainer: {
       gap: theme.spacing[4],
       padding: theme.spacing[3],
+      // The tool call title row above already provides vertical breathing
+      // room; a full top inset here would double it.
+      paddingTop: theme.spacing[1],
     },
     fullBleedContainer: {
       gap: theme.spacing[2],
       padding: theme.spacing[3],
+      paddingTop: theme.spacing[1],
     },
     groupHeader: {
       flexDirection: "row",
