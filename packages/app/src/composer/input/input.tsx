@@ -2001,24 +2001,6 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
 // the input to the other by animating offset box-shadows; reduced-motion users
 // get a static halo instead.
 const ULTRACODE_GLOW_STYLE_ID = "composer-ultracode-glow-style";
-
-// Theme surface tokens are hex; the glass needs them with alpha.
-function hexToRgba(hex: string, alpha: number): string {
-  const normalized = hex.replace("#", "");
-  const value = Number.parseInt(
-    normalized.length === 3
-      ? normalized
-          .split("")
-          .map((c) => c + c)
-          .join("")
-      : normalized,
-    16,
-  );
-  const r = (value >> 16) & 0xff;
-  const g = (value >> 8) & 0xff;
-  const b = value & 0xff;
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-}
 const ULTRACODE_GLOW_DATASET = { "ultracode-glow": "true" } as const;
 
 function ensureUltracodeGlowStyle(): void {
@@ -2093,7 +2075,7 @@ const styles = StyleSheet.create((theme: Theme) => ({
   inputWrapper: {
     flexDirection: "column",
     gap: theme.spacing[3],
-    backgroundColor: hexToRgba(theme.colors.surface1, isWeb ? 0.62 : 0.94),
+    backgroundColor: isWeb ? theme.colors.surfaceGlass : theme.colors.surfaceGlassStrong,
     borderWidth: theme.borderWidth[1],
     borderColor: theme.colors.borderAccent,
     borderRadius: theme.borderRadius["2xl"],

@@ -144,6 +144,16 @@ const darkStatusColors = {
   statusMerged: "#9333ea", // purple-600
 };
 
+// Glass tints are precomputed here because Unistyles serves theme colors as
+// CSS variables on web — runtime hex parsing would see "var(--…)" and fail.
+function withAlpha(hex: string, alpha: number): string {
+  const value = Number.parseInt(hex.slice(1), 16);
+  const r = (value >> 16) & 0xff;
+  const g = (value >> 8) & 0xff;
+  const b = value & 0xff;
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
 // Semantic color tokens - Layer-based system
 const lightSemanticColors = {
   // Surfaces (layers) - shifted one step lighter
@@ -156,6 +166,8 @@ const lightSemanticColors = {
   surfaceSidebar: "#f4f4f5", // Sidebar background (darker than main)
   surfaceSidebarHover: "#e9e9ec", // Sidebar hover (darker in light mode)
   surfaceWorkspace: "#ffffff", // Workspace main background
+  surfaceGlass: withAlpha("#fafafa", 0.62), // Frosted composer (web, behind backdrop blur)
+  surfaceGlassStrong: withAlpha("#fafafa", 0.94), // Frosted composer (native, no blur)
 
   // Text
   foreground: "#1a1a1e",
@@ -243,6 +255,8 @@ const claudeLightSemanticColors = {
   surfaceSidebar: "#f0eee6", // Sidebar background (darker than main)
   surfaceSidebarHover: "#e6e3d8", // Sidebar hover
   surfaceWorkspace: "#faf9f5", // Workspace main background
+  surfaceGlass: withAlpha("#f5f4ee", 0.62), // Frosted composer (web, behind backdrop blur)
+  surfaceGlassStrong: withAlpha("#f5f4ee", 0.94), // Frosted composer (native, no blur)
 
   // Text — warm near-black
   foreground: "#1f1e1d",
@@ -369,6 +383,8 @@ function buildDarkSemanticColors(tint: DarkThemeConfig) {
     surfaceSidebar: tint.surfaceSidebar,
     surfaceSidebarHover: tint.surfaceSidebarHover,
     surfaceWorkspace: tint.surface1,
+    surfaceGlass: withAlpha(tint.surface1, 0.62),
+    surfaceGlassStrong: withAlpha(tint.surface1, 0.94),
 
     foreground: "#fafafa",
     foregroundMuted: tint.foregroundMuted,
