@@ -171,6 +171,24 @@ export default {
       codeSizeTitle: "Code size",
       codeSizeA11y: "Code font size",
     },
+    terminal: {
+      section: "Terminal",
+      ligatures: {
+        title: "Font ligatures",
+        hint: "Render programming ligatures (e.g. ->, =>) when the code font supports them",
+        a11y: "Terminal font ligatures",
+      },
+      padding: {
+        top: "Padding top",
+        topA11y: "Terminal padding top",
+        bottom: "Padding bottom",
+        bottomA11y: "Terminal padding bottom",
+        left: "Padding left",
+        leftA11y: "Terminal padding left",
+        right: "Padding right",
+        rightA11y: "Terminal padding right",
+      },
+    },
     syntax: {
       section: "Syntax",
       title: "Highlight theme",

@@ -16,12 +16,14 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { SettingsSection } from "@/screens/settings/settings-section";
+import { Switch } from "@/components/ui/switch";
 import {
   MAX_CODE_FONT_SIZE,
   MAX_UI_FONT_SIZE,
   MIN_CODE_FONT_SIZE,
   MIN_UI_FONT_SIZE,
   parseClampedFontSize,
+  parseTerminalPadding,
   sanitizeFontFamily,
   useAppSettings,
   type AppSettings,
@@ -304,6 +306,62 @@ function FontSizeRow({
 }
 
 // ---------------------------------------------------------------------------
+// Terminal: ligatures toggle + fixed padding around the terminal content
+// ---------------------------------------------------------------------------
+
+type TerminalPaddingField =
+  | "terminalPaddingTop"
+  | "terminalPaddingBottom"
+  | "terminalPaddingLeft"
+  | "terminalPaddingRight";
+
+interface TerminalPaddingRowProps {
+  field: TerminalPaddingField;
+  title: string;
+  accessibilityLabel: string;
+  value: number;
+  onCommit: (field: TerminalPaddingField, value: number) => void;
+}
+
+function TerminalPaddingRow({
+  field,
+  title,
+  accessibilityLabel,
+  value,
+  onCommit,
+}: TerminalPaddingRowProps) {
+  const [draft, setDraft] = useState(String(value));
+
+  // Resync from the committed value when it changes elsewhere.
+  useEffect(() => {
+    setDraft(String(value));
+  }, [value]);
+
+  const handleChangeDraft = useCallback((next: string) => {
+    setDraft(next.replace(/[^\d]/g, ""));
+  }, []);
+
+  const handleCommit = useCallback(() => {
+    const parsed = parseTerminalPadding(draft);
+    const next = parsed ?? value;
+    setDraft(String(next));
+    if (next !== value) {
+      onCommit(field, next);
+    }
+  }, [draft, field, onCommit, value]);
+
+  return (
+    <FontSizeRow
+      title={title}
+      accessibilityLabel={accessibilityLabel}
+      draft={draft}
+      onChangeDraft={handleChangeDraft}
+      onCommit={handleCommit}
+    />
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Syntax highlight theme picker (commits immediately)
 // ---------------------------------------------------------------------------
 
@@ -454,6 +512,20 @@ export function AppearanceSection() {
     }
   }, [settings.uiFontSize, uiSizeDraft, updateSettings]);
 
+  const handleTerminalLigaturesChange = useCallback(
+    (terminalLigaturesEnabled: boolean) => {
+      void updateSettings({ terminalLigaturesEnabled });
+    },
+    [updateSettings],
+  );
+
+  const handleTerminalPaddingCommit = useCallback(
+    (field: TerminalPaddingField, value: number) => {
+      void updateSettings({ [field]: value });
+    },
+    [updateSettings],
+  );
+
   const commitCodeSize = useCallback(() => {
     const parsed = parseClampedFontSize(codeSizeDraft, {
       min: MIN_CODE_FONT_SIZE,
@@ -526,6 +598,51 @@ export function AppearanceSection() {
             draft={codeSizeDraft}
             onChangeDraft={handleCodeSizeChange}
             onCommit={commitCodeSize}
+          />
+        </View>
+      </SettingsSection>
+      <SettingsSection title={t("appearance.terminal.section")}>
+        <View style={settingsStyles.card}>
+          <View style={settingsStyles.row}>
+            <View style={settingsStyles.rowContent}>
+              <Text style={settingsStyles.rowTitle}>
+                {t("appearance.terminal.ligatures.title")}
+              </Text>
+              <Text style={settingsStyles.rowHint}>{t("appearance.terminal.ligatures.hint")}</Text>
+            </View>
+            <Switch
+              value={settings.terminalLigaturesEnabled}
+              onValueChange={handleTerminalLigaturesChange}
+              accessibilityLabel={t("appearance.terminal.ligatures.a11y")}
+            />
+          </View>
+          <TerminalPaddingRow
+            field="terminalPaddingTop"
+            title={t("appearance.terminal.padding.top")}
+            accessibilityLabel={t("appearance.terminal.padding.topA11y")}
+            value={settings.terminalPaddingTop}
+            onCommit={handleTerminalPaddingCommit}
+          />
+          <TerminalPaddingRow
+            field="terminalPaddingBottom"
+            title={t("appearance.terminal.padding.bottom")}
+            accessibilityLabel={t("appearance.terminal.padding.bottomA11y")}
+            value={settings.terminalPaddingBottom}
+            onCommit={handleTerminalPaddingCommit}
+          />
+          <TerminalPaddingRow
+            field="terminalPaddingLeft"
+            title={t("appearance.terminal.padding.left")}
+            accessibilityLabel={t("appearance.terminal.padding.leftA11y")}
+            value={settings.terminalPaddingLeft}
+            onCommit={handleTerminalPaddingCommit}
+          />
+          <TerminalPaddingRow
+            field="terminalPaddingRight"
+            title={t("appearance.terminal.padding.right")}
+            accessibilityLabel={t("appearance.terminal.padding.rightA11y")}
+            value={settings.terminalPaddingRight}
+            onCommit={handleTerminalPaddingCommit}
           />
         </View>
       </SettingsSection>

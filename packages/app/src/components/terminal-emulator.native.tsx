@@ -47,6 +47,7 @@ interface TerminalEmulatorProps {
   scrollbackLines: number;
   fontFamily?: string;
   fontSize?: number;
+  ligaturesEnabled?: boolean;
   swipeGesturesEnabled?: boolean;
   onSwipeLeft?: () => void;
   onSwipeRight?: () => void;
@@ -85,6 +86,7 @@ type BridgeInboundMessage =
       theme: ITheme;
       fontFamily?: string;
       fontSize?: number;
+      ligaturesEnabled?: boolean;
       pendingModifiers: PendingTerminalModifiers;
       swipeGesturesEnabled: boolean;
     }
@@ -98,6 +100,7 @@ type BridgeInboundMessage =
   | { type: "setTheme"; streamKey: string; theme: ITheme }
   | { type: "setScrollback"; streamKey: string; lines: number }
   | { type: "setFont"; streamKey: string; fontFamily?: string; fontSize?: number }
+  | { type: "setLigatures"; streamKey: string; enabled: boolean }
   | { type: "setPendingModifiers"; streamKey: string; pendingModifiers: PendingTerminalModifiers }
   | { type: "setSwipeGesturesEnabled"; streamKey: string; enabled: boolean }
   | {
@@ -167,6 +170,7 @@ function createMountMessage(input: {
   theme: ITheme;
   fontFamily?: string;
   fontSize?: number;
+  ligaturesEnabled?: boolean;
   pendingModifiers: PendingTerminalModifiers;
   swipeGesturesEnabled: boolean;
 }): BridgeInboundMessage {
@@ -178,6 +182,7 @@ function createMountMessage(input: {
     theme: input.theme,
     fontFamily: input.fontFamily,
     fontSize: input.fontSize,
+    ligaturesEnabled: input.ligaturesEnabled,
     pendingModifiers: input.pendingModifiers,
     swipeGesturesEnabled: input.swipeGesturesEnabled,
   };
@@ -195,6 +200,7 @@ export default function TerminalEmulator({
   scrollbackLines,
   fontFamily,
   fontSize,
+  ligaturesEnabled = true,
   swipeGesturesEnabled = false,
   onSwipeLeft,
   onSwipeRight,
@@ -231,6 +237,7 @@ export default function TerminalEmulator({
     theme: xtermTheme,
     fontFamily,
     fontSize,
+    ligaturesEnabled,
     pendingModifiers,
     swipeGesturesEnabled,
   });
@@ -241,6 +248,7 @@ export default function TerminalEmulator({
     theme: xtermTheme,
     fontFamily,
     fontSize,
+    ligaturesEnabled,
     pendingModifiers,
     swipeGesturesEnabled,
   };
@@ -412,6 +420,11 @@ export default function TerminalEmulator({
     if (!mountedStreamKeyRef.current) return;
     sendToWebView({ type: "setFont", streamKey, fontFamily, fontSize });
   }, [fontFamily, fontSize, sendToWebView, streamKey]);
+
+  useEffect(() => {
+    if (!mountedStreamKeyRef.current) return;
+    sendToWebView({ type: "setLigatures", streamKey, enabled: ligaturesEnabled });
+  }, [ligaturesEnabled, sendToWebView, streamKey]);
 
   useEffect(() => {
     if (!mountedStreamKeyRef.current) return;

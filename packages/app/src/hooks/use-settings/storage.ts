@@ -24,6 +24,11 @@ export const DEFAULT_CODE_FONT_SIZE = 12; // == FONT_SIZE.code
 export const MIN_CODE_FONT_SIZE = 9;
 export const MAX_CODE_FONT_SIZE = 22; // line-height 1.5×22=33 stays safe
 export const MAX_FONT_FAMILY_LENGTH = 200;
+// Ligatures were always-on before the setting existed, so the default keeps that behavior.
+export const DEFAULT_TERMINAL_LIGATURES_ENABLED = true;
+export const DEFAULT_TERMINAL_PADDING = 0;
+export const MIN_TERMINAL_PADDING = 0;
+export const MAX_TERMINAL_PADDING = 64;
 
 export interface AppSettings {
   theme: ThemeName | "auto";
@@ -36,6 +41,11 @@ export interface AppSettings {
   uiFontSize: number; // clamped px, default 16
   codeFontSize: number; // clamped px, default 12
   syntaxTheme: SyntaxThemeId; // default "one"
+  terminalLigaturesEnabled: boolean; // render programming ligatures in the terminal
+  terminalPaddingTop: number; // clamped px, default 0
+  terminalPaddingBottom: number;
+  terminalPaddingLeft: number;
+  terminalPaddingRight: number;
 }
 
 export interface Settings extends AppSettings {
@@ -54,6 +64,11 @@ export const DEFAULT_CLIENT_SETTINGS: AppSettings = {
   uiFontSize: DEFAULT_UI_FONT_SIZE,
   codeFontSize: DEFAULT_CODE_FONT_SIZE,
   syntaxTheme: "one",
+  terminalLigaturesEnabled: DEFAULT_TERMINAL_LIGATURES_ENABLED,
+  terminalPaddingTop: DEFAULT_TERMINAL_PADDING,
+  terminalPaddingBottom: DEFAULT_TERMINAL_PADDING,
+  terminalPaddingLeft: DEFAULT_TERMINAL_PADDING,
+  terminalPaddingRight: DEFAULT_TERMINAL_PADDING,
 };
 
 export const DEFAULT_APP_SETTINGS: Settings = {
@@ -193,6 +208,21 @@ function pickAppSettings(stored: Partial<AppSettings>): Partial<AppSettings> {
   if (typeof stored.syntaxTheme === "string" && isSyntaxThemeId(stored.syntaxTheme)) {
     result.syntaxTheme = stored.syntaxTheme;
   }
+  if (typeof stored.terminalLigaturesEnabled === "boolean") {
+    result.terminalLigaturesEnabled = stored.terminalLigaturesEnabled;
+  }
+  const paddingFields = [
+    "terminalPaddingTop",
+    "terminalPaddingBottom",
+    "terminalPaddingLeft",
+    "terminalPaddingRight",
+  ] as const;
+  for (const field of paddingFields) {
+    const padding = parseTerminalPadding(stored[field]);
+    if (padding !== null) {
+      result[field] = padding;
+    }
+  }
   return result;
 }
 
@@ -218,6 +248,13 @@ export function parseTerminalScrollbackLines(value: unknown): number | null {
     MAX_TERMINAL_SCROLLBACK_LINES,
     Math.max(MIN_TERMINAL_SCROLLBACK_LINES, Math.floor(numericValue)),
   );
+}
+
+export function parseTerminalPadding(value: unknown): number | null {
+  return parseClampedFontSize(value, {
+    min: MIN_TERMINAL_PADDING,
+    max: MAX_TERMINAL_PADDING,
+  });
 }
 
 export function parseClampedFontSize(

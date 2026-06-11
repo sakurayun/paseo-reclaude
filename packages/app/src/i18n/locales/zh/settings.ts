@@ -169,6 +169,24 @@ export default {
       codeSizeTitle: "代码字号",
       codeSizeA11y: "代码字号",
     },
+    terminal: {
+      section: "终端",
+      ligatures: {
+        title: "字体连字",
+        hint: "代码字体支持时渲染编程连字（如 ->、=>）",
+        a11y: "终端字体连字",
+      },
+      padding: {
+        top: "上内边距",
+        topA11y: "终端上内边距",
+        bottom: "下内边距",
+        bottomA11y: "终端下内边距",
+        left: "左内边距",
+        leftA11y: "终端左内边距",
+        right: "右内边距",
+        rightA11y: "终端右内边距",
+      },
+    },
     syntax: {
       section: "语法",
       title: "高亮主题",

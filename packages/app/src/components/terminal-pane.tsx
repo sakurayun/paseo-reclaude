@@ -182,6 +182,25 @@ export function TerminalPane({
     const trimmed = settings.monoFontFamily.trim();
     return trimmed.length > 0 ? trimmed : undefined;
   }, [settings.monoFontFamily]);
+  // User-configured fixed padding around the terminal content. The fit addon
+  // measures the inner container, so padding here shrinks the grid correctly.
+  const terminalPaddingStyle = useMemo(
+    () => [
+      styles.terminalGestureContainer,
+      {
+        paddingTop: settings.terminalPaddingTop,
+        paddingBottom: settings.terminalPaddingBottom,
+        paddingLeft: settings.terminalPaddingLeft,
+        paddingRight: settings.terminalPaddingRight,
+      },
+    ],
+    [
+      settings.terminalPaddingTop,
+      settings.terminalPaddingBottom,
+      settings.terminalPaddingLeft,
+      settings.terminalPaddingRight,
+    ],
+  );
   const isMobile = useIsCompactFormFactor();
   const mobileView = usePanelStore((state) => state.mobileView);
   const showMobileAgentList = usePanelStore((state) => state.showMobileAgentList);
@@ -764,7 +783,7 @@ export function TerminalPane({
     <Animated.View style={containerStyle}>
       <View style={styles.outputContainer}>
         {isWorkspaceFocused ? (
-          <View style={styles.terminalGestureContainer}>
+          <View style={terminalPaddingStyle}>
             <TerminalEmulator
               ref={emulatorRef}
               dom={TERMINAL_EMULATOR_DOM_PROPS}
@@ -774,6 +793,7 @@ export function TerminalPane({
               scrollbackLines={settings.terminalScrollbackLines}
               fontFamily={terminalFontFamily}
               fontSize={settings.codeFontSize}
+              ligaturesEnabled={settings.terminalLigaturesEnabled}
               swipeGesturesEnabled={swipeGesturesEnabled}
               initialSnapshot={initialSnapshot}
               onRendererReadyChange={handleRendererReadyChange}

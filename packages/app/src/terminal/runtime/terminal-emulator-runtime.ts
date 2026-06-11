@@ -39,6 +39,7 @@ export interface TerminalEmulatorRuntimeMountInput {
   theme: ITheme;
   fontFamily?: string;
   fontSize?: number;
+  ligaturesEnabled?: boolean;
 }
 
 export interface TerminalEmulatorRuntimeCallbacks {
@@ -177,6 +178,7 @@ export class TerminalEmulatorRuntime {
   };
   private terminal: Terminal | null = null;
   private fitAddon: FitAddon | null = null;
+  private ligaturesAddon: LigaturesAddon | null = null;
   private fitAndEmitResize: ((input?: { force?: boolean; shouldClaim?: boolean }) => void) | null =
     null;
   private lastSize: { rows: number; cols: number } | null = null;
@@ -261,10 +263,8 @@ export class TerminalEmulatorRuntime {
     );
     terminal.loadAddon(new SearchAddon({ highlightLimit: 20_000 }));
     terminal.loadAddon(new ClipboardAddon());
-    try {
-      terminal.loadAddon(new LigaturesAddon());
-    } catch {
-      // Ligatures require Font Access API or compatible environment
+    if (input.ligaturesEnabled !== false) {
+      this.loadLigaturesAddon(terminal);
     }
     terminal.open(input.host);
     this.themeBackgroundElements = this.collectThemeBackgroundElements(input);
@@ -700,6 +700,44 @@ export class TerminalEmulatorRuntime {
     this.refreshVisibleRows();
   }
 
+  setLigatures(input: { enabled: boolean }): void {
+    const terminal = this.terminal;
+    if (!terminal) {
+      return;
+    }
+    if (input.enabled) {
+      this.loadLigaturesAddon(terminal);
+    } else {
+      this.disposeLigaturesAddon();
+    }
+    this.refreshVisibleRows();
+  }
+
+  private loadLigaturesAddon(terminal: Terminal): void {
+    if (this.ligaturesAddon) {
+      return;
+    }
+    try {
+      const addon = new LigaturesAddon();
+      terminal.loadAddon(addon);
+      this.ligaturesAddon = addon;
+    } catch {
+      // Ligatures require Font Access API or compatible environment
+    }
+  }
+
+  private disposeLigaturesAddon(): void {
+    if (!this.ligaturesAddon) {
+      return;
+    }
+    try {
+      this.ligaturesAddon.dispose();
+    } catch {
+      // ignore
+    }
+    this.ligaturesAddon = null;
+  }
+
   focus(input?: { forceRefocus?: boolean }): void {
     const terminal = this.terminal;
     if (!terminal) {
@@ -767,6 +805,8 @@ export class TerminalEmulatorRuntime {
     }
     this.terminal = null;
     this.fitAddon = null;
+    // The terminal dispose (via cleanup) tears down loaded addons; just drop the ref.
+    this.ligaturesAddon = null;
     this.fitAndEmitResize = null;
     this.lastSize = null;
     this.themeBackgroundElements = [];
