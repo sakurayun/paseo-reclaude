@@ -5,7 +5,6 @@ import {
   DESKTOP_TRAFFIC_LIGHT_WIDTH,
   DESKTOP_TRAFFIC_LIGHT_HEIGHT,
   DESKTOP_WINDOW_CONTROLS_WIDTH,
-  DESKTOP_WINDOW_CONTROLS_HEIGHT,
 } from "@/constants/layout";
 import { getDesktopWindow } from "@/desktop/electron/window";
 import { usePanelStore } from "@/stores/panel-store";
@@ -111,10 +110,13 @@ export function resolveRawWindowControlsPadding(input: {
     };
   }
 
+  // Windows/Linux window controls live in the top-right titlebar overlay, so
+  // only horizontal clearance is needed there. Top clearance is a macOS-only
+  // concern: the traffic lights float over the sidebar's top-left corner.
   return {
     left: 0,
     right: DESKTOP_WINDOW_CONTROLS_WIDTH,
-    top: DESKTOP_WINDOW_CONTROLS_HEIGHT,
+    top: 0,
   };
 }
 

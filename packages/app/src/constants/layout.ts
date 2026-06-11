@@ -20,9 +20,10 @@ export const COMPACT_FORM_FACTOR_WIDTH = 500;
 export const DESKTOP_TRAFFIC_LIGHT_WIDTH = 78;
 export const DESKTOP_TRAFFIC_LIGHT_HEIGHT = 45;
 
-// Windows/Linux window controls (minimize/maximize/close) — top-right
+// Windows/Linux window controls (minimize/maximize/close) — top-right.
+// Only horizontal clearance matters: the overlay never floats over the
+// left sidebar, so no view reserves vertical space for it.
 export const DESKTOP_WINDOW_CONTROLS_WIDTH = 140;
-export const DESKTOP_WINDOW_CONTROLS_HEIGHT = 48;
 
 export {
   getIsElectron as getIsElectronRuntime,

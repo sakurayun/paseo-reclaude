@@ -21,13 +21,13 @@ describe("resolveWindowControlsPadding", () => {
     });
   });
 
-  it("keeps Windows and Linux window-control padding available when the app window is not fullscreen", () => {
+  it("reserves only right-side clearance on Windows and Linux, where the controls overlay the top-right corner", () => {
     expect(
       resolveRawWindowControlsPadding({ isElectron: true, isMac: false, isFullscreen: false }),
     ).toEqual({
       left: 0,
       right: 140,
-      top: 48,
+      top: 0,
     });
   });
 
