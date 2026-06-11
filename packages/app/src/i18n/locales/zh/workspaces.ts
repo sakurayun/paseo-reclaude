@@ -265,6 +265,10 @@ export default {
   filePanel: {
     executionDirectoryNotFound: "未找到工作区执行目录。",
   },
+  sidebarSessions: {
+    toggle: "会话记录",
+    viewAll: "查看全部会话",
+  },
   sessionsPanel: {
     tabLabel: "会话记录",
     tabSubtitle: "工作区会话历史",

@@ -75,6 +75,7 @@ import {
 import { useSidebarOrderStore } from "@/stores/sidebar-order-store";
 import { useShowShortcutBadges } from "@/hooks/use-show-shortcut-badges";
 import { navigateToPreparedWorkspaceTab } from "@/utils/workspace-navigation";
+import { SidebarWorkspaceSessions } from "@/components/sidebar/sidebar-workspace-sessions";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -1755,6 +1756,13 @@ function WorkspaceRowWithMenu({
         onMarkAsRead={hasClearableAttention ? handleMarkAsRead : undefined}
         archiveShortcutKeys={selected ? archiveShortcutKeys : null}
       />
+      {!isDragging ? (
+        <SidebarWorkspaceSessions
+          serverId={workspace.serverId}
+          workspaceId={workspace.workspaceId}
+          workspaceKey={workspace.workspaceKey}
+        />
+      ) : null}
       <AdaptiveRenameModal
         visible={isRenameOpen}
         title={t("menu.renameWorkspace")}

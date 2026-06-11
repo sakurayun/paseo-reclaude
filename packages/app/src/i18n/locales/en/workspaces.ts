@@ -267,6 +267,10 @@ export default {
   filePanel: {
     executionDirectoryNotFound: "Workspace execution directory not found.",
   },
+  sidebarSessions: {
+    toggle: "Sessions",
+    viewAll: "View all sessions",
+  },
   sessionsPanel: {
     tabLabel: "Sessions",
     tabSubtitle: "Workspace session history",
