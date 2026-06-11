@@ -9,13 +9,18 @@ interface WebScrollbarStyle extends ViewStyle {
   scrollbarWidth: string;
 }
 
-export function useWebScrollbarStyle(): WebScrollbarStyle {
+export type WebScrollbarVariant = "default" | "subtle";
+
+export function useWebScrollbarStyle(variant: WebScrollbarVariant = "default"): WebScrollbarStyle {
   const { theme } = useUnistyles();
+  // "subtle" keeps the handle close to the surface tone so it does not jump
+  // out inside tinted cards (e.g. tool call details).
+  const handleColor = variant === "subtle" ? theme.colors.surface3 : theme.colors.scrollbarHandle;
   return useMemo(
     (): WebScrollbarStyle => ({
-      scrollbarColor: `${theme.colors.scrollbarHandle} transparent`,
+      scrollbarColor: `${handleColor} transparent`,
       scrollbarWidth: "thin",
     }),
-    [theme.colors.scrollbarHandle],
+    [handleColor],
   );
 }

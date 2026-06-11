@@ -1392,6 +1392,10 @@ const expandableBadgeStylesheet = StyleSheet.create((theme) => ({
   containerLastInSequence: {
     marginBottom: theme.spacing[4],
   },
+  containerExpanded: {
+    marginTop: theme.spacing[2],
+    marginBottom: theme.spacing[3],
+  },
   pressable: {
     borderRadius: theme.borderRadius.lg,
     borderWidth: theme.borderWidth[1],
@@ -1474,9 +1478,7 @@ const expandableBadgeStylesheet = StyleSheet.create((theme) => ({
   detailWrapper: {
     borderBottomLeftRadius: theme.borderRadius.lg,
     borderBottomRightRadius: theme.borderRadius.lg,
-    borderWidth: theme.borderWidth[1],
-    borderTopWidth: 0,
-    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.surface1,
     padding: 0,
     gap: 0,
     flexShrink: 1,
@@ -1485,7 +1487,6 @@ const expandableBadgeStylesheet = StyleSheet.create((theme) => ({
     ...(isWeb ? { cursor: "auto" as const, userSelect: "text" as const } : {}),
   },
   pressableExpanded: {
-    borderColor: theme.colors.border,
     backgroundColor: theme.colors.surface1,
     borderBottomLeftRadius: 0,
     borderBottomRightRadius: 0,
@@ -3100,9 +3101,10 @@ const ExpandableBadge = memo(function ExpandableBadge({
         (isLastInSequence
           ? expandableBadgeStylesheet.containerLastInSequence
           : expandableBadgeStylesheet.containerSpacing),
+      isExpanded && expandableBadgeStylesheet.containerExpanded,
       style,
     ],
-    [isLastInSequence, resolvedDisableOuterSpacing, style],
+    [isExpanded, isLastInSequence, resolvedDisableOuterSpacing, style],
   );
 
   const pressableStyle = useMemo(

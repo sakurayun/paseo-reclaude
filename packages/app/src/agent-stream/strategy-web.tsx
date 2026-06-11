@@ -70,6 +70,14 @@ function getStreamItemElementId(itemId: string): string {
   return `agent-stream-row-${itemId}`;
 }
 
+// The row id wrapper must stay a flex column: stream rows center themselves
+// with `alignSelf`, which a plain block-level div would silently disable.
+const STREAM_ROW_WRAPPER_STYLE: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  width: "100%",
+};
+
 function syncNearBottom(
   scrollContainer: HTMLElement | null,
   onNearBottomChange: (value: boolean) => void,
@@ -545,14 +553,14 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
   );
   const mountedHistoryRows = useMemo(() => {
     return segments.historyMounted.map((item, index) => (
-      <div id={getStreamItemElementId(item.id)} key={item.id}>
+      <div id={getStreamItemElementId(item.id)} key={item.id} style={STREAM_ROW_WRAPPER_STYLE}>
         {renderHistoryMountedRow(item, index, segments.historyMounted)}
       </div>
     ));
   }, [renderHistoryMountedRow, segments.historyMounted]);
   const liveHeadRows = useMemo(() => {
     return segments.liveHead.map((item, index) => (
-      <div id={getStreamItemElementId(item.id)} key={item.id}>
+      <div id={getStreamItemElementId(item.id)} key={item.id} style={STREAM_ROW_WRAPPER_STYLE}>
         {renderLiveHeadRow(item, index, segments.liveHead)}
       </div>
     ));

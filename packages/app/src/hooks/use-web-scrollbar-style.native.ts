@@ -1,5 +1,9 @@
 import type { ViewStyle } from "react-native";
 
-export function useWebScrollbarStyle(): ViewStyle | undefined {
+export type WebScrollbarVariant = "default" | "subtle";
+
+export function useWebScrollbarStyle(
+  _variant: WebScrollbarVariant = "default",
+): ViewStyle | undefined {
   return undefined;
 }

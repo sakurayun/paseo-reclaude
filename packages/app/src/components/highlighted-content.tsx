@@ -94,10 +94,12 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.code,
     color: theme.colors.foreground,
     lineHeight: CODE_LINE_HEIGHT,
+    flexShrink: 1,
+    minWidth: 0,
     ...(isWeb
       ? {
-          whiteSpace: "pre",
-          overflowWrap: "normal",
+          whiteSpace: "pre-wrap",
+          overflowWrap: "anywhere",
         }
       : null),
   },

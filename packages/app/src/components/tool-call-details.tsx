@@ -42,8 +42,8 @@ interface DetailStyles {
   codeVerticalScrollStyle: StyleProp<ViewStyle>;
   scrollAreaFillStyle: StyleProp<ViewStyle>;
   scrollAreaStyle: StyleProp<ViewStyle>;
-  jsonScrollCombined: StyleProp<ViewStyle>;
-  jsonScrollErrorCombined: StyleProp<ViewStyle>;
+  jsonBlockCombined: StyleProp<ViewStyle>;
+  jsonBlockErrorCombined: StyleProp<ViewStyle>;
   fullBleedContainerStyle: StyleProp<ViewStyle>;
   loadingContainerStyle: StyleProp<ViewStyle>;
   webScrollbarStyle: StyleProp<ViewStyle>;
@@ -70,7 +70,7 @@ function useDetailStyles(
   resolvedMaxHeight: number | undefined,
   fillAvailableHeight: boolean,
 ): DetailStyles {
-  const webScrollbarStyle = useWebScrollbarStyle();
+  const webScrollbarStyle = useWebScrollbarStyle("subtle");
   const isFullBleed = resolveIsFullBleed(detail);
   const shouldFill = resolveShouldFill(detail, fillAvailableHeight);
   const codeBlockStyle = isFullBleed ? styles.fullBleedBlock : styles.diffContainer;
@@ -109,13 +109,10 @@ function useDetailStyles(
     ],
     [resolvedMaxHeight, webScrollbarStyle],
   );
-  const jsonScrollCombined = useMemo(
-    () => [styles.jsonScroll, webScrollbarStyle],
-    [webScrollbarStyle],
-  );
-  const jsonScrollErrorCombined = useMemo(
-    () => [styles.jsonScroll, styles.jsonScrollError, webScrollbarStyle],
-    [webScrollbarStyle],
+  const jsonBlockCombined = useMemo(() => [styles.jsonScroll, styles.jsonContent], []);
+  const jsonBlockErrorCombined = useMemo(
+    () => [styles.jsonScroll, styles.jsonScrollError, styles.jsonContent],
+    [],
   );
   const fullBleedContainerStyle = useMemo(
     () => [
@@ -135,8 +132,8 @@ function useDetailStyles(
     codeVerticalScrollStyle,
     scrollAreaFillStyle,
     scrollAreaStyle,
-    jsonScrollCombined,
-    jsonScrollErrorCombined,
+    jsonBlockCombined,
+    jsonBlockErrorCombined,
     fullBleedContainerStyle,
     loadingContainerStyle,
     webScrollbarStyle,
@@ -175,13 +172,7 @@ function ShellDetailSection({ command, output, ds }: ShellDetailProps) {
           nestedScrollEnabled
           showsVerticalScrollIndicator
         >
-          <ScrollView
-            horizontal
-            nestedScrollEnabled
-            showsHorizontalScrollIndicator
-            style={ds.webScrollbarStyle}
-            contentContainerStyle={styles.codeHorizontalContent}
-          >
+          <View style={styles.codeHorizontalContent}>
             <View style={styles.codeLine} dataSet={CODE_SURFACE_DATASET}>
               <Text selectable style={styles.scrollText}>
                 <Text style={styles.shellPrompt}>$ </Text>
@@ -189,7 +180,7 @@ function ShellDetailSection({ command, output, ds }: ShellDetailProps) {
                 {hasOutput ? `\n\n${commandOutput}` : ""}
               </Text>
             </View>
-          </ScrollView>
+          </View>
         </ScrollView>
       </View>
     </View>
@@ -221,13 +212,7 @@ function WorktreeSetupDetailSection({
           nestedScrollEnabled
           showsVerticalScrollIndicator
         >
-          <ScrollView
-            horizontal
-            nestedScrollEnabled
-            showsHorizontalScrollIndicator
-            style={ds.webScrollbarStyle}
-            contentContainerStyle={styles.codeHorizontalContent}
-          >
+          <View style={styles.codeHorizontalContent}>
             <View style={styles.codeLine} dataSet={CODE_SURFACE_DATASET}>
               <Text selectable style={styles.scrollText}>
                 {hasLog
@@ -235,7 +220,7 @@ function WorktreeSetupDetailSection({
                   : t("toolCall.worktreeSetup.preparing", { branchName, worktreePath })}
               </Text>
             </View>
-          </ScrollView>
+          </View>
         </ScrollView>
       </View>
     </View>
@@ -384,13 +369,7 @@ function SubAgentDetailSection({
           nestedScrollEnabled
           showsVerticalScrollIndicator
         >
-          <ScrollView
-            horizontal
-            nestedScrollEnabled
-            showsHorizontalScrollIndicator
-            style={ds.webScrollbarStyle}
-            contentContainerStyle={styles.codeHorizontalContent}
-          >
+          <View style={styles.codeHorizontalContent}>
             <View style={styles.codeLine} dataSet={CODE_SURFACE_DATASET}>
               {childSessionId ? (
                 <Text selectable style={styles.subAgentSessionText}>
@@ -410,7 +389,7 @@ function SubAgentDetailSection({
                 hasActions={hasActions}
               />
             </View>
-          </ScrollView>
+          </View>
         </ScrollView>
       </View>
     </View>
@@ -465,20 +444,13 @@ function ScrollableTextSection({
       nestedScrollEnabled
       showsVerticalScrollIndicator={true}
     >
-      <ScrollView
-        horizontal
-        nestedScrollEnabled
-        showsHorizontalScrollIndicator={true}
-        style={ds.webScrollbarStyle}
-      >
-        {keyedLines ? (
-          <HighlightedLines lines={keyedLines} startLine={startLine} />
-        ) : (
-          <Text selectable style={styles.scrollText} dataSet={CODE_SURFACE_DATASET}>
-            {content}
-          </Text>
-        )}
-      </ScrollView>
+      {keyedLines ? (
+        <HighlightedLines lines={keyedLines} startLine={startLine} />
+      ) : (
+        <Text selectable style={styles.scrollText} dataSet={CODE_SURFACE_DATASET}>
+          {content}
+        </Text>
+      )}
     </ScrollView>
   );
   if (!wrapInSectionFill) return body;
@@ -500,16 +472,9 @@ function FetchDetailSection({ url, result, ds }: FetchDetailProps) {
         nestedScrollEnabled
         showsVerticalScrollIndicator
       >
-        <ScrollView
-          horizontal
-          nestedScrollEnabled
-          showsHorizontalScrollIndicator
-          style={ds.webScrollbarStyle}
-        >
-          <Text selectable style={styles.scrollText} dataSet={CODE_SURFACE_DATASET}>
-            {result ? `${url}\n\n${result}` : url}
-          </Text>
-        </ScrollView>
+        <Text selectable style={styles.scrollText} dataSet={CODE_SURFACE_DATASET}>
+          {result ? `${url}\n\n${result}` : url}
+        </Text>
       </ScrollView>
     </View>
   );
@@ -544,16 +509,9 @@ function buildSearchSections(detail: SearchDetail, ds: DetailStyles): ReactNode[
           nestedScrollEnabled
           showsVerticalScrollIndicator
         >
-          <ScrollView
-            horizontal
-            nestedScrollEnabled
-            showsHorizontalScrollIndicator
-            style={ds.webScrollbarStyle}
-          >
-            <Text selectable style={styles.scrollText} dataSet={CODE_SURFACE_DATASET}>
-              {detail.content}
-            </Text>
-          </ScrollView>
+          <Text selectable style={styles.scrollText} dataSet={CODE_SURFACE_DATASET}>
+            {detail.content}
+          </Text>
         </ScrollView>
       </View>,
     );
@@ -648,17 +606,11 @@ function buildUnknownSections(
     );
     out.push(
       <View key={`${section.id}-value`} style={styles.section}>
-        <ScrollView
-          horizontal
-          nestedScrollEnabled
-          style={ds.jsonScrollCombined}
-          contentContainerStyle={styles.jsonContent}
-          showsHorizontalScrollIndicator={true}
-        >
+        <View style={ds.jsonBlockCombined}>
           <Text selectable style={styles.scrollText} dataSet={CODE_SURFACE_DATASET}>
             {value}
           </Text>
-        </ScrollView>
+        </View>
       </View>,
     );
   }
@@ -750,17 +702,11 @@ function ErrorSection({ errorText, ds }: { errorText: string; ds: DetailStyles }
   return (
     <View style={styles.section}>
       <Text style={SECTION_TITLE_ERROR_STYLE}>{t("toolCall.error")}</Text>
-      <ScrollView
-        horizontal
-        nestedScrollEnabled
-        style={ds.jsonScrollErrorCombined}
-        contentContainerStyle={styles.jsonContent}
-        showsHorizontalScrollIndicator={true}
-      >
+      <View style={ds.jsonBlockErrorCombined}>
         <Text selectable style={SCROLL_TEXT_ERROR_STYLE} dataSet={CODE_SURFACE_DATASET}>
           {errorText}
         </Text>
-      </ScrollView>
+      </View>
     </View>
   );
 }
@@ -831,8 +777,6 @@ const styles = StyleSheet.create((theme) => {
       gap: theme.spacing[2],
       paddingHorizontal: theme.spacing[3],
       paddingVertical: theme.spacing[2],
-      borderBottomWidth: theme.borderWidth[1],
-      borderBottomColor: theme.colors.border,
     },
     groupHeaderText: {
       color: theme.colors.foregroundMuted,
@@ -869,8 +813,6 @@ const styles = StyleSheet.create((theme) => {
       fontSize: theme.fontSize.xs,
     },
     diffContainer: {
-      borderWidth: theme.borderWidth[1],
-      borderColor: theme.colors.border,
       borderRadius: theme.borderRadius.base,
       overflow: "hidden",
       backgroundColor: theme.colors.surface2,
@@ -895,8 +837,6 @@ const styles = StyleSheet.create((theme) => {
       paddingVertical: insets.padding,
     },
     scrollArea: {
-      borderWidth: theme.borderWidth[1],
-      borderColor: theme.colors.border,
       borderRadius: theme.borderRadius.base,
       backgroundColor: theme.colors.surface2,
     },
@@ -910,8 +850,8 @@ const styles = StyleSheet.create((theme) => {
       lineHeight: 18,
       ...(isWeb
         ? {
-            whiteSpace: "pre",
-            overflowWrap: "normal",
+            whiteSpace: "pre-wrap",
+            overflowWrap: "anywhere",
           }
         : null),
     },
@@ -947,12 +887,11 @@ const styles = StyleSheet.create((theme) => {
       lineHeight: 18,
     },
     jsonScroll: {
-      borderWidth: theme.borderWidth[1],
-      borderColor: theme.colors.border,
       borderRadius: theme.borderRadius.base,
       backgroundColor: theme.colors.surface2,
     },
     jsonScrollError: {
+      borderWidth: theme.borderWidth[1],
       borderColor: theme.colors.destructive,
     },
     jsonContent: {
