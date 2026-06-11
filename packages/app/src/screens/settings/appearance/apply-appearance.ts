@@ -8,11 +8,12 @@ import {
 } from "@/styles/theme";
 import { applyRootUiFont } from "./apply-root-font";
 
-// All six registered Unistyles keys — pinned literal (greppable, type-checked).
+// All registered Unistyles keys — pinned literal (greppable, type-checked).
 // The `as const` element types are exactly `keyof UnistylesThemes`, so each key
 // is assignable to `UnistylesRuntime.updateTheme`'s first argument with no cast.
 const ALL_THEME_KEYS = [
   "light",
+  "lightClaude",
   "dark",
   "darkZinc",
   "darkMidnight",

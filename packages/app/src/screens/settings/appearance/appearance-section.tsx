@@ -71,6 +71,8 @@ function themeLabel(t: TFunc, value: AppSettings["theme"]): string {
     case "dark":
     case "auto":
       return t(THEME_LABEL_KEYS[value]);
+    case "claudeLight":
+      return "Claude Light";
     case "zinc":
       return "Zinc";
     case "midnight":
@@ -83,7 +85,8 @@ function themeLabel(t: TFunc, value: AppSettings["theme"]): string {
 }
 
 const PRIMARY_THEMES: readonly AppSettings["theme"][] = ["light", "dark", "auto"];
-const DARK_VARIANT_THEMES: readonly AppSettings["theme"][] = [
+const VARIANT_THEMES: readonly AppSettings["theme"][] = [
+  "claudeLight",
   "zinc",
   "midnight",
   "claude",
@@ -190,7 +193,7 @@ function ThemeRow({ value, onChange }: ThemeRowProps) {
             />
           ))}
           <DropdownMenuSeparator />
-          {DARK_VARIANT_THEMES.map((themeValue) => (
+          {VARIANT_THEMES.map((themeValue) => (
             <ThemeMenuItem
               key={themeValue}
               themeValue={themeValue}

@@ -11,6 +11,7 @@ vi.mock("react-native-unistyles", () => ({ UnistylesRuntime: { updateTheme } }))
 // The six registered Unistyles theme keys, in the order applyAppearance patches them.
 const ALL_THEME_KEYS = [
   "light",
+  "lightClaude",
   "dark",
   "darkZinc",
   "darkMidnight",
@@ -87,7 +88,7 @@ describe("applyAppearance", () => {
   it("patches every registered Unistyles theme exactly once", () => {
     applyAppearance(makeInput());
 
-    expect(updateTheme).toHaveBeenCalledTimes(6);
+    expect(updateTheme).toHaveBeenCalledTimes(ALL_THEME_KEYS.length);
     expect(updateTheme.mock.calls.map((call) => call[0])).toEqual([...ALL_THEME_KEYS]);
   });
 

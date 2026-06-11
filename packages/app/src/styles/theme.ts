@@ -107,7 +107,14 @@ export const baseColors = {
   },
 } as const;
 
-export type ThemeName = "light" | "dark" | "zinc" | "midnight" | "claude" | "ghostty";
+export type ThemeName =
+  | "light"
+  | "claudeLight"
+  | "dark"
+  | "zinc"
+  | "midnight"
+  | "claude"
+  | "ghostty";
 
 // Diff stat colors — light uses muted tones, dark uses the brighter palette values
 const lightDiffColors = {
@@ -214,6 +221,87 @@ const lightSemanticColors = {
     brightMagenta: "#a855f7",
     brightCyan: "#06b6d4",
     brightWhite: "#fafafa",
+  },
+} as const;
+
+// Claude light — warm ivory surfaces with the Claude terracotta accent,
+// mirroring claude.ai's light interface.
+const claudeLightSemanticColors = {
+  // Surfaces (layers) — warm ivory ramp
+  surface0: "#faf9f5", // App background (ivory)
+  surface1: "#f5f4ee", // Subtle hover
+  surface2: "#f0eee6", // Elevated: badges, inputs, sheets (cream)
+  surface3: "#e3e0d5", // Highest elevation
+  surface4: "#d1cdc0", // Extra emphasis
+  surfaceDiffEmpty: "#f2f1e9", // Empty side of split diff rows
+  surfaceSidebar: "#f0eee6", // Sidebar background (darker than main)
+  surfaceSidebarHover: "#e6e3d8", // Sidebar hover
+  surfaceWorkspace: "#faf9f5", // Workspace main background
+
+  // Text — warm near-black
+  foreground: "#1f1e1d",
+  foregroundMuted: "#87867f",
+
+  // Controls
+  scrollbarHandle: "#56544e",
+
+  // Borders — warm stone
+  border: "#e3e0d5",
+  borderAccent: "#eceadf",
+
+  // Brand — Claude terracotta, deepened a step for light surfaces
+  accent: "#c96442",
+  accentBright: "#d97757",
+  accentForeground: "#ffffff",
+
+  // Semantic
+  destructive: "#ab3a2e", // warm red that sits with the terracotta accent
+  destructiveForeground: "#ffffff",
+  success: "#20744A",
+  successForeground: "#ffffff",
+
+  // Legacy aliases (for gradual migration)
+  background: "#faf9f5",
+  popover: "#faf9f5",
+  popoverForeground: "#1f1e1d",
+  primary: "#1f1e1d",
+  primaryForeground: "#faf9f5",
+  secondary: "#f0eee6",
+  secondaryForeground: "#1f1e1d",
+  muted: "#f0eee6",
+  mutedForeground: "#87867f",
+  accentBorder: "#eceadf",
+  input: "#f0eee6",
+  ring: "#1f1e1d",
+
+  ...lightDiffColors,
+  ...lightStatusColors,
+
+  terminal: {
+    background: "#faf9f5",
+    foreground: "#1f1e1d",
+    cursor: "#1f1e1d",
+    cursorAccent: "#faf9f5",
+    selectionBackground: "rgba(0, 0, 0, 0.15)",
+    selectionForeground: "#1f1e1d",
+
+    black: "#1f1e1d",
+    red: "#c0392b",
+    green: "#16a34a",
+    yellow: "#b8860b",
+    blue: "#2563eb",
+    magenta: "#9333ea",
+    cyan: "#0891b2",
+    white: "#faf9f5",
+
+    brightBlack: "#56544e",
+    brightRed: "#e74c3c",
+    brightGreen: "#22c55e",
+    brightYellow: "#d4a017",
+    brightBlue: "#3b82f6",
+    brightMagenta: "#a855f7",
+    brightCyan: "#06b6d4",
+    brightWhite: "#ffffff",
   },
 } as const;
 
@@ -569,35 +657,50 @@ export const darkMidnightTheme = buildDarkTheme(midnightDarkColors);
 export const darkClaudeTheme = buildDarkTheme(claudeDarkColors);
 export const darkGhosttyTheme = buildDarkTheme(ghosttyDarkColors);
 
-export const lightTheme = {
-  colorScheme: "light" as const,
-  colors: {
-    ...lightSemanticColors,
-    palette: baseColors,
-    syntax: lightHighlightColors,
+const lightShadow = {
+  sm: {
+    shadowColor: "rgba(0, 0, 0, 0.02)",
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 8,
+    elevation: 2,
   },
-  shadow: {
-    sm: {
-      shadowColor: "rgba(0, 0, 0, 0.02)",
-      shadowOffset: { width: 0, height: 2 },
-      shadowRadius: 8,
-      elevation: 2,
-    },
-    md: {
-      shadowColor: "rgba(0, 0, 0, 0.04)",
-      shadowOffset: { width: 0, height: 4 },
-      shadowRadius: 16,
-      elevation: 4,
-    },
-    lg: {
-      shadowColor: "rgba(0, 0, 0, 0.08)",
-      shadowOffset: { width: 0, height: 8 },
-      shadowRadius: 24,
-      elevation: 8,
-    },
+  md: {
+    shadowColor: "rgba(0, 0, 0, 0.04)",
+    shadowOffset: { width: 0, height: 4 },
+    shadowRadius: 16,
+    elevation: 4,
   },
-  ...commonTheme,
+  lg: {
+    shadowColor: "rgba(0, 0, 0, 0.08)",
+    shadowOffset: { width: 0, height: 8 },
+    shadowRadius: 24,
+    elevation: 8,
+  },
 } as const;
+
+// Widened string shape shared by all light variants so they register as a
+// single Unistyles theme type, matching how the dark variants behave.
+type LightSemanticColors = {
+  [K in keyof typeof lightSemanticColors]: (typeof lightSemanticColors)[K] extends string
+    ? string
+    : { [K2 in keyof (typeof lightSemanticColors)[K]]: string };
+};
+
+function buildLightTheme(semanticColors: LightSemanticColors) {
+  return {
+    colorScheme: "light" as const,
+    colors: {
+      ...semanticColors,
+      palette: baseColors,
+      syntax: lightHighlightColors,
+    },
+    shadow: lightShadow,
+    ...commonTheme,
+  } as const;
+}
+
+export const lightTheme = buildLightTheme(lightSemanticColors);
+export const lightClaudeTheme = buildLightTheme(claudeLightSemanticColors);
 
 // Keep compatibility with existing code
 export const theme = darkTheme;
@@ -607,6 +710,7 @@ export type Theme = typeof darkTheme | typeof lightTheme;
 
 type UnistylesThemeKey =
   | "light"
+  | "lightClaude"
   | "dark"
   | "darkZinc"
   | "darkMidnight"
@@ -615,6 +719,7 @@ type UnistylesThemeKey =
 
 export const THEME_TO_UNISTYLES: Record<ThemeName, UnistylesThemeKey> = {
   light: "light",
+  claudeLight: "lightClaude",
   dark: "dark",
   zinc: "darkZinc",
   midnight: "darkMidnight",
@@ -624,6 +729,7 @@ export const THEME_TO_UNISTYLES: Record<ThemeName, UnistylesThemeKey> = {
 
 export const THEME_SWATCHES: Record<ThemeName, string> = {
   light: "#ffffff",
+  claudeLight: "#f0eee6",
   dark: "#2D8B62",
   zinc: "#808080",
   midnight: "#4A6BA8",
