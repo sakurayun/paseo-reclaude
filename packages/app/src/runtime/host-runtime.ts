@@ -890,7 +890,15 @@ export class HostRuntimeController {
                 connection,
               });
               if (serverId !== this.host.serverId) {
-                if (isPlaceholderServerId(this.host.serverId) && this.onReconcileServerId) {
+                const isLocal =
+                  connection.type === "directTcp" &&
+                  (connection.endpoint.startsWith("localhost:") ||
+                    connection.endpoint.startsWith("127.0.0.1:") ||
+                    connection.endpoint.startsWith("[::1]:"));
+                if (
+                  (isPlaceholderServerId(this.host.serverId) || isLocal) &&
+                  this.onReconcileServerId
+                ) {
                   this.onReconcileServerId(this.host.serverId, serverId);
                 } else {
                   await client.close().catch(() => undefined);

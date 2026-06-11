@@ -59,6 +59,7 @@ import {
   WebSocketRuntimeMetricsWindow,
   type WebSocketRuntimeCounters,
 } from "./websocket/runtime-metrics.js";
+import { QuotaFetcherService } from "../services/quota-fetcher.js";
 
 const WS_CLOSE_DAEMON_AUTH_FAILED = 4401;
 
@@ -385,6 +386,9 @@ export class VoiceAssistantWebSocketServer {
   private runtimeMetricsInterval: ReturnType<typeof setInterval> | null = null;
   private unsubscribeSpeechReadiness: (() => void) | null = null;
   private unsubscribeDaemonConfigChange: (() => void) | null = null;
+  private readonly quotaFetcher: QuotaFetcherService;
+  private readonly agentStatuses = new Map<string, string>();
+  private unsubscribeAgentManager: (() => void) | null = null;
 
   constructor(
     server: HTTPServer,
@@ -517,6 +521,26 @@ export class VoiceAssistantWebSocketServer {
       void this.broadcastAgentAttention(params).catch((err) => {
         this.logger.warn({ err, agentId: params.agentId }, "Failed to broadcast agent attention");
       });
+    });
+
+    this.quotaFetcher = new QuotaFetcherService({
+      broadcast: (message) => this.broadcast(wrapSessionMessage(message)),
+      logger: this.logger,
+    });
+    this.quotaFetcher.start();
+
+    this.unsubscribeAgentManager = this.agentManager.subscribe((event) => {
+      if (event.type === "agent_state") {
+        const agentId = event.agent.id;
+        const prevStatus = this.agentStatuses.get(agentId);
+        const newStatus = event.agent.lifecycle;
+        if (newStatus !== prevStatus) {
+          this.agentStatuses.set(agentId, newStatus);
+          if (newStatus === "idle" || newStatus === "error") {
+            void this.quotaFetcher.triggerFetch();
+          }
+        }
+      }
     });
 
     this.wss = this.createWebSocketServer(server, wsConfig, auth);
@@ -687,6 +711,9 @@ export class VoiceAssistantWebSocketServer {
     this.unsubscribeSpeechReadiness = null;
     this.unsubscribeDaemonConfigChange?.();
     this.unsubscribeDaemonConfigChange = null;
+    this.unsubscribeAgentManager?.();
+    this.unsubscribeAgentManager = null;
+    this.quotaFetcher.stop();
     if (this.runtimeMetricsInterval) {
       clearInterval(this.runtimeMetricsInterval);
       this.runtimeMetricsInterval = null;
@@ -1025,6 +1052,10 @@ export class VoiceAssistantWebSocketServer {
       existing.sockets.add(ws);
       this.sessions.set(ws, existing);
       this.sendToClient(ws, this.createServerInfoMessage());
+      const cachedQuota = this.quotaFetcher.getCached();
+      if (cachedQuota) {
+        this.sendToClient(ws, wrapSessionMessage(cachedQuota));
+      }
       existing.connectionLogger.trace(
         {
           clientId,
@@ -1048,6 +1079,10 @@ export class VoiceAssistantWebSocketServer {
     this.sessions.set(ws, connection);
     this.externalSessionsByKey.set(clientId, connection);
     this.sendToClient(ws, this.createServerInfoMessage());
+    const cachedQuota = this.quotaFetcher.getCached();
+    if (cachedQuota) {
+      this.sendToClient(ws, wrapSessionMessage(cachedQuota));
+    }
     connection.connectionLogger.trace(
       {
         clientId,

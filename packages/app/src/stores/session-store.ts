@@ -26,6 +26,7 @@ import type {
   ProjectPlacementPayload,
   ServerCapabilities,
   WorkspaceDescriptorPayload,
+  ProviderQuotaMessage,
 } from "@getpaseo/protocol/messages";
 import { normalizeWorkspaceOpaqueId } from "@/utils/workspace-identity";
 import { resolveWorkspaceMapKeyByIdentity } from "@/utils/workspace-execution";
@@ -310,6 +311,8 @@ export interface SessionState {
     string,
     Array<{ id: string; text: string; attachments: ComposerAttachment[] }>
   >;
+
+  providerQuota: ProviderQuotaMessage["payload"] | null;
 }
 
 // Global store state
@@ -458,6 +461,8 @@ interface SessionStoreActions {
 
   // Agent directory (derived from agents)
   getAgentDirectory: (serverId: string) => AgentDirectoryEntry[] | undefined;
+
+  setProviderQuota: (serverId: string, quota: SessionState["providerQuota"]) => void;
 }
 
 type SessionStore = SessionStoreState & SessionStoreActions;
@@ -491,6 +496,7 @@ function createInitialSessionState(serverId: string, client: DaemonClient): Sess
     pendingPermissions: new Map(),
     fileExplorer: new Map(),
     queuedMessages: new Map(),
+    providerQuota: null,
   };
 }
 
@@ -1338,6 +1344,18 @@ export const useSessionStore = create<SessionStore>()(
               ...prev.sessions,
               [serverId]: { ...session, hasHydratedWorkspaces: hydrated },
             },
+          };
+        });
+      },
+
+      setProviderQuota: (serverId, quota) => {
+        set((prev) => {
+          const session = prev.sessions[serverId];
+          if (!session) return prev;
+          if (session.providerQuota === quota) return prev;
+          return {
+            ...prev,
+            sessions: { ...prev.sessions, [serverId]: { ...session, providerQuota: quota } },
           };
         });
       },

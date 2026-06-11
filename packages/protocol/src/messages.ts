@@ -3817,6 +3817,95 @@ export const TerminalStreamExitSchema = z.object({
   }),
 });
 
+export const ProviderQuotaWindowSchema = z.object({
+  utilizationPct: z.number(),
+  resetsAt: z.string().optional(),
+});
+
+export const ProviderQuotaMessageSchema = z.object({
+  type: z.literal("provider_quota"),
+  payload: z.object({
+    claude: z
+      .object({
+        fiveHour: ProviderQuotaWindowSchema.nullable(),
+        sevenDay: ProviderQuotaWindowSchema.nullable(),
+        sevenDayOpus: ProviderQuotaWindowSchema.nullable(),
+        sevenDayOmelette: ProviderQuotaWindowSchema.nullable().optional(),
+        extraUsage: z
+          .object({
+            isEnabled: z.boolean().nullable(),
+          })
+          .nullable()
+          .optional(),
+        plan: z.string().nullable(),
+      })
+      .optional(),
+    codex: z
+      .object({
+        session: ProviderQuotaWindowSchema.nullable(),
+        weekly: ProviderQuotaWindowSchema.nullable(),
+        codeReview: ProviderQuotaWindowSchema.nullable().optional(),
+        credits: z
+          .object({
+            hasCredits: z.boolean().nullable(),
+            unlimited: z.boolean().nullable(),
+            balance: z.number().nullable(),
+          })
+          .nullable()
+          .optional(),
+        planType: z.string().nullable(),
+        email: z.string().nullable(),
+      })
+      .optional(),
+    copilot: z
+      .object({
+        plan: z.string().nullable(),
+        quotaResetDate: z.string().nullable(),
+      })
+      .optional(),
+    cursor: z
+      .object({
+        planUsage: z
+          .object({
+            totalSpend: z.number().nullable(),
+            includedSpend: z.number().nullable(),
+            bonusSpend: z.number().nullable(),
+            remaining: z.number().nullable(),
+            limit: z.number().nullable(),
+          })
+          .nullable(),
+        billingCycleStart: z.string().nullable(),
+        billingCycleEnd: z.string().nullable(),
+      })
+      .optional(),
+    zai: z
+      .object({
+        productName: z.string().nullable(),
+        status: z.string().nullable(),
+        purchaseTime: z.string().nullable(),
+        valid: z.string().nullable(),
+      })
+      .optional(),
+    grok: z
+      .object({
+        monthlyLimit: z.number().nullable(),
+        creditUsage: z.number().nullable(),
+      })
+      .optional(),
+    kimi: z
+      .object({
+        limit: z.string().nullable(),
+        remaining: z.string().nullable(),
+        resetTime: z.string().nullable(),
+      })
+      .optional(),
+    fetchedAt: z.string(),
+  }),
+});
+
+export type ProviderQuotaMessage = z.infer<typeof ProviderQuotaMessageSchema>;
+export type ProviderQuotaWindow = z.infer<typeof ProviderQuotaWindowSchema>;
+
 export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   ActivityLogMessageSchema,
   AssistantChunkMessageSchema,
@@ -3925,6 +4014,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   KillTerminalResponseSchema,
   CaptureTerminalResponseSchema,
   TerminalStreamExitSchema,
+  ProviderQuotaMessageSchema,
   ChatCreateResponseSchema,
   ChatListResponseSchema,
   ChatInspectResponseSchema,

@@ -201,6 +201,7 @@ function createServer(options?: { speechReadiness?: SpeechReadinessSnapshot | nu
     createStub<pino.Logger>(createLogger()),
     "srv_test",
     createStub<AgentManager>({
+      subscribe: vi.fn(() => () => {}),
       setAgentAttentionCallback: vi.fn(),
       getAgent: vi.fn(() => null),
       getMetricsSnapshot: vi.fn(() => ({
