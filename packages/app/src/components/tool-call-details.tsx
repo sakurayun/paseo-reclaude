@@ -815,13 +815,13 @@ const styles = StyleSheet.create((theme) => {
       fontSize: theme.fontSize.xs,
     },
     diffContainer: {
-      borderRadius: theme.borderRadius.base,
+      borderRadius: theme.borderRadius.lg,
       overflow: "hidden",
       backgroundColor: theme.colors.surface2,
     },
     fullBleedBlock: {
       borderWidth: 0,
-      borderRadius: theme.borderRadius.base,
+      borderRadius: theme.borderRadius.lg,
       overflow: "hidden",
       backgroundColor: theme.colors.surface2,
     },
@@ -839,7 +839,7 @@ const styles = StyleSheet.create((theme) => {
       paddingVertical: insets.padding,
     },
     scrollArea: {
-      borderRadius: theme.borderRadius.base,
+      borderRadius: theme.borderRadius.lg,
       backgroundColor: theme.colors.surface2,
     },
     scrollContent: {
@@ -889,7 +889,7 @@ const styles = StyleSheet.create((theme) => {
       lineHeight: 18,
     },
     jsonScroll: {
-      borderRadius: theme.borderRadius.base,
+      borderRadius: theme.borderRadius.lg,
       backgroundColor: theme.colors.surface2,
     },
     jsonScrollError: {
