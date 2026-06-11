@@ -26,6 +26,7 @@ export interface QuotaFetcherServiceOptions {
   claudeHome?: string;
   codexHome?: string;
   pollIntervalMs?: number;
+  minFetchIntervalMs?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -667,6 +668,28 @@ export class KimiQuotaProvider implements QuotaProvider {
 // ---------------------------------------------------------------------------
 // Quota Fetcher Service
 // ---------------------------------------------------------------------------
+
+// Agent idle/error transitions trigger fetches; without a floor a busy session
+// hammers the provider usage APIs and earns a 429.
+const MIN_FETCH_INTERVAL_MS = 60_000;
+// How long to stay quiet after a provider answers 429.
+const RATE_LIMIT_BACKOFF_MS = 10 * 60 * 1000;
+// Provider fetches have no AbortSignal of their own; cap them so one hung
+// request cannot stall the whole quota cycle.
+const PROVIDER_FETCH_TIMEOUT_MS = 20_000;
+
+function isRateLimitError(reason: unknown): boolean {
+  return reason instanceof Error && /\b429\b/.test(reason.message);
+}
+
+function fetchWithTimeout(promise: Promise<unknown>, ms: number): Promise<unknown> {
+  let timer: NodeJS.Timeout | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`quota fetch timed out after ${ms}ms`)), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
 export class QuotaFetcherService {
   private readonly broadcastFn: (message: ProviderQuotaMessage) => void;
   private readonly logger: Logger;
@@ -676,11 +699,15 @@ export class QuotaFetcherService {
   private cached: ProviderQuotaMessage | null = null;
   private isFetching = false;
   private pendingFetch = false;
+  private lastFetchStartedAt = 0;
+  private rateLimitedUntil = 0;
+  private readonly minFetchIntervalMs: number;
 
   constructor(options: QuotaFetcherServiceOptions) {
     this.broadcastFn = options.broadcast;
     this.logger = options.logger.child({ module: "quota-fetcher" });
     this.pollIntervalMs = options.pollIntervalMs ?? 15 * 60 * 1000;
+    this.minFetchIntervalMs = options.minFetchIntervalMs ?? MIN_FETCH_INTERVAL_MS;
 
     this.providers = [
       new ClaudeQuotaProvider(this.logger, options.claudeHome),
@@ -717,7 +744,17 @@ export class QuotaFetcherService {
       this.pendingFetch = true;
       return;
     }
+    const now = Date.now();
+    if (now < this.rateLimitedUntil) {
+      return;
+    }
+    // Once we have data, agent-driven triggers coalesce to at most one fetch
+    // per MIN_FETCH_INTERVAL_MS; the first fetch always runs.
+    if (this.cached && now - this.lastFetchStartedAt < this.minFetchIntervalMs) {
+      return;
+    }
     this.isFetching = true;
+    this.lastFetchStartedAt = now;
     try {
       await this.performFetch();
     } catch (err) {
@@ -732,11 +769,14 @@ export class QuotaFetcherService {
   }
 
   private async performFetch(): Promise<void> {
-    const results = await Promise.allSettled(this.providers.map((p) => p.fetch()));
+    const results = await Promise.allSettled(
+      this.providers.map((p) => fetchWithTimeout(p.fetch(), PROVIDER_FETCH_TIMEOUT_MS)),
+    );
 
     const payload: Record<string, unknown> = {
       fetchedAt: new Date().toISOString(),
     };
+    const prevPayload: Record<string, unknown> = this.cached?.payload ?? {};
 
     for (let i = 0; i < this.providers.length; i++) {
       const provider = this.providers[i];
@@ -744,7 +784,22 @@ export class QuotaFetcherService {
       if (result.status === "fulfilled" && result.value !== undefined) {
         payload[provider.id] = result.value;
       } else if (result.status === "rejected") {
-        this.logger.debug({ err: result.reason, providerId: provider.id }, "Quota fetch failed");
+        // A transient failure must not wipe the provider from the broadcast —
+        // clients treat a missing key as "still loading". Reuse the last
+        // successful value until a fetch succeeds again.
+        const previous = prevPayload[provider.id];
+        if (previous !== undefined) {
+          payload[provider.id] = previous;
+        }
+        if (isRateLimitError(result.reason)) {
+          this.rateLimitedUntil = Date.now() + RATE_LIMIT_BACKOFF_MS;
+          this.logger.warn(
+            { providerId: provider.id, backoffMs: RATE_LIMIT_BACKOFF_MS },
+            "Quota fetch rate limited; backing off",
+          );
+        } else {
+          this.logger.debug({ err: result.reason, providerId: provider.id }, "Quota fetch failed");
+        }
       }
     }
 

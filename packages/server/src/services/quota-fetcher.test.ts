@@ -119,6 +119,7 @@ describe("QuotaFetcherService", () => {
       claudeHome,
       codexHome,
       pollIntervalMs: 999_999,
+      minFetchIntervalMs: 0,
     });
   });
 
@@ -431,6 +432,74 @@ describe("QuotaFetcherService", () => {
 
       expect(broadcasts).toHaveLength(2);
       expect(broadcasts[1].payload.claude?.fiveHour?.utilizationPct).toBe(25.0);
+    });
+  });
+
+  // ── Failure resilience ─────────────────────────────────────────────────
+
+  describe("failure resilience", () => {
+    it("keeps the last successful provider value when a later fetch fails", async () => {
+      writeCreds(claudeHome, "at_valid");
+      let shouldFail = false;
+      async function fetchWithFailureToggle() {
+        if (shouldFail) {
+          return jsonResponse({ error: { type: "rate_limit_error" } }, 500);
+        }
+        return jsonResponse(makeClaudeResponse());
+      }
+      globalThis.fetch = vi.fn(fetchWithFailureToggle) as never;
+
+      await service.triggerFetch();
+      expect(service.getCached()?.payload.claude).toBeDefined();
+
+      shouldFail = true;
+      await service.triggerFetch();
+
+      // The cached payload must still carry the previous claude data instead
+      // of dropping the key (clients treat a missing key as "loading").
+      expect(service.getCached()?.payload.claude).toBeDefined();
+    });
+
+    it("backs off after a 429 and skips subsequent fetches", async () => {
+      writeCreds(claudeHome, "at_valid");
+      async function fetchRateLimited() {
+        return jsonResponse({ error: { type: "rate_limit_error" } }, 429);
+      }
+      const fetchMock = vi.fn(fetchRateLimited);
+      globalThis.fetch = fetchMock as never;
+
+      await service.triggerFetch();
+      const callsAfterFirst = fetchMock.mock.calls.length;
+      await service.triggerFetch();
+
+      expect(fetchMock.mock.calls.length).toBe(callsAfterFirst);
+    });
+
+    it("coalesces rapid triggers once data is cached", async () => {
+      const throttled = new QuotaFetcherService({
+        broadcast: (msg) => broadcasts.push(msg),
+        logger: {
+          child: () => ({ debug: vi.fn(), warn: vi.fn(), info: vi.fn(), error: vi.fn() }),
+        } as never,
+        claudeHome,
+        codexHome,
+        pollIntervalMs: 999_999,
+        minFetchIntervalMs: 60_000,
+      });
+      writeCreds(claudeHome, "at_valid");
+      async function fetchClaudeOk() {
+        return jsonResponse(makeClaudeResponse());
+      }
+      const fetchMock = vi.fn(fetchClaudeOk);
+      globalThis.fetch = fetchMock as never;
+
+      await throttled.triggerFetch();
+      const callsAfterFirst = fetchMock.mock.calls.length;
+      await throttled.triggerFetch();
+      await throttled.triggerFetch();
+
+      expect(fetchMock.mock.calls.length).toBe(callsAfterFirst);
+      throttled.stop();
     });
   });
 
