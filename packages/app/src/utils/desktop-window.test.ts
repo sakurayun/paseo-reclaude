@@ -17,7 +17,7 @@ describe("resolveWindowControlsPadding", () => {
     ).toEqual({
       left: 78,
       right: 0,
-      top: 45,
+      top: 36,
     });
   });
 

@@ -16,9 +16,13 @@ export const MAX_CONTENT_WIDTH = 820;
 export const COMPACT_FORM_FACTOR_WIDTH = 500;
 
 // Desktop app constants for macOS traffic light buttons
-// These buttons (close/minimize/maximize) overlay the top-left corner
+// These buttons (close/minimize/maximize) overlay the top-left corner.
+// Height is tuned so the sidebar's header divider (36 + HEADER_INNER_HEIGHT
+// = 84) lines up with the workspace tab row's bottom border on the right
+// (ScreenHeader 48 + WORKSPACE_SECONDARY_HEADER_HEIGHT 36 = 84). The buttons
+// themselves only reach ~28px (y=14 + ~14px), so 36 still clears them.
 export const DESKTOP_TRAFFIC_LIGHT_WIDTH = 78;
-export const DESKTOP_TRAFFIC_LIGHT_HEIGHT = 45;
+export const DESKTOP_TRAFFIC_LIGHT_HEIGHT = 36;
 
 // Windows/Linux window controls (minimize/maximize/close) — top-right.
 // Only horizontal clearance matters: the overlay never floats over the
