@@ -138,6 +138,7 @@ export default {
     copyPath: "复制路径",
     copyBranchName: "复制分支名",
     renameWorkspace: "重命名工作区",
+    showSessions: "查看会话记录",
     markAsRead: "标记为已读",
     archive: "归档",
   },

@@ -1602,7 +1602,9 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     paddingHorizontal: theme.spacing[3],
     gap: theme.spacing[2],
-    backgroundColor: theme.colors.surface1,
+    // Transparent on web so the frosted panel shows through; the bottom sheet
+    // on native keeps its opaque band.
+    backgroundColor: IS_WEB ? "transparent" : theme.colors.surface1,
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.border,
     ...(IS_WEB ? {} : { marginHorizontal: theme.spacing[1] }),
@@ -1711,14 +1713,22 @@ const styles = StyleSheet.create((theme) => ({
     bottom: 0,
     left: 0,
   },
+  // Frosted glass, matching the composer input: web gets a real backdrop blur;
+  // the desktop popover only renders on web (mobile uses the bottom sheet).
   desktopContainer: {
-    backgroundColor: theme.colors.surface0,
+    backgroundColor: IS_WEB ? theme.colors.surfaceGlass : theme.colors.surfaceGlassStrong,
     borderRadius: theme.borderRadius.lg,
     borderWidth: 1,
     borderColor: theme.colors.border,
     ...theme.shadow.md,
     maxHeight: 400,
     overflow: "hidden",
+    ...(IS_WEB
+      ? ({
+          backdropFilter: "blur(20px) saturate(1.5)",
+          WebkitBackdropFilter: "blur(20px) saturate(1.5)",
+        } as object)
+      : {}),
   },
   desktopScroll: {
     flexShrink: 1,

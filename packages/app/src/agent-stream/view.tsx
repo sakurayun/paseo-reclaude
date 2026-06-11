@@ -1456,14 +1456,25 @@ const stylesheet = StyleSheet.create((theme) => ({
     alignSelf: "center",
     alignItems: "center",
   },
+  // Frosted glass, matching the composer input: web gets a real backdrop blur
+  // over the stream scrolling underneath; native approximates with a denser
+  // translucent tint (no backdrop-filter support).
   scrollToBottomButton: {
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: theme.colors.surface2,
+    backgroundColor: isWeb ? theme.colors.surfaceGlass : theme.colors.surfaceGlassStrong,
+    borderWidth: theme.borderWidth[1],
+    borderColor: theme.colors.borderAccent,
     alignItems: "center",
     justifyContent: "center",
     ...theme.shadow.sm,
+    ...(isWeb
+      ? ({
+          backdropFilter: "blur(20px) saturate(1.5)",
+          WebkitBackdropFilter: "blur(20px) saturate(1.5)",
+        } as object)
+      : {}),
   },
   scrollToBottomIcon: {
     color: theme.colors.foreground,

@@ -140,6 +140,7 @@ export default {
     copyPath: "Copy path",
     copyBranchName: "Copy branch name",
     renameWorkspace: "Rename workspace",
+    showSessions: "Show sessions",
     markAsRead: "Mark as read",
     archive: "Archive",
   },

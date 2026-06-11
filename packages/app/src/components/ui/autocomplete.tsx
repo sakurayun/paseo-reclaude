@@ -12,6 +12,7 @@ import {
 import { useTranslation } from "react-i18next";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { File, Folder } from "lucide-react-native";
+import { isWeb } from "@/constants/platform";
 import type { Theme } from "@/styles/theme";
 import { getAutocompleteScrollOffset } from "./autocomplete-utils";
 
@@ -293,13 +294,19 @@ const styles = StyleSheet.create((theme: Theme) => ({
     gap: theme.spacing[1],
   },
   detailCard: {
-    backgroundColor: theme.colors.surface1,
+    backgroundColor: isWeb ? theme.colors.surfaceGlass : theme.colors.surfaceGlassStrong,
     borderWidth: theme.borderWidth[1],
     borderColor: theme.colors.borderAccent,
     borderRadius: theme.borderRadius.lg,
     paddingHorizontal: theme.spacing[3],
     paddingVertical: theme.spacing[3],
     ...theme.shadow.md,
+    ...(isWeb
+      ? ({
+          backdropFilter: "blur(20px) saturate(1.5)",
+          WebkitBackdropFilter: "blur(20px) saturate(1.5)",
+        } as object)
+      : {}),
   },
   detailLabel: {
     color: theme.colors.foreground,
@@ -316,13 +323,21 @@ const styles = StyleSheet.create((theme: Theme) => ({
     fontSize: theme.fontSize.xs,
     marginTop: theme.spacing[1],
   },
+  // Frosted glass, matching the composer input: web gets a real backdrop blur;
+  // native approximates with a denser translucent tint (no backdrop-filter).
   container: {
-    backgroundColor: theme.colors.surface1,
+    backgroundColor: isWeb ? theme.colors.surfaceGlass : theme.colors.surfaceGlassStrong,
     borderWidth: theme.borderWidth[1],
     borderColor: theme.colors.borderAccent,
     borderRadius: theme.borderRadius.lg,
     overflow: "hidden",
     ...theme.shadow.md,
+    ...(isWeb
+      ? ({
+          backdropFilter: "blur(20px) saturate(1.5)",
+          WebkitBackdropFilter: "blur(20px) saturate(1.5)",
+        } as object)
+      : {}),
   },
   scrollView: {
     flexGrow: 0,

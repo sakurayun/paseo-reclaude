@@ -54,6 +54,7 @@ import {
   Pencil,
   Plus,
   Trash2,
+  History,
 } from "lucide-react-native";
 import { NestableScrollContainer } from "react-native-draggable-flatlist";
 import { DraggableList, type DraggableRenderItemInfo } from "./draggable-list";
@@ -73,6 +74,7 @@ import {
 } from "@/hooks/use-sidebar-workspaces-list";
 import { useSidebarOrderStore } from "@/stores/sidebar-order-store";
 import { useShowShortcutBadges } from "@/hooks/use-show-shortcut-badges";
+import { navigateToPreparedWorkspaceTab } from "@/utils/workspace-navigation";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -158,6 +160,7 @@ const ThemedSettings = withUnistyles(Settings);
 const ThemedCopy = withUnistyles(Copy);
 const ThemedArchive = withUnistyles(Archive);
 const ThemedPencil = withUnistyles(Pencil);
+const ThemedHistory = withUnistyles(History);
 
 const foregroundColorMapping = (theme: Theme) => ({
   color: theme.colors.foreground,
@@ -292,6 +295,7 @@ interface WorkspaceRowInnerProps {
   onArchive?: () => void;
   onCopyBranchName?: () => void;
   onCopyPath?: () => void;
+  onShowSessions?: () => void;
   onRename?: () => void;
   onMarkAsRead?: () => void;
   archiveShortcutKeys?: ShortcutKey[][] | null;
@@ -550,6 +554,7 @@ const markAsReadLeadingIcon = (
 );
 const archiveLeadingIcon = <ThemedArchive size={14} uniProps={foregroundMutedColorMapping} />;
 const renameLeadingIcon = <ThemedPencil size={14} uniProps={foregroundMutedColorMapping} />;
+const sessionsLeadingIcon = <ThemedHistory size={14} uniProps={foregroundMutedColorMapping} />;
 const openInNewWindowLeadingIcon = (
   <ThemedExternalLink size={14} uniProps={foregroundMutedColorMapping} />
 );
@@ -654,6 +659,7 @@ function WorkspaceRowRightGroup({
   onMarkAsRead,
   onCopyBranchName,
   onCopyPath,
+  onShowSessions,
   onRename,
 }: {
   workspace: SidebarWorkspaceEntry;
@@ -670,6 +676,7 @@ function WorkspaceRowRightGroup({
   onMarkAsRead?: () => void;
   onCopyBranchName?: () => void;
   onCopyPath?: () => void;
+  onShowSessions?: () => void;
   onRename?: () => void;
 }) {
   const { t } = useTranslation("workspaces");
@@ -697,6 +704,7 @@ function WorkspaceRowRightGroup({
               <WorkspaceKebabMenu
                 workspaceKey={workspace.workspaceKey}
                 onCopyPath={onCopyPath}
+                onShowSessions={onShowSessions}
                 onCopyBranchName={onCopyBranchName}
                 onRename={onRename}
                 onMarkAsRead={onMarkAsRead}
@@ -717,6 +725,7 @@ function WorkspaceRowRightGroup({
 function WorkspaceKebabMenu({
   workspaceKey,
   onCopyPath,
+  onShowSessions,
   onCopyBranchName,
   onRename,
   onMarkAsRead,
@@ -728,6 +737,7 @@ function WorkspaceKebabMenu({
 }: {
   workspaceKey: string;
   onCopyPath?: () => void;
+  onShowSessions?: () => void;
   onCopyBranchName?: () => void;
   onRename?: () => void;
   onMarkAsRead?: () => void;
@@ -770,6 +780,15 @@ function WorkspaceKebabMenu({
             onSelect={onCopyBranchName}
           >
             {t("menu.copyBranchName")}
+          </DropdownMenuItem>
+        ) : null}
+        {onShowSessions ? (
+          <DropdownMenuItem
+            testID={`sidebar-workspace-menu-show-sessions-${workspaceKey}`}
+            leading={sessionsLeadingIcon}
+            onSelect={onShowSessions}
+          >
+            {t("menu.showSessions")}
           </DropdownMenuItem>
         ) : null}
         {onRename ? (
@@ -1367,6 +1386,7 @@ function WorkspaceRowInner({
   onArchive,
   onCopyBranchName,
   onCopyPath,
+  onShowSessions,
   onRename,
   archiveShortcutKeys,
 }: WorkspaceRowInnerProps) {
@@ -1453,6 +1473,7 @@ function WorkspaceRowInner({
                   onArchive={onArchive}
                   onCopyBranchName={onCopyBranchName}
                   onCopyPath={onCopyPath}
+                  onShowSessions={onShowSessions}
                   onRename={onRename}
                 />
               </SidebarWorkspaceRowContent>
@@ -1627,6 +1648,14 @@ function WorkspaceRowWithMenu({
     toast.copied(t("actions.branchNameCopied"));
   }, [toast, workspace.name, t]);
 
+  const handleShowSessions = useCallback(() => {
+    navigateToPreparedWorkspaceTab({
+      serverId: workspace.serverId,
+      workspaceId: workspace.workspaceId,
+      target: { kind: "sessions", workspaceId: workspace.workspaceId },
+    });
+  }, [workspace.serverId, workspace.workspaceId]);
+
   const renameMutation = useMutation({
     mutationFn: async (branch: string) => {
       const client = getHostRuntimeStore().getClient(workspace.serverId);
@@ -1721,6 +1750,7 @@ function WorkspaceRowWithMenu({
         onArchive={isWorktree ? handleArchiveWorktree : handleArchiveWorkspace}
         onCopyBranchName={canCopyBranchName ? handleCopyBranchName : undefined}
         onCopyPath={handleCopyPath}
+        onShowSessions={handleShowSessions}
         onRename={canCopyBranchName ? handleOpenRename : undefined}
         onMarkAsRead={hasClearableAttention ? handleMarkAsRead : undefined}
         archiveShortcutKeys={selected ? archiveShortcutKeys : null}

@@ -885,13 +885,21 @@ const styles = StyleSheet.create((theme) => ({
     bottom: 0,
     left: 0,
   },
+  // Frosted glass, matching the composer input: web gets a real backdrop blur;
+  // native approximates with a denser translucent tint (no backdrop-filter).
   content: {
-    backgroundColor: theme.colors.surface1,
+    backgroundColor: isWeb ? theme.colors.surfaceGlass : theme.colors.surfaceGlassStrong,
     borderWidth: 1,
     borderColor: theme.colors.borderAccent,
     borderRadius: theme.borderRadius.lg,
     overflow: "hidden",
     ...theme.shadow.md,
+    ...(isWeb
+      ? ({
+          backdropFilter: "blur(20px) saturate(1.5)",
+          WebkitBackdropFilter: "blur(20px) saturate(1.5)",
+        } as object)
+      : {}),
   },
   labelContainer: {
     paddingHorizontal: theme.spacing[3],
