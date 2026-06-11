@@ -2016,15 +2016,15 @@ function ensureUltracodeGlowStyle(): void {
     @keyframes paseo-ultracode-glow {
       0%, 100% {
         box-shadow:
-          -18px 2px 28px rgba(167, 139, 250, 0.40),
-          0 2px 18px rgba(196, 181, 253, 0.28),
-          18px 2px 28px rgba(129, 140, 248, 0.18);
+          -18px 2px 28px rgba(167, 139, 250, 0.26),
+          0 2px 18px rgba(196, 181, 253, 0.18),
+          18px 2px 28px rgba(129, 140, 248, 0.12);
       }
       50% {
         box-shadow:
-          18px 2px 28px rgba(167, 139, 250, 0.40),
-          0 2px 24px rgba(216, 180, 254, 0.45),
-          -18px 2px 28px rgba(129, 140, 248, 0.18);
+          18px 2px 28px rgba(167, 139, 250, 0.26),
+          0 2px 24px rgba(216, 180, 254, 0.30),
+          -18px 2px 28px rgba(129, 140, 248, 0.12);
       }
     }
     [data-ultracode-glow="true"] {
@@ -2033,7 +2033,7 @@ function ensureUltracodeGlowStyle(): void {
     @media (prefers-reduced-motion: reduce) {
       [data-ultracode-glow="true"] {
         animation: none;
-        box-shadow: 0 2px 22px rgba(167, 139, 250, 0.40);
+        box-shadow: 0 2px 22px rgba(167, 139, 250, 0.26);
       }
     }
   `;
@@ -2048,6 +2048,8 @@ const styles = StyleSheet.create((theme: Theme) => ({
     flexDirection: "column",
     gap: theme.spacing[3],
     backgroundColor: theme.colors.surface1,
+    borderWidth: theme.borderWidth[1],
+    borderColor: theme.colors.borderAccent,
     borderRadius: theme.borderRadius["2xl"],
     paddingVertical: {
       xs: theme.spacing[2],
@@ -2066,24 +2068,26 @@ const styles = StyleSheet.create((theme: Theme) => ({
       : {}),
   },
   inputWrapperShadow: isWeb
-    ? { boxShadow: "0 2px 16px rgba(0, 0, 0, 0.07)" }
+    ? { boxShadow: "0 3px 18px rgba(0, 0, 0, 0.14)" }
     : {
         shadowColor: "#000000",
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.08,
-        shadowRadius: 10,
-        elevation: 3,
+        shadowOffset: { width: 0, height: 3 },
+        shadowOpacity: 0.16,
+        shadowRadius: 12,
+        elevation: 5,
       },
   // On web the flowing glow is driven by the injected keyframes (see
-  // ensureUltracodeGlowStyle); native gets a static violet halo.
+  // ensureUltracodeGlowStyle); native gets a static violet halo. The border
+  // turns violet on both platforms.
   inputWrapperUltracodeGlow: isWeb
-    ? {}
+    ? { borderColor: "#c4b5fd" }
     : {
+        borderColor: "#c4b5fd",
         shadowColor: "#a78bfa",
         shadowOffset: { width: 0, height: 0 },
-        shadowOpacity: 0.45,
+        shadowOpacity: 0.3,
         shadowRadius: 14,
-        elevation: 6,
+        elevation: 5,
       },
   textInputScrollWrapper: {
     position: "relative",
