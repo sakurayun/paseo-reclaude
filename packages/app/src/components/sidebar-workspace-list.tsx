@@ -130,7 +130,10 @@ import {
   requireWorkspaceExecutionDirectory,
   resolveWorkspaceExecutionDirectory,
 } from "@/utils/workspace-execution";
-import { confirmRiskyWorktreeArchive } from "@/git/worktree-archive-warning";
+import {
+  confirmRiskyWorktreeArchive,
+  type WorktreeArchiveWarningLabels,
+} from "@/git/worktree-archive-warning";
 import {
   archiveWorkspaceOptimistically,
   archiveWorkspacesOptimistically,
@@ -190,6 +193,40 @@ const syncedLoaderColorMapping = (theme: Theme) => ({
       ? theme.colors.palette.amber[700]
       : theme.colors.palette.amber[500],
 });
+
+function getWorktreeArchiveWarningLabels(
+  t: (key: string, options?: Record<string, unknown>) => string,
+): WorktreeArchiveWarningLabels {
+  return {
+    title: (worktreeName) => t("workspace.git.actions.archiveWarning.title", { worktreeName }),
+    confirm: t("workspace.git.actions.archiveWarning.confirm"),
+    cancel: t("workspace.git.actions.archiveWarning.cancel"),
+    uncommittedChanges: t("workspace.git.actions.archiveWarning.uncommittedChanges"),
+    uncommittedChangesWithDiff: (diffStat) =>
+      t("workspace.git.actions.archiveWarning.uncommittedChangesWithDiff", { diffStat }),
+    addedLine: (count) =>
+      t(
+        count === 1
+          ? "workspace.git.actions.archiveWarning.addedLine"
+          : "workspace.git.actions.archiveWarning.addedLines",
+        { count },
+      ),
+    deletedLine: (count) =>
+      t(
+        count === 1
+          ? "workspace.git.actions.archiveWarning.deletedLine"
+          : "workspace.git.actions.archiveWarning.deletedLines",
+        { count },
+      ),
+    unpushedCommit: (count) =>
+      t(
+        count === 1
+          ? "workspace.git.actions.archiveWarning.unpushedCommit"
+          : "workspace.git.actions.archiveWarning.unpushedCommits",
+        { count },
+      ),
+  };
+}
 
 function getPrIconUniMapping(state: PrHint["state"]) {
   switch (state) {
@@ -319,7 +356,7 @@ function getWorkspaceArchiveStatus(
 }
 
 export function PrBadge({ hint }: { hint: PrHint }) {
-  const { t } = useTranslation("workspaces");
+  const { t } = useTranslation();
   const [isHovered, setIsHovered] = useState(false);
 
   const handlePressIn = useCallback((event: GestureResponderEvent) => {
@@ -343,7 +380,9 @@ export function PrBadge({ hint }: { hint: PrHint }) {
   return (
     <Pressable
       accessibilityRole="link"
-      accessibilityLabel={t("branch.pullRequestLabel", { number: hint.number })}
+      accessibilityLabel={t("workspace.git.pr.accessibility.pullRequest", {
+        number: hint.number,
+      })}
       hitSlop={4}
       onPressIn={handlePressIn}
       onPress={handlePress}
@@ -586,7 +625,7 @@ function ProjectKebabMenu({
   onRemoveProject: () => void;
   removeProjectStatus: "idle" | "pending" | "success";
 }) {
-  const { t } = useTranslation("workspaces");
+  const { t } = useTranslation();
   const toast = useToast();
   const handleOpenProjectSettings = useCallback(() => {
     if (projectKey.trim().length === 0) return;
@@ -604,16 +643,16 @@ function ProjectKebabMenu({
       ?.window?.openNew?.({ pendingOpenProjectPath: trimmedPath })
       ?.catch((error) => {
         console.warn("[sidebar] openNew failed", error);
-        toast.error(t("errors.openNewWindowFailed"));
+        toast.error(t("sidebar.project.actions.openNewWindowFailed"));
       });
-  }, [projectPath, toast, t]);
+  }, [projectPath, t, toast]);
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
         hitSlop={8}
         style={projectKebabStyle}
         accessibilityRole={platformIsWeb ? undefined : "button"}
-        accessibilityLabel={t("menu.projectActions")}
+        accessibilityLabel={t("sidebar.project.actions.menu")}
         testID={`sidebar-project-kebab-${projectKey}`}
       >
         {renderKebabTriggerIcon}
@@ -625,7 +664,7 @@ function ProjectKebabMenu({
             leading={settingsLeadingIcon}
             onSelect={handleOpenProjectSettings}
           >
-            {t("menu.openProjectSettings")}
+            {t("sidebar.project.actions.openSettings")}
           </DropdownMenuItem>
         ) : null}
         {canOpenInNewWindow ? (
@@ -634,17 +673,17 @@ function ProjectKebabMenu({
             leading={openInNewWindowLeadingIcon}
             onSelect={handleOpenInNewWindow}
           >
-            {t("menu.openInNewWindow")}
+            {t("sidebar.project.actions.openNewWindow")}
           </DropdownMenuItem>
         ) : null}
         <DropdownMenuItem
           testID={`sidebar-project-menu-remove-${projectKey}`}
           leading={trash2LeadingIcon}
           status={removeProjectStatus}
-          pendingLabel={t("menu.removingProject")}
+          pendingLabel={t("sidebar.project.actions.removing")}
           onSelect={onRemoveProject}
         >
-          {t("menu.removeProject")}
+          {t("sidebar.project.actions.remove")}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
@@ -686,14 +725,16 @@ function WorkspaceRowRightGroup({
   onShowSessions?: () => void;
   onRename?: () => void;
 }) {
-  const { t } = useTranslation("workspaces");
+  const { t } = useTranslation();
   const showShortcut = showShortcutBadge && shortcutNumber !== null;
   const showKebab = Boolean(onArchive && (isHovered || isTouchPlatform));
   const showKebabInSlot = showKebab && !showShortcut;
   const shouldRenderActionSlot = Boolean(onArchive || workspace.diffStat);
   return (
     <>
-      {isCreating ? <Text style={styles.workspaceCreatingText}>{t("list.creating")}</Text> : null}
+      {isCreating ? (
+        <Text style={styles.workspaceCreatingText}>{t("sidebar.workspace.status.creating")}</Text>
+      ) : null}
       {shouldRenderActionSlot ? (
         <SidebarWorkspaceTrailingActionSlot>
           <SidebarWorkspaceTrailingActionBase
@@ -754,7 +795,7 @@ function WorkspaceKebabMenu({
   archivePendingLabel?: string;
   archiveShortcutKeys?: ShortcutKey[][] | null;
 }) {
-  const { t } = useTranslation("workspaces");
+  const { t } = useTranslation();
   const archiveTrailing = useMemo(
     () => (archiveShortcutKeys ? <Shortcut chord={archiveShortcutKeys} /> : null),
     [archiveShortcutKeys],
@@ -765,7 +806,7 @@ function WorkspaceKebabMenu({
         hitSlop={8}
         style={workspaceKebabStyle}
         accessibilityRole={platformIsWeb ? undefined : "button"}
-        accessibilityLabel={t("menu.workspaceActions")}
+        accessibilityLabel={t("sidebar.workspace.actions.menu")}
         testID={`sidebar-workspace-kebab-${workspaceKey}`}
       >
         {renderKebabTriggerIcon}
@@ -777,7 +818,7 @@ function WorkspaceKebabMenu({
             leading={copyLeadingIcon}
             onSelect={onCopyPath}
           >
-            {t("menu.copyPath")}
+            {t("sidebar.workspace.actions.copyPath")}
           </DropdownMenuItem>
         ) : null}
         {onCopyBranchName ? (
@@ -786,7 +827,7 @@ function WorkspaceKebabMenu({
             leading={copyLeadingIcon}
             onSelect={onCopyBranchName}
           >
-            {t("menu.copyBranchName")}
+            {t("sidebar.workspace.actions.copyBranchName")}
           </DropdownMenuItem>
         ) : null}
         {onShowSessions ? (
@@ -795,7 +836,7 @@ function WorkspaceKebabMenu({
             leading={sessionsLeadingIcon}
             onSelect={onShowSessions}
           >
-            {t("menu.showSessions")}
+            {t("sidebar.workspace.actions.showSessions")}
           </DropdownMenuItem>
         ) : null}
         {onRename ? (
@@ -804,7 +845,7 @@ function WorkspaceKebabMenu({
             leading={renameLeadingIcon}
             onSelect={onRename}
           >
-            {t("menu.renameWorkspace")}
+            {t("sidebar.workspace.actions.rename")}
           </DropdownMenuItem>
         ) : null}
         {onMarkAsRead ? (
@@ -813,7 +854,7 @@ function WorkspaceKebabMenu({
             leading={markAsReadLeadingIcon}
             onSelect={onMarkAsRead}
           >
-            {t("menu.markAsRead")}
+            Mark as read
           </DropdownMenuItem>
         ) : null}
         <DropdownMenuItem
@@ -824,7 +865,7 @@ function WorkspaceKebabMenu({
           pendingLabel={archivePendingLabel}
           onSelect={onArchive}
         >
-          {archiveLabel ?? t("menu.archive")}
+          {archiveLabel ?? t("sidebar.workspace.actions.archive")}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
@@ -943,7 +984,7 @@ function NewWorktreeButton({
   testID: string;
   showShortcutHint?: boolean;
 }) {
-  const { t } = useTranslation("workspaces");
+  const { t } = useTranslation();
   const newWorktreeKeys = useShortcutKeys("new-worktree");
 
   const pressableStyle = useCallback(
@@ -972,7 +1013,9 @@ function NewWorktreeButton({
             onPress={handlePress}
             disabled={loading}
             accessibilityRole={platformIsWeb ? undefined : "button"}
-            accessibilityLabel={t("actions.createWorkspaceForProject", { name: displayName })}
+            accessibilityLabel={t("sidebar.workspace.actions.createWorkspaceFor", {
+              projectName: displayName,
+            })}
             testID={testID}
           >
             {({ hovered, pressed }) =>
@@ -991,7 +1034,9 @@ function NewWorktreeButton({
         </TooltipTrigger>
         <TooltipContent side="bottom" align="center" offset={8}>
           <View style={styles.projectActionTooltipRow}>
-            <Text style={styles.projectActionTooltipText}>{t("actions.newWorkspace")}</Text>
+            <Text style={styles.projectActionTooltipText}>
+              {t("sidebar.workspace.actions.newWorkspace")}
+            </Text>
             {showShortcutHint && newWorktreeKeys ? (
               <Shortcut chord={newWorktreeKeys} style={styles.projectActionTooltipShortcut} />
             ) : null}
@@ -1521,7 +1566,7 @@ function WorkspaceRowWithMenu({
   canCopyBranchName: boolean;
   isCreating?: boolean;
 }) {
-  const { t } = useTranslation("workspaces");
+  const { t } = useTranslation();
   const toast = useToast();
   const archiveWorktree = useCheckoutGitActionsStore((state) => state.archiveWorktree);
   const queryClient = useQueryClient();
@@ -1549,7 +1594,6 @@ function WorkspaceRowWithMenu({
     });
   }, [selected, workspace]);
 
-  const { t: tGit } = useTranslation("git");
   const archiveWorktreeAfterConfirmation = useCallback(async () => {
     if (isArchiving) {
       return;
@@ -1562,7 +1606,7 @@ function WorkspaceRowWithMenu({
         aheadOfOrigin: workspace.archiveUnpushedCommitCount,
         diffStat: workspace.diffStat,
       },
-      tGit,
+      getWorktreeArchiveWarningLabels(t),
     );
 
     if (!confirmed) {
@@ -1575,12 +1619,16 @@ function WorkspaceRowWithMenu({
         workspaceDirectory: workspace.workspaceDirectory,
       });
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : t("errors.workspacePathUnavailable"));
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : t("sidebar.workspace.toasts.workspacePathUnavailable"),
+      );
       return;
     }
 
     if (!archiveDirectory) {
-      toast.error(t("errors.workspacePathUnavailable"));
+      toast.error(t("sidebar.workspace.toasts.workspacePathUnavailable"));
       return;
     }
 
@@ -1590,12 +1638,12 @@ function WorkspaceRowWithMenu({
       serverId: workspace.serverId,
       cwd: archiveDirectory,
       worktreePath: archiveDirectory,
-      t: tGit,
     }).catch((error) => {
-      const message = error instanceof Error ? error.message : t("errors.archiveWorktreeFailed");
+      const message =
+        error instanceof Error ? error.message : t("sidebar.workspace.toasts.archiveFailed");
       toast.error(message);
     });
-  }, [archiveWorktree, isArchiving, redirectAfterArchive, toast, workspace, t, tGit]);
+  }, [archiveWorktree, isArchiving, redirectAfterArchive, t, toast, workspace]);
 
   const handleArchiveWorktree = useCallback(() => {
     void archiveWorktreeAfterConfirmation();
@@ -1607,10 +1655,10 @@ function WorkspaceRowWithMenu({
     }
 
     const confirmed = await confirmDialog({
-      title: t("actions.hideWorkspaceTitle"),
-      message: t("actions.hideWorkspaceMessage", { name: workspace.name }),
-      confirmLabel: t("actions.hide"),
-      cancelLabel: t("actions.cancel"),
+      title: t("sidebar.workspace.confirmations.hideTitle"),
+      message: t("sidebar.workspace.confirmations.hideMessage", { workspaceName: workspace.name }),
+      confirmLabel: t("sidebar.workspace.confirmations.hideConfirm"),
+      cancelLabel: t("sidebar.workspace.confirmations.cancel"),
       destructive: true,
     });
     if (!confirmed) {
@@ -1619,7 +1667,7 @@ function WorkspaceRowWithMenu({
 
     const client = getHostRuntimeStore().getClient(workspace.serverId);
     if (!client) {
-      toast.error(t("errors.hostNotConnected"));
+      toast.error(t("sidebar.workspace.toasts.hostDisconnected"));
       return;
     }
 
@@ -1631,11 +1679,13 @@ function WorkspaceRowWithMenu({
         afterHide: redirectAfterArchive,
       });
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : t("errors.hideWorkspaceFailed"));
+      toast.error(
+        error instanceof Error ? error.message : t("sidebar.workspace.toasts.hideFailed"),
+      );
     } finally {
       setIsArchivingWorkspace(false);
     }
-  }, [isArchivingWorkspace, redirectAfterArchive, toast, workspace, t]);
+  }, [isArchivingWorkspace, redirectAfterArchive, t, toast, workspace]);
 
   const handleArchiveWorkspace = useCallback(() => {
     void hideWorkspaceAfterConfirmation();
@@ -1649,17 +1699,21 @@ function WorkspaceRowWithMenu({
         workspaceDirectory: workspace.workspaceDirectory,
       });
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : t("errors.workspacePathUnavailable"));
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : t("sidebar.workspace.toasts.workspacePathUnavailable"),
+      );
       return;
     }
     void Clipboard.setStringAsync(copyTargetDirectory);
-    toast.copied(t("actions.pathCopied"));
-  }, [toast, workspace.workspaceDirectory, workspace.workspaceId, t]);
+    toast.copied(t("sidebar.workspace.toasts.pathCopied"));
+  }, [t, toast, workspace.workspaceDirectory, workspace.workspaceId]);
 
   const handleCopyBranchName = useCallback(() => {
     void Clipboard.setStringAsync(workspace.name);
-    toast.copied(t("actions.branchNameCopied"));
-  }, [toast, workspace.name, t]);
+    toast.copied(t("sidebar.workspace.toasts.branchNameCopied"));
+  }, [t, toast, workspace.name]);
 
   const handleShowSessions = useCallback(() => {
     navigateToPreparedWorkspaceTab({
@@ -1682,7 +1736,7 @@ function WorkspaceRowWithMenu({
     mutationFn: async (branch: string) => {
       const client = getHostRuntimeStore().getClient(workspace.serverId);
       if (!client) {
-        throw new Error(t("errors.hostNotConnected"));
+        throw new Error(t("sidebar.workspace.toasts.hostDisconnected"));
       }
       const targetCwd = requireWorkspaceExecutionDirectory({
         workspaceId: workspace.workspaceId,
@@ -1690,7 +1744,7 @@ function WorkspaceRowWithMenu({
       });
       const payload = await client.renameBranch({ cwd: targetCwd, branch });
       if (!payload.success || payload.error) {
-        throw new Error(payload.error?.message ?? t("errors.renameBranchFailed"));
+        throw new Error(payload.error?.message ?? t("sidebar.workspace.rename.invalidBranchName"));
       }
       return { targetCwd };
     },
@@ -1721,7 +1775,7 @@ function WorkspaceRowWithMenu({
     (value: string): string | null => {
       const result = validateBranchSlug(slugify(value));
       if (result.valid) return null;
-      return result.error ?? t("errors.invalidBranchName");
+      return result.error ?? t("sidebar.workspace.rename.invalidBranchName");
     },
     [t],
   );
@@ -1733,9 +1787,9 @@ function WorkspaceRowWithMenu({
   });
   const handleMarkAsRead = useCallback(() => {
     void clearAttention().catch((error) => {
-      toast.error(error instanceof Error ? error.message : t("errors.markAsReadFailed"));
+      toast.error(error instanceof Error ? error.message : "Failed to mark workspace as read");
     });
-  }, [clearAttention, toast, t]);
+  }, [clearAttention, toast]);
 
   useKeyboardActionHandler({
     handlerId: `worktree-archive-${workspace.workspaceKey}`,
@@ -1766,9 +1820,17 @@ function WorkspaceRowWithMenu({
         isCreating={isCreating}
         dragHandleProps={dragHandleProps}
         menuController={null}
-        archiveLabel={isWorktree ? t("branch.archiveWorktree") : t("actions.hideFromSidebar")}
+        archiveLabel={
+          isWorktree
+            ? t("sidebar.workspace.actions.archiveWorktree")
+            : t("sidebar.workspace.actions.hideFromSidebar")
+        }
         archiveStatus={getWorkspaceArchiveStatus(isWorktree, archiveStatus, isArchivingWorkspace)}
-        archivePendingLabel={isWorktree ? t("branch.archiving") : t("actions.hiding")}
+        archivePendingLabel={
+          isWorktree
+            ? t("sidebar.workspace.actions.archiving")
+            : t("sidebar.workspace.actions.hiding")
+        }
         onArchive={isWorktree ? handleArchiveWorktree : handleArchiveWorkspace}
         onCopyBranchName={canCopyBranchName ? handleCopyBranchName : undefined}
         onCopyPath={handleCopyPath}
@@ -1790,10 +1852,10 @@ function WorkspaceRowWithMenu({
       ) : null}
       <AdaptiveRenameModal
         visible={isRenameOpen}
-        title={t("menu.renameWorkspace")}
+        title={t("sidebar.workspace.rename.title")}
         initialValue={workspace.name}
-        placeholder={t("branch.branchNamePlaceholder")}
-        submitLabel={t("actions.rename")}
+        placeholder="branch-name"
+        submitLabel={t("sidebar.workspace.rename.submit")}
         validate={validateRenameSlug}
         maxLength={MAX_SLUG_LENGTH}
         onClose={handleCloseRename}
@@ -1829,7 +1891,7 @@ function NonGitProjectRowWithMenuContent({
   isDragging: boolean;
   dragHandleProps?: DraggableListDragHandleProps;
 }) {
-  const { t } = useTranslation("workspaces");
+  const { t } = useTranslation();
   const toast = useToast();
   const contextMenu = useContextMenu();
   const [isArchivingWorkspace, setIsArchivingWorkspace] = useState(false);
@@ -1848,10 +1910,12 @@ function NonGitProjectRowWithMenuContent({
 
     void (async () => {
       const confirmed = await confirmDialog({
-        title: t("actions.hideWorkspaceTitle"),
-        message: t("actions.hideWorkspaceMessage", { name: workspace.name }),
-        confirmLabel: t("actions.hide"),
-        cancelLabel: t("actions.cancel"),
+        title: t("sidebar.workspace.confirmations.hideTitle"),
+        message: t("sidebar.workspace.confirmations.hideMessage", {
+          workspaceName: workspace.name,
+        }),
+        confirmLabel: t("sidebar.workspace.confirmations.hideConfirm"),
+        cancelLabel: t("sidebar.workspace.confirmations.cancel"),
         destructive: true,
       });
       if (!confirmed) {
@@ -1860,7 +1924,7 @@ function NonGitProjectRowWithMenuContent({
 
       const client = getHostRuntimeStore().getClient(workspace.serverId);
       if (!client) {
-        toast.error(t("errors.hostNotConnected"));
+        toast.error(t("sidebar.workspace.toasts.hostDisconnected"));
         return;
       }
 
@@ -1873,13 +1937,15 @@ function NonGitProjectRowWithMenuContent({
             afterHide: redirectAfterArchive,
           });
         } catch (error) {
-          toast.error(error instanceof Error ? error.message : t("errors.hideWorkspaceFailed"));
+          toast.error(
+            error instanceof Error ? error.message : t("sidebar.workspace.toasts.hideFailed"),
+          );
         } finally {
           setIsArchivingWorkspace(false);
         }
       })();
     })();
-  }, [isArchivingWorkspace, redirectAfterArchive, toast, workspace, t]);
+  }, [isArchivingWorkspace, redirectAfterArchive, t, toast, workspace]);
 
   return (
     <>
@@ -1910,11 +1976,11 @@ function NonGitProjectRowWithMenuContent({
         <ContextMenuItem
           testID={`sidebar-workspace-context-${workspace.workspaceKey}-archive`}
           status={isArchivingWorkspace ? "pending" : "idle"}
-          pendingLabel={t("actions.hiding")}
+          pendingLabel={t("sidebar.workspace.actions.hiding")}
           destructive
           onSelect={handleArchiveWorkspace}
         >
-          {t("actions.hideFromSidebar")}
+          {t("sidebar.workspace.actions.hideFromSidebar")}
         </ContextMenuItem>
       </ContextMenuContent>
     </>
@@ -2290,8 +2356,8 @@ function ProjectBlock({
     [onWorkspaceReorder, project.projectKey],
   );
 
-  const { t } = useTranslation("workspaces");
   const toast = useToast();
+  const { t } = useTranslation();
   const [isRemovingProject, setIsRemovingProject] = useState(false);
 
   const handleRemoveProject = useCallback(() => {
@@ -2301,10 +2367,10 @@ function ProjectBlock({
 
     void (async () => {
       const confirmed = await confirmDialog({
-        title: t("actions.removeProjectTitle"),
-        message: t("actions.removeProjectMessage", { name: displayName }),
-        confirmLabel: t("actions.remove"),
-        cancelLabel: t("actions.cancel"),
+        title: t("sidebar.project.confirmations.removeTitle"),
+        message: t("sidebar.project.confirmations.removeMessage", { projectName: displayName }),
+        confirmLabel: t("sidebar.project.confirmations.removeConfirm"),
+        cancelLabel: t("sidebar.project.confirmations.cancel"),
         destructive: true,
       });
       if (!confirmed) {
@@ -2313,7 +2379,7 @@ function ProjectBlock({
 
       const client = getHostRuntimeStore().getClient(serverId);
       if (!client) {
-        toast.error(t("errors.hostNotConnected"));
+        toast.error(t("sidebar.project.toasts.hostDisconnected"));
         return;
       }
 
@@ -2323,13 +2389,13 @@ function ProjectBlock({
         workspaces: project.workspaces,
       }).then((failures) => {
         if (failures.length > 0) {
-          toast.error(t("errors.removeSomeWorkspacesFailed"));
+          toast.error(t("sidebar.project.toasts.removeFailed"));
         }
         setIsRemovingProject(false);
         return;
       });
     })();
-  }, [isRemovingProject, serverId, displayName, toast, project.workspaces, t]);
+  }, [isRemovingProject, serverId, displayName, t, toast, project.workspaces]);
 
   const flattenedRowWorkspaceId =
     rowModel.kind === "workspace_link" ? rowModel.workspace.workspaceId : null;
@@ -2556,7 +2622,7 @@ function ProjectModeList({
 }: Omit<SidebarWorkspaceListProps, "groupMode" | "isRefreshing" | "onRefresh"> & {
   pathname: string;
 }) {
-  const { t } = useTranslation("workspaces");
+  const { t } = useTranslation();
   const [creatingWorkspaceIds, setCreatingWorkspaceIds] = useState<Set<string>>(() => new Set());
   const creatingWorkspaceTimeoutsRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(
     new Map(),
@@ -2769,10 +2835,10 @@ function ProjectModeList({
     <>
       {projects.length === 0 ? (
         <View style={styles.emptyContainer}>
-          <Text style={styles.emptyTitle}>{t("empty.title")}</Text>
-          <Text style={styles.emptyText}>{t("empty.description")}</Text>
+          <Text style={styles.emptyTitle}>{t("sidebar.project.empty.title")}</Text>
+          <Text style={styles.emptyText}>{t("sidebar.project.empty.description")}</Text>
           <Button variant="ghost" size="sm" leftIcon={Plus} onPress={onAddProject}>
-            {t("empty.addProject")}
+            {t("sidebar.actions.addProject")}
           </Button>
         </View>
       ) : (

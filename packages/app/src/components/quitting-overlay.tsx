@@ -7,8 +7,8 @@ import { getIsElectronRuntime } from "@/constants/layout";
 import { listenToDesktopEvent } from "@/desktop/electron/events";
 
 export function QuittingOverlay() {
+  const { t } = useTranslation();
   const { theme } = useUnistyles();
-  const { t } = useTranslation("app");
   const [quitting, setQuitting] = useState(false);
 
   useEffect(() => {
@@ -39,8 +39,8 @@ export function QuittingOverlay() {
   return (
     <View style={styles.overlay}>
       <LoadingSpinner size="large" color={theme.colors.foregroundMuted} />
-      <Text style={styles.title}>{t("quitting.title")}</Text>
-      <Text style={styles.detail}>{t("quitting.detail")}</Text>
+      <Text style={styles.title}>{t("desktop.quitting.title")}</Text>
+      <Text style={styles.detail}>{t("desktop.quitting.detail")}</Text>
     </View>
   );
 }

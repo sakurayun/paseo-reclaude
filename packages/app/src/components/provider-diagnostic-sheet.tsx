@@ -6,6 +6,7 @@ import {
   SquareTerminal,
   Trash2,
 } from "lucide-react-native";
+import type { TFunction } from "i18next";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -87,8 +88,8 @@ function CustomModelRow({
   deleting: boolean;
   onDelete: (modelId: string) => void;
 }) {
+  const { t } = useTranslation();
   const { theme } = useUnistyles();
-  const { t } = useTranslation("settings");
   const handleDelete = useCallback(() => onDelete(model.id), [model.id, onDelete]);
   const deleteButtonStyle = useCallback(
     ({ hovered, pressed }: PressableStateCallbackType & { hovered?: boolean }) => [
@@ -119,7 +120,7 @@ function CustomModelRow({
         hitSlop={8}
         style={deleteButtonStyle}
         accessibilityRole="button"
-        accessibilityLabel={t("providers.sheet.removeModel", { modelId: model.id })}
+        accessibilityLabel={t("settings.providers.models.removeModel", { id: model.id })}
       >
         <Trash2 size={theme.iconSize.sm} color={theme.colors.destructive} />
       </Pressable>
@@ -157,8 +158,8 @@ function AddCustomModelSubSheet({
   onClose: () => void;
   refresh: (providers?: AgentProvider[]) => Promise<void>;
 }) {
+  const { t } = useTranslation();
   const { theme } = useUnistyles();
-  const { t } = useTranslation("settings");
   const { config, patchConfig } = useDaemonConfig(serverId);
   const [input, setInput] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -192,12 +193,15 @@ function AddCustomModelSubSheet({
       .then(() => refresh([provider]))
       .then(() => onClose())
       .catch((err) => {
-        setError(err instanceof Error ? err.message : t("providers.addModel.error"));
+        setError(err instanceof Error ? err.message : t("settings.providers.models.failedToSave"));
       })
       .finally(() => setSaving(false));
   }, [additionalModels, canAdd, onClose, patchConfig, provider, refresh, t, trimmed]);
 
-  const header = useMemo<SheetHeader>(() => ({ title: t("providers.addModel.title") }), [t]);
+  const header = useMemo<SheetHeader>(
+    () => ({ title: t("settings.providers.models.addCustomTitle") }),
+    [t],
+  );
 
   return (
     <AdaptiveModalSheet
@@ -209,14 +213,14 @@ function AddCustomModelSubSheet({
       testID="add-custom-model-sheet"
     >
       <View style={sheetStyles.formGroup}>
-        <Text style={sheetStyles.formLabel}>{t("providers.addModel.label")}</Text>
+        <Text style={sheetStyles.formLabel}>{t("settings.providers.models.modelId")}</Text>
         <AdaptiveTextInput
           initialValue={input}
           resetKey={`add-custom-${visible}`}
           value={input}
           onChangeText={setInput}
           onSubmitEditing={handleAdd}
-          placeholder={t("providers.addModel.placeholder")}
+          placeholder={t("settings.providers.models.modelIdPlaceholder")}
           placeholderTextColor={theme.colors.foregroundMuted}
           autoCapitalize="none"
           autoCorrect={false}
@@ -227,10 +231,10 @@ function AddCustomModelSubSheet({
         {error ? <Text style={sheetStyles.errorText}>{error}</Text> : null}
         <View style={sheetStyles.formActions}>
           <Button variant="secondary" size="sm" onPress={onClose} disabled={saving}>
-            {t("providers.sheet.cancel")}
+            {t("common.actions.cancel")}
           </Button>
           <Button variant="default" size="sm" onPress={handleAdd} disabled={!canAdd || saving}>
-            {saving ? t("providers.addModel.saving") : t("providers.addModel.save")}
+            {saving ? t("settings.providers.models.adding") : t("settings.providers.models.add")}
           </Button>
         </View>
       </View>
@@ -252,7 +256,7 @@ function EditProviderCommandSubSheet({
   onClose: () => void;
 }) {
   const { theme } = useUnistyles();
-  const { t } = useTranslation("settings");
+  const { t } = useTranslation();
   const { config, patchConfig } = useDaemonConfig(serverId);
   const client = useHostRuntimeClient(serverId);
   const [input, setInput] = useState("");
@@ -286,13 +290,13 @@ function EditProviderCommandSubSheet({
       .then(() => client?.restartServer(`provider_command_${provider}`))
       .then(() => onClose())
       .catch((err) => {
-        setError(err instanceof Error ? err.message : t("providers.command.error"));
+        setError(err instanceof Error ? err.message : t("settings.providers.command.failedToSave"));
       })
       .finally(() => setSaving(false));
   }, [client, input, onClose, patchConfig, provider, t]);
 
   const header = useMemo<SheetHeader>(
-    () => ({ title: t("providers.command.title", { provider: providerLabel }) }),
+    () => ({ title: t("settings.providers.command.title", { provider: providerLabel }) }),
     [providerLabel, t],
   );
 
@@ -306,14 +310,14 @@ function EditProviderCommandSubSheet({
       testID="provider-command-sheet"
     >
       <View style={sheetStyles.formGroup}>
-        <Text style={sheetStyles.formLabel}>{t("providers.command.label")}</Text>
+        <Text style={sheetStyles.formLabel}>{t("settings.providers.command.label")}</Text>
         <AdaptiveTextInput
           initialValue={input}
           resetKey={`provider-command-${visible}`}
           value={input}
           onChangeText={setInput}
           onSubmitEditing={handleSave}
-          placeholder={t("providers.command.placeholder")}
+          placeholder={t("settings.providers.command.placeholder")}
           placeholderTextColor={theme.colors.foregroundMuted}
           autoCapitalize="none"
           autoCorrect={false}
@@ -321,14 +325,14 @@ function EditProviderCommandSubSheet({
           // @ts-expect-error - outlineStyle is web-only
           style={FORM_INPUT_STYLE}
         />
-        <Text style={sheetStyles.mutedText}>{t("providers.command.hint")}</Text>
+        <Text style={sheetStyles.mutedText}>{t("settings.providers.command.hint")}</Text>
         {error ? <Text style={sheetStyles.errorText}>{error}</Text> : null}
         <View style={sheetStyles.formActions}>
           <Button variant="secondary" size="sm" onPress={onClose} disabled={saving}>
-            {t("providers.sheet.cancel")}
+            {t("common.actions.cancel")}
           </Button>
           <Button variant="default" size="sm" onPress={handleSave} disabled={!canSave || saving}>
-            {saving ? t("providers.command.saving") : t("providers.command.save")}
+            {saving ? t("settings.providers.command.saving") : t("settings.providers.command.save")}
           </Button>
         </View>
       </View>
@@ -347,8 +351,8 @@ function DiagnosticSubSheet({
   visible: boolean;
   onClose: () => void;
 }) {
+  const { t } = useTranslation();
   const { theme } = useUnistyles();
-  const { t } = useTranslation("settings");
   const client = useHostRuntimeClient(serverId);
   const [diagnostic, setDiagnostic] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -360,7 +364,9 @@ function DiagnosticSubSheet({
       const result = await client.getProviderDiagnostic(provider);
       setDiagnostic(result.diagnostic);
     } catch (err) {
-      setDiagnostic(err instanceof Error ? err.message : t("providers.diagnostic.fetchError"));
+      setDiagnostic(
+        err instanceof Error ? err.message : t("settings.providers.diagnostic.failedToFetch"),
+      );
     } finally {
       setLoading(false);
     }
@@ -389,7 +395,7 @@ function DiagnosticSubSheet({
 
   const header = useMemo<SheetHeader>(
     () => ({
-      title: t("providers.diagnostic.title"),
+      title: t("settings.providers.diagnostic.title"),
       actions: (
         <Pressable
           onPress={handleRefreshPress}
@@ -398,7 +404,9 @@ function DiagnosticSubSheet({
           style={refreshButtonStyle}
           accessibilityRole="button"
           accessibilityLabel={
-            loading ? t("providers.diagnostic.refreshing") : t("providers.diagnostic.refresh")
+            loading
+              ? t("settings.providers.diagnostic.refreshingAccessibility")
+              : t("settings.providers.diagnostic.refreshAccessibility")
           }
         >
           {loading ? (
@@ -424,7 +432,7 @@ function DiagnosticSubSheet({
     body = (
       <View style={sheetStyles.codeBlockLoading}>
         <ActivityIndicator size="small" color={theme.colors.foregroundMuted} />
-        <Text style={sheetStyles.mutedText}>{t("providers.diagnostic.running")}</Text>
+        <Text style={sheetStyles.mutedText}>{t("settings.providers.diagnostic.running")}</Text>
       </View>
     );
   } else if (diagnostic) {
@@ -440,7 +448,7 @@ function DiagnosticSubSheet({
   } else {
     body = (
       <View style={sheetStyles.codeBlockLoading}>
-        <Text style={sheetStyles.mutedText}>{t("providers.diagnostic.unavailable")}</Text>
+        <Text style={sheetStyles.mutedText}>{t("settings.providers.diagnostic.none")}</Text>
       </View>
     );
   }
@@ -478,22 +486,22 @@ interface ProviderSheetFooterInput {
   fetchedAtLabel: string | null;
   isCompact: boolean;
   modelsRefreshing: boolean;
+  t: TFunction;
   onOpenAddSheet: () => void;
   onOpenDiagSheet: () => void;
   onOpenCommandSheet: () => void;
   onRefreshModels: () => void;
-  t: ReturnType<typeof useTranslation<"settings">>["t"];
 }
 
 function renderProviderSheetFooter({
   fetchedAtLabel,
   isCompact,
   modelsRefreshing,
+  t,
   onOpenAddSheet,
   onOpenDiagSheet,
   onOpenCommandSheet,
   onRefreshModels,
-  t,
 }: ProviderSheetFooterInput) {
   const contentStyle = isCompact ? sheetStyles.compactFooterContent : sheetStyles.footerContent;
   const actionsStyle = isCompact ? sheetStyles.compactFooterActions : sheetStyles.footerActions;
@@ -504,7 +512,7 @@ function renderProviderSheetFooter({
     <View style={contentStyle}>
       {fetchedAtLabel || !isCompact ? (
         <Text style={metaStyle} numberOfLines={1}>
-          {fetchedAtLabel ? t("providers.sheet.updated", { time: fetchedAtLabel }) : ""}
+          {fetchedAtLabel ? t("settings.providers.models.updated", { time: fetchedAtLabel }) : ""}
         </Text>
       ) : null}
       <View style={actionsStyle}>
@@ -515,7 +523,7 @@ function renderProviderSheetFooter({
           onPress={onOpenAddSheet}
           style={buttonStyle}
         >
-          {t("providers.sheet.addModel")}
+          {t("settings.providers.models.addModel")}
         </Button>
         <Button
           variant="secondary"
@@ -524,7 +532,7 @@ function renderProviderSheetFooter({
           onPress={onOpenDiagSheet}
           style={buttonStyle}
         >
-          {t("providers.sheet.diagnostic")}
+          {t("settings.providers.diagnostic.button")}
         </Button>
         <Button
           variant="secondary"
@@ -533,7 +541,7 @@ function renderProviderSheetFooter({
           onPress={onOpenCommandSheet}
           style={buttonStyle}
         >
-          {t("providers.sheet.command")}
+          {t("settings.providers.command.button")}
         </Button>
         <Button
           variant="default"
@@ -543,7 +551,9 @@ function renderProviderSheetFooter({
           disabled={modelsRefreshing}
           style={buttonStyle}
         >
-          {modelsRefreshing ? t("providers.sheet.refreshing") : t("providers.sheet.refresh")}
+          {modelsRefreshing
+            ? t("settings.providers.diagnostic.refreshing")
+            : t("settings.providers.diagnostic.refresh")}
         </Button>
       </View>
     </View>
@@ -551,7 +561,7 @@ function renderProviderSheetFooter({
 }
 
 function ProviderModalBody(props: ProviderModalBodyProps) {
-  const { t } = useTranslation("settings");
+  const { t } = useTranslation();
   const {
     discoveredCount,
     additionalCount,
@@ -571,7 +581,7 @@ function ProviderModalBody(props: ProviderModalBodyProps) {
     return (
       <View style={sheetStyles.emptyState}>
         <ActivityIndicator size="small" color={theme.colors.foregroundMuted} />
-        <Text style={sheetStyles.mutedText}>{t("providers.sheet.loadingModels")}</Text>
+        <Text style={sheetStyles.mutedText}>{t("settings.providers.models.loading")}</Text>
       </View>
     );
   }
@@ -581,7 +591,9 @@ function ProviderModalBody(props: ProviderModalBodyProps) {
         <AlertTriangle size={theme.iconSize.md} color={theme.colors.foregroundMuted} />
         <Text style={sheetStyles.mutedText}>{providerErrorMessage}</Text>
         <Button variant="default" size="sm" onPress={onRefresh} disabled={modelsRefreshing}>
-          {modelsRefreshing ? t("providers.sheet.retrying") : t("providers.sheet.retry")}
+          {modelsRefreshing
+            ? t("settings.providers.models.retrying")
+            : t("settings.providers.models.retry")}
         </Button>
       </View>
     );
@@ -589,14 +601,14 @@ function ProviderModalBody(props: ProviderModalBodyProps) {
   if (filteredDiscovered.length === 0 && filteredCustom.length === 0 && searchActive) {
     return (
       <View style={sheetStyles.emptyState}>
-        <Text style={sheetStyles.mutedText}>{t("providers.sheet.noMatch")}</Text>
+        <Text style={sheetStyles.mutedText}>{t("settings.providers.models.noSearchMatches")}</Text>
       </View>
     );
   }
   if (discoveredCount === 0 && additionalCount === 0) {
     return (
       <View style={sheetStyles.emptyState}>
-        <Text style={sheetStyles.mutedText}>{t("providers.sheet.noModels")}</Text>
+        <Text style={sheetStyles.mutedText}>{t("settings.providers.models.noneDetected")}</Text>
       </View>
     );
   }
@@ -605,7 +617,7 @@ function ProviderModalBody(props: ProviderModalBodyProps) {
       {filteredDiscovered.length > 0 ? (
         <View style={sheetStyles.section}>
           <SectionHeader
-            title={t("providers.sheet.discovered")}
+            title={t("settings.providers.models.discovered")}
             count={filteredDiscovered.length}
           />
           <View style={settingsStyles.card}>
@@ -617,7 +629,10 @@ function ProviderModalBody(props: ProviderModalBodyProps) {
       ) : null}
       {filteredCustom.length > 0 ? (
         <View style={sheetStyles.section}>
-          <SectionHeader title={t("providers.sheet.customModels")} count={filteredCustom.length} />
+          <SectionHeader
+            title={t("settings.providers.models.custom")}
+            count={filteredCustom.length}
+          />
           <View style={settingsStyles.card}>
             {filteredCustom.map((model) => (
               <CustomModelRow
@@ -640,8 +655,8 @@ export function ProviderDiagnosticSheet({
   onClose,
   serverId,
 }: ProviderDiagnosticSheetProps) {
+  const { t } = useTranslation();
   const { theme } = useUnistyles();
-  const { t } = useTranslation("settings");
   const isCompact = useIsCompactFormFactor();
   const { entries: snapshotEntries, refresh, isRefreshing } = useProvidersSnapshot(serverId);
   const { config, patchConfig } = useDaemonConfig(serverId);
@@ -663,7 +678,7 @@ export function ProviderDiagnosticSheet({
   const providerSnapshotRefreshing = providerEntry?.status === "loading";
   const providerErrorMessage =
     providerEntry?.status === "error"
-      ? (providerEntry.error ?? t("providers.sheet.unknownError"))
+      ? (providerEntry.error ?? t("settings.providers.diagnostic.unknownError"))
       : null;
   const modelsRefreshing = isRefreshing || providerSnapshotRefreshing;
 
@@ -679,7 +694,7 @@ export function ProviderDiagnosticSheet({
   const [clockTick, setClockTick] = useState(0);
   useEffect(() => {
     if (!visible) return;
-    const id = setInterval(() => setClockTick((prev) => prev + 1), 10_000);
+    const id = setInterval(() => setClockTick((tick) => tick + 1), 10_000);
     return () => clearInterval(id);
   }, [visible]);
   const fetchedAtLabel = useMemo(() => {
@@ -741,7 +756,7 @@ export function ProviderDiagnosticSheet({
       title: providerLabel,
       search: {
         onChange: setQuery,
-        placeholder: t("providers.sheet.searchPlaceholder"),
+        placeholder: t("settings.providers.models.searchPlaceholder"),
         testID: "provider-settings-search",
       },
     }),
@@ -759,11 +774,11 @@ export function ProviderDiagnosticSheet({
           fetchedAtLabel,
           isCompact,
           modelsRefreshing,
+          t,
           onOpenAddSheet: handleOpenAddSheet,
           onOpenDiagSheet: handleOpenDiagSheet,
           onOpenCommandSheet: handleOpenCmdSheet,
           onRefreshModels: handleRefreshModels,
-          t,
         })}
         snapPoints={MAIN_SNAP_POINTS}
       >

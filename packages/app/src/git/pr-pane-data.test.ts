@@ -3,23 +3,13 @@ import type {
   CheckoutPrStatusResponse,
   PullRequestTimelineResponse,
 } from "@getpaseo/protocol/messages";
-import i18n from "@/i18n";
 import {
   deriveAvatarColor,
   formatAge,
-  getActivityVerb as getActivityVerbRaw,
-  getStateLabel as getStateLabelRaw,
+  getActivityVerb,
+  getStateLabel,
   mapPrPaneData,
 } from "./pr-pane-data";
-
-// Real English translator so label assertions read the en git catalog.
-const tGit = i18n.getFixedT("en", "git");
-function getStateLabel(state: Parameters<typeof getStateLabelRaw>[0]) {
-  return getStateLabelRaw(state, tGit);
-}
-function getActivityVerb(item: Parameters<typeof getActivityVerbRaw>[0]) {
-  return getActivityVerbRaw(item, tGit);
-}
 
 type CheckoutPrStatus = NonNullable<CheckoutPrStatusResponse["payload"]["status"]>;
 type PullRequestTimeline = PullRequestTimelineResponse["payload"];

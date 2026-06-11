@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import i18n from "@/i18n";
 import type { FetchRecentProviderSessionEntry } from "@getpaseo/client/internal/daemon-client";
 import {
   aggregateSessionEntries,
@@ -201,7 +200,6 @@ describe("getPromptPreview", () => {
 });
 
 describe("computeEmptyState", () => {
-  const t = i18n.getFixedT("en", "app");
   const baseInputs = {
     isLoadingSessions: false,
     allQueriesErrored: false,
@@ -215,34 +213,31 @@ describe("computeEmptyState", () => {
   };
 
   it("hides the empty state while sessions are still loading", () => {
-    const result = computeEmptyState({ ...baseInputs, isLoadingSessions: true }, t);
+    const result = computeEmptyState({ ...baseInputs, isLoadingSessions: true });
     expect(result.showEmptyState).toBe(false);
   });
 
   it("hides the empty state when every query errored", () => {
-    const result = computeEmptyState({ ...baseInputs, allQueriesErrored: true }, t);
+    const result = computeEmptyState({ ...baseInputs, allQueriesErrored: true });
     expect(result.showEmptyState).toBe(false);
   });
 
   it("hides the empty state until every provider query has settled", () => {
-    const result = computeEmptyState({ ...baseInputs, allQueriesSettled: false }, t);
+    const result = computeEmptyState({ ...baseInputs, allQueriesSettled: false });
     expect(result.showEmptyState).toBe(false);
   });
 
   it("hides the empty state when there are visible entries", () => {
-    const result = computeEmptyState(
-      {
-        ...baseInputs,
-        aggregatedCount: 2,
-        visibleCount: 2,
-      },
-      t,
-    );
+    const result = computeEmptyState({
+      ...baseInputs,
+      aggregatedCount: 2,
+      visibleCount: 2,
+    });
     expect(result.showEmptyState).toBe(false);
   });
 
   it("shows the default no-sessions message when nothing is loaded and nothing is filtered", () => {
-    const result = computeEmptyState(baseInputs, t);
+    const result = computeEmptyState(baseInputs);
     expect(result).toEqual({
       showEmptyState: true,
       emptyStateTitle: "No recent sessions to import.",
@@ -250,38 +245,29 @@ describe("computeEmptyState", () => {
   });
 
   it("shows the already-imported message when imported entries were filtered out", () => {
-    const result = computeEmptyState(
-      {
-        ...baseInputs,
-        totalAlreadyImportedCount: 4,
-      },
-      t,
-    );
+    const result = computeEmptyState({
+      ...baseInputs,
+      totalAlreadyImportedCount: 4,
+    });
     expect(result.emptyStateTitle).toBe("All recent sessions are already imported.");
   });
 
   it("shows a provider-scoped message when a filter hides aggregated entries", () => {
-    const result = computeEmptyState(
-      {
-        ...baseInputs,
-        selectedProvider: "claude",
-        aggregatedCount: 3,
-        providerLabelById: new Map([["claude", "Claude Code"]]),
-      },
-      t,
-    );
+    const result = computeEmptyState({
+      ...baseInputs,
+      selectedProvider: "claude",
+      aggregatedCount: 3,
+      providerLabelById: new Map([["claude", "Claude Code"]]),
+    });
     expect(result.emptyStateTitle).toBe("No Claude Code sessions found.");
   });
 
   it("falls back to the provider id when the filtered provider lacks a label", () => {
-    const result = computeEmptyState(
-      {
-        ...baseInputs,
-        selectedProvider: "z-ai",
-        aggregatedCount: 1,
-      },
-      t,
-    );
+    const result = computeEmptyState({
+      ...baseInputs,
+      selectedProvider: "z-ai",
+      aggregatedCount: 1,
+    });
     expect(result.emptyStateTitle).toBe("No z-ai sessions found.");
   });
 });

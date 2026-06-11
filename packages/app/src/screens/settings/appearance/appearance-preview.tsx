@@ -135,7 +135,7 @@ function markerStyle(type: RowType) {
 // UnistylesRuntime.updateTheme commits a setting; the optional `overrides` layer
 // inline styles for live-while-typing feedback on the code font.
 export function AppearancePreview({ overrides }: AppearancePreviewProps) {
-  const { t } = useTranslation("settings");
+  const { t } = useTranslation();
   const rows = useMemo(() => buildUnifiedRows(), []);
   const codeOverride = useMemo(() => buildCodeOverride(overrides), [overrides]);
   const codeStyle = useMemo(() => [styles.codeLine, codeOverride], [codeOverride]);
@@ -151,7 +151,7 @@ export function AppearancePreview({ overrides }: AppearancePreviewProps) {
   return (
     <View
       accessibilityRole="image"
-      accessibilityLabel={t("appearance.preview.a11y")}
+      accessibilityLabel={t("settings.appearance.syntax.previewAccessibility")}
       dataSet={CODE_SURFACE_DATASET}
       style={styles.card}
     >

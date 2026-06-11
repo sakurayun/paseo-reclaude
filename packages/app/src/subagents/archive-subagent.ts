@@ -1,4 +1,4 @@
-import i18n from "@/i18n";
+import { i18n } from "@/i18n/i18next";
 import type { Agent } from "@/stores/session-store";
 import type { ConfirmDialogInput } from "@/utils/confirm-dialog";
 
@@ -25,18 +25,18 @@ export function resolveArchiveSubagentDialog(
   input: ResolveArchiveSubagentDialogInput,
 ): ConfirmDialogInput {
   const subagentLabel =
-    resolveSubagentLabel(input.title) ?? i18n.t("agents:subagents.archiveDialog.fallbackLabel");
+    resolveSubagentLabel(input.title) ?? i18n.t("subagents.archiveDialog.fallbackLabel");
   const isRunning = input.status === "running";
 
   return {
     title: isRunning
-      ? i18n.t("agents:subagents.archiveDialog.runningTitle")
-      : i18n.t("agents:subagents.archiveDialog.title"),
+      ? i18n.t("subagents.archiveDialog.runningTitle")
+      : i18n.t("subagents.archiveDialog.title"),
     message: isRunning
-      ? i18n.t("agents:subagents.archiveDialog.runningMessage", { label: subagentLabel })
-      : i18n.t("agents:subagents.archiveDialog.message", { label: subagentLabel }),
-    confirmLabel: i18n.t("agents:subagents.archiveDialog.confirmLabel"),
-    cancelLabel: i18n.t("agents:subagents.archiveDialog.cancelLabel"),
+      ? i18n.t("subagents.archiveDialog.runningMessage", { label: subagentLabel })
+      : i18n.t("subagents.archiveDialog.message", { label: subagentLabel }),
+    confirmLabel: i18n.t("subagents.archiveDialog.confirmLabel"),
+    cancelLabel: i18n.t("subagents.archiveDialog.cancelLabel"),
     destructive: true,
   };
 }

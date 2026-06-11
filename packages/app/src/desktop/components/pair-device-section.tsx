@@ -22,19 +22,21 @@ function resolvePairingViewState(args: {
   isError: boolean;
   error: unknown;
   data: { url?: string | null; relayEnabled?: boolean } | undefined;
-  t: ReturnType<typeof useTranslation<"settings">>["t"];
+  labels: {
+    failedToLoadOffer: string;
+    relayDisabled: string;
+    unavailable: string;
+  };
 }): PairingViewState {
   if (args.isPending) return { tag: "loading" };
   if (args.isError) {
     const message =
-      args.error instanceof Error ? args.error.message : args.t("pairDevice.errorDefault");
+      args.error instanceof Error ? args.error.message : args.labels.failedToLoadOffer;
     return { tag: "error", message };
   }
   if (!args.data?.url) {
     const message =
-      args.data?.relayEnabled === false
-        ? args.t("pairDevice.errorRelayDisabled")
-        : args.t("pairDevice.errorUnavailable");
+      args.data?.relayEnabled === false ? args.labels.relayDisabled : args.labels.unavailable;
     return { tag: "unavailable", message };
   }
   return { tag: "ready", url: args.data.url };
@@ -42,7 +44,7 @@ function resolvePairingViewState(args: {
 
 export function PairDeviceSection() {
   const { theme } = useUnistyles();
-  const { t } = useTranslation("settings");
+  const { t } = useTranslation();
   const showSection = shouldUseDesktopDaemon();
   const [copied, setCopied] = useState(false);
 
@@ -99,6 +101,17 @@ export function PairDeviceSection() {
       ),
     [copied, theme.iconSize.sm, theme.colors.accent, theme.colors.foreground],
   );
+  const bodyLabels = useMemo(
+    () => ({
+      loadingOffer: t("pairing.device.loadingOffer"),
+      hint: t("pairing.device.hint"),
+      qrUnavailable: t("pairing.device.qrUnavailable"),
+      retry: t("pairing.device.retry"),
+      copy: t("pairing.device.copy"),
+      copied: t("pairing.device.copied"),
+    }),
+    [t],
+  );
 
   if (!showSection) return null;
 
@@ -107,7 +120,11 @@ export function PairDeviceSection() {
     isError: pairingQuery.isError,
     error: pairingQuery.error,
     data: pairingQuery.data,
-    t,
+    labels: {
+      failedToLoadOffer: t("pairing.device.failedToLoadOffer"),
+      relayDisabled: t("pairing.device.relayDisabled"),
+      unavailable: t("pairing.device.unavailable"),
+    },
   });
 
   return (
@@ -123,6 +140,7 @@ export function PairDeviceSection() {
           copied={copied}
           handleRefetch={handleRefetch}
           handleCopyPress={handleCopyPress}
+          labels={bodyLabels}
         />
       </View>
     </View>
@@ -139,10 +157,17 @@ interface PairDeviceBodyProps {
   copied: boolean;
   handleRefetch: () => void;
   handleCopyPress: () => void;
+  labels: {
+    loadingOffer: string;
+    hint: string;
+    qrUnavailable: string;
+    retry: string;
+    copy: string;
+    copied: string;
+  };
 }
 
 function PairDeviceBody(props: PairDeviceBodyProps) {
-  const { t } = useTranslation("settings");
   const {
     viewState,
     theme,
@@ -153,13 +178,14 @@ function PairDeviceBody(props: PairDeviceBodyProps) {
     copied,
     handleRefetch,
     handleCopyPress,
+    labels,
   } = props;
 
   if (viewState.tag === "loading") {
     return (
       <View style={styles.centered}>
         <ActivityIndicator size="small" />
-        <Text style={styles.hint}>{t("pairDevice.loading")}</Text>
+        <Text style={styles.hint}>{labels.loadingOffer}</Text>
       </View>
     );
   }
@@ -169,7 +195,7 @@ function PairDeviceBody(props: PairDeviceBodyProps) {
       <View style={styles.centered}>
         <Text style={styles.hint}>{viewState.message}</Text>
         <Button variant="outline" size="sm" leftIcon={retryIcon} onPress={handleRefetch}>
-          {t("pairDevice.retry")}
+          {labels.retry}
         </Button>
       </View>
     );
@@ -177,9 +203,13 @@ function PairDeviceBody(props: PairDeviceBodyProps) {
 
   return (
     <View style={styles.content}>
-      <Text style={styles.hint}>{t("pairDevice.qrHint")}</Text>
+      <Text style={styles.hint}>{labels.hint}</Text>
       <View style={styles.qrContainer}>
-        <PairDeviceQrContent qrImageSource={qrImageSource} qrQuery={qrQuery} />
+        <PairDeviceQrContent
+          qrImageSource={qrImageSource}
+          qrQuery={qrQuery}
+          unavailableLabel={labels.qrUnavailable}
+        />
       </View>
       <View style={styles.linkRow}>
         <View style={styles.inputWrapper}>
@@ -192,7 +222,7 @@ function PairDeviceBody(props: PairDeviceBodyProps) {
           />
         </View>
         <Button variant="outline" size="sm" leftIcon={copyButtonIcon} onPress={handleCopyPress}>
-          {copied ? t("pairDevice.copied") : t("pairDevice.copy")}
+          {copied ? labels.copied : labels.copy}
         </Button>
       </View>
     </View>
@@ -202,13 +232,13 @@ function PairDeviceBody(props: PairDeviceBodyProps) {
 function PairDeviceQrContent(props: {
   qrImageSource: { uri: string } | null;
   qrQuery: { isError: boolean };
+  unavailableLabel: string;
 }) {
-  const { t } = useTranslation("settings");
   if (props.qrImageSource) {
     return <Image source={props.qrImageSource} style={styles.qrImage} resizeMode="contain" />;
   }
   if (props.qrQuery.isError) {
-    return <Text style={styles.hint}>{t("pairDevice.qrUnavailable")}</Text>;
+    return <Text style={styles.hint}>{props.unavailableLabel}</Text>;
   }
   return <ActivityIndicator size="small" />;
 }

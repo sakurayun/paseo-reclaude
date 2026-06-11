@@ -129,9 +129,9 @@ export function Autocomplete({
   maxHeight = 220,
 }: AutocompleteProps) {
   const { t } = useTranslation();
-  const resolvedLoadingText = loadingText ?? t("state.loading");
-  const resolvedEmptyText = emptyText ?? t("autocomplete.noResults");
   const { theme } = useUnistyles();
+  const resolvedLoadingText = loadingText ?? t("common.states.loading");
+  const resolvedEmptyText = emptyText ?? t("common.empty.noResults");
   const scrollRef = useRef<ScrollView>(null);
   const rowLayoutsRef = useRef<Map<number, { top: number; height: number }>>(new Map());
   const viewportHeightRef = useRef(0);
@@ -229,7 +229,7 @@ export function Autocomplete({
       <View style={containerStyle}>
         <View style={styles.emptyItem}>
           <Text style={styles.emptyText}>
-            {t("state.errorWithMessage", { message: errorMessage })}
+            {t("common.errors.withMessage", { message: errorMessage })}
           </Text>
         </View>
       </View>

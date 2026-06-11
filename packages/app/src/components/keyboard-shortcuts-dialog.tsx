@@ -12,19 +12,19 @@ import { buildKeyboardShortcutHelpSections } from "@/keyboard/keyboard-shortcuts
 const SNAP_POINTS: string[] = ["70%", "92%"];
 
 export function KeyboardShortcutsDialog() {
-  const { t } = useTranslation("shortcuts");
+  const { t } = useTranslation();
   const open = useKeyboardShortcutsStore((s) => s.shortcutsDialogOpen);
   const setOpen = useKeyboardShortcutsStore((s) => s.setShortcutsDialogOpen);
 
   const isMac = getShortcutOs() === "mac";
   const isDesktopApp = getIsElectronRuntime();
-  const header = useMemo<SheetHeader>(() => ({ title: t("dialog.title") }), [t]);
   const sections = useMemo(
-    () => buildKeyboardShortcutHelpSections({ isMac, isDesktop: isDesktopApp }, t),
-    [isDesktopApp, isMac, t],
+    () => buildKeyboardShortcutHelpSections({ isMac, isDesktop: isDesktopApp }),
+    [isDesktopApp, isMac],
   );
 
   const handleClose = useCallback(() => setOpen(false), [setOpen]);
+  const header = useMemo<SheetHeader>(() => ({ title: t("settings.shortcuts.dialogTitle") }), [t]);
 
   return (
     <AdaptiveModalSheet
@@ -37,13 +37,15 @@ export function KeyboardShortcutsDialog() {
       <View testID="keyboard-shortcuts-dialog-content" style={styles.content}>
         {sections.map((section) => (
           <View key={section.title} style={styles.section}>
-            <Text style={styles.sectionTitle}>{section.title}</Text>
+            <Text style={styles.sectionTitle}>{t(section.titleKey)}</Text>
             <View style={styles.rows}>
               {section.rows.map((row) => (
                 <View key={row.id} style={styles.row}>
                   <View style={styles.rowText}>
-                    <Text style={styles.rowLabel}>{row.label}</Text>
-                    {row.note ? <Text style={styles.rowNote}>{row.note}</Text> : null}
+                    <Text style={styles.rowLabel}>{t(row.labelKey)}</Text>
+                    {row.note ? (
+                      <Text style={styles.rowNote}>{row.noteKey ? t(row.noteKey) : row.note}</Text>
+                    ) : null}
                   </View>
                   <Shortcut keys={row.keys} style={styles.rowShortcut} />
                 </View>

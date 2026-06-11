@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
+import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import { Alert, Pressable, Text, View, type PressableStateCallbackType } from "react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
@@ -24,34 +25,38 @@ type ProviderEntry = NonNullable<ReturnType<typeof useProvidersSnapshot>["entrie
 
 type StatusTone = "success" | "warning" | "danger" | "muted" | "loading";
 
-type ProviderStatusLabelKey = "disabled" | "loading" | "error" | "available" | "notInstalled";
-
-const STATUS_LABEL_KEYS = {
-  disabled: "providers.status.disabled",
-  loading: "providers.status.loading",
-  error: "providers.status.error",
-  available: "providers.status.available",
-  notInstalled: "providers.status.notInstalled",
-} as const;
-
 interface ProviderStatus {
   tone: StatusTone;
-  labelKey: ProviderStatusLabelKey;
+  label: string;
   modelCount: number | null;
 }
 
-function getProviderStatus(status: string, enabled: boolean, modelCount: number): ProviderStatus {
-  if (!enabled) return { tone: "muted", labelKey: "disabled", modelCount: null };
-  if (status === "loading") return { tone: "loading", labelKey: "loading", modelCount: null };
-  if (status === "error") return { tone: "danger", labelKey: "error", modelCount: null };
+function getProviderStatus(
+  status: string,
+  enabled: boolean,
+  modelCount: number,
+  t: TFunction,
+): ProviderStatus {
+  if (!enabled)
+    return { tone: "muted", label: t("settings.providers.statuses.disabled"), modelCount: null };
+  if (status === "loading") {
+    return { tone: "loading", label: t("settings.providers.statuses.loading"), modelCount: null };
+  }
+  if (status === "error") {
+    return { tone: "danger", label: t("settings.providers.statuses.error"), modelCount: null };
+  }
   if (status === "ready") {
     return {
       tone: "success",
-      labelKey: "available",
+      label: t("settings.providers.statuses.available"),
       modelCount: modelCount > 0 ? modelCount : null,
     };
   }
-  return { tone: "warning", labelKey: "notInstalled", modelCount: null };
+  return {
+    tone: "warning",
+    label: t("settings.providers.statuses.notInstalled"),
+    modelCount: null,
+  };
 }
 
 interface ProviderRowProps {
@@ -75,8 +80,8 @@ function ProviderRow({
   onPress,
   onToggleEnabled,
 }: ProviderRowProps) {
+  const { t } = useTranslation();
   const { theme } = useUnistyles();
-  const { t } = useTranslation("settings");
   const ProviderIcon = getProviderIcon(def.id);
   const providerError =
     enabled &&
@@ -86,7 +91,7 @@ function ProviderRow({
       ? entry.error.trim()
       : null;
   const modelCount = entry.models?.length ?? 0;
-  const providerStatus = getProviderStatus(entry.status, enabled, modelCount);
+  const providerStatus = getProviderStatus(entry.status, enabled, modelCount, t);
 
   const handlePress = useCallback(() => {
     onPress(def.id);
@@ -114,7 +119,7 @@ function ProviderRow({
         style={rowStyle}
         onPress={handlePress}
         accessibilityRole="button"
-        accessibilityLabel={t("providers.detailsLabel", { label: def.label })}
+        accessibilityLabel={t("settings.providers.providerDetails", { name: def.label })}
       >
         {({ hovered }: PressableStateCallbackType & { hovered?: boolean }) => (
           <>
@@ -143,7 +148,7 @@ function ProviderRow({
               value={enabled}
               onValueChange={handleToggleValueChange}
               disabled={isToggling}
-              accessibilityLabel={t("providers.enableLabel", { label: def.label })}
+              accessibilityLabel={t("settings.providers.enableProvider", { name: def.label })}
             />
           </>
         )}
@@ -156,7 +161,7 @@ function ProviderRow({
 const RECLAUDE_COMMAND = ["reclaude"];
 
 function ClaudeReclaudeRow({ serverId }: { serverId: string }) {
-  const { t } = useTranslation("settings");
+  const { t } = useTranslation();
   const { config, patchConfig } = useDaemonConfig(serverId);
   const client = useHostRuntimeClient(serverId);
   const [pending, setPending] = useState(false);
@@ -174,7 +179,7 @@ function ClaudeReclaudeRow({ serverId }: { serverId: string }) {
         .then(() => client?.restartServer("provider_command_claude"))
         .catch((error) => {
           Alert.alert(
-            t("providers.reclaude.error"),
+            t("settings.providers.reclaude.errorTitle"),
             error instanceof Error ? error.message : String(error),
           );
         })
@@ -186,14 +191,14 @@ function ClaudeReclaudeRow({ serverId }: { serverId: string }) {
   return (
     <View style={rowStyle}>
       <View style={settingsStyles.rowContent}>
-        <Text style={settingsStyles.rowTitle}>{t("providers.reclaude.title")}</Text>
-        <Text style={settingsStyles.rowHint}>{t("providers.reclaude.hint")}</Text>
+        <Text style={settingsStyles.rowTitle}>{t("settings.providers.reclaude.title")}</Text>
+        <Text style={settingsStyles.rowHint}>{t("settings.providers.reclaude.hint")}</Text>
       </View>
       <Switch
         value={enabled}
         onValueChange={handleChange}
         disabled={pending || !client}
-        accessibilityLabel={t("providers.reclaude.toggleLabel")}
+        accessibilityLabel={t("settings.providers.reclaude.toggleAccessibility")}
       />
     </View>
   );
@@ -213,8 +218,8 @@ function getDotColor(tone: StatusTone, theme: ReturnType<typeof useUnistyles>["t
 }
 
 function StatusIndicator({ status }: { status: ProviderStatus }) {
+  const { t } = useTranslation();
   const { theme } = useUnistyles();
-  const { t } = useTranslation("settings");
   const dotStyle = useMemo(
     () => [styles.statusDot, { backgroundColor: getDotColor(status.tone, theme) }],
     [status.tone, theme],
@@ -227,12 +232,14 @@ function StatusIndicator({ status }: { status: ProviderStatus }) {
       ) : (
         <View style={dotStyle} />
       )}
-      <Text style={styles.statusLabel}>{t(STATUS_LABEL_KEYS[status.labelKey])}</Text>
+      <Text style={styles.statusLabel}>{status.label}</Text>
       {status.modelCount !== null ? (
         <>
           <Text style={styles.separator}>·</Text>
           <Text style={styles.statusLabel}>
-            {t("providers.model", { count: status.modelCount })}
+            {status.modelCount === 1
+              ? t("settings.providers.models.one")
+              : t("settings.providers.models.many", { count: status.modelCount })}
           </Text>
         </>
       ) : null}
@@ -245,7 +252,7 @@ export interface ProvidersSectionProps {
 }
 
 export function ProvidersSection({ serverId }: ProvidersSectionProps) {
-  const { t } = useTranslation("settings");
+  const { t } = useTranslation();
   const isConnected = useHostRuntimeIsConnected(serverId);
   const { entries, isLoading, refresh } = useProvidersSnapshot(serverId);
   const { patchConfig } = useDaemonConfig(serverId);
@@ -270,7 +277,7 @@ export function ProvidersSection({ serverId }: ProvidersSectionProps) {
         await patchConfig({ providers: { [providerId]: { enabled } } });
       } catch (error) {
         Alert.alert(
-          t("providers.updateError"),
+          t("settings.providers.updateErrorTitle"),
           error instanceof Error ? error.message : String(error),
         );
       } finally {
@@ -289,7 +296,7 @@ export function ProvidersSection({ serverId }: ProvidersSectionProps) {
         await refresh([entry.id]);
       } catch (error) {
         Alert.alert(
-          t("providers.addError"),
+          t("settings.providers.addErrorTitle"),
           error instanceof Error ? error.message : String(error),
         );
       } finally {
@@ -302,18 +309,18 @@ export function ProvidersSection({ serverId }: ProvidersSectionProps) {
   return (
     <>
       <SettingsSection
-        title={t("providers.title")}
+        title={t("settings.providers.title")}
         testID="host-page-providers-card"
         style={styles.sectionSpacing}
       >
         {!hasServer || !isConnected ? (
           <View style={EMPTY_CARD_STYLE}>
-            <Text style={styles.emptyText}>{t("providers.empty")}</Text>
+            <Text style={styles.emptyText}>{t("settings.providers.unavailable")}</Text>
           </View>
         ) : null}
         {hasServer && isConnected && isLoading ? (
           <View style={EMPTY_CARD_STYLE}>
-            <Text style={styles.emptyText}>{t("providers.loading")}</Text>
+            <Text style={styles.emptyText}>{t("settings.providers.loading")}</Text>
           </View>
         ) : null}
         {hasServer && isConnected && !isLoading && providerDefinitions.length > 0 ? (
@@ -341,7 +348,7 @@ export function ProvidersSection({ serverId }: ProvidersSectionProps) {
 
       {hasServer && isConnected ? (
         <SettingsSection
-          title={t("providers.addTitle")}
+          title={t("settings.providers.addProvider")}
           testID="host-page-add-provider-card"
           style={styles.addProviderSection}
         >

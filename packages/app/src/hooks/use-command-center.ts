@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { ParseKeys, TFunction } from "i18next";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import type { TextInput } from "react-native";
 import { router, usePathname, type Href } from "expo-router";
+import { useTranslation } from "react-i18next";
 import { useKeyboardShortcutsStore } from "@/stores/keyboard-shortcuts-store";
 import { keyboardActionDispatcher } from "@/keyboard/keyboard-action-dispatcher";
 import { useAllAgentsList } from "@/hooks/use-all-agents-list";
@@ -138,7 +138,10 @@ function sortAgents(left: AggregatedAgent, right: AggregatedAgent): number {
 
 interface CommandCenterActionDefinition {
   id: string;
-  titleKey: ParseKeys<"shortcuts">;
+  titleKey:
+    | "shell.commandCenter.openProject"
+    | "shell.commandCenter.home"
+    | "sidebar.actions.settings";
   icon?: "plus" | "settings" | "home";
   actionId?: string;
   keywords: string[];
@@ -148,7 +151,7 @@ interface CommandCenterActionDefinition {
 const COMMAND_CENTER_ACTIONS: readonly CommandCenterActionDefinition[] = [
   {
     id: "new-agent",
-    titleKey: "commandCenter.actions.openProject",
+    titleKey: "shell.commandCenter.openProject",
     icon: "plus",
     actionId: "new-agent",
     keywords: ["open", "project", "folder", "workspace", "repo"],
@@ -156,14 +159,14 @@ const COMMAND_CENTER_ACTIONS: readonly CommandCenterActionDefinition[] = [
   },
   {
     id: "home",
-    titleKey: "commandCenter.actions.home",
+    titleKey: "shell.commandCenter.home",
     icon: "home",
     keywords: ["home", "start", "import", "session", "pair", "device", "providers"],
     routeKind: "home",
   },
   {
     id: "settings",
-    titleKey: "commandCenter.actions.settings",
+    titleKey: "sidebar.actions.settings",
     icon: "settings",
     keywords: ["settings", "preferences", "config", "configuration"],
     routeKind: "settings",
@@ -186,7 +189,7 @@ function matchesActionQuery(
 export interface CommandCenterActionItem {
   kind: "action";
   id: string;
-  titleKey: ParseKeys<"shortcuts">;
+  title: string;
   icon?: "plus" | "settings" | "home";
   route?: Href;
   shortcutKeys?: ShortcutKey[][];
@@ -227,7 +230,8 @@ function resolveActionShortcutKeys(
   return defaultKeys ? [defaultKeys] : undefined;
 }
 
-export function useCommandCenter(t: TFunction<"shortcuts">) {
+export function useCommandCenter() {
+  const { t } = useTranslation();
   const pathname = usePathname();
   const routeActiveServerId = useActiveServerId();
   const { overrides } = useKeyboardShortcutOverrides();
@@ -255,7 +259,7 @@ export function useCommandCenter(t: TFunction<"shortcuts">) {
     if (!open || agents.length === 0) {
       return EMPTY_AGENTS;
     }
-    const fallbackTitle = t("commandCenter.agent.untitled");
+    const fallbackTitle = t("shell.commandCenter.newAgent");
     const filtered = agents.filter((agent) => isMatch(agent, query, fallbackTitle));
     filtered.sort(sortAgents);
     return filtered;
@@ -371,7 +375,7 @@ export function useCommandCenter(t: TFunction<"shortcuts">) {
       return {
         kind: "action",
         id: action.id,
-        titleKey: action.titleKey,
+        title: t(action.titleKey),
         icon: action.icon,
         route,
         shortcutKeys: resolveActionShortcutKeys(action.actionId, overrides),

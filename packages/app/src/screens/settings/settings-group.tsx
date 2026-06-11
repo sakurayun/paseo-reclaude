@@ -28,8 +28,8 @@ export function SettingsGroup({
   style,
   children,
 }: SettingsGroupProps) {
+  const { t } = useTranslation();
   const { theme } = useUnistyles();
-  const { t } = useTranslation("settings");
   const groupStyle = useMemo(() => [styles.group, style], [style]);
   return (
     <View style={groupStyle} testID={testID}>
@@ -41,7 +41,7 @@ export function SettingsGroup({
               <TooltipTrigger asChild>
                 <Pressable
                   accessibilityRole="button"
-                  accessibilityLabel={t("group.about", { title })}
+                  accessibilityLabel={t("settings.groupInfo", { title })}
                   testID={testID ? `${testID}-info` : undefined}
                   hitSlop={8}
                   style={styles.infoButton}

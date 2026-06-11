@@ -1,9 +1,9 @@
 import { useCallback, useMemo, useRef } from "react";
 import { Pressable, View, type PressableStateCallbackType } from "react-native";
 import { useQueryClient } from "@tanstack/react-query";
-import { useTranslation } from "react-i18next";
 import { ChevronDown, GitBranch } from "lucide-react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
+import { useTranslation } from "react-i18next";
 import { Combobox, ComboboxItem } from "@/components/ui/combobox";
 import type { ComboboxProps } from "@/components/ui/combobox";
 import { useIsCompactFormFactor } from "@/constants/layout";
@@ -27,8 +27,8 @@ export function BranchSwitcher({
   workspaceId,
   isGitCheckout,
 }: BranchSwitcherProps) {
-  const { t } = useTranslation("app");
   const { theme } = useUnistyles();
+  const { t } = useTranslation();
   const isCompact = useIsCompactFormFactor();
   const anchorRef = useRef<View>(null);
   const client = useHostRuntimeClient(serverId);
@@ -93,9 +93,7 @@ export function BranchSwitcher({
         onPress={handleOpen}
         style={triggerStyle}
         accessibilityRole="button"
-        accessibilityLabel={t("branchSwitcher.triggerAccessibilityLabel", {
-          branch: currentBranchName,
-        })}
+        accessibilityLabel={t("branchSwitcher.currentBranch", { branchName: currentBranchName })}
       >
         {titleContent}
         {!isCompact ? <ChevronDown size={12} color={theme.colors.foregroundMuted} /> : null}
@@ -107,7 +105,7 @@ export function BranchSwitcher({
         searchable
         placeholder={t("branchSwitcher.placeholder")}
         searchPlaceholder={t("branchSwitcher.searchPlaceholder")}
-        emptyText={t("branchSwitcher.emptyText")}
+        emptyText={t("branchSwitcher.empty")}
         title={t("branchSwitcher.title")}
         open={isOpen}
         onOpenChange={setIsOpen}

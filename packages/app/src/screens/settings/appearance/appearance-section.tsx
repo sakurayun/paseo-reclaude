@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import { Text, TextInput, View, type PressableStateCallbackType } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
@@ -52,36 +53,19 @@ const ThemedChevronDown = withUnistyles(ChevronDown);
 
 const mutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
 
-type TFunc = ReturnType<typeof useTranslation<"settings">>["t"];
-
-// Translatable theme labels. `auto` reads as "System" for the app theme.
-// Proper-noun themes (Zinc, Midnight, Claude, Ghostty) are brand names and stay
-// literal — see themeLabel().
-const THEME_LABEL_KEYS = {
-  light: "appearance.theme.light",
-  dark: "appearance.theme.dark",
-  auto: "appearance.theme.system",
-} as const;
-
-// Stored value -> displayed label. Brand-name themes are returned verbatim; the
-// generic light/dark/system options are translated.
-function themeLabel(t: TFunc, value: AppSettings["theme"]): string {
-  switch (value) {
-    case "light":
-    case "dark":
-    case "auto":
-      return t(THEME_LABEL_KEYS[value]);
-    case "claudeLight":
-      return "Claude Light";
-    case "zinc":
-      return "Zinc";
-    case "midnight":
-      return "Midnight";
-    case "claude":
-      return "Claude";
-    case "ghostty":
-      return "Ghostty";
-  }
+function getThemeLabel(t: TFunction, value: AppSettings["theme"]): string {
+  // "Claude Light" is a brand-name theme local to this fork; render it verbatim.
+  if (value === "claudeLight") return "Claude Light";
+  const labelKeys: Record<Exclude<AppSettings["theme"], "claudeLight">, string> = {
+    light: "settings.appearance.theme.options.light",
+    dark: "settings.appearance.theme.options.dark",
+    zinc: "settings.appearance.theme.options.zinc",
+    midnight: "settings.appearance.theme.options.midnight",
+    claude: "settings.appearance.theme.options.claude",
+    ghostty: "settings.appearance.theme.options.ghostty",
+    auto: "settings.appearance.theme.options.auto",
+  };
+  return t(labelKeys[value]);
 }
 
 const PRIMARY_THEMES: readonly AppSettings["theme"][] = ["light", "dark", "auto"];
@@ -97,8 +81,8 @@ const VARIANT_THEMES: readonly AppSettings["theme"][] = [
 // those read as a bug, so show a human label in the placeholder instead.
 const BARE_DEFAULT_STACKS: ReadonlySet<string> = new Set(["normal", "monospace"]);
 
-function resolveDefaultStackPlaceholder(t: TFunc, stack: string): string {
-  return BARE_DEFAULT_STACKS.has(stack) ? t("appearance.fonts.systemDefault") : stack;
+function resolveDefaultStackPlaceholder(t: TFunction, stack: string): string {
+  return BARE_DEFAULT_STACKS.has(stack) ? t("settings.appearance.fonts.systemDefault") : stack;
 }
 
 // Local size string (digits only) -> preview override number. Empty/invalid
@@ -150,14 +134,14 @@ interface ThemeMenuItemProps {
 }
 
 function ThemeMenuItem({ themeValue, selected, onChange }: ThemeMenuItemProps) {
-  const { t } = useTranslation("settings");
+  const { t } = useTranslation();
   const handleSelect = useCallback(() => {
     onChange(themeValue);
   }, [onChange, themeValue]);
   const leading = useMemo(() => <ThemeLeading themeValue={themeValue} />, [themeValue]);
   return (
     <DropdownMenuItem selected={selected} onSelect={handleSelect} leading={leading}>
-      {themeLabel(t, themeValue)}
+      {getThemeLabel(t, themeValue)}
     </DropdownMenuItem>
   );
 }
@@ -168,19 +152,22 @@ interface ThemeRowProps {
 }
 
 function ThemeRow({ value, onChange }: ThemeRowProps) {
-  const { t } = useTranslation("settings");
+  const { t } = useTranslation();
+  const selectedLabel = getThemeLabel(t, value);
   return (
     <View style={settingsStyles.row}>
       <View style={settingsStyles.rowContent}>
-        <Text style={settingsStyles.rowTitle}>{t("appearance.theme.title")}</Text>
+        <Text style={settingsStyles.rowTitle}>{t("settings.appearance.theme.title")}</Text>
       </View>
       <DropdownMenu>
         <DropdownMenuTrigger
           style={dropdownTriggerStyle}
-          accessibilityLabel={t("appearance.theme.a11y", { value: themeLabel(t, value) })}
+          accessibilityLabel={t("settings.appearance.theme.accessibilityLabel", {
+            value: selectedLabel,
+          })}
         >
           <ThemeLeading themeValue={value} />
-          <Text style={styles.triggerText}>{themeLabel(t, value)}</Text>
+          <Text style={styles.triggerText}>{selectedLabel}</Text>
           <ThemedChevronDown size={ICON_SIZE.sm} uniProps={mutedColorMapping} />
         </DropdownMenuTrigger>
         <DropdownMenuContent side="bottom" align="end" width={200}>
@@ -396,19 +383,26 @@ interface SyntaxRowProps {
 }
 
 function SyntaxRow({ value, onChange }: SyntaxRowProps) {
-  const { t } = useTranslation("settings");
+  const { t } = useTranslation();
+  const selectedLabel = syntaxLabelForId(value);
   return (
     <View style={settingsStyles.row}>
       <View style={settingsStyles.rowContent}>
-        <Text style={settingsStyles.rowTitle}>{t("appearance.syntax.title")}</Text>
-        <Text style={settingsStyles.rowHint}>{t("appearance.syntax.hint")}</Text>
+        <Text style={settingsStyles.rowTitle}>
+          {t("settings.appearance.syntax.highlightTheme")}
+        </Text>
+        <Text style={settingsStyles.rowHint}>
+          {t("settings.appearance.syntax.highlightThemeHint")}
+        </Text>
       </View>
       <DropdownMenu>
         <DropdownMenuTrigger
           style={dropdownTriggerStyle}
-          accessibilityLabel={t("appearance.syntax.a11y", { value: syntaxLabelForId(value) })}
+          accessibilityLabel={t("settings.appearance.syntax.highlightThemeAccessibility", {
+            value: selectedLabel,
+          })}
         >
-          <Text style={styles.triggerText}>{syntaxLabelForId(value)}</Text>
+          <Text style={styles.triggerText}>{selectedLabel}</Text>
           <ThemedChevronDown size={ICON_SIZE.sm} uniProps={mutedColorMapping} />
         </DropdownMenuTrigger>
         <DropdownMenuContent side="bottom" align="end" width={200}>
@@ -431,10 +425,9 @@ function SyntaxRow({ value, onChange }: SyntaxRowProps) {
 // ---------------------------------------------------------------------------
 
 export function AppearanceSection() {
-  const { t } = useTranslation("settings");
+  const { t } = useTranslation();
   const { settings, updateSettings } = useAppSettings();
   const showFontFamilyRows = !isNative;
-
   const uiFontPlaceholder = resolveDefaultStackPlaceholder(t, DEFAULT_UI_FONT_STACK);
   const monoFontPlaceholder = resolveDefaultStackPlaceholder(t, DEFAULT_MONO_FONT_STACK);
 
@@ -554,18 +547,18 @@ export function AppearanceSection() {
 
   return (
     <View>
-      <SettingsSection title={t("appearance.theme.section")}>
+      <SettingsSection title={t("settings.appearance.theme.title")}>
         <View style={settingsStyles.card}>
           <ThemeRow value={settings.theme} onChange={handleThemeChange} />
         </View>
       </SettingsSection>
-      <SettingsSection title={t("appearance.fonts.section")}>
+      <SettingsSection title={t("settings.appearance.fonts.title")}>
         <View style={settingsStyles.card}>
           {showFontFamilyRows ? (
             <FontFamilyRow
-              title={t("appearance.fonts.uiTitle")}
-              hint={t("appearance.fonts.uiHint")}
-              accessibilityLabel={t("appearance.fonts.uiA11y")}
+              title={t("settings.appearance.fonts.interfaceFont")}
+              hint={t("settings.appearance.fonts.interfaceFontHint")}
+              accessibilityLabel={t("settings.appearance.fonts.interfaceFontAccessibility")}
               placeholder={uiFontPlaceholder}
               value={settings.uiFontFamily}
               draft={uiFontDraft}
@@ -575,8 +568,8 @@ export function AppearanceSection() {
             />
           ) : null}
           <FontSizeRow
-            title={t("appearance.fonts.uiSizeTitle")}
-            accessibilityLabel={t("appearance.fonts.uiSizeA11y")}
+            title={t("settings.appearance.fonts.interfaceSize")}
+            accessibilityLabel={t("settings.appearance.fonts.interfaceSizeAccessibility")}
             draft={uiSizeDraft}
             withBorder={showFontFamilyRows}
             onChangeDraft={handleUiSizeChange}
@@ -584,9 +577,9 @@ export function AppearanceSection() {
           />
           {showFontFamilyRows ? (
             <FontFamilyRow
-              title={t("appearance.fonts.codeTitle")}
-              hint={t("appearance.fonts.codeHint")}
-              accessibilityLabel={t("appearance.fonts.codeA11y")}
+              title={t("settings.appearance.fonts.codeFont")}
+              hint={t("settings.appearance.fonts.codeFontHint")}
+              accessibilityLabel={t("settings.appearance.fonts.codeFontAccessibility")}
               placeholder={monoFontPlaceholder}
               value={settings.monoFontFamily}
               draft={monoFontDraft}
@@ -596,60 +589,62 @@ export function AppearanceSection() {
             />
           ) : null}
           <FontSizeRow
-            title={t("appearance.fonts.codeSizeTitle")}
-            accessibilityLabel={t("appearance.fonts.codeSizeA11y")}
+            title={t("settings.appearance.fonts.codeSize")}
+            accessibilityLabel={t("settings.appearance.fonts.codeSizeAccessibility")}
             draft={codeSizeDraft}
             onChangeDraft={handleCodeSizeChange}
             onCommit={commitCodeSize}
           />
         </View>
       </SettingsSection>
-      <SettingsSection title={t("appearance.terminal.section")}>
+      <SettingsSection title={t("settings.appearance.terminal.title")}>
         <View style={settingsStyles.card}>
           <View style={settingsStyles.row}>
             <View style={settingsStyles.rowContent}>
               <Text style={settingsStyles.rowTitle}>
-                {t("appearance.terminal.ligatures.title")}
+                {t("settings.appearance.terminal.ligatures")}
               </Text>
-              <Text style={settingsStyles.rowHint}>{t("appearance.terminal.ligatures.hint")}</Text>
+              <Text style={settingsStyles.rowHint}>
+                {t("settings.appearance.terminal.ligaturesHint")}
+              </Text>
             </View>
             <Switch
               value={settings.terminalLigaturesEnabled}
               onValueChange={handleTerminalLigaturesChange}
-              accessibilityLabel={t("appearance.terminal.ligatures.a11y")}
+              accessibilityLabel={t("settings.appearance.terminal.ligaturesAccessibility")}
             />
           </View>
           <TerminalPaddingRow
             field="terminalPaddingTop"
-            title={t("appearance.terminal.padding.top")}
-            accessibilityLabel={t("appearance.terminal.padding.topA11y")}
+            title={t("settings.appearance.terminal.paddingTop")}
+            accessibilityLabel={t("settings.appearance.terminal.paddingTopAccessibility")}
             value={settings.terminalPaddingTop}
             onCommit={handleTerminalPaddingCommit}
           />
           <TerminalPaddingRow
             field="terminalPaddingBottom"
-            title={t("appearance.terminal.padding.bottom")}
-            accessibilityLabel={t("appearance.terminal.padding.bottomA11y")}
+            title={t("settings.appearance.terminal.paddingBottom")}
+            accessibilityLabel={t("settings.appearance.terminal.paddingBottomAccessibility")}
             value={settings.terminalPaddingBottom}
             onCommit={handleTerminalPaddingCommit}
           />
           <TerminalPaddingRow
             field="terminalPaddingLeft"
-            title={t("appearance.terminal.padding.left")}
-            accessibilityLabel={t("appearance.terminal.padding.leftA11y")}
+            title={t("settings.appearance.terminal.paddingLeft")}
+            accessibilityLabel={t("settings.appearance.terminal.paddingLeftAccessibility")}
             value={settings.terminalPaddingLeft}
             onCommit={handleTerminalPaddingCommit}
           />
           <TerminalPaddingRow
             field="terminalPaddingRight"
-            title={t("appearance.terminal.padding.right")}
-            accessibilityLabel={t("appearance.terminal.padding.rightA11y")}
+            title={t("settings.appearance.terminal.paddingRight")}
+            accessibilityLabel={t("settings.appearance.terminal.paddingRightAccessibility")}
             value={settings.terminalPaddingRight}
             onCommit={handleTerminalPaddingCommit}
           />
         </View>
       </SettingsSection>
-      <SettingsSection title={t("appearance.syntax.section")}>
+      <SettingsSection title={t("settings.appearance.syntax.title")}>
         <View style={settingsStyles.card}>
           <SyntaxRow value={settings.syntaxTheme} onChange={handleSyntaxThemeChange} />
         </View>

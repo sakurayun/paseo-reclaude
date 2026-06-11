@@ -9,7 +9,6 @@ import {
 } from "react-native";
 import { memo, useCallback, useEffect, useMemo, useRef, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import type { TFunction } from "i18next";
 import { Home, Plus, Settings } from "lucide-react-native";
 import { StyleSheet, useUnistyles, withUnistyles } from "react-native-unistyles";
 import { useCommandCenter } from "@/hooks/use-command-center";
@@ -117,7 +116,6 @@ interface CommandCenterActionRowProps {
   rowRefs: React.MutableRefObject<Map<number, View>>;
   onLayout?: (event: { nativeEvent: { layout: { y: number; height: number } } }) => void;
   onSelect: (item: ReturnType<typeof useCommandCenter>["items"][number]) => void;
-  t: TFunction<"shortcuts">;
 }
 
 function CommandCenterActionRow({
@@ -127,7 +125,6 @@ function CommandCenterActionRow({
   rowRefs,
   onLayout,
   onSelect,
-  t,
 }: CommandCenterActionRowProps) {
   const { theme } = useUnistyles();
   const handlePress = useCallback(() => onSelect(item), [onSelect, item]);
@@ -157,7 +154,7 @@ function CommandCenterActionRow({
           {actionIcon ? <View style={styles.iconSlot}>{actionIcon}</View> : null}
           <View style={styles.textContent}>
             <Text style={titleStyle} numberOfLines={1}>
-              {t(action.titleKey)}
+              {action.title}
             </Text>
           </View>
         </View>
@@ -208,7 +205,7 @@ interface CommandCenterAgentRowContentProps {
 
 function CommandCenterAgentRowContent({ agent }: CommandCenterAgentRowContentProps) {
   const { theme } = useUnistyles();
-  const { t } = useTranslation("shortcuts");
+  const { t } = useTranslation();
   const titleStyle = useMemo(
     () => [styles.title, { color: theme.colors.foreground }],
     [theme.colors.foreground],
@@ -229,7 +226,7 @@ function CommandCenterAgentRowContent({ agent }: CommandCenterAgentRowContentPro
         </View>
         <View style={styles.textContent}>
           <Text style={titleStyle} numberOfLines={1}>
-            {agent.title || t("commandCenter.agent.untitled")}
+            {agent.title || t("shell.commandCenter.newAgent")}
           </Text>
           <Text style={subtitleStyle} numberOfLines={1}>
             {shortenPath(agent.cwd)} · {formatTimeAgo(agent.lastActivityAt)}
@@ -309,7 +306,6 @@ interface FileItemsSectionProps {
   onSelect: (item: ReturnType<typeof useCommandCenter>["items"][number]) => void;
   sectionDividerStyle: React.ComponentProps<typeof View>["style"];
   sectionLabelStyle: React.ComponentProps<typeof Text>["style"];
-  t: TFunction<"shortcuts">;
 }
 
 function FileItemsSection({
@@ -321,12 +317,13 @@ function FileItemsSection({
   onSelect,
   sectionDividerStyle,
   sectionLabelStyle,
-  t,
 }: FileItemsSectionProps) {
+  const { t } = useTranslation();
+
   return (
     <>
       {actionItemsLength > 0 ? <View style={sectionDividerStyle} /> : null}
-      <Text style={sectionLabelStyle}>{t("commandCenter.sections.files")}</Text>
+      <Text style={sectionLabelStyle}>{t("shell.commandCenter.files")}</Text>
       {fileItems.map((item, index) => {
         const rowIndex = actionItemsLength + index;
         return (
@@ -356,7 +353,6 @@ interface AgentItemsSectionProps {
   onSelect: (item: ReturnType<typeof useCommandCenter>["items"][number]) => void;
   sectionDividerStyle: React.ComponentProps<typeof View>["style"];
   sectionLabelStyle: React.ComponentProps<typeof Text>["style"];
-  t: TFunction<"shortcuts">;
 }
 
 function AgentItemsSection({
@@ -368,12 +364,13 @@ function AgentItemsSection({
   onSelect,
   sectionDividerStyle,
   sectionLabelStyle,
-  t,
 }: AgentItemsSectionProps) {
+  const { t } = useTranslation();
+
   return (
     <>
       {actionItemsLength > 0 ? <View style={sectionDividerStyle} /> : null}
-      <Text style={sectionLabelStyle}>{t("commandCenter.sections.agents")}</Text>
+      <Text style={sectionLabelStyle}>{t("shell.commandCenter.agents")}</Text>
       {agentItems.map((item, index) => {
         const rowIndex = actionItemsLength + index;
         const agent = item.agent;
@@ -397,7 +394,7 @@ function AgentItemsSection({
 
 export function CommandCenter() {
   const { theme } = useUnistyles();
-  const { t } = useTranslation("shortcuts");
+  const { t } = useTranslation();
   const {
     open,
     inputRef,
@@ -408,7 +405,7 @@ export function CommandCenter() {
     handleClose,
     handleSelectItem,
     handleKeyEvent,
-  } = useCommandCenter(t);
+  } = useCommandCenter();
 
   const isCompact = useIsCompactFormFactor();
   const showBottomSheet = isCompact && isNative;
@@ -558,12 +555,12 @@ export function CommandCenter() {
 
   const resultList =
     items.length === 0 ? (
-      <Text style={emptyTextStyle}>{t("commandCenter.empty")}</Text>
+      <Text style={emptyTextStyle}>{t("shell.commandCenter.noMatches")}</Text>
     ) : (
       <>
         {actionItems.length > 0 ? (
           <>
-            <Text style={sectionLabelStyle}>{t("commandCenter.sections.actions")}</Text>
+            <Text style={sectionLabelStyle}>{t("shell.commandCenter.actions")}</Text>
             {actionItems.map((item, index) => (
               <CommandCenterActionRow
                 key={`action:${item.action.id}`}
@@ -573,7 +570,6 @@ export function CommandCenter() {
                 rowRefs={rowRefs}
                 onLayout={handleRowLayout(index)}
                 onSelect={handleSelectItem}
-                t={t}
               />
             ))}
           </>
@@ -589,7 +585,6 @@ export function CommandCenter() {
             onSelect={handleSelectItem}
             sectionDividerStyle={sectionDividerStyle}
             sectionLabelStyle={sectionLabelStyle}
-            t={t}
           />
         ) : null}
 
@@ -603,7 +598,6 @@ export function CommandCenter() {
             onSelect={handleSelectItem}
             sectionDividerStyle={sectionDividerStyle}
             sectionLabelStyle={sectionLabelStyle}
-            t={t}
           />
         ) : null}
       </>
@@ -633,7 +627,7 @@ export function CommandCenter() {
             onChangeText={setQuery}
             onKeyPress={handleKeyPress}
             onSubmitEditing={handleSubmitEditing}
-            placeholder={t("commandCenter.placeholder")}
+            placeholder={t("shell.commandCenter.placeholder")}
             style={inputStyle}
             autoCapitalize="none"
             autoCorrect={false}
@@ -666,7 +660,7 @@ export function CommandCenter() {
               ref={inputRef}
               value={query}
               onChangeText={setQuery}
-              placeholder={t("commandCenter.placeholder")}
+              placeholder={t("shell.commandCenter.placeholder")}
               placeholderTextColor={theme.colors.foregroundMuted}
               style={inputStyle}
               autoCapitalize="none"

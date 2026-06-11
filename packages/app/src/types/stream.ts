@@ -1,7 +1,6 @@
 import type { AgentProvider, ToolCallDetail } from "@getpaseo/protocol/agent-types";
 import type { AgentAttachment, AgentStreamEventPayload } from "@getpaseo/protocol/messages";
 import type { AttachmentMetadata } from "@/attachments/types";
-import i18n from "@/i18n";
 import { extractTaskEntriesFromToolCall } from "../utils/tool-call-parsers";
 import { splitMarkdownBlocks } from "@/utils/split-markdown-blocks";
 
@@ -781,7 +780,7 @@ function reduceTimelineEvent(
         id: createTimelineId("error", item.message ?? "", timestamp),
         timestamp,
         activityType: "error",
-        message: item.message ?? i18n.t("timeline:activityLog.unknownError"),
+        message: item.message ?? "Unknown error",
       };
       return finalizeActiveThoughts(appendActivityLog(state, activity));
     }

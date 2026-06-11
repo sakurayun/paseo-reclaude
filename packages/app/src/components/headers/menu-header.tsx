@@ -70,7 +70,7 @@ export function SidebarMenuToggle({
   return (
     <HeaderToggleButton
       onPress={handlePress}
-      tooltipLabel={t("menu.toggleSidebar")}
+      tooltipLabel={t("shell.menu.toggleSidebar")}
       tooltipKeys={toggleShortcutKeys}
       tooltipSide={tooltipSide}
       testID={testID}
@@ -78,7 +78,7 @@ export function SidebarMenuToggle({
       style={style}
       accessible
       accessibilityRole="button"
-      accessibilityLabel={isOpen ? t("menu.close") : t("menu.open")}
+      accessibilityLabel={isOpen ? t("shell.menu.close") : t("shell.menu.open")}
       accessibilityState={accessibilityState}
     >
       {isMobile ? (

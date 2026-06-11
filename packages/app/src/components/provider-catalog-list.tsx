@@ -49,7 +49,10 @@ interface CatalogRowProps {
 }
 
 function CatalogRow({ entry, installing, onInstall }: CatalogRowProps) {
-  const { t } = useTranslation("settings");
+  const { t } = useTranslation();
+  const actionLabel = installing
+    ? t("providerCatalog.actions.adding")
+    : t("providerCatalog.actions.add");
   const handleInstall = useCallback(() => {
     onInstall(entry);
   }, [entry, onInstall]);
@@ -86,14 +89,14 @@ function CatalogRow({ entry, installing, onInstall }: CatalogRowProps) {
         </Text>
         <Pressable
           accessibilityRole="link"
-          accessibilityLabel={t("providers.catalog.installInstructionsLabel", {
-            title: entry.title,
+          accessibilityLabel={t("providerCatalog.actions.installInstructionsFor", {
+            provider: entry.title,
           })}
           onPress={handleOpenInstallLink}
           style={styles.installLink}
         >
           <Text style={styles.installLinkText} numberOfLines={1}>
-            {t("providers.catalog.installInstructions")}
+            {t("providerCatalog.actions.installInstructions")}
           </Text>
           <ThemedExternalLink size={12} uniProps={foregroundMutedColorMapping} />
         </Pressable>
@@ -107,7 +110,7 @@ function CatalogRow({ entry, installing, onInstall }: CatalogRowProps) {
         style={styles.actionButton}
         testID={`install-provider-${entry.id}`}
       >
-        {installing ? t("providers.catalog.adding") : t("providers.catalog.add")}
+        {actionLabel}
       </Button>
     </View>
   );
@@ -118,7 +121,7 @@ export function ProviderCatalogList({
   installingProviderId,
   onInstall,
 }: ProviderCatalogListProps) {
-  const { t } = useTranslation("settings");
+  const { t } = useTranslation();
   const { entries: catalogEntries } = useAcpProviderCatalog();
   const { entries: providerEntries } = useProvidersSnapshot(serverId);
   const [search, setSearch] = useState("");
@@ -144,10 +147,10 @@ export function ProviderCatalogList({
         </View>
         <AdaptiveTextInput
           testID="provider-catalog-search"
-          accessibilityLabel={t("providers.catalog.search")}
           value={search}
           onChangeText={setSearch}
-          placeholder={t("providers.catalog.search")}
+          accessibilityLabel={t("providerCatalog.search")}
+          placeholder={t("providerCatalog.search")}
           style={styles.searchInput}
           autoCapitalize="none"
           autoCorrect={false}
@@ -156,11 +159,7 @@ export function ProviderCatalogList({
 
       {availableEntries.length === 0 ? (
         <View style={styles.stateBox}>
-          <Text style={styles.stateText}>
-            {search.trim().length > 0
-              ? t("providers.catalog.noResults")
-              : t("providers.catalog.allInstalled")}
-          </Text>
+          <Text style={styles.stateText}>{t("providerCatalog.noProviders")}</Text>
         </View>
       ) : (
         <View style={styles.list}>

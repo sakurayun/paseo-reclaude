@@ -267,20 +267,23 @@ export const ProviderSnapshotEntrySchema = z.object({
   defaultModeId: z.string().nullable().optional(),
 });
 
-const AgentCapabilityFlagsSchema: z.ZodType<AgentCapabilityFlags> = z.object({
-  supportsStreaming: z.boolean(),
-  supportsSessionPersistence: z.boolean(),
-  supportsDynamicModes: z.boolean(),
-  supportsMcpServers: z.boolean(),
-  supportsReasoningStream: z.boolean(),
-  supportsToolInvocations: z.boolean(),
-  // COMPAT(rewind): added in v0.1.X, drop when floor >= v0.1.X.
-  supportsRewindConversation: z.boolean().optional().default(false),
-  // COMPAT(rewind): added in v0.1.X, drop when floor >= v0.1.X.
-  supportsRewindFiles: z.boolean().optional().default(false),
-  // COMPAT(rewind): added in v0.1.X, drop when floor >= v0.1.X.
-  supportsRewindBoth: z.boolean().optional().default(false),
-});
+const AgentCapabilityFlagsSchema: z.ZodType<AgentCapabilityFlags> = z
+  .object({
+    supportsStreaming: z.boolean(),
+    supportsSessionPersistence: z.boolean(),
+    supportsSessionListing: z.boolean().optional(),
+    supportsDynamicModes: z.boolean(),
+    supportsMcpServers: z.boolean(),
+    supportsReasoningStream: z.boolean(),
+    supportsToolInvocations: z.boolean(),
+    // COMPAT(rewind): added in v0.1.X, drop when floor >= v0.1.X.
+    supportsRewindConversation: z.boolean().optional().default(false),
+    // COMPAT(rewind): added in v0.1.X, drop when floor >= v0.1.X.
+    supportsRewindFiles: z.boolean().optional().default(false),
+    // COMPAT(rewind): added in v0.1.X, drop when floor >= v0.1.X.
+    supportsRewindBoth: z.boolean().optional().default(false),
+  })
+  .catchall(z.boolean());
 
 const AgentUsageSchema: z.ZodType<AgentUsage> = z.object({
   inputTokens: z.number().optional(),

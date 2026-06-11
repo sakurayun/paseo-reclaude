@@ -12,8 +12,12 @@ export interface PairDeviceModalProps {
 const SNAP_POINTS: string[] = ["82%", "94%"];
 
 export function PairDeviceModal({ visible, onClose, testID }: PairDeviceModalProps) {
-  const { t } = useTranslation("settings");
-  const header = useMemo<SheetHeader>(() => ({ title: t("pairDevice.title") }), [t]);
+  const { t } = useTranslation();
+  const header = useMemo<SheetHeader>(
+    () => ({ title: t("settings.host.pairDevices.rowTitle") }),
+    [t],
+  );
+
   return (
     <AdaptiveModalSheet
       header={header}

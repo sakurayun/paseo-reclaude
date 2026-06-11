@@ -661,8 +661,8 @@ function DragOverlayTabChipInner({
   normalizedServerId: string;
   normalizedWorkspaceId: string;
 }) {
+  const { t } = useTranslation();
   const { theme } = useUnistyles();
-  const { t } = useTranslation("workspaces");
 
   const chipStyle = useMemo(
     () => [
@@ -687,7 +687,7 @@ function DragOverlayTabChipInner({
     >
       {(presentation) => {
         const label =
-          presentation.titleState === "loading" ? t("screen.loading") : presentation.label;
+          presentation.titleState === "loading" ? t("common.states.loading") : presentation.label;
 
         return (
           <View style={chipStyle}>

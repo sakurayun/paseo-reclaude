@@ -1,6 +1,6 @@
-import type { TFunction } from "i18next";
 import type { FetchRecentProviderSessionEntry } from "@getpaseo/client/internal/daemon-client";
 import type { AgentProvider } from "@getpaseo/protocol/agent-types";
+import { i18n } from "@/i18n/i18next";
 
 export const PER_PROVIDER_LIMIT = 15;
 export const ALL_FILTER_VALUE = "__all__";
@@ -89,10 +89,7 @@ export function collectErroredProviderLabels(
   return labels;
 }
 
-export function getSessionTitle(
-  entry: FetchRecentProviderSessionEntry,
-  t?: TFunction<"app">,
-): string {
+export function getSessionTitle(entry: FetchRecentProviderSessionEntry): string {
   const title = entry.title?.trim();
   if (title) {
     return title;
@@ -101,17 +98,14 @@ export function getSessionTitle(
   if (firstPromptPreview) {
     return firstPromptPreview;
   }
-  return t ? t("importSession.untitledSession") : "Untitled session";
+  return i18n.t("importSession.preview.untitledSession");
 }
 
-export function getPromptPreview(
-  entry: FetchRecentProviderSessionEntry,
-  t?: TFunction<"app">,
-): string {
+export function getPromptPreview(entry: FetchRecentProviderSessionEntry): string {
   return (
     entry.lastPromptPreview?.trim() ||
     entry.firstPromptPreview?.trim() ||
-    (t ? t("importSession.noPromptPreview") : "No prompt preview")
+    i18n.t("importSession.preview.noPrompt")
   );
 }
 
@@ -127,10 +121,7 @@ export interface EmptyStateInputs {
   providerLabelById: ReadonlyMap<string, string>;
 }
 
-export function computeEmptyState(
-  input: EmptyStateInputs,
-  t: TFunction<"app">,
-): {
+export function computeEmptyState(input: EmptyStateInputs): {
   showEmptyState: boolean;
   emptyStateTitle: string;
 } {
@@ -148,11 +139,14 @@ export function computeEmptyState(
     const label = input.providerLabelById.get(input.selectedProvider) ?? input.selectedProvider;
     return {
       showEmptyState,
-      emptyStateTitle: t("importSession.empty.noProviderSessions", { provider: label }),
+      emptyStateTitle: i18n.t("importSession.empty.noProviderSessions", { provider: label }),
     };
   }
   if (input.totalAlreadyImportedCount > 0) {
-    return { showEmptyState, emptyStateTitle: t("importSession.empty.allImported") };
+    return {
+      showEmptyState,
+      emptyStateTitle: i18n.t("importSession.empty.alreadyImported"),
+    };
   }
-  return { showEmptyState, emptyStateTitle: t("importSession.empty.nothingToImport") };
+  return { showEmptyState, emptyStateTitle: i18n.t("importSession.empty.noRecent") };
 }

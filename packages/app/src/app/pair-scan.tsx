@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Alert, Pressable, Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
+import { Alert, Pressable, Text, View } from "react-native";
 import { useLocalSearchParams, useRouter, type Href } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
@@ -121,7 +121,7 @@ function extractOfferUrlFromScan(result: BarcodeScanningResult): string | null {
 
 export default function PairScanScreen() {
   const { theme } = useUnistyles();
-  const { t } = useTranslation("app");
+  const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const params = useLocalSearchParams<{
@@ -192,8 +192,8 @@ export default function PairScanScreen() {
         navigateToPairedHost(profile.serverId);
       } catch (error) {
         lastScannedRef.current = null;
-        const message = error instanceof Error ? error.message : t("pair.scan.errors.unable");
-        Alert.alert(t("pair.scan.errors.title"), message);
+        const message = error instanceof Error ? error.message : t("pairing.scan.unableToPair");
+        Alert.alert(t("pairing.scan.errorTitle"), message);
       } finally {
         setIsPairing(false);
       }
@@ -218,13 +218,13 @@ export default function PairScanScreen() {
   if (isWeb) {
     return (
       <View style={styles.container}>
-        <BackHeader title={t("pair.scan.title")} onBack={handleRouterBack} />
+        <BackHeader title={t("pairing.scan.title")} onBack={handleRouterBack} />
         <View style={bodyStyle}>
           <View style={styles.permissionCard}>
-            <Text style={styles.permissionTitle}>{t("pair.scan.web.title")}</Text>
-            <Text style={styles.permissionBody}>{t("pair.scan.web.body")}</Text>
+            <Text style={styles.permissionTitle}>{t("pairing.scan.webUnavailableTitle")}</Text>
+            <Text style={styles.permissionBody}>{t("pairing.scan.webUnavailableBody")}</Text>
             <Pressable style={styles.permissionButton} onPress={closeToSource}>
-              <Text style={styles.permissionButtonText}>{t("pair.scan.web.back")}</Text>
+              <Text style={styles.permissionButtonText}>{t("pairing.scan.backToSettings")}</Text>
             </Pressable>
           </View>
         </View>
@@ -236,15 +236,15 @@ export default function PairScanScreen() {
 
   return (
     <View style={styles.container}>
-      <BackHeader title={t("pair.scan.title")} onBack={closeToSource} />
+      <BackHeader title={t("pairing.scan.title")} onBack={closeToSource} />
 
       <View style={bodyStyle}>
         {!granted ? (
           <View style={styles.permissionCard}>
-            <Text style={styles.permissionTitle}>{t("pair.scan.permission.title")}</Text>
-            <Text style={styles.permissionBody}>{t("pair.scan.permission.body")}</Text>
+            <Text style={styles.permissionTitle}>{t("pairing.scan.cameraPermissionTitle")}</Text>
+            <Text style={styles.permissionBody}>{t("pairing.scan.cameraPermissionBody")}</Text>
             <Pressable style={styles.permissionButton} onPress={handleRequestPermission}>
-              <Text style={styles.permissionButtonText}>{t("pair.scan.permission.grant")}</Text>
+              <Text style={styles.permissionButtonText}>{t("pairing.scan.grantPermission")}</Text>
             </Pressable>
           </View>
         ) : (
@@ -262,7 +262,7 @@ export default function PairScanScreen() {
                 <View style={CORNER_BL_STYLE} />
                 <View style={CORNER_BR_STYLE} />
               </View>
-              {isPairing ? <Text style={helperTextStyle}>{t("pair.scan.pairing")}</Text> : null}
+              {isPairing ? <Text style={helperTextStyle}>{t("pairing.scan.pairing")}</Text> : null}
             </View>
           </View>
         )}

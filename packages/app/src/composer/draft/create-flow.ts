@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useReducer } from "react";
-import type { TFunction } from "i18next";
+import { useTranslation } from "react-i18next";
 import type { ComposerAttachment } from "@/attachments/types";
 import { splitComposerAttachmentsForSubmit } from "@/composer/attachments/submit";
 import { useCreateFlowStore } from "@/stores/create-flow-store";
@@ -81,7 +81,6 @@ interface CreateRequestContext {
 
 interface UseDraftAgentCreateFlowOptions<TDraftAgent, TCreateResult> {
   draftId: string;
-  t: TFunction<"composer">;
   getPendingServerId: () => string | null;
   initialAttempt?: CreateAttempt | null;
   allowEmptyText?: boolean;
@@ -96,7 +95,6 @@ interface UseDraftAgentCreateFlowOptions<TDraftAgent, TCreateResult> {
 
 export function useDraftAgentCreateFlow<TDraftAgent, TCreateResult>({
   draftId,
-  t,
   getPendingServerId,
   initialAttempt = null,
   allowEmptyText = false,
@@ -108,6 +106,7 @@ export function useDraftAgentCreateFlow<TDraftAgent, TCreateResult>({
   onCreateSuccess,
   onCreateError,
 }: UseDraftAgentCreateFlowOptions<TDraftAgent, TCreateResult>) {
+  const { t } = useTranslation();
   const [machine, dispatch] = useReducer(
     reducer,
     initialAttempt,
@@ -166,7 +165,7 @@ export function useDraftAgentCreateFlow<TDraftAgent, TCreateResult>({
     async ({ attempt, cwd }: { attempt: CreateAttempt; cwd: string }) => {
       const pendingServerId = getPendingServerId();
       if (!pendingServerId) {
-        const error = new Error(t("flow.noHostSelectedError"));
+        const error = new Error(t("composer.errors.noHostSelected"));
         dispatch({ type: "DRAFT_SET_ERROR", message: error.message });
         throw error;
       }
@@ -208,7 +207,7 @@ export function useDraftAgentCreateFlow<TDraftAgent, TCreateResult>({
         await onCreateSuccess({ result: createResult.result, attempt });
       } catch (error) {
         const resolved =
-          error instanceof Error ? error : new Error(t("flow.createAgentFailedError"));
+          error instanceof Error ? error : new Error(t("composer.errors.failedToCreateAgent"));
         dispatch({ type: "CREATE_FAILED", message: resolved.message });
         markPendingCreateLifecycle({ draftId, lifecycle: "abandoned" });
         clearPendingCreateAttempt({ draftId });
@@ -234,7 +233,7 @@ export function useDraftAgentCreateFlow<TDraftAgent, TCreateResult>({
   const handleCreateFromInput = useCallback(
     async ({ text, attachments, cwd }: SubmitContext) => {
       if (isSubmitting) {
-        throw new Error("Already loading");
+        throw new Error(t("composer.errors.alreadyLoading"));
       }
 
       dispatch({ type: "DRAFT_SET_ERROR", message: "" });
@@ -243,7 +242,7 @@ export function useDraftAgentCreateFlow<TDraftAgent, TCreateResult>({
 
       const trimmedPrompt = text.trim();
       if (!trimmedPrompt && !allowEmptyText) {
-        const error = new Error(t("flow.initialPromptRequiredError"));
+        const error = new Error(t("composer.errors.initialPromptRequired"));
         dispatch({ type: "DRAFT_SET_ERROR", message: error.message });
         throw error;
       }
@@ -261,7 +260,7 @@ export function useDraftAgentCreateFlow<TDraftAgent, TCreateResult>({
 
       const pendingServerId = getPendingServerId();
       if (!pendingServerId) {
-        const error = new Error(t("flow.noHostSelectedError"));
+        const error = new Error(t("composer.errors.noHostSelected"));
         dispatch({ type: "DRAFT_SET_ERROR", message: error.message });
         throw error;
       }

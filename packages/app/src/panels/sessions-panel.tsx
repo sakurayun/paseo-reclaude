@@ -24,10 +24,10 @@ function useSessionsPanelDescriptor(
   _target: { kind: "sessions"; workspaceId: string },
   _context: { serverId: string; workspaceId: string },
 ): PanelDescriptor {
-  const { t } = useTranslation("workspaces");
+  const { t } = useTranslation();
   return {
-    label: t("sessionsPanel.tabLabel"),
-    subtitle: t("sessionsPanel.tabSubtitle"),
+    label: t("sessions.title"),
+    subtitle: t("sessions.workspacePanel.tabSubtitle"),
     titleState: "ready",
     icon: History,
     statusBucket: null,
@@ -41,7 +41,7 @@ function SessionRow({
   session: AgentDirectoryEntry;
   onOpen: (agentId: string) => void;
 }) {
-  const { t } = useTranslation("workspaces");
+  const { t } = useTranslation();
   const handlePress = useCallback(() => onOpen(session.id), [onOpen, session.id]);
   const pressableStyle = useCallback(
     ({ hovered, pressed }: PressableStateCallbackType & { hovered?: boolean }) => [
@@ -67,7 +67,7 @@ function SessionRow({
       </View>
       <View style={styles.sessionBody}>
         <Text style={styles.sessionTitle} numberOfLines={1}>
-          {session.title ?? t("sessionsPanel.untitled")}
+          {session.title ?? t("sessions.workspacePanel.untitled")}
         </Text>
         <Text style={styles.sessionMeta} numberOfLines={1}>
           {formatTimeAgo(session.lastActivityAt)}
@@ -75,7 +75,7 @@ function SessionRow({
       </View>
       {session.archivedAt ? (
         <View style={styles.archivedBadge}>
-          <Text style={styles.archivedBadgeText}>{t("sessionsPanel.archivedBadge")}</Text>
+          <Text style={styles.archivedBadgeText}>{t("agentList.badges.archived")}</Text>
         </View>
       ) : null}
     </Pressable>
@@ -83,7 +83,7 @@ function SessionRow({
 }
 
 function SectionHeader({ section }: { section: WorkspaceSessionSection }) {
-  const { t } = useTranslation("workspaces");
+  const { t } = useTranslation();
   return (
     <View style={styles.sectionHeader}>
       <Text style={styles.sectionTitle} numberOfLines={1}>
@@ -98,7 +98,7 @@ function SectionHeader({ section }: { section: WorkspaceSessionSection }) {
         </View>
       ) : null}
       {section.isCurrent ? (
-        <Text style={styles.currentBadge}>{t("sessionsPanel.currentBadge")}</Text>
+        <Text style={styles.currentBadge}>{t("sessions.workspacePanel.currentBadge")}</Text>
       ) : null}
       <View style={styles.sectionSpacer} />
       <Text style={styles.sectionCount}>{section.sessions.length}</Text>
@@ -107,7 +107,7 @@ function SectionHeader({ section }: { section: WorkspaceSessionSection }) {
 }
 
 function SessionsPanel() {
-  const { t } = useTranslation("workspaces");
+  const { t } = useTranslation();
   const { serverId, target, openTab } = usePaneContext();
   invariant(target.kind === "sessions", "SessionsPanel requires sessions target");
 
@@ -126,7 +126,7 @@ function SessionsPanel() {
         workspaces,
         agents,
         includeArchived,
-        otherSectionTitle: t("sessionsPanel.otherSection"),
+        otherSectionTitle: t("sessions.workspacePanel.otherSection"),
       }),
     [agents, includeArchived, t, target.workspaceId, workspaces],
   );
@@ -155,7 +155,7 @@ function SessionsPanel() {
   return (
     <View style={styles.container} testID="workspace-sessions-panel">
       <View style={styles.toolbar}>
-        <Text style={styles.toolbarTitle}>{t("sessionsPanel.title")}</Text>
+        <Text style={styles.toolbarTitle}>{t("sessions.title")}</Text>
         <Pressable
           onPress={handleToggleArchived}
           style={toggleStyle}
@@ -166,7 +166,7 @@ function SessionsPanel() {
           <Text
             style={includeArchived ? styles.archivedToggleTextActive : styles.archivedToggleText}
           >
-            {t("sessionsPanel.includeArchived")}
+            {t("sessions.workspacePanel.includeArchived")}
           </Text>
         </Pressable>
       </View>
@@ -179,7 +179,7 @@ function SessionsPanel() {
 
       {!isInitialLoad && !hasAnySession ? (
         <View style={styles.centerState}>
-          <Text style={styles.emptyText}>{t("sessionsPanel.empty")}</Text>
+          <Text style={styles.emptyText}>{t("sessions.workspacePanel.empty")}</Text>
         </View>
       ) : null}
 

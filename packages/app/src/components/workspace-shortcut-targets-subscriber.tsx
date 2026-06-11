@@ -1,5 +1,4 @@
 import { useEffect, useMemo } from "react";
-import { useTranslation } from "react-i18next";
 import {
   useProjectNamesMap,
   useStatusModeWorkspaceEntries,
@@ -39,14 +38,12 @@ export function WorkspaceShortcutTargetsSubscriber({
     (state) => state.setSidebarShortcutWorkspaceTargets,
   );
 
-  const { t } = useTranslation("agents");
   const shortcutModel = useMemo(() => {
     if (groupMode === "status") {
       return buildStatusSidebarShortcutModel({
         workspaces: statusWorkspaces,
         projectNamesByKey,
         collapsedStatusGroupKeys,
-        t,
       });
     }
 
@@ -61,7 +58,6 @@ export function WorkspaceShortcutTargetsSubscriber({
     projectNamesByKey,
     projects,
     statusWorkspaces,
-    t,
   ]);
 
   useEffect(() => {

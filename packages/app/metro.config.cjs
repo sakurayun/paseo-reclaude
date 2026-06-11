@@ -79,6 +79,33 @@ config.resolver.resolveRequest = (context, moduleName, platform) => {
   return resolveWithCustomWebOverlay(context, moduleName, platform);
 };
 
+if (process.env.PASEO_SERVE_SIM_PREVIEW === "1") {
+  const { simMiddleware } = require("serve-sim/middleware");
+  const originalEnhanceMiddleware = config.server?.enhanceMiddleware;
+  config.server = config.server ?? {};
+  config.server.enhanceMiddleware = (metroMiddleware, server) => {
+    const middleware = originalEnhanceMiddleware
+      ? originalEnhanceMiddleware(metroMiddleware, server)
+      : metroMiddleware;
+    const serveSimulator = simMiddleware({
+      basePath: "/.sim",
+      device: process.env.PASEO_SERVE_SIM_DEVICE_UDID,
+    });
+    return (req, res, next) => {
+      serveSimulator(req, res, (error) => {
+        if (error) {
+          if (next) {
+            next(error);
+            return;
+          }
+          throw error;
+        }
+        middleware(req, res, next);
+      });
+    };
+  };
+}
+
 // Dev-only middleware for react-native-grab (element selection → clipboard
 // context for agents). Preserves the resolver/middleware configured above.
 module.exports = withReactNativeGrab(config);

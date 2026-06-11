@@ -1,5 +1,4 @@
 import { describe, expect, it, vi } from "vitest";
-import i18n from "@/i18n";
 import { buildWorkspaceTabMenuEntries } from "@/screens/workspace/workspace-tab-menu";
 import type { WorkspaceTabDescriptor } from "@/screens/workspace/workspace-tabs-types";
 
@@ -11,8 +10,6 @@ function createAgentTab(): WorkspaceTabDescriptor {
     target: { kind: "agent", agentId: "agent-123" },
   };
 }
-
-const t = i18n.getFixedT("en", "workspaces");
 
 describe("buildWorkspaceTabMenuEntries", () => {
   it("uses desktop tab ordering labels for desktop menus", () => {
@@ -27,7 +24,6 @@ describe("buildWorkspaceTabMenuEntries", () => {
 
     const entries = buildWorkspaceTabMenuEntries({
       surface: "desktop",
-      t,
       tab: createAgentTab(),
       index: 1,
       tabCount: 3,
@@ -57,7 +53,6 @@ describe("buildWorkspaceTabMenuEntries", () => {
   it("uses stacked ordering labels for mobile menus", () => {
     const entries = buildWorkspaceTabMenuEntries({
       surface: "mobile",
-      t,
       tab: createAgentTab(),
       index: 1,
       tabCount: 3,
@@ -87,7 +82,6 @@ describe("buildWorkspaceTabMenuEntries", () => {
   it("omits agent copy actions and rename for draft tabs", () => {
     const entries = buildWorkspaceTabMenuEntries({
       surface: "mobile",
-      t,
       tab: {
         key: "draft_123",
         tabId: "draft_123",
@@ -120,7 +114,6 @@ describe("buildWorkspaceTabMenuEntries", () => {
   it("adds reload tooltip copy for agent tabs", () => {
     const entries = buildWorkspaceTabMenuEntries({
       surface: "desktop",
-      t,
       tab: createAgentTab(),
       index: 0,
       tabCount: 1,
@@ -149,7 +142,6 @@ describe("buildWorkspaceTabMenuEntries", () => {
     const tab = createAgentTab();
     const entries = buildWorkspaceTabMenuEntries({
       surface: "desktop",
-      t,
       tab,
       index: 0,
       tabCount: 1,
@@ -183,7 +175,6 @@ describe("buildWorkspaceTabMenuEntries", () => {
     };
     const entries = buildWorkspaceTabMenuEntries({
       surface: "desktop",
-      t,
       tab: terminalTab,
       index: 0,
       tabCount: 1,
@@ -222,7 +213,6 @@ describe("buildWorkspaceTabMenuEntries", () => {
     const menuTestIDBase = "workspace-tab-context";
     const sharedInput = {
       surface: "desktop" as const,
-      t,
       index: 0,
       tabCount: 1,
       menuTestIDBase,

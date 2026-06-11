@@ -1,6 +1,5 @@
-import type { TFunction } from "i18next";
-
 import { confirmDialog } from "@/utils/confirm-dialog";
+import { i18n } from "@/i18n/i18next";
 
 export interface WorktreeArchiveRisk {
   isDirty?: boolean | null;
@@ -12,9 +11,41 @@ export interface WorktreeArchiveConfirmationInput extends WorktreeArchiveRisk {
   worktreeName: string;
 }
 
+export interface WorktreeArchiveWarningLabels {
+  title: (worktreeName: string) => string;
+  confirm: string;
+  cancel: string;
+  uncommittedChanges: string;
+  uncommittedChangesWithDiff: (diffStat: string) => string;
+  addedLine: (count: number) => string;
+  deletedLine: (count: number) => string;
+  unpushedCommit: (count: number) => string;
+}
+
+export const DEFAULT_WORKTREE_ARCHIVE_WARNING_LABELS: WorktreeArchiveWarningLabels = {
+  title: (worktreeName) => i18n.t("workspace.git.actions.archiveWarning.title", { worktreeName }),
+  confirm: i18n.t("workspace.git.actions.archiveWarning.confirm"),
+  cancel: i18n.t("workspace.git.actions.archiveWarning.cancel"),
+  uncommittedChanges: i18n.t("workspace.git.actions.archiveWarning.uncommittedChanges"),
+  uncommittedChangesWithDiff: (diffStat) =>
+    i18n.t("workspace.git.actions.archiveWarning.uncommittedChangesWithDiff", { diffStat }),
+  addedLine: (count) =>
+    count === 1
+      ? i18n.t("workspace.git.actions.archiveWarning.addedLine", { count })
+      : i18n.t("workspace.git.actions.archiveWarning.addedLines", { count }),
+  deletedLine: (count) =>
+    count === 1
+      ? i18n.t("workspace.git.actions.archiveWarning.deletedLine", { count })
+      : i18n.t("workspace.git.actions.archiveWarning.deletedLines", { count }),
+  unpushedCommit: (count) =>
+    count === 1
+      ? i18n.t("workspace.git.actions.archiveWarning.unpushedCommit", { count })
+      : i18n.t("workspace.git.actions.archiveWarning.unpushedCommits", { count }),
+};
+
 function formatDiffStat(
   diffStat: WorktreeArchiveRisk["diffStat"],
-  t: TFunction<"git">,
+  labels: WorktreeArchiveWarningLabels,
 ): string | null {
   if (!diffStat) {
     return null;
@@ -22,18 +53,18 @@ function formatDiffStat(
 
   const parts: string[] = [];
   if (diffStat.additions > 0) {
-    parts.push(t("archive.diffStat.added", { count: diffStat.additions }));
+    parts.push(labels.addedLine(diffStat.additions));
   }
   if (diffStat.deletions > 0) {
-    parts.push(t("archive.diffStat.deleted", { count: diffStat.deletions }));
+    parts.push(labels.deletedLine(diffStat.deletions));
   }
 
-  return parts.length > 0 ? parts.join(t("archive.diffStat.separator")) : null;
+  return parts.length > 0 ? parts.join(", ") : null;
 }
 
 export function buildWorktreeArchiveRiskReasons(
   input: WorktreeArchiveRisk,
-  t: TFunction<"git">,
+  labels: WorktreeArchiveWarningLabels = DEFAULT_WORKTREE_ARCHIVE_WARNING_LABELS,
 ): string[] {
   const reasons: string[] = [];
   const diffStat = input.diffStat;
@@ -42,17 +73,15 @@ export function buildWorktreeArchiveRiskReasons(
     input.isDirty === true || (input.isDirty == null && hasDiffStatChanges);
 
   if (hasUncommittedChanges) {
-    const diffStatLabel = formatDiffStat(diffStat, t);
+    const diffStatLabel = formatDiffStat(diffStat, labels);
     reasons.push(
-      diffStatLabel
-        ? t("archive.reason.uncommittedChangesWithStat", { stat: diffStatLabel })
-        : t("archive.reason.uncommittedChanges"),
+      diffStatLabel ? labels.uncommittedChangesWithDiff(diffStatLabel) : labels.uncommittedChanges,
     );
   }
 
   if ((input.aheadOfOrigin ?? 0) > 0) {
     const aheadOfOrigin = input.aheadOfOrigin ?? 0;
-    reasons.push(t("archive.reason.unpushedCommits", { count: aheadOfOrigin }));
+    reasons.push(labels.unpushedCommit(aheadOfOrigin));
   }
 
   return reasons;
@@ -60,9 +89,9 @@ export function buildWorktreeArchiveRiskReasons(
 
 export function buildWorktreeArchiveConfirmationMessage(
   input: WorktreeArchiveConfirmationInput,
-  t: TFunction<"git">,
+  labels: WorktreeArchiveWarningLabels = DEFAULT_WORKTREE_ARCHIVE_WARNING_LABELS,
 ): string | null {
-  const reasons = buildWorktreeArchiveRiskReasons(input, t);
+  const reasons = buildWorktreeArchiveRiskReasons(input, labels);
   if (reasons.length === 0) {
     return null;
   }
@@ -72,18 +101,18 @@ export function buildWorktreeArchiveConfirmationMessage(
 
 export async function confirmRiskyWorktreeArchive(
   input: WorktreeArchiveConfirmationInput,
-  t: TFunction<"git">,
+  labels: WorktreeArchiveWarningLabels = DEFAULT_WORKTREE_ARCHIVE_WARNING_LABELS,
 ): Promise<boolean> {
-  const message = buildWorktreeArchiveConfirmationMessage(input, t);
+  const message = buildWorktreeArchiveConfirmationMessage(input, labels);
   if (!message) {
     return true;
   }
 
   return await confirmDialog({
-    title: t("archive.confirm.title", { worktreeName: input.worktreeName }),
+    title: labels.title(input.worktreeName),
     message,
-    confirmLabel: t("archive.confirm.confirmLabel"),
-    cancelLabel: t("archive.confirm.cancelLabel"),
+    confirmLabel: labels.confirm,
+    cancelLabel: labels.cancel,
     destructive: true,
   });
 }

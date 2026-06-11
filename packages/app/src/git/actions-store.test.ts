@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
-import i18n from "@/i18n";
 import { queryClient as appQueryClient } from "@/query/query-client";
 import { useSessionStore } from "@/stores/session-store";
 import type { WorkspaceDescriptor } from "@/stores/session-store";
@@ -53,8 +52,6 @@ function workspace(input: Partial<WorkspaceDescriptor> & Pick<WorkspaceDescripto
 describe("checkout-git-actions-store", () => {
   const serverId = "server-1";
   const cwd = "/tmp/repo";
-  // Real English translator so thrown error-message assertions read the en git catalog.
-  const t = i18n.getFixedT("en", "git");
 
   beforeEach(() => {
     vi.useFakeTimers();
@@ -90,8 +87,8 @@ describe("checkout-git-actions-store", () => {
 
     const store = useCheckoutGitActionsStore.getState();
 
-    const first = store.commit({ serverId, cwd, t });
-    const second = store.commit({ serverId, cwd, t });
+    const first = store.commit({ serverId, cwd });
+    const second = store.commit({ serverId, cwd });
 
     expect(store.getStatus({ serverId, cwd, actionId: "commit" })).toBe("pending");
 
@@ -124,7 +121,7 @@ describe("checkout-git-actions-store", () => {
       },
     }));
 
-    await useCheckoutGitActionsStore.getState().pullAndPush({ serverId, cwd, t });
+    await useCheckoutGitActionsStore.getState().pullAndPush({ serverId, cwd });
 
     expect(order).toEqual(["pull", "push"]);
     expect(
@@ -146,7 +143,7 @@ describe("checkout-git-actions-store", () => {
     }));
 
     await expect(
-      useCheckoutGitActionsStore.getState().pullAndPush({ serverId, cwd, t }),
+      useCheckoutGitActionsStore.getState().pullAndPush({ serverId, cwd }),
     ).rejects.toThrow("pull conflict");
     expect(
       useCheckoutGitActionsStore.getState().getStatus({ serverId, cwd, actionId: "pull-and-push" }),
@@ -167,7 +164,7 @@ describe("checkout-git-actions-store", () => {
     }));
 
     await expect(
-      useCheckoutGitActionsStore.getState().pullAndPush({ serverId, cwd, t }),
+      useCheckoutGitActionsStore.getState().pullAndPush({ serverId, cwd }),
     ).rejects.toThrow("push rejected");
     expect(
       useCheckoutGitActionsStore.getState().getStatus({ serverId, cwd, actionId: "pull-and-push" }),
@@ -186,7 +183,7 @@ describe("checkout-git-actions-store", () => {
       },
     }));
 
-    await useCheckoutGitActionsStore.getState().refresh({ serverId, cwd, t });
+    await useCheckoutGitActionsStore.getState().refresh({ serverId, cwd });
 
     expect(client.checkoutRefresh).toHaveBeenCalledWith(cwd);
     expect(
@@ -206,9 +203,9 @@ describe("checkout-git-actions-store", () => {
       },
     }));
 
-    await expect(
-      useCheckoutGitActionsStore.getState().refresh({ serverId, cwd, t }),
-    ).rejects.toThrow("not a git repository");
+    await expect(useCheckoutGitActionsStore.getState().refresh({ serverId, cwd })).rejects.toThrow(
+      "not a git repository",
+    );
     expect(
       useCheckoutGitActionsStore.getState().getStatus({ serverId, cwd, actionId: "refresh" }),
     ).toBe("idle");
@@ -232,7 +229,7 @@ describe("checkout-git-actions-store", () => {
 
     await useCheckoutGitActionsStore
       .getState()
-      .enablePrAutoMerge({ serverId, cwd, method: "squash", t });
+      .enablePrAutoMerge({ serverId, cwd, method: "squash" });
 
     expect(client.checkoutGithubSetAutoMerge).toHaveBeenCalledWith(cwd, {
       enabled: true,
@@ -261,7 +258,7 @@ describe("checkout-git-actions-store", () => {
       features: { checkoutGithubSetAutoMerge: true },
     });
 
-    await useCheckoutGitActionsStore.getState().disablePrAutoMerge({ serverId, cwd, t });
+    await useCheckoutGitActionsStore.getState().disablePrAutoMerge({ serverId, cwd });
 
     expect(client.checkoutGithubSetAutoMerge).toHaveBeenCalledWith(cwd, { enabled: false });
     expect(
@@ -288,9 +285,7 @@ describe("checkout-git-actions-store", () => {
     });
 
     await expect(
-      useCheckoutGitActionsStore
-        .getState()
-        .enablePrAutoMerge({ serverId, cwd, method: "merge", t }),
+      useCheckoutGitActionsStore.getState().enablePrAutoMerge({ serverId, cwd, method: "merge" }),
     ).rejects.toThrow("Update the host to use GitHub auto-merge actions.");
 
     expect(client.checkoutGithubSetAutoMerge).not.toHaveBeenCalled();
@@ -316,7 +311,7 @@ describe("checkout-git-actions-store", () => {
 
     const archive = useCheckoutGitActionsStore
       .getState()
-      .archiveWorktree({ serverId, cwd, worktreePath: cwd, t });
+      .archiveWorktree({ serverId, cwd, worktreePath: cwd });
 
     expect(useSessionStore.getState().sessions[serverId]?.workspaces.has(cwd)).toBe(false);
     expect(appQueryClient.getQueryData(["sidebarPaseoWorktreeList", serverId, "/tmp"])).toEqual([
@@ -350,7 +345,7 @@ describe("checkout-git-actions-store", () => {
 
     const archive = useCheckoutGitActionsStore
       .getState()
-      .archiveWorktree({ serverId, cwd, worktreePath: cwd, t });
+      .archiveWorktree({ serverId, cwd, worktreePath: cwd });
 
     expect(useSessionStore.getState().sessions[serverId]?.workspaces.has("ws-feature")).toBe(false);
 
@@ -369,9 +364,7 @@ describe("checkout-git-actions-store", () => {
     appQueryClient.setQueryData(["sidebarPaseoWorktreeList", serverId, "/tmp"], listSnapshot);
 
     await expect(
-      useCheckoutGitActionsStore
-        .getState()
-        .archiveWorktree({ serverId, cwd, worktreePath: cwd, t }),
+      useCheckoutGitActionsStore.getState().archiveWorktree({ serverId, cwd, worktreePath: cwd }),
     ).rejects.toThrow("archive failed");
 
     expect(useSessionStore.getState().sessions[serverId]?.workspaces.get(cwd)).toEqual(
@@ -393,7 +386,7 @@ describe("checkout-git-actions-store", () => {
 
     const archive = useCheckoutGitActionsStore
       .getState()
-      .archiveWorktree({ serverId, cwd, worktreePath: cwd, t });
+      .archiveWorktree({ serverId, cwd, worktreePath: cwd });
 
     expect(isLocalWorktreeArchivePending({ serverId, cwd })).toBe(true);
 

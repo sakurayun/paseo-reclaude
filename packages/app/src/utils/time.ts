@@ -1,4 +1,4 @@
-import i18n from "@/i18n";
+import { i18n } from "@/i18n/i18next";
 import { getActiveLocale } from "@/i18n/use-locale";
 
 /**
@@ -14,23 +14,23 @@ export function formatTimeAgo(date: Date): string {
   const diffDay = Math.floor(diffHour / 24);
 
   if (diffSec < 10) {
-    return i18n.t("time:justNow");
+    return i18n.t("time.justNow");
   }
 
   if (diffMin < 1) {
-    return i18n.t("time:relative.secondsAgo", { value: diffSec });
+    return i18n.t("time.relative.secondsAgo", { value: diffSec });
   }
 
   if (diffHour < 1) {
-    return i18n.t("time:relative.minutesAgo", { value: diffMin });
+    return i18n.t("time.relative.minutesAgo", { value: diffMin });
   }
 
   if (diffDay < 1) {
-    return i18n.t("time:relative.hoursAgo", { value: diffHour });
+    return i18n.t("time.relative.hoursAgo", { value: diffHour });
   }
 
   if (diffDay < 7) {
-    return i18n.t("time:relative.daysAgo", { value: diffDay });
+    return i18n.t("time.relative.daysAgo", { value: diffDay });
   }
 
   // For older dates, show abbreviated month and day in the active locale.
@@ -103,23 +103,23 @@ export function formatMessageTimestamp(date: Date, now: Date = new Date()): stri
  */
 export function formatDuration(durationMs: number): string {
   if (!Number.isFinite(durationMs) || durationMs < 0) {
-    return i18n.t("time:duration.seconds", { value: 0 });
+    return i18n.t("time.duration.seconds", { value: 0 });
   }
   const totalSeconds = durationMs / 1000;
 
   if (totalSeconds < 60) {
-    return i18n.t("time:duration.seconds", { value: Math.floor(totalSeconds) });
+    return i18n.t("time.duration.seconds", { value: Math.floor(totalSeconds) });
   }
   const totalMinutes = Math.floor(totalSeconds / 60);
   if (totalMinutes < 60) {
     const seconds = Math.floor(totalSeconds) % 60;
     return seconds === 0
-      ? i18n.t("time:duration.minutes", { value: totalMinutes })
-      : i18n.t("time:duration.minutesSeconds", { minutes: totalMinutes, seconds });
+      ? i18n.t("time.duration.minutes", { value: totalMinutes })
+      : i18n.t("time.duration.minutesSeconds", { minutes: totalMinutes, seconds });
   }
   const hours = Math.floor(totalMinutes / 60);
   const remMinutes = totalMinutes % 60;
   return remMinutes === 0
-    ? i18n.t("time:duration.hours", { value: hours })
-    : i18n.t("time:duration.hoursMinutes", { hours, minutes: remMinutes });
+    ? i18n.t("time.duration.hours", { value: hours })
+    : i18n.t("time.duration.hoursMinutes", { hours, minutes: remMinutes });
 }

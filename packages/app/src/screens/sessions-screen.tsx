@@ -1,10 +1,10 @@
 import { useMemo, useState, useCallback, useEffect } from "react";
-import { useTranslation } from "react-i18next";
 import { View, Text } from "react-native";
 import { useIsFocused } from "@react-navigation/native";
 import { router } from "expo-router";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { ChevronLeft } from "lucide-react-native";
+import { useTranslation } from "react-i18next";
 import { MenuHeader } from "@/components/headers/menu-header";
 import { Button } from "@/components/ui/button";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
@@ -23,8 +23,8 @@ export function SessionsScreen({ serverId }: { serverId: string }) {
 }
 
 function SessionsScreenContent({ serverId }: { serverId: string }) {
-  const { t } = useTranslation("app");
   const { theme } = useUnistyles();
+  const { t } = useTranslation();
   const { agents, hasMore, isInitialLoad, isLoadingMore, isRevalidating, loadMore, refreshAll } =
     useAgentHistory({
       serverId,
@@ -58,7 +58,7 @@ function SessionsScreenContent({ serverId }: { serverId: string }) {
       hasMore ? (
         <View style={styles.footer}>
           <Button variant="ghost" onPress={loadMore} disabled={isLoadingMore}>
-            {isLoadingMore ? t("sessions.loading") : t("sessions.loadMore")}
+            {isLoadingMore ? t("common.loading") : t("sessions.actions.loadMore")}
           </Button>
         </View>
       ) : null,
@@ -77,7 +77,7 @@ function SessionsScreenContent({ serverId }: { serverId: string }) {
         <View style={styles.emptyContainer}>
           <Text style={styles.emptyText}>{t("sessions.empty")}</Text>
           <Button variant="ghost" leftIcon={ChevronLeft} onPress={handleBack}>
-            {t("sessions.back")}
+            {t("common.actions.back")}
           </Button>
         </View>
       ) : null}

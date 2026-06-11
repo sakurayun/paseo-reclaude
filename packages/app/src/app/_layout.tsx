@@ -43,17 +43,20 @@ import {
 } from "@/contexts/horizontal-scroll-context";
 import { SessionProvider } from "@/contexts/session-context";
 import {
-  MOBILE_VISUAL_PANEL_AGENT,
-  MOBILE_VISUAL_PANEL_AGENT_LIST,
   SidebarAnimationProvider,
   useSidebarAnimation,
 } from "@/contexts/sidebar-animation-context";
 import { SidebarCalloutProvider } from "@/contexts/sidebar-callout-context";
 import { ToastProvider } from "@/contexts/toast-context";
 import { VoiceProvider } from "@/contexts/voice-context";
-import i18n, { changeAppLanguage } from "@/i18n";
-import { I18nextProvider } from "react-i18next";
-import { startDaemonIfGateAllows, startHostRuntimeBootstrap } from "@/app/host-runtime-bootstrap";
+import {
+  resolveStartupBlocker,
+  resolveStartupNavigationReady,
+  shouldRunStartupGiveUpTimer,
+  startDaemonIfGateAllows,
+  startHostRuntimeBootstrap,
+  type StartupBlocker,
+} from "@/app/host-runtime-bootstrap";
 import { shouldUseDesktopDaemon } from "@/desktop/daemon/desktop-daemon";
 import { listenToDesktopEvent } from "@/desktop/electron/events";
 import { updateDesktopWindowControls } from "@/desktop/electron/window";
@@ -64,17 +67,16 @@ import { UpdateCalloutSource } from "@/desktop/updates/update-callout-source";
 import { useActiveWorktreeNewAction } from "@/hooks/use-active-worktree-new-action";
 import { useFaviconStatus } from "@/hooks/use-favicon-status";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
-import { useLatchedBoolean } from "@/hooks/use-latched-boolean";
 import { useCompactWebViewportZoomLock } from "@/hooks/use-compact-web-viewport-zoom-lock";
 import { useOpenProject } from "@/hooks/use-open-project";
 import { useAppSettings } from "@/hooks/use-settings";
 import { useStableEvent } from "@/hooks/use-stable-event";
+import { I18nProvider } from "@/i18n/provider";
 import { keyboardActionDispatcher } from "@/keyboard/keyboard-action-dispatcher";
 import { polyfillCrypto } from "@/polyfills/crypto";
 import { queryClient } from "@/query/query-client";
 import {
   getHostRuntimeStore,
-  hasConfiguredLocalDaemonOverride,
   useHostMutations,
   useHostRuntimeClient,
   useHosts,
@@ -86,6 +88,7 @@ import { THEME_TO_UNISTYLES, type ThemeName } from "@/styles/theme";
 import type { HostProfile } from "@/types/host-connection";
 import { resolveActiveHost } from "@/utils/active-host";
 import { toggleDesktopSidebarsWithCheckoutIntent } from "@/utils/desktop-sidebar-toggle";
+import { canOpenLeftSidebarGesture } from "@/utils/sidebar-animation-state";
 import {
   buildHostRootRoute,
   parseHostAgentRouteFromPathname,
@@ -107,6 +110,7 @@ export interface HostRuntimeBootstrapState {
   retry: () => void;
   hasGivenUpWaitingForHost: boolean;
   storeReady: boolean;
+  startupBlocker: StartupBlocker;
 }
 
 const HostRuntimeBootstrapContext = createContext<HostRuntimeBootstrapState>({
@@ -114,6 +118,7 @@ const HostRuntimeBootstrapContext = createContext<HostRuntimeBootstrapState>({
   retry: () => {},
   hasGivenUpWaitingForHost: false,
   storeReady: false,
+  startupBlocker: { kind: "none" },
 });
 
 function PushNotificationRouter() {
@@ -316,18 +321,26 @@ function HostRuntimeBootstrapProvider({ children }: { children: ReactNode }) {
   const anyOnlineHostServerId = useEarliestOnlineHostServerId();
   const daemonStartError = useDaemonStartLastError();
   const daemonStartIsRunning = useDaemonStartIsRunning();
-  const waitForConfiguredLocalDaemon =
-    hasConfiguredLocalDaemonOverride() && !shouldUseDesktopDaemon();
-
   const [hasGivenUpWaitingForHost, setHasGivenUpWaitingForHost] = useState(false);
+  const isDesktopRuntime = shouldUseDesktopDaemon();
+  const startupBlocker = useMemo(
+    () =>
+      resolveStartupBlocker({
+        isDesktopRuntime,
+        anyOnlineHostServerId,
+        daemonStartIsRunning,
+        daemonStartError,
+      }),
+    [anyOnlineHostServerId, daemonStartError, daemonStartIsRunning, isDesktopRuntime],
+  );
+  const shouldRunGiveUpTimer = shouldRunStartupGiveUpTimer({
+    startupBlocker,
+    anyOnlineHostServerId,
+    hasGivenUpWaitingForHost,
+  });
+
   useEffect(() => {
-    if (
-      anyOnlineHostServerId ||
-      daemonStartError ||
-      daemonStartIsRunning ||
-      waitForConfiguredLocalDaemon ||
-      hasGivenUpWaitingForHost
-    ) {
+    if (!shouldRunGiveUpTimer) {
       return;
     }
     const handle = setTimeout(() => {
@@ -336,13 +349,7 @@ function HostRuntimeBootstrapProvider({ children }: { children: ReactNode }) {
     return () => {
       clearTimeout(handle);
     };
-  }, [
-    anyOnlineHostServerId,
-    daemonStartError,
-    daemonStartIsRunning,
-    waitForConfiguredLocalDaemon,
-    hasGivenUpWaitingForHost,
-  ]);
+  }, [shouldRunGiveUpTimer]);
 
   const retry = useCallback(() => {
     const daemonStartService = getDaemonStartService({ store: getHostRuntimeStore() });
@@ -353,14 +360,13 @@ function HostRuntimeBootstrapProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  const splashError = !anyOnlineHostServerId ? daemonStartError : null;
-  const isCurrentlyStoreReady =
-    Boolean(anyOnlineHostServerId) || Boolean(splashError) || hasGivenUpWaitingForHost;
-  const storeReady = useLatchedBoolean(isCurrentlyStoreReady);
+  const splashError =
+    startupBlocker.kind === "managed-daemon-error" ? startupBlocker.message : null;
+  const storeReady = resolveStartupNavigationReady({ startupBlocker });
 
   const state = useMemo<HostRuntimeBootstrapState>(
-    () => ({ splashError, retry, hasGivenUpWaitingForHost, storeReady }),
-    [splashError, retry, hasGivenUpWaitingForHost, storeReady],
+    () => ({ splashError, retry, hasGivenUpWaitingForHost, storeReady, startupBlocker }),
+    [splashError, retry, hasGivenUpWaitingForHost, storeReady, startupBlocker],
   );
 
   return (
@@ -515,7 +521,7 @@ function MobileGestureWrapper({
     animateToOpen,
     animateToClose,
     isGesturing,
-    mobileVisualPanel,
+    mobilePanelState,
     gestureAnimatingRef,
     openGestureRef,
   } = useSidebarAnimation();
@@ -551,7 +557,7 @@ function MobileGestureWrapper({
           const absDeltaX = Math.abs(deltaX);
           const absDeltaY = Math.abs(deltaY);
 
-          if (mobileVisualPanel.value !== MOBILE_VISUAL_PANEL_AGENT) {
+          if (!canOpenLeftSidebarGesture(mobilePanelState.value, translateX.value, windowWidth)) {
             stateManager.fail();
             return;
           }
@@ -597,11 +603,9 @@ function MobileGestureWrapper({
           isGesturing.value = false;
           const shouldOpen = event.translationX > windowWidth / 3 || event.velocityX > 500;
           if (shouldOpen) {
-            mobileVisualPanel.value = MOBILE_VISUAL_PANEL_AGENT_LIST;
             animateToOpen();
             runOnJS(handleGestureOpen)();
           } else {
-            mobileVisualPanel.value = MOBILE_VISUAL_PANEL_AGENT;
             animateToClose();
           }
         })
@@ -613,7 +617,7 @@ function MobileGestureWrapper({
       windowWidth,
       translateX,
       backdropOpacity,
-      mobileVisualPanel,
+      mobilePanelState,
       animateToOpen,
       animateToClose,
       handleGestureOpen,
@@ -647,12 +651,6 @@ function ProvidersWrapper({ children }: { children: ReactNode }) {
     }
   }, [settingsLoading, settings.theme]);
 
-  // Apply language setting on mount and when it changes ("auto" follows device locale).
-  useEffect(() => {
-    if (settingsLoading) return;
-    void changeAppLanguage(settings.language);
-  }, [settingsLoading, settings.language]);
-
   // Apply font / size / syntax appearance settings on mount and when they change.
   // Sibling to the theme effect above; order is irrelevant because both patch all
   // six registered theme keys, so the active key is always current.
@@ -676,13 +674,11 @@ function ProvidersWrapper({ children }: { children: ReactNode }) {
 
   return (
     <VoiceProvider>
-      <I18nextProvider i18n={i18n}>
-        <DesktopWindowControlsSync enabled={!settingsLoading} />
-        <OfferLinkListener upsertDaemonFromOfferUrl={upsertConnectionFromOfferUrl} />
-        <HostSessionManager />
-        <FaviconStatusSync />
-        {children}
-      </I18nextProvider>
+      <DesktopWindowControlsSync enabled={!settingsLoading} />
+      <OfferLinkListener upsertDaemonFromOfferUrl={upsertConnectionFromOfferUrl} />
+      <HostSessionManager />
+      <FaviconStatusSync />
+      {children}
     </VoiceProvider>
   );
 }
@@ -956,13 +952,15 @@ function RuntimeProviders({ children }: { children: ReactNode }) {
 function RootProviders({ children }: { children: ReactNode }) {
   return (
     <QueryProvider>
-      <SafeAreaProvider>
-        <KeyboardProvider>
-          <PortalProvider>
-            <BottomSheetModalProvider>{children}</BottomSheetModalProvider>
-          </PortalProvider>
-        </KeyboardProvider>
-      </SafeAreaProvider>
+      <I18nProvider>
+        <SafeAreaProvider>
+          <KeyboardProvider>
+            <PortalProvider>
+              <BottomSheetModalProvider>{children}</BottomSheetModalProvider>
+            </PortalProvider>
+          </KeyboardProvider>
+        </SafeAreaProvider>
+      </I18nProvider>
     </QueryProvider>
   );
 }

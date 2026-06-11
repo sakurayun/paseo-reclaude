@@ -25,13 +25,13 @@ export function useRewindAgentMutation(input: UseRewindAgentMutationInput): {
   rewindAgent: (input: RewindAgentInput) => Promise<void>;
   isPending: boolean;
 } {
-  const { t } = useTranslation("app");
   const toast = useToast();
+  const { t } = useTranslation();
   const composerRestore = useRewindComposerRestore();
   const { isPending, mutateAsync } = useMutation({
     mutationFn: async ({ mode }: RewindAgentInput) => {
       if (!input.client || !input.agentId || !input.messageId) {
-        throw new Error("Daemon client not available");
+        throw new Error(t("common.errors.daemonClientUnavailable"));
       }
       await input.client.rewindAgent(input.agentId, input.messageId, mode);
       if (mode !== "files") {
@@ -61,7 +61,7 @@ export function useRewindAgentMutation(input: UseRewindAgentMutationInput): {
       composerRestore?.restoreTextIfComposerEmpty(variables.rewoundText);
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : t("rewind.failedError"));
+      toast.error(error instanceof Error ? error.message : t("rewind.errors.failed"));
     },
   });
 

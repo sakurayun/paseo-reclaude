@@ -1,7 +1,7 @@
-import type { ParseKeys, TFunction } from "i18next";
 import type { ReactElement } from "react";
 
 import type { ActionStatus } from "@/components/ui/dropdown-menu";
+import { i18n } from "@/i18n/i18next";
 import type {
   CheckoutPrMergeMethod,
   CheckoutPrStatusResponse,
@@ -36,12 +36,6 @@ export interface GitAction {
   icon?: ReactElement;
   /** When true, a menu separator should be rendered before this item. */
   startsGroup: boolean;
-  /**
-   * Stable flag identifying the "View PR" variant of the `pr` action (an existing PR with a
-   * URL, as opposed to "Create PR"). Consumers must branch on this instead of comparing the
-   * localized `label`, which now varies by language.
-   */
-  isViewPr?: boolean;
   handler: () => void;
 }
 
@@ -109,13 +103,12 @@ type PullRequestGithubStatus = NonNullable<CheckoutPrStatusResponse["payload"]["
 interface PullRequestActionModel {
   readonly id: PullRequestActionId;
   readonly role: PullRequestActionRole;
-  readonly build: (input: BuildGitActionsInput, t: TFunction<"git">) => GitAction;
+  readonly build: (input: BuildGitActionsInput) => GitAction;
 }
 
 interface PullRequestDirectMergeActionModel {
   readonly id: PullRequestDirectMergeActionId;
   readonly role: "direct";
-  readonly labelKey: ParseKeys<"git">;
   readonly method: CheckoutPrMergeMethod;
   readonly startsGroup: boolean;
 }
@@ -123,7 +116,6 @@ interface PullRequestDirectMergeActionModel {
 interface PullRequestAutoMergeEnableActionModel {
   readonly id: PullRequestAutoMergeEnableActionId;
   readonly role: "auto";
-  readonly labelKey: ParseKeys<"git">;
   readonly method: CheckoutPrMergeMethod;
   readonly startsGroup: boolean;
 }
@@ -132,21 +124,18 @@ const PULL_REQUEST_DIRECT_MERGE_ACTION_MODELS = [
   {
     id: "merge-pr-squash",
     role: "direct",
-    labelKey: "policy.action.mergePrSquash",
     method: "squash",
     startsGroup: true,
   },
   {
     id: "merge-pr-merge",
     role: "direct",
-    labelKey: "policy.action.mergePrMerge",
     method: "merge",
     startsGroup: false,
   },
   {
     id: "merge-pr-rebase",
     role: "direct",
-    labelKey: "policy.action.mergePrRebase",
     method: "rebase",
     startsGroup: false,
   },
@@ -156,21 +145,18 @@ const PULL_REQUEST_AUTO_MERGE_ENABLE_ACTION_MODELS = [
   {
     id: "enable-pr-auto-merge-squash",
     role: "auto",
-    labelKey: "policy.action.enableAutoMergeSquash",
     method: "squash",
     startsGroup: true,
   },
   {
     id: "enable-pr-auto-merge-merge",
     role: "auto",
-    labelKey: "policy.action.enableAutoMergeMerge",
     method: "merge",
     startsGroup: false,
   },
   {
     id: "enable-pr-auto-merge-rebase",
     role: "auto",
-    labelKey: "policy.action.enableAutoMergeRebase",
     method: "rebase",
     startsGroup: false,
   },
@@ -180,13 +166,11 @@ const PULL_REQUEST_ACTION_MODELS: readonly PullRequestActionModel[] = [
   { id: "pr", role: "status", build: buildPrAction },
   ...PULL_REQUEST_DIRECT_MERGE_ACTION_MODELS.map((model) => ({
     ...model,
-    build: (input: BuildGitActionsInput, t: TFunction<"git">) =>
-      buildDirectPullRequestMergeAction(input, model, t),
+    build: (input: BuildGitActionsInput) => buildDirectPullRequestMergeAction(input, model),
   })),
   ...PULL_REQUEST_AUTO_MERGE_ENABLE_ACTION_MODELS.map((model) => ({
     ...model,
-    build: (input: BuildGitActionsInput, t: TFunction<"git">) =>
-      buildEnablePullRequestAutoMergeAction(input, model, t),
+    build: (input: BuildGitActionsInput) => buildEnablePullRequestAutoMergeAction(input, model),
   })),
   {
     id: "disable-pr-auto-merge",
@@ -204,7 +188,7 @@ export function narrowPullRequestState(state: string | null | undefined): "open"
   return null;
 }
 
-export function buildGitActions(input: BuildGitActionsInput, t: TFunction<"git">): GitActions {
+export function buildGitActions(input: BuildGitActionsInput): GitActions {
   if (!input.isGit) {
     return { primary: null, secondary: [], menu: [] };
   }
@@ -213,9 +197,9 @@ export function buildGitActions(input: BuildGitActionsInput, t: TFunction<"git">
 
   allActions.set("commit", {
     id: "commit",
-    label: t("policy.action.commit"),
-    pendingLabel: t("policy.pending.committing"),
-    successLabel: t("policy.success.committed"),
+    label: i18n.t("workspace.git.actions.commit.label"),
+    pendingLabel: i18n.t("workspace.git.actions.commit.pending"),
+    successLabel: i18n.t("workspace.git.actions.commit.success"),
     disabled: input.runtime.commit.disabled,
     status: input.runtime.commit.status,
     icon: input.runtime.commit.icon,
@@ -225,14 +209,12 @@ export function buildGitActions(input: BuildGitActionsInput, t: TFunction<"git">
 
   allActions.set("pull", {
     id: "pull",
-    label: t("policy.action.pull"),
-    pendingLabel: t("policy.pending.pulling"),
-    successLabel: t("policy.success.pulled"),
+    label: i18n.t("workspace.git.actions.pull.label"),
+    pendingLabel: i18n.t("workspace.git.actions.pull.pending"),
+    successLabel: i18n.t("workspace.git.actions.pull.success"),
     disabled: input.runtime.pull.disabled,
     status: input.runtime.pull.status,
-    unavailableMessage: input.runtime.pull.disabled
-      ? undefined
-      : getPullUnavailableMessage(input, t),
+    unavailableMessage: input.runtime.pull.disabled ? undefined : getPullUnavailableMessage(input),
     icon: input.runtime.pull.icon,
     startsGroup: false,
     handler: input.runtime.pull.handler,
@@ -240,14 +222,12 @@ export function buildGitActions(input: BuildGitActionsInput, t: TFunction<"git">
 
   allActions.set("push", {
     id: "push",
-    label: t("policy.action.push"),
-    pendingLabel: t("policy.pending.pushing"),
-    successLabel: t("policy.success.pushed"),
+    label: i18n.t("workspace.git.actions.push.label"),
+    pendingLabel: i18n.t("workspace.git.actions.push.pending"),
+    successLabel: i18n.t("workspace.git.actions.push.success"),
     disabled: input.runtime.push.disabled,
     status: input.runtime.push.status,
-    unavailableMessage: input.runtime.push.disabled
-      ? undefined
-      : getPushUnavailableMessage(input, t),
+    unavailableMessage: input.runtime.push.disabled ? undefined : getPushUnavailableMessage(input),
     icon: input.runtime.push.icon,
     startsGroup: false,
     handler: input.runtime.push.handler,
@@ -255,33 +235,33 @@ export function buildGitActions(input: BuildGitActionsInput, t: TFunction<"git">
 
   allActions.set("pull-and-push", {
     id: "pull-and-push",
-    label: t("policy.action.pullAndPush"),
-    pendingLabel: t("policy.pending.pullingAndPushing"),
-    successLabel: t("policy.success.pulledAndPushed"),
+    label: i18n.t("workspace.git.actions.pullAndPush.label"),
+    pendingLabel: i18n.t("workspace.git.actions.pullAndPush.pending"),
+    successLabel: i18n.t("workspace.git.actions.pullAndPush.success"),
     disabled: input.runtime["pull-and-push"].disabled,
     status: input.runtime["pull-and-push"].status,
     unavailableMessage: input.runtime["pull-and-push"].disabled
       ? undefined
-      : getPullAndPushUnavailableMessage(input, t),
+      : getPullAndPushUnavailableMessage(input),
     icon: input.runtime["pull-and-push"].icon,
     startsGroup: false,
     handler: input.runtime["pull-and-push"].handler,
   });
 
   for (const model of PULL_REQUEST_ACTION_MODELS) {
-    allActions.set(model.id, model.build(input, t));
+    allActions.set(model.id, model.build(input));
   }
 
   allActions.set("merge-branch", {
     id: "merge-branch",
-    label: t("policy.action.mergeBranch"),
-    pendingLabel: t("policy.pending.merging"),
-    successLabel: t("policy.success.merged"),
+    label: i18n.t("workspace.git.actions.mergeBranch.label"),
+    pendingLabel: i18n.t("workspace.git.actions.mergeBranch.pending"),
+    successLabel: i18n.t("workspace.git.actions.mergeBranch.success"),
     disabled: input.runtime["merge-branch"].disabled,
     status: input.runtime["merge-branch"].status,
     unavailableMessage: input.runtime["merge-branch"].disabled
       ? undefined
-      : getMergeBranchUnavailableMessage(input, t),
+      : getMergeBranchUnavailableMessage(input),
     icon: input.runtime["merge-branch"].icon,
     startsGroup: false,
     handler: input.runtime["merge-branch"].handler,
@@ -289,14 +269,14 @@ export function buildGitActions(input: BuildGitActionsInput, t: TFunction<"git">
 
   allActions.set("merge-from-base", {
     id: "merge-from-base",
-    label: t("policy.action.updateFromBase", { baseRef: input.baseRefLabel }),
-    pendingLabel: t("policy.pending.updating"),
-    successLabel: t("policy.success.updated"),
+    label: i18n.t("workspace.git.actions.mergeFromBase.label", { baseRef: input.baseRefLabel }),
+    pendingLabel: i18n.t("workspace.git.actions.mergeFromBase.pending"),
+    successLabel: i18n.t("workspace.git.actions.mergeFromBase.success"),
     disabled: input.runtime["merge-from-base"].disabled,
     status: input.runtime["merge-from-base"].status,
     unavailableMessage: input.runtime["merge-from-base"].disabled
       ? undefined
-      : getMergeFromBaseUnavailableMessage(input, t),
+      : getMergeFromBaseUnavailableMessage(input),
     icon: input.runtime["merge-from-base"].icon,
     startsGroup: true,
     handler: input.runtime["merge-from-base"].handler,
@@ -304,15 +284,15 @@ export function buildGitActions(input: BuildGitActionsInput, t: TFunction<"git">
 
   allActions.set("archive-worktree", {
     id: "archive-worktree",
-    label: t("policy.action.archiveWorktree"),
-    pendingLabel: t("policy.pending.archiving"),
-    successLabel: t("policy.success.archived"),
+    label: i18n.t("workspace.git.actions.archive.label"),
+    pendingLabel: i18n.t("workspace.git.actions.archive.pending"),
+    successLabel: i18n.t("workspace.git.actions.archive.success"),
     disabled: input.runtime["archive-worktree"].disabled,
     status: input.runtime["archive-worktree"].status,
     unavailableMessage:
       input.runtime["archive-worktree"].disabled || input.isPaseoOwnedWorktree
         ? undefined
-        : t("policy.unavailable.archiveNotPaseoWorktree"),
+        : i18n.t("workspace.git.actions.unavailable.archiveNotWorktree"),
     icon: input.runtime["archive-worktree"].icon,
     startsGroup: true,
     handler: input.runtime["archive-worktree"].handler,
@@ -408,36 +388,35 @@ function getDefaultEnablePullRequestAutoMergeActionId(
   );
 }
 
-function buildPrAction(input: BuildGitActionsInput, t: TFunction<"git">): GitAction {
+function buildPrAction(input: BuildGitActionsInput): GitAction {
   if (input.hasPullRequest && input.pullRequestUrl) {
     return {
       id: "pr",
-      label: t("policy.action.viewPr"),
-      pendingLabel: t("policy.action.viewPr"),
-      successLabel: t("policy.action.viewPr"),
+      label: i18n.t("workspace.git.actions.viewPr"),
+      pendingLabel: i18n.t("workspace.git.actions.viewPr"),
+      successLabel: i18n.t("workspace.git.actions.viewPr"),
       disabled: input.runtime.pr.disabled,
       status: input.runtime.pr.status,
       unavailableMessage:
         input.runtime.pr.disabled || input.githubFeaturesEnabled
           ? undefined
-          : t("policy.unavailable.viewPrGithubNotConnected"),
+          : i18n.t("workspace.git.actions.unavailable.viewPrNoGithub"),
       icon: input.runtime.pr.icon,
       startsGroup: false,
-      isViewPr: true,
       handler: input.runtime.pr.handler,
     };
   }
 
   return {
     id: "pr",
-    label: t("policy.action.createPr"),
-    pendingLabel: t("policy.pending.creatingPr"),
-    successLabel: t("policy.success.prCreated"),
+    label: i18n.t("workspace.git.actions.createPr.label"),
+    pendingLabel: i18n.t("workspace.git.actions.createPr.pending"),
+    successLabel: i18n.t("workspace.git.actions.createPr.success"),
     disabled: input.runtime.pr.disabled,
     status: input.runtime.pr.status,
     unavailableMessage: input.runtime.pr.disabled
       ? undefined
-      : getCreatePrUnavailableMessage(input, t),
+      : getCreatePrUnavailableMessage(input),
     icon: input.runtime.pr.icon,
     startsGroup: false,
     handler: input.runtime.pr.handler,
@@ -447,15 +426,14 @@ function buildPrAction(input: BuildGitActionsInput, t: TFunction<"git">): GitAct
 function buildDirectPullRequestMergeAction(
   input: BuildGitActionsInput,
   model: PullRequestDirectMergeActionModel,
-  t: TFunction<"git">,
 ): GitAction {
   const runtime = input.runtime[model.id];
-  const unavailableMessage = getMergePrUnavailableMessage(input, t);
+  const unavailableMessage = getMergePrUnavailableMessage(input);
   return {
     id: model.id,
-    label: t(model.labelKey),
-    pendingLabel: t("policy.pending.mergingPr"),
-    successLabel: t("policy.success.prMerged"),
+    label: getDirectPullRequestMergeActionLabel(model.id),
+    pendingLabel: i18n.t("workspace.git.actions.mergePr.pending"),
+    successLabel: i18n.t("workspace.git.actions.mergePr.success"),
     disabled: runtime.disabled || shouldDisableMergePrAction(input),
     status: runtime.status,
     unavailableMessage: runtime.disabled ? undefined : unavailableMessage,
@@ -468,14 +446,13 @@ function buildDirectPullRequestMergeAction(
 function buildEnablePullRequestAutoMergeAction(
   input: BuildGitActionsInput,
   model: PullRequestAutoMergeEnableActionModel,
-  t: TFunction<"git">,
 ): GitAction {
   const runtime = input.runtime[model.id];
   return {
     id: model.id,
-    label: t(model.labelKey),
-    pendingLabel: t("policy.pending.enablingAutoMerge"),
-    successLabel: t("policy.success.autoMergeEnabled"),
+    label: getEnablePullRequestAutoMergeActionLabel(model.id),
+    pendingLabel: i18n.t("workspace.git.actions.autoMerge.enabling"),
+    successLabel: i18n.t("workspace.git.actions.autoMerge.enabled"),
     disabled: runtime.disabled,
     status: runtime.status,
     icon: runtime.icon,
@@ -484,20 +461,17 @@ function buildEnablePullRequestAutoMergeAction(
   };
 }
 
-function buildDisablePullRequestAutoMergeAction(
-  input: BuildGitActionsInput,
-  t: TFunction<"git">,
-): GitAction {
+function buildDisablePullRequestAutoMergeAction(input: BuildGitActionsInput): GitAction {
   const runtime = input.runtime["disable-pr-auto-merge"];
   const unavailableMessage =
     input.pullRequestGithub?.viewerCanDisableAutoMerge === true
       ? undefined
-      : t("policy.unavailable.autoMergeCannotDisable");
+      : i18n.t("workspace.git.actions.unavailable.autoMergeCannotDisable");
   return {
     id: "disable-pr-auto-merge",
-    label: t("policy.action.autoMergeEnabled"),
-    pendingLabel: t("policy.pending.disablingAutoMerge"),
-    successLabel: t("policy.success.autoMergeDisabled"),
+    label: i18n.t("workspace.git.actions.autoMerge.enabled"),
+    pendingLabel: i18n.t("workspace.git.actions.autoMerge.disabling"),
+    successLabel: i18n.t("workspace.git.actions.autoMerge.disabled"),
     disabled: runtime.disabled || input.pullRequestGithub?.viewerCanDisableAutoMerge !== true,
     status: runtime.status,
     unavailableMessage: runtime.disabled ? undefined : unavailableMessage,
@@ -505,6 +479,28 @@ function buildDisablePullRequestAutoMergeAction(
     startsGroup: true,
     handler: runtime.handler,
   };
+}
+
+function getDirectPullRequestMergeActionLabel(id: PullRequestDirectMergeActionId): string {
+  switch (id) {
+    case "merge-pr-squash":
+      return i18n.t("workspace.git.actions.mergePr.squash");
+    case "merge-pr-merge":
+      return i18n.t("workspace.git.actions.mergePr.merge");
+    case "merge-pr-rebase":
+      return i18n.t("workspace.git.actions.mergePr.rebase");
+  }
+}
+
+function getEnablePullRequestAutoMergeActionLabel(id: PullRequestAutoMergeEnableActionId): string {
+  switch (id) {
+    case "enable-pr-auto-merge-squash":
+      return i18n.t("workspace.git.actions.autoMerge.enableSquash");
+    case "enable-pr-auto-merge-merge":
+      return i18n.t("workspace.git.actions.autoMerge.enableMerge");
+    case "enable-pr-auto-merge-rebase":
+      return i18n.t("workspace.git.actions.autoMerge.enableRebase");
+  }
 }
 
 function canPull(input: BuildGitActionsInput): boolean {
@@ -608,141 +604,122 @@ function hasEnabledPrAutoMerge(input: BuildGitActionsInput): boolean {
   );
 }
 
-function getPullUnavailableMessage(
-  input: BuildGitActionsInput,
-  t: TFunction<"git">,
-): string | undefined {
+function getPullUnavailableMessage(input: BuildGitActionsInput): string | undefined {
   if (!input.hasRemote) {
-    return t("policy.unavailable.pullNoRemote");
+    return i18n.t("workspace.git.actions.unavailable.pullNoRemote");
   }
   if (input.hasUncommittedChanges) {
-    return t("policy.unavailable.pullLocalChanges");
+    return i18n.t("workspace.git.actions.unavailable.pullDirty");
   }
   if (input.behindOfOrigin === null) {
-    return t("policy.unavailable.pullNoRemote");
+    return "Pull isn't available here because this branch is not connected to a remote yet";
   }
   if (input.behindOfOrigin === 0) {
-    return t("policy.unavailable.pullUpToDate");
+    return i18n.t("workspace.git.actions.unavailable.pullUpToDate");
   }
   return undefined;
 }
 
-function getPushUnavailableMessage(
-  input: BuildGitActionsInput,
-  t: TFunction<"git">,
-): string | undefined {
+function getPushUnavailableMessage(input: BuildGitActionsInput): string | undefined {
   if (!input.hasRemote) {
-    return t("policy.unavailable.pushNoRemote");
+    return i18n.t("workspace.git.actions.unavailable.pushNoRemote");
   }
   if ((input.behindOfOrigin ?? 0) > 0) {
-    return t("policy.unavailable.pushBehind");
+    return i18n.t("workspace.git.actions.unavailable.pushBehind");
   }
   if (!hasPushableCommits(input)) {
-    return t("policy.unavailable.pushNothingNew");
+    return i18n.t("workspace.git.actions.unavailable.pushNothing");
   }
   return undefined;
 }
 
-function getPullAndPushUnavailableMessage(
-  input: BuildGitActionsInput,
-  t: TFunction<"git">,
-): string | undefined {
+function getPullAndPushUnavailableMessage(input: BuildGitActionsInput): string | undefined {
   if (!input.hasRemote) {
-    return t("policy.unavailable.pullAndPushNoRemote");
+    return i18n.t("workspace.git.actions.unavailable.pullAndPushNoRemote");
   }
   if (input.hasUncommittedChanges) {
-    return t("policy.unavailable.pullAndPushLocalChanges");
+    return i18n.t("workspace.git.actions.unavailable.pullAndPushDirty");
   }
   if (input.behindOfOrigin === null) {
-    return t("policy.unavailable.pullAndPushNoIncoming");
+    return "Pull and push isn't available because there are no incoming changes to pull first";
   }
   if (input.behindOfOrigin === 0 && input.aheadOfOrigin === 0) {
-    return t("policy.unavailable.pullAndPushInSync");
+    return i18n.t("workspace.git.actions.unavailable.pullAndPushInSync");
   }
   if (input.behindOfOrigin === 0) {
-    return t("policy.unavailable.pullAndPushNoIncoming");
+    return "Pull and push isn't available because there are no incoming changes to pull first";
   }
   if ((input.aheadOfOrigin ?? 0) === 0) {
-    return t("policy.unavailable.pullAndPushNothingNew");
+    return "Pull and push isn't available because there is nothing new to send after pulling";
   }
   return undefined;
 }
 
-function getCreatePrUnavailableMessage(
-  input: BuildGitActionsInput,
-  t: TFunction<"git">,
-): string | undefined {
+function getCreatePrUnavailableMessage(input: BuildGitActionsInput): string | undefined {
   if (!input.githubFeaturesEnabled) {
-    return t("policy.unavailable.createPrGithubNotConnected");
+    return i18n.t("workspace.git.actions.unavailable.createPrNoGithub");
   }
   if (input.aheadCount === 0) {
-    return t("policy.unavailable.createPrNoCommits");
+    return i18n.t("workspace.git.actions.unavailable.createPrNoCommits");
   }
   return undefined;
 }
 
-function getMergeBranchUnavailableMessage(
-  input: BuildGitActionsInput,
-  t: TFunction<"git">,
-): string | undefined {
+function getMergeBranchUnavailableMessage(input: BuildGitActionsInput): string | undefined {
   if (!input.baseRefAvailable) {
-    return t("policy.unavailable.mergeNoBaseBranch");
+    return i18n.t("workspace.git.actions.unavailable.mergeNoBase");
   }
   if (input.hasUncommittedChanges) {
-    return t("policy.unavailable.mergeLocalChanges");
+    return i18n.t("workspace.git.actions.unavailable.mergeDirty");
   }
   if (input.aheadCount === 0) {
-    return t("policy.unavailable.mergeNothingNew");
+    return i18n.t("workspace.git.actions.unavailable.mergeNothing");
   }
   return undefined;
 }
 
-function getMergeFromBaseUnavailableMessage(
-  input: BuildGitActionsInput,
-  t: TFunction<"git">,
-): string | undefined {
+function getMergeFromBaseUnavailableMessage(input: BuildGitActionsInput): string | undefined {
   if (!input.baseRefAvailable) {
-    return t("policy.unavailable.updateNoBaseBranch");
+    return i18n.t("workspace.git.actions.unavailable.updateNoBase");
   }
   if (input.hasUncommittedChanges) {
-    return t("policy.unavailable.updateLocalChanges");
+    return i18n.t("workspace.git.actions.unavailable.updateDirty");
   }
   if (input.behindBaseCount === 0) {
-    return t("policy.unavailable.updateUpToDate", { baseRef: input.baseRefLabel });
+    return i18n.t("workspace.git.actions.unavailable.updateCurrent", {
+      baseRef: input.baseRefLabel,
+    });
   }
   return undefined;
 }
 
-function getMergePrUnavailableMessage(
-  input: BuildGitActionsInput,
-  t: TFunction<"git">,
-): string | undefined {
+function getMergePrUnavailableMessage(input: BuildGitActionsInput): string | undefined {
   if (!input.githubFeaturesEnabled) {
-    return t("policy.unavailable.mergePrGithubNotConnected");
+    return i18n.t("workspace.git.actions.unavailable.mergePrNoGithub");
   }
   if (!input.hasPullRequest) {
-    return t("policy.unavailable.mergePrNoPullRequest");
+    return i18n.t("workspace.git.actions.unavailable.mergePrMissing");
   }
   if (input.pullRequestIsDraft) {
-    return t("policy.unavailable.mergePrDraft");
+    return i18n.t("workspace.git.actions.unavailable.mergePrDraft");
   }
   if (input.pullRequestIsMerged) {
-    return t("policy.unavailable.mergePrAlreadyMerged");
+    return i18n.t("workspace.git.actions.unavailable.mergePrMerged");
   }
   if (input.pullRequestState === "closed") {
-    return t("policy.unavailable.mergePrClosed");
+    return i18n.t("workspace.git.actions.unavailable.mergePrClosed");
   }
   if (input.pullRequestMergeable === "CONFLICTING") {
-    return t("policy.unavailable.mergePrConflicts");
+    return i18n.t("workspace.git.actions.unavailable.mergePrConflicts");
   }
   if (!hasPullRequestGithubFacts(input.pullRequestGithub)) {
     return undefined;
   }
   if (input.pullRequestGithub?.isMergeQueueEnabled || input.pullRequestGithub?.isInMergeQueue) {
-    return t("policy.unavailable.mergePrMergeQueue");
+    return i18n.t("workspace.git.actions.unavailable.mergePrQueue");
   }
   if (!GITHUB_DIRECT_MERGE_STATE_ALLOWLIST.has(input.pullRequestGithub?.mergeStateStatus ?? "")) {
-    return t("policy.unavailable.mergePrNotReady");
+    return i18n.t("workspace.git.actions.unavailable.mergePrNotReady");
   }
   return undefined;
 }

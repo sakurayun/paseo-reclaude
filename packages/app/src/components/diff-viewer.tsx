@@ -124,9 +124,9 @@ export function DiffViewer({
   emptyLabel,
   fillAvailableHeight = false,
 }: DiffViewerProps) {
-  const { t } = useTranslation("git");
-  const resolvedEmptyLabel = emptyLabel ?? t("empty.noChangesToDisplay");
+  const { t } = useTranslation();
   const [scrollViewWidth, setScrollViewWidth] = React.useState(0);
+  const resolvedEmptyLabel = emptyLabel ?? t("diffViewer.empty");
   const webScrollbarStyle = useWebScrollbarStyle("subtle");
   const handleInnerLayout = React.useCallback(
     (e: { nativeEvent: { layout: { width: number } } }) =>

@@ -15,6 +15,7 @@ import { Combobox, ComboboxItem, type ComboboxOption } from "@/components/ui/com
 import { getProviderIcon } from "@/components/provider-icons";
 import { formatTimeAgo } from "@/utils/time";
 import { useProvidersSnapshot } from "@/hooks/use-providers-snapshot";
+import { i18n } from "@/i18n/i18next";
 import {
   aggregateSessionEntries,
   ALL_FILTER_VALUE,
@@ -64,8 +65,10 @@ function buildSessionsQueriesConfig(args: {
   visible: boolean;
   client: RecentProviderSessionsClient | null;
   cwd: string | null | undefined;
+  hostDisconnectedMessage?: string;
 }): SessionsQueryConfig[] {
-  const { providersToFetch, sessionsQueryRoot, visible, client, cwd } = args;
+  const { providersToFetch, sessionsQueryRoot, visible, client, cwd, hostDisconnectedMessage } =
+    args;
   if (providersToFetch === null) return [];
   const enabled = visible && Boolean(client);
   return providersToFetch.map((provider) => ({
@@ -73,7 +76,7 @@ function buildSessionsQueriesConfig(args: {
     enabled,
     queryFn: async () => {
       if (!client) {
-        throw new Error("Host is not connected");
+        throw new Error(hostDisconnectedMessage ?? i18n.t("workspace.terminal.hostDisconnected"));
       }
       return await client.fetchRecentProviderSessions({
         ...(cwd ? { cwd } : {}),
@@ -106,9 +109,9 @@ function SheetStatusMessages({
   importErrored,
 }: SheetStatusMessagesProps) {
   const { theme } = useUnistyles();
-  const { t } = useTranslation("app");
+  const { t } = useTranslation();
   if (!isClientReady) {
-    return <Text style={styles.statusText}>{t("importSession.status.connectToHost")}</Text>;
+    return <Text style={styles.statusText}>{t("importSession.status.connectHost")}</Text>;
   }
   if (isSnapshotUnsupported) {
     return <Text style={styles.statusText}>{t("importSession.status.updateHost")}</Text>;
@@ -116,7 +119,7 @@ function SheetStatusMessages({
   return (
     <>
       {hasNoImportableProviders ? (
-        <Text style={styles.statusText}>{t("importSession.status.noImportableProviders")}</Text>
+        <Text style={styles.statusText}>{t("importSession.status.noProviders")}</Text>
       ) : null}
       {isLoadingSessions && !hasRows ? (
         <View style={styles.statusRow}>
@@ -125,17 +128,17 @@ function SheetStatusMessages({
         </View>
       ) : null}
       {allQueriesErrored ? (
-        <Text style={styles.statusText}>{t("importSession.status.loadFailed")}</Text>
+        <Text style={styles.statusText}>{t("importSession.status.failedAll")}</Text>
       ) : null}
       {!allQueriesErrored && erroredProviderLabels.length > 0 ? (
         <Text style={styles.statusText}>
-          {t("importSession.status.loadFailedForProviders", {
+          {t("importSession.status.failedProviders", {
             providers: erroredProviderLabels.join(", "),
           })}
         </Text>
       ) : null}
       {importErrored ? (
-        <Text style={styles.statusText}>{t("importSession.status.importFailed")}</Text>
+        <Text style={styles.statusText}>{t("importSession.status.failedImport")}</Text>
       ) : null}
     </>
   );
@@ -143,7 +146,7 @@ function SheetStatusMessages({
 
 function RefreshAction({ isRefreshing, onPress }: { isRefreshing: boolean; onPress: () => void }) {
   const { theme } = useUnistyles();
-  const { t } = useTranslation("app");
+  const { t } = useTranslation();
   const pressableStyle = useCallback(
     ({ pressed }: PressableStateCallbackType) => [
       styles.refreshButton,
@@ -155,7 +158,7 @@ function RefreshAction({ isRefreshing, onPress }: { isRefreshing: boolean; onPre
     <Pressable
       onPress={onPress}
       disabled={isRefreshing}
-      accessibilityLabel={t("importSession.refreshAccessibility")}
+      accessibilityLabel={t("importSession.actions.refresh")}
       accessibilityRole="button"
       testID="import-session-refresh"
       style={pressableStyle}
@@ -197,9 +200,9 @@ function ImportSessionSheetRow({
   onImportSession: (entry: FetchRecentProviderSessionEntry) => void;
 }) {
   const { theme } = useUnistyles();
-  const { t } = useTranslation("app");
-  const title = getSessionTitle(entry, t);
-  const promptPreview = getPromptPreview(entry, t);
+  const { t } = useTranslation();
+  const title = getSessionTitle(entry);
+  const promptPreview = getPromptPreview(entry);
   const lastActivity = formatTimeAgo(new Date(entry.lastActivityAt));
   const ProviderIcon = getProviderIcon(entry.providerId);
   const accessibilityState = useMemo(
@@ -236,7 +239,7 @@ function ImportSessionSheetRow({
             {title}
           </Text>
           <Text style={styles.rowMeta}>
-            {importing ? t("importSession.importing") : lastActivity}
+            {importing ? t("importSession.row.importing") : lastActivity}
           </Text>
         </View>
         <Text style={styles.rowPreview} numberOfLines={2}>
@@ -261,7 +264,7 @@ export function ImportSessionSheet({
   onImportedAgent,
   onImported,
 }: ImportSessionSheetProps) {
-  const { t } = useTranslation("app");
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
   const { theme } = useUnistyles();
 
@@ -293,8 +296,9 @@ export function ImportSessionSheet({
         visible,
         client,
         cwd,
+        hostDisconnectedMessage: t("workspace.terminal.hostDisconnected"),
       }),
-    [providersToFetch, sessionsQueryRoot, visible, client, cwd],
+    [providersToFetch, sessionsQueryRoot, visible, client, cwd, t],
   );
 
   const queries = useQueries({ queries: queriesConfig });
@@ -327,7 +331,7 @@ export function ImportSessionSheet({
 
   const filterComboboxOptions = useMemo<ComboboxOption[]>(
     () => [
-      { id: ALL_FILTER_VALUE, label: t("importSession.filterAllProviders") },
+      { id: ALL_FILTER_VALUE, label: t("importSession.filters.all") },
       ...filterProviders.map((provider) => ({
         id: provider,
         label: providerLabelById.get(provider) ?? provider,
@@ -339,7 +343,7 @@ export function ImportSessionSheet({
   const selectedProviderLabel = useMemo(
     () =>
       filterComboboxOptions.find((opt) => opt.id === selectedProvider)?.label ??
-      t("importSession.filterAllProviders"),
+      t("importSession.filters.all"),
     [filterComboboxOptions, selectedProvider, t],
   );
 
@@ -395,7 +399,7 @@ export function ImportSessionSheet({
   const importMutation = useMutation({
     mutationFn: async (entry: FetchRecentProviderSessionEntry) => {
       if (!client) {
-        throw new Error("Host is not connected");
+        throw new Error(t("workspace.terminal.hostDisconnected"));
       }
       if (!entry.cwd) {
         throw new Error("Session is missing a working directory");
@@ -456,20 +460,17 @@ export function ImportSessionSheet({
   const allQueriesErrored = isQueryingProviders && queries.every((query) => query.isError);
   const allQueriesSettled =
     isQueryingProviders && queries.every((query) => !query.isLoading && !query.isPending);
-  const { showEmptyState, emptyStateTitle } = computeEmptyState(
-    {
-      isLoadingSessions,
-      allQueriesErrored,
-      isQueryingProviders,
-      allQueriesSettled,
-      selectedProvider,
-      aggregatedCount: aggregatedEntries.length,
-      visibleCount: visibleEntries.length,
-      totalAlreadyImportedCount,
-      providerLabelById,
-    },
-    t,
-  );
+  const { showEmptyState, emptyStateTitle } = computeEmptyState({
+    isLoadingSessions,
+    allQueriesErrored,
+    isQueryingProviders,
+    allQueriesSettled,
+    selectedProvider,
+    aggregatedCount: aggregatedEntries.length,
+    visibleCount: visibleEntries.length,
+    totalAlreadyImportedCount,
+    providerLabelById,
+  });
   const showFilter = filterProviders.length > 1;
 
   return (
@@ -488,9 +489,7 @@ export function ImportSessionSheet({
             style={filterTriggerStyle}
             testID="import-session-filter-trigger"
             accessibilityRole="button"
-            accessibilityLabel={t("importSession.filterAccessibility", {
-              label: selectedProviderLabel,
-            })}
+            accessibilityLabel={`Filter: ${selectedProviderLabel}`}
           >
             {selectedProvider === ALL_FILTER_VALUE ? (
               <Layers size={14} color={theme.colors.foregroundMuted} />
@@ -511,7 +510,7 @@ export function ImportSessionSheet({
             onSelect={handleFilterSelect}
             renderOption={renderFilterOption}
             searchable={false}
-            title={t("importSession.filterByProvider")}
+            title="Filter by provider"
             open={isFilterOpen}
             onOpenChange={setIsFilterOpen}
             anchorRef={filterAnchorRef}

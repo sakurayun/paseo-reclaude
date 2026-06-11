@@ -100,4 +100,4 @@ vi.mock("expo-localization", () => ({
 }));
 
 // Initialize i18n so components using useTranslation() resolve real (English) copy in tests.
-await import("./src/i18n");
+await import("./src/i18n/i18next");

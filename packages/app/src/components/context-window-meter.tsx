@@ -100,17 +100,17 @@ function getMeterGeometry(showPercentage: boolean) {
   };
 }
 
-function formatResetsAtLabel(t: TFunction<"app">, resetsAt: string | undefined): string {
+function formatResetsAtLabel(t: TFunction, resetsAt: string | undefined): string {
   if (!resetsAt) return "";
   const diffMs = new Date(resetsAt).getTime() - Date.now();
   if (!Number.isFinite(diffMs)) return "";
-  if (diffMs <= 0) return t("contextMeter.quota.resettingNow");
+  if (diffMs <= 0) return t("contextWindow.quota.resettingNow");
   const diffMinutes = Math.floor(diffMs / 60_000);
   const diffHours = Math.floor(diffMinutes / 60);
   const diffDays = Math.floor(diffHours / 24);
-  if (diffDays > 0) return t("contextMeter.quota.resetsDays", { value: diffDays });
-  if (diffHours > 0) return t("contextMeter.quota.resetsHours", { value: diffHours });
-  return t("contextMeter.quota.resetsMinutes", { value: diffMinutes });
+  if (diffDays > 0) return t("contextWindow.quota.resetsDays", { value: diffDays });
+  if (diffHours > 0) return t("contextWindow.quota.resetsHours", { value: diffHours });
+  return t("contextWindow.quota.resetsMinutes", { value: diffMinutes });
 }
 
 function QuotaUsageBar({
@@ -124,7 +124,7 @@ function QuotaUsageBar({
   resetsAt?: string;
   theme: ReturnType<typeof useUnistyles>["theme"];
 }) {
-  const { t } = useTranslation("app");
+  const { t } = useTranslation();
   const pct = clampPercentage(utilizationPct);
   const barColor = getBarColor(pct, theme);
   const resetLabel = formatResetsAtLabel(t, resetsAt);
@@ -161,15 +161,15 @@ function ClaudeQuotaContent({
   quota: NonNullable<ProviderQuota["claude"]>;
   theme: ReturnType<typeof useUnistyles>["theme"];
 }) {
-  const { t } = useTranslation("app");
+  const { t } = useTranslation();
   return (
     <>
       <Text style={styles.tooltipTitle}>
-        {`${t("contextMeter.quota.planUsage")}${quota.plan ? ` · ${quota.plan}` : ""}`}
+        {`${t("contextWindow.quota.planUsage")}${quota.plan ? ` · ${quota.plan}` : ""}`}
       </Text>
       {quota.fiveHour ? (
         <QuotaUsageBar
-          label={t("contextMeter.quota.claude.fiveHour")}
+          label={t("contextWindow.quota.claude.fiveHour")}
           utilizationPct={quota.fiveHour.utilizationPct}
           resetsAt={quota.fiveHour.resetsAt}
           theme={theme}
@@ -177,7 +177,7 @@ function ClaudeQuotaContent({
       ) : null}
       {quota.sevenDay ? (
         <QuotaUsageBar
-          label={t("contextMeter.quota.claude.weeklyAll")}
+          label={t("contextWindow.quota.claude.weeklyAll")}
           utilizationPct={quota.sevenDay.utilizationPct}
           resetsAt={quota.sevenDay.resetsAt}
           theme={theme}
@@ -185,7 +185,7 @@ function ClaudeQuotaContent({
       ) : null}
       {quota.sevenDayOpus ? (
         <QuotaUsageBar
-          label={t("contextMeter.quota.claude.weeklyOpus")}
+          label={t("contextWindow.quota.claude.weeklyOpus")}
           utilizationPct={quota.sevenDayOpus.utilizationPct}
           resetsAt={quota.sevenDayOpus.resetsAt}
           theme={theme}
@@ -193,14 +193,14 @@ function ClaudeQuotaContent({
       ) : null}
       {quota.sevenDayOmelette ? (
         <QuotaUsageBar
-          label={t("contextMeter.quota.claude.weeklyDesign")}
+          label={t("contextWindow.quota.claude.weeklyDesign")}
           utilizationPct={quota.sevenDayOmelette.utilizationPct}
           resetsAt={quota.sevenDayOmelette.resetsAt}
           theme={theme}
         />
       ) : null}
       {quota.extraUsage?.isEnabled ? (
-        <Text style={styles.tooltipDetail}>{t("contextMeter.quota.claude.overageEnabled")}</Text>
+        <Text style={styles.tooltipDetail}>{t("contextWindow.quota.claude.overageEnabled")}</Text>
       ) : null}
     </>
   );
@@ -213,15 +213,15 @@ function CodexQuotaContent({
   quota: NonNullable<ProviderQuota["codex"]>;
   theme: ReturnType<typeof useUnistyles>["theme"];
 }) {
-  const { t } = useTranslation("app");
+  const { t } = useTranslation();
   return (
     <>
       <Text style={styles.tooltipTitle}>
-        {`${t("contextMeter.quota.planUsage")}${quota.planType ? ` · ${quota.planType}` : ""}`}
+        {`${t("contextWindow.quota.planUsage")}${quota.planType ? ` · ${quota.planType}` : ""}`}
       </Text>
       {quota.session ? (
         <QuotaUsageBar
-          label={t("contextMeter.quota.codex.session")}
+          label={t("contextWindow.quota.codex.session")}
           utilizationPct={quota.session.utilizationPct}
           resetsAt={quota.session.resetsAt}
           theme={theme}
@@ -229,7 +229,7 @@ function CodexQuotaContent({
       ) : null}
       {quota.weekly ? (
         <QuotaUsageBar
-          label={t("contextMeter.quota.codex.weekly")}
+          label={t("contextWindow.quota.codex.weekly")}
           utilizationPct={quota.weekly.utilizationPct}
           resetsAt={quota.weekly.resetsAt}
           theme={theme}
@@ -237,7 +237,7 @@ function CodexQuotaContent({
       ) : null}
       {quota.codeReview ? (
         <QuotaUsageBar
-          label={t("contextMeter.quota.codex.codeReview")}
+          label={t("contextWindow.quota.codex.codeReview")}
           utilizationPct={quota.codeReview.utilizationPct}
           resetsAt={quota.codeReview.resetsAt}
           theme={theme}
@@ -245,7 +245,7 @@ function CodexQuotaContent({
       ) : null}
       {quota.credits?.balance != null ? (
         <Text style={styles.tooltipDetail}>
-          {t("contextMeter.quota.codex.creditsRemaining", {
+          {t("contextWindow.quota.codex.creditsRemaining", {
             amount: quota.credits.balance.toFixed(2),
           })}
         </Text>
@@ -261,16 +261,16 @@ function CopilotQuotaContent({
   quota: NonNullable<ProviderQuota["copilot"]>;
   theme: ReturnType<typeof useUnistyles>["theme"];
 }) {
-  const { t } = useTranslation("app");
+  const { t } = useTranslation();
   const resetLabel = formatResetsAtLabel(t, quota.quotaResetDate || undefined);
   return (
     <>
       <Text style={styles.tooltipTitle}>
-        {`${t("contextMeter.quota.copilot.title")}${quota.plan ? ` · ${quota.plan}` : ""}`}
+        {`${t("contextWindow.quota.copilot.title")}${quota.plan ? ` · ${quota.plan}` : ""}`}
       </Text>
       {resetLabel ? (
         <Text style={styles.tooltipDetail}>
-          {t("contextMeter.quota.copilot.resets", { label: resetLabel })}
+          {t("contextWindow.quota.copilot.resets", { label: resetLabel })}
         </Text>
       ) : null}
     </>
@@ -284,7 +284,7 @@ function CursorQuotaContent({
   quota: NonNullable<ProviderQuota["cursor"]>;
   theme: ReturnType<typeof useUnistyles>["theme"];
 }) {
-  const { t } = useTranslation("app");
+  const { t } = useTranslation();
   const limit = quota.planUsage?.limit;
   const remaining = quota.planUsage?.remaining;
   const totalSpend = quota.planUsage?.totalSpend;
@@ -295,21 +295,21 @@ function CursorQuotaContent({
 
   const label =
     typeof totalSpend === "number" && typeof limit === "number"
-      ? t("contextMeter.quota.cursor.spent", {
+      ? t("contextWindow.quota.cursor.spent", {
           spent: `$${totalSpend.toFixed(2)}`,
           limit: `$${limit.toFixed(2)}`,
         })
-      : t("contextMeter.quota.usage");
+      : t("contextWindow.quota.usage");
 
   return (
     <>
-      <Text style={styles.tooltipTitle}>{t("contextMeter.quota.cursor.title")}</Text>
+      <Text style={styles.tooltipTitle}>{t("contextWindow.quota.cursor.title")}</Text>
       {quota.planUsage ? (
         <QuotaUsageBar label={label} utilizationPct={utilizationPct} theme={theme} />
       ) : null}
       {quota.billingCycleEnd ? (
         <Text style={styles.tooltipDetail}>
-          {t("contextMeter.quota.cursor.billingResets", {
+          {t("contextWindow.quota.cursor.billingResets", {
             date: new Date(quota.billingCycleEnd).toLocaleDateString(),
           })}
         </Text>
@@ -325,20 +325,20 @@ function ZaiQuotaContent({
   quota: NonNullable<ProviderQuota["zai"]>;
   theme: ReturnType<typeof useUnistyles>["theme"];
 }) {
-  const { t } = useTranslation("app");
+  const { t } = useTranslation();
   return (
     <>
       <Text style={styles.tooltipTitle}>
-        {`${t("contextMeter.quota.zai.title")}${quota.productName ? ` · ${quota.productName}` : ""}`}
+        {`${t("contextWindow.quota.zai.title")}${quota.productName ? ` · ${quota.productName}` : ""}`}
       </Text>
       {quota.status ? (
         <Text style={styles.tooltipDetail}>
-          {t("contextMeter.quota.zai.status", { status: quota.status })}
+          {t("contextWindow.quota.zai.status", { status: quota.status })}
         </Text>
       ) : null}
       {quota.valid ? (
         <Text style={styles.tooltipDetail}>
-          {t("contextMeter.quota.zai.valid", { valid: quota.valid })}
+          {t("contextWindow.quota.zai.valid", { valid: quota.valid })}
         </Text>
       ) : null}
     </>
@@ -352,7 +352,7 @@ function GrokQuotaContent({
   quota: NonNullable<ProviderQuota["grok"]>;
   theme: ReturnType<typeof useUnistyles>["theme"];
 }) {
-  const { t } = useTranslation("app");
+  const { t } = useTranslation();
   const limit = quota.monthlyLimit;
   const usage = quota.creditUsage;
   const utilizationPct =
@@ -360,15 +360,15 @@ function GrokQuotaContent({
 
   const label =
     typeof usage === "number" && typeof limit === "number"
-      ? t("contextMeter.quota.used", {
+      ? t("contextWindow.quota.used", {
           used: usage.toLocaleString(),
           limit: limit.toLocaleString(),
         })
-      : t("contextMeter.quota.usage");
+      : t("contextWindow.quota.usage");
 
   return (
     <>
-      <Text style={styles.tooltipTitle}>{t("contextMeter.quota.grok.title")}</Text>
+      <Text style={styles.tooltipTitle}>{t("contextWindow.quota.grok.title")}</Text>
       <QuotaUsageBar label={label} utilizationPct={utilizationPct} theme={theme} />
     </>
   );
@@ -381,7 +381,7 @@ function KimiQuotaContent({
   quota: NonNullable<ProviderQuota["kimi"]>;
   theme: ReturnType<typeof useUnistyles>["theme"];
 }) {
-  const { t } = useTranslation("app");
+  const { t } = useTranslation();
   const limitVal = quota.limit ? parseFloat(quota.limit) : NaN;
   const remainingVal = quota.remaining ? parseFloat(quota.remaining) : NaN;
 
@@ -390,15 +390,15 @@ function KimiQuotaContent({
   const utilizationPct = hasNumbers && limitVal > 0 ? (usedVal / limitVal) * 100 : 0;
 
   const label = hasNumbers
-    ? t("contextMeter.quota.used", {
+    ? t("contextWindow.quota.used", {
         used: Math.round(usedVal).toLocaleString(),
         limit: Math.round(limitVal).toLocaleString(),
       })
-    : t("contextMeter.quota.usage");
+    : t("contextWindow.quota.usage");
 
   return (
     <>
-      <Text style={styles.tooltipTitle}>{t("contextMeter.quota.kimi.title")}</Text>
+      <Text style={styles.tooltipTitle}>{t("contextWindow.quota.kimi.title")}</Text>
       {hasNumbers ? (
         <QuotaUsageBar
           label={label}
@@ -407,7 +407,7 @@ function KimiQuotaContent({
           theme={theme}
         />
       ) : (
-        <Text style={styles.tooltipDetail}>{t("contextMeter.quota.kimi.noData")}</Text>
+        <Text style={styles.tooltipDetail}>{t("contextWindow.quota.kimi.noData")}</Text>
       )}
     </>
   );
@@ -440,7 +440,7 @@ function PlanUsageSection({
   providerQuota: ProviderQuota | null;
 }) {
   const { theme } = useUnistyles();
-  const { t } = useTranslation("app");
+  const { t } = useTranslation();
   const p = provider?.toLowerCase();
   if (!p || !(p in QUOTA_RENDERERS)) return null;
 
@@ -449,7 +449,7 @@ function PlanUsageSection({
   const content = quotaData ? (
     render(quotaData, theme)
   ) : (
-    <Text style={styles.tooltipDetail}>{t("contextMeter.quota.loading")}</Text>
+    <Text style={styles.tooltipDetail}>{t("contextWindow.quota.loading")}</Text>
   );
 
   return (
@@ -470,7 +470,7 @@ export function ContextWindowMeter({
   provider,
 }: ContextWindowMeterProps) {
   const { theme } = useUnistyles();
-  const { t } = useTranslation("app");
+  const { t } = useTranslation();
   const percentage = getUsagePercentage(maxTokens, usedTokens);
 
   const providerQuota = useSessionStore((state) =>
@@ -496,7 +496,9 @@ export function ContextWindowMeter({
         <Pressable
           style={containerStyle}
           accessibilityRole="image"
-          accessibilityLabel={t("contextMeter.accessibilityLabel", { percent: roundedPercentage })}
+          accessibilityLabel={t("contextWindow.accessibility", {
+            percentage: roundedPercentage,
+          })}
         >
           <Svg
             width={svgSize}
@@ -533,19 +535,19 @@ export function ContextWindowMeter({
       </TooltipTrigger>
       <TooltipContent side="top" align="center" offset={8}>
         <View style={styles.tooltipContent}>
-          <Text style={styles.tooltipTitle}>{t("contextMeter.title")}</Text>
+          <Text style={styles.tooltipTitle}>{t("contextWindow.title")}</Text>
           <Text style={styles.tooltipText}>
-            {t("contextMeter.used", { percent: roundedPercentage })}
+            {t("contextWindow.used", { percentage: roundedPercentage })}
           </Text>
           <Text style={styles.tooltipDetail}>
-            {t("contextMeter.tokens", {
+            {t("contextWindow.tokens", {
               used: formatTokenCount(usedTokens),
               max: formatTokenCount(maxTokens),
             })}
           </Text>
           {formattedSessionCost ? (
             <Text style={styles.tooltipDetail}>
-              {t("contextMeter.sessionCost", { cost: formattedSessionCost })}
+              {t("contextWindow.sessionCost", { cost: formattedSessionCost })}
             </Text>
           ) : null}
           <PlanUsageSection provider={provider} providerQuota={providerQuota} />

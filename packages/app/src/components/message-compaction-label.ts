@@ -1,4 +1,4 @@
-import type { TFunction } from "i18next";
+import { i18n } from "@/i18n/i18next";
 
 export interface CompactionMarkerLabelInput {
   status: "loading" | "completed";
@@ -6,13 +6,18 @@ export interface CompactionMarkerLabelInput {
   preTokens?: number;
 }
 
-export function getCompactionMarkerLabel(
-  { status, trigger, preTokens }: CompactionMarkerLabelInput,
-  t: TFunction<"timeline">,
-): string {
-  if (status === "loading") return t("compaction.compacting");
-  if (trigger === "auto") return t("compaction.automatic");
-  if (trigger === "manual") return t("compaction.manual");
-  if (preTokens) return t("compaction.compactedTokens", { count: Math.round(preTokens / 1000) });
-  return t("compaction.compacted");
+export function getCompactionMarkerLabel({
+  status,
+  trigger,
+  preTokens,
+}: CompactionMarkerLabelInput): string {
+  if (status === "loading") return i18n.t("message.compaction.loading");
+  if (trigger === "auto") return i18n.t("message.compaction.auto");
+  if (trigger === "manual") return i18n.t("message.compaction.manual");
+  if (preTokens) {
+    return i18n.t("message.compaction.withTokens", {
+      tokens: Math.round(preTokens / 1000),
+    });
+  }
+  return i18n.t("message.compaction.completed");
 }

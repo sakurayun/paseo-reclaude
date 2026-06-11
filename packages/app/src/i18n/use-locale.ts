@@ -1,6 +1,6 @@
 import { useTranslation } from "react-i18next";
 
-import i18n from "./index";
+import { i18n } from "./i18next";
 
 /**
  * Active BCP-47 locale for non-React code (formatters in utils). Reads the live i18next

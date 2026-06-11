@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { ParseKeys, TFunction } from "i18next";
+import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import { Pressable, Text, TextInput, View } from "react-native";
 import { router } from "expo-router";
@@ -52,34 +52,34 @@ const SCRIPT_SERVICE_TYPE = "service";
 const ICON_SIZE = 14;
 
 interface MetadataPromptField {
-  titleKey: ParseKeys<"settings">;
-  placeholderKey: ParseKeys<"settings">;
+  titleKey: string;
+  placeholderKey: string;
   sectionTestID: string;
   inputTestID: string;
 }
 
 const METADATA_PROMPT_FIELDS: Record<MetadataPromptKey, MetadataPromptField> = {
   agentTitle: {
-    titleKey: "project.metadata.agentTitle.title",
-    placeholderKey: "project.metadata.agentTitle.placeholder",
+    titleKey: "settings.project.metadata.agentTitle",
+    placeholderKey: "settings.project.metadata.agentTitlePlaceholder",
     sectionTestID: "metadata-prompt-agent-title-section",
     inputTestID: "metadata-prompt-agent-title-input",
   },
   branchName: {
-    titleKey: "project.metadata.branchName.title",
-    placeholderKey: "project.metadata.branchName.placeholder",
+    titleKey: "settings.project.metadata.branchName",
+    placeholderKey: "settings.project.metadata.branchNamePlaceholder",
     sectionTestID: "metadata-prompt-branch-name-section",
     inputTestID: "metadata-prompt-branch-name-input",
   },
   commitMessage: {
-    titleKey: "project.metadata.commitMessage.title",
-    placeholderKey: "project.metadata.commitMessage.placeholder",
+    titleKey: "settings.project.metadata.commitMessage",
+    placeholderKey: "settings.project.metadata.commitMessagePlaceholder",
     sectionTestID: "metadata-prompt-commit-message-section",
     inputTestID: "metadata-prompt-commit-message-input",
   },
   pullRequest: {
-    titleKey: "project.metadata.pullRequest.title",
-    placeholderKey: "project.metadata.pullRequest.placeholder",
+    titleKey: "settings.project.metadata.pullRequest",
+    placeholderKey: "settings.project.metadata.pullRequestPlaceholder",
     sectionTestID: "metadata-prompt-pull-request-section",
     inputTestID: "metadata-prompt-pull-request-input",
   },
@@ -149,36 +149,36 @@ function navigateBackToProjects() {
 }
 
 function NoEditableTarget() {
-  const { t } = useTranslation("settings");
+  const { t } = useTranslation();
   return (
     <View style={styles.noTargetContainer}>
       <BackToProjectsButton />
-      <Text style={styles.noTargetText}>{t("project.noTarget.message")}</Text>
+      <Text style={styles.noTargetText}>{t("settings.project.noEditableTarget")}</Text>
       <Button
         testID="project-settings-back-button"
         onPress={navigateBackToProjects}
         variant="secondary"
         size="md"
       >
-        {t("project.backToProjects")}
+        {t("settings.project.backToProjects")}
       </Button>
     </View>
   );
 }
 
 function BackToProjectsButton() {
-  const { t } = useTranslation("settings");
+  const { t } = useTranslation();
   return (
     <Button
       testID="project-settings-back-link"
-      accessibilityLabel={t("project.backToProjects")}
+      accessibilityLabel={t("settings.project.backToProjects")}
       onPress={navigateBackToProjects}
       variant="ghost"
       size="sm"
       leftIcon={ArrowLeft}
       style={styles.backButton}
     >
-      {t("project.backToProjects")}
+      {t("settings.project.backToProjects")}
     </Button>
   );
 }
@@ -363,7 +363,7 @@ interface ReadFailureCalloutProps {
 }
 
 function ReadFailureCallout({ kind, error, onReload, hasMultipleHosts }: ReadFailureCalloutProps) {
-  const { t } = useTranslation("settings");
+  const { t } = useTranslation();
   const { testID, title, description } = resolveReadFailureCopy({
     kind,
     error,
@@ -374,7 +374,7 @@ function ReadFailureCallout({ kind, error, onReload, hasMultipleHosts }: ReadFai
     <View style={styles.errorBlock}>
       <Alert testID={testID} variant="error" title={title} description={description}>
         <Button testID={`${testID}-action-0`} onPress={onReload} variant="outline" size="sm">
-          {t("project.actions.reload")}
+          {t("settings.project.actions.reload")}
         </Button>
       </Alert>
     </View>
@@ -385,37 +385,36 @@ function resolveReadFailureCopy(input: {
   kind: ReadFailureCalloutProps["kind"];
   error: unknown;
   hasMultipleHosts: boolean;
-  t: TFunction<"settings">;
+  t: TFunction;
 }): { testID: string; title: string; description: string } {
-  const { t } = input;
   if (input.kind === "invalid_project_config") {
     return {
       testID: "invalid-callout",
-      title: t("project.readError.invalid.title"),
-      description: t("project.readError.invalid.description"),
+      title: input.t("settings.project.readFailures.invalidTitle"),
+      description: input.t("settings.project.readFailures.invalidDescription"),
     };
   }
   if (input.kind === "project_not_found") {
     return {
       testID: "project-not-found-callout",
-      title: t("project.readError.notFound.title"),
+      title: input.t("settings.project.readFailures.missingTitle"),
       description: input.hasMultipleHosts
-        ? t("project.readError.notFound.descriptionMultiHost")
-        : t("project.readError.notFound.description"),
+        ? input.t("settings.project.readFailures.missingWithHosts")
+        : input.t("settings.project.readFailures.missingSingleHost"),
     };
   }
   if (input.kind === "transport") {
     const detail = errorToDetail(input.error);
     return {
       testID: "read-transport-callout",
-      title: t("project.readError.transport.title"),
-      description: detail ?? t("project.readError.transport.description"),
+      title: input.t("settings.project.readFailures.transportTitle"),
+      description: detail ?? input.t("settings.project.readFailures.transportFallback"),
     };
   }
   return {
     testID: "read-failed-callout",
-    title: t("project.readError.generic.title"),
-    description: t("project.readError.generic.description"),
+    title: input.t("settings.project.readFailures.failedTitle"),
+    description: input.t("settings.project.readFailures.failedDescription"),
   };
 }
 
@@ -442,7 +441,7 @@ function ProjectConfigForm({
   client,
   onReload,
 }: ProjectConfigFormProps) {
-  const { t } = useTranslation("settings");
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
   const toast = useToast();
 
@@ -472,7 +471,7 @@ function ProjectConfigForm({
         });
         setWriteError(null);
         queryClient.invalidateQueries({ queryKey: ["projects"] });
-        toast.show(t("project.toast.saved"), { variant: "success" });
+        toast.show(t("settings.project.actions.saved"), { variant: "success" });
       } else {
         setWriteError(result.error);
       }
@@ -515,12 +514,12 @@ function ProjectConfigForm({
   const handleRemoveScript = useCallback(
     async (script: ProjectScriptDraft) => {
       const ok = await confirmDialog({
-        title: t("project.removeScript.title"),
-        message: t("project.removeScript.message", {
-          name: script.name || t("project.removeScript.fallbackName"),
+        title: t("settings.project.scripts.removeTitle"),
+        message: t("settings.project.scripts.removeMessage", {
+          name: script.name || t("settings.project.scripts.removeFallbackName"),
         }),
-        confirmLabel: t("project.actions.remove"),
-        cancelLabel: t("project.actions.cancel"),
+        confirmLabel: t("settings.project.scripts.actions.remove"),
+        cancelLabel: t("settings.project.actions.cancel"),
         destructive: true,
       });
       if (!ok) return;
@@ -529,7 +528,7 @@ function ProjectConfigForm({
         scripts: d.scripts.filter((entry) => entry.id !== script.id),
       }));
     },
-    [updateDraft, t],
+    [t, updateDraft],
   );
 
   const handleEditScript = useCallback((script: ProjectScriptDraft) => {
@@ -602,7 +601,7 @@ function ProjectConfigForm({
         hitSlop={8}
         style={settingsStyles.sectionHeaderLink}
         accessibilityRole="button"
-        accessibilityLabel={t("project.scripts.addLabel")}
+        accessibilityLabel={t("settings.project.scripts.actions.add")}
         testID="scripts-add-button"
       >
         <Plus size={ICON_SIZE} color={styles.iconColor.color} />
@@ -615,8 +614,8 @@ function ProjectConfigForm({
     () => (
       <ExternalLink
         href={WORKTREE_DOCS_URL}
-        label={t("project.worktree.docsLabel")}
-        tooltip={t("project.worktree.docsTooltip")}
+        label={t("settings.project.worktree.docs")}
+        tooltip={t("settings.project.worktree.docsTooltip")}
         testID="worktree-setup-docs-link"
       />
     ),
@@ -626,8 +625,8 @@ function ProjectConfigForm({
     () => (
       <ExternalLink
         href={WORKTREE_DOCS_URL}
-        label={t("project.worktree.docsLabel")}
-        tooltip={t("project.worktree.docsTooltip")}
+        label={t("settings.project.worktree.docs")}
+        tooltip={t("settings.project.worktree.docsTooltip")}
         testID="worktree-teardown-docs-link"
       />
     ),
@@ -641,18 +640,18 @@ function ProjectConfigForm({
   return (
     <View>
       <SettingsGroup
-        title={t("project.worktree.title")}
-        info={t("project.worktree.info")}
+        title={t("settings.project.worktree.title")}
+        info={t("settings.project.worktree.info")}
         testID="worktree-group"
       >
         <SettingsSection
-          title={t("project.worktree.setupTitle")}
+          title={t("settings.project.worktree.setup")}
           testID="worktree-setup-section"
           trailing={setupDocsLink}
         >
           <SettingsTextAreaCard
             testID="worktree-setup-input"
-            accessibilityLabel={t("project.worktree.setupLabel")}
+            accessibilityLabel={t("settings.project.worktree.setupAccessibility")}
             value={draft.setupText}
             onChangeText={handleSetupChange}
             placeholder="npm install"
@@ -660,14 +659,14 @@ function ProjectConfigForm({
         </SettingsSection>
 
         <SettingsSection
-          title={t("project.worktree.teardownTitle")}
+          title={t("settings.project.worktree.teardown")}
           testID="worktree-teardown-section"
           trailing={teardownDocsLink}
           flush
         >
           <SettingsTextAreaCard
             testID="worktree-teardown-input"
-            accessibilityLabel={t("project.worktree.teardownLabel")}
+            accessibilityLabel={t("settings.project.worktree.teardownAccessibility")}
             value={draft.teardownText}
             onChangeText={handleTeardownChange}
             placeholder="docker compose down"
@@ -676,15 +675,15 @@ function ProjectConfigForm({
       </SettingsGroup>
 
       <SettingsGroup
-        title={t("project.scripts.title")}
-        info={t("project.scripts.info")}
+        title={t("settings.project.scripts.title")}
+        info={t("settings.project.scripts.info")}
         trailing={scriptsTrailing}
         testID="scripts-group"
       >
         <View style={settingsStyles.card} testID="scripts-list">
           {draft.scripts.length === 0 ? (
             <View style={settingsStyles.row}>
-              <Text style={styles.emptyScripts}>{t("project.scripts.empty")}</Text>
+              <Text style={styles.emptyScripts}>{t("settings.project.scripts.empty")}</Text>
             </View>
           ) : (
             draft.scripts.map((script, index) => (
@@ -701,8 +700,8 @@ function ProjectConfigForm({
       </SettingsGroup>
 
       <SettingsGroup
-        title={t("project.metadata.title")}
-        info={t("project.metadata.info")}
+        title={t("settings.project.metadata.title")}
+        info={t("settings.project.metadata.info")}
         testID="metadata-group"
       >
         {METADATA_PROMPT_KEYS.map((key, index) => (
@@ -721,8 +720,8 @@ function ProjectConfigForm({
           <Alert
             testID="stale-callout"
             variant="error"
-            title={t("project.stale.title")}
-            description={t("project.stale.description")}
+            title={t("settings.project.writeFailures.staleTitle")}
+            description={t("settings.project.writeFailures.staleDescription")}
           >
             <Button
               testID="stale-callout-action-0"
@@ -730,7 +729,7 @@ function ProjectConfigForm({
               variant="outline"
               size="sm"
             >
-              {t("project.actions.reload")}
+              {t("settings.project.actions.reload")}
             </Button>
           </Alert>
         </View>
@@ -741,8 +740,8 @@ function ProjectConfigForm({
           <Alert
             testID="write-failed-callout"
             variant="error"
-            title={t("project.writeFailed.title")}
-            description={t("project.writeFailed.description")}
+            title={t("settings.project.writeFailures.failedTitle")}
+            description={t("settings.project.writeFailures.failedDescription")}
           >
             <Button
               testID="write-failed-callout-action-0"
@@ -750,7 +749,7 @@ function ProjectConfigForm({
               variant="outline"
               size="sm"
             >
-              {t("project.actions.tryAgain")}
+              {t("settings.project.actions.tryAgain")}
             </Button>
             <Button
               testID="write-failed-callout-action-1"
@@ -758,7 +757,7 @@ function ProjectConfigForm({
               variant="outline"
               size="sm"
             >
-              {t("project.actions.reload")}
+              {t("settings.project.actions.reload")}
             </Button>
           </Alert>
         </View>
@@ -767,14 +766,16 @@ function ProjectConfigForm({
       <View style={styles.footer}>
         <Button
           testID="save-button"
-          accessibilityLabel={t("project.actions.saveConfig")}
+          accessibilityLabel={t("settings.project.actions.save")}
           variant="default"
           size="md"
           disabled={saveDisabled}
           loading={saveMutation.isPending}
           onPress={handleSave}
         >
-          {saveMutation.isPending ? t("project.actions.saving") : t("project.actions.save")}
+          {saveMutation.isPending
+            ? t("settings.project.actions.saving")
+            : t("settings.project.actions.save")}
         </Button>
       </View>
 
@@ -800,7 +801,7 @@ interface ProjectNameEditorProps {
 }
 
 function ProjectNameEditor({ project, client }: ProjectNameEditorProps) {
-  const { t } = useTranslation("settings");
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
   const toast = useToast();
   const [isEditing, setIsEditing] = useState(false);
@@ -811,10 +812,11 @@ function ProjectNameEditor({ project, client }: ProjectNameEditorProps) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["projects"] });
       setIsEditing(false);
-      toast.show(t("project.toast.renamed"), { variant: "success" });
+      toast.show(t("settings.project.rename.renamedToast"), { variant: "success" });
     },
     onError: (error) => {
-      const message = error instanceof Error ? error.message : t("project.toast.renameFailed");
+      const message =
+        error instanceof Error ? error.message : t("settings.project.rename.errorFallback");
       toast.show(message, { variant: "error" });
     },
   });
@@ -854,7 +856,7 @@ function ProjectNameEditor({ project, client }: ProjectNameEditorProps) {
         </Text>
         <Pressable
           testID="project-name-edit-button"
-          accessibilityLabel={t("project.name.renameLabel")}
+          accessibilityLabel={t("settings.project.rename.renameLabel")}
           onPress={handleStartEdit}
           hitSlop={8}
           style={styles.nameEditorIconButton}
@@ -864,13 +866,13 @@ function ProjectNameEditor({ project, client }: ProjectNameEditorProps) {
         {project.projectCustomName ? (
           <Pressable
             testID="project-name-reset-button"
-            accessibilityLabel={t("project.name.resetLabel")}
+            accessibilityLabel={t("settings.project.rename.resetLabel")}
             onPress={handleReset}
             disabled={renameMutation.isPending}
             hitSlop={8}
             style={styles.nameEditorResetButton}
           >
-            <Text style={styles.nameEditorResetText}>{t("project.name.reset")}</Text>
+            <Text style={styles.nameEditorResetText}>{t("settings.project.rename.reset")}</Text>
           </Pressable>
         ) : null}
       </View>
@@ -881,7 +883,7 @@ function ProjectNameEditor({ project, client }: ProjectNameEditorProps) {
     <View style={styles.nameEditorRow}>
       <TextInput
         testID="project-name-input"
-        accessibilityLabel={t("project.name.inputLabel")}
+        accessibilityLabel={t("settings.project.rename.projectNameLabel")}
         value={value}
         onChangeText={setValue}
         placeholder={project.projectName}
@@ -894,7 +896,7 @@ function ProjectNameEditor({ project, client }: ProjectNameEditorProps) {
       />
       <Pressable
         testID="project-name-save-button"
-        accessibilityLabel={t("project.name.saveLabel")}
+        accessibilityLabel={t("settings.project.rename.saveLabel")}
         onPress={handleSave}
         disabled={renameMutation.isPending}
         hitSlop={8}
@@ -904,7 +906,7 @@ function ProjectNameEditor({ project, client }: ProjectNameEditorProps) {
       </Pressable>
       <Pressable
         testID="project-name-cancel-button"
-        accessibilityLabel={t("project.name.cancelLabel")}
+        accessibilityLabel={t("settings.project.rename.cancelLabel")}
         onPress={handleCancel}
         disabled={renameMutation.isPending}
         hitSlop={8}
@@ -977,11 +979,11 @@ interface HostPickerProps {
 }
 
 function HostPicker({ hosts, selectedHost, onSelectHost }: HostPickerProps) {
-  const { t } = useTranslation("settings");
+  const { t } = useTranslation();
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
-        accessibilityLabel={t("project.host.switchLabel")}
+        accessibilityLabel={t("settings.project.switchHost")}
         testID="host-picker"
         style={styles.hostIndicator}
       >
@@ -1035,7 +1037,7 @@ interface MetadataPromptSectionProps {
 }
 
 function MetadataPromptSection({ promptKey, value, onChange, flush }: MetadataPromptSectionProps) {
-  const { t } = useTranslation("settings");
+  const { t } = useTranslation();
   const meta = METADATA_PROMPT_FIELDS[promptKey];
   const title = t(meta.titleKey);
   const handleChange = useCallback(
@@ -1063,7 +1065,7 @@ interface ScriptRowProps {
 }
 
 function ScriptRow({ script, isFirst, onEdit, onRemove }: ScriptRowProps) {
-  const { t } = useTranslation("settings");
+  const { t } = useTranslation();
   const handleEdit = useCallback(() => onEdit(script), [onEdit, script]);
   const handleRemove = useCallback(() => onRemove(script), [onRemove, script]);
   const rowStyle = isFirst ? styles.scriptRow : styles.scriptRowWithBorder;
@@ -1072,7 +1074,7 @@ function ScriptRow({ script, isFirst, onEdit, onRemove }: ScriptRowProps) {
     <View style={rowStyle} testID={`script-row-${script.id}`}>
       <Pressable style={styles.scriptRowMain} onPress={handleEdit}>
         <Text style={settingsStyles.rowTitle} numberOfLines={1}>
-          {script.name || t("project.scripts.untitled")}
+          {script.name || t("settings.project.scripts.untitled")}
         </Text>
         <Text style={settingsStyles.rowHint} numberOfLines={1}>
           {scriptHint(script, t)}
@@ -1080,7 +1082,7 @@ function ScriptRow({ script, isFirst, onEdit, onRemove }: ScriptRowProps) {
       </Pressable>
       <DropdownMenu>
         <DropdownMenuTrigger
-          accessibilityLabel={t("project.scripts.menuLabel")}
+          accessibilityLabel={t("settings.project.scripts.menuAccessibility")}
           testID={`script-row-menu-${script.id}`}
           style={styles.scriptKebab}
         >
@@ -1088,14 +1090,14 @@ function ScriptRow({ script, isFirst, onEdit, onRemove }: ScriptRowProps) {
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" minWidth={160}>
           <DropdownMenuItem testID={`script-action-${script.id}-edit`} onSelect={handleEdit}>
-            {t("project.actions.edit")}
+            {t("settings.project.scripts.actions.edit")}
           </DropdownMenuItem>
           <DropdownMenuItem
             testID={`script-action-${script.id}-remove`}
             destructive
             onSelect={handleRemove}
           >
-            {t("project.actions.remove")}
+            {t("settings.project.scripts.actions.remove")}
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
@@ -1103,10 +1105,10 @@ function ScriptRow({ script, isFirst, onEdit, onRemove }: ScriptRowProps) {
   );
 }
 
-function scriptHint(script: ProjectScriptDraft, t: TFunction<"settings">): string {
+function scriptHint(script: ProjectScriptDraft, t: TFunction): string {
   const pieces: string[] = [];
   if (script.type) pieces.push(script.type);
-  if (script.portText) pieces.push(t("project.scripts.portHint", { port: script.portText }));
+  if (script.portText) pieces.push(t("settings.project.scripts.port", { port: script.portText }));
   if (script.commandText) pieces.push(script.commandText.split("\n")[0] ?? "");
   return pieces.join(" · ");
 }
@@ -1117,10 +1119,11 @@ interface ScriptValidation {
   commandError: string | null;
 }
 
-function validateScript(script: ProjectScriptDraft, t: TFunction<"settings">): ScriptValidation {
-  const nameError = script.name.trim().length === 0 ? t("project.scriptEdit.nameRequired") : null;
+function validateScript(script: ProjectScriptDraft, t: TFunction): ScriptValidation {
+  const nameError =
+    script.name.trim().length === 0 ? t("settings.project.scripts.nameRequired") : null;
   const commandError =
-    script.commandText.trim().length === 0 ? t("project.scriptEdit.commandRequired") : null;
+    script.commandText.trim().length === 0 ? t("settings.project.scripts.commandRequired") : null;
   return {
     hasErrors: Boolean(nameError || commandError),
     nameError,
@@ -1144,7 +1147,7 @@ const ALL_TOUCHED: ScriptFieldsTouched = { name: true, command: true };
 const NONE_TOUCHED: ScriptFieldsTouched = { name: false, command: false };
 
 function ScriptEditModal({ script, onChange, onCancel, onSave }: ScriptEditModalProps) {
-  const { t } = useTranslation("settings");
+  const { t } = useTranslation();
   const [touched, setTouched] = useState<ScriptFieldsTouched>(NONE_TOUCHED);
 
   useEffect(() => {
@@ -1187,8 +1190,8 @@ function ScriptEditModal({ script, onChange, onCancel, onSave }: ScriptEditModal
   const sheetHeader = useMemo<SheetHeader>(
     () => ({
       title: script.name
-        ? t("project.scriptEdit.editTitle", { name: script.name })
-        : t("project.scriptEdit.newTitle"),
+        ? t("settings.project.scripts.editScript", { name: script.name })
+        : t("settings.project.scripts.newScript"),
     }),
     [script.name, t],
   );
@@ -1202,10 +1205,10 @@ function ScriptEditModal({ script, onChange, onCancel, onSave }: ScriptEditModal
       desktopMaxWidth={560}
     >
       <View style={styles.modalSection}>
-        <Text style={styles.modalLabel}>{t("project.scriptEdit.nameLabel")}</Text>
+        <Text style={styles.modalLabel}>{t("settings.project.scripts.name")}</Text>
         <TextInput
           testID="script-edit-name"
-          accessibilityLabel={t("project.scriptEdit.nameLabel")}
+          accessibilityLabel={t("settings.project.scripts.nameAccessibility")}
           value={script.name}
           onChangeText={handleNameChange}
           onBlur={handleNameBlur}
@@ -1220,10 +1223,10 @@ function ScriptEditModal({ script, onChange, onCancel, onSave }: ScriptEditModal
         ) : null}
       </View>
       <View style={styles.modalSection}>
-        <Text style={styles.modalLabel}>{t("project.scriptEdit.commandLabel")}</Text>
+        <Text style={styles.modalLabel}>{t("settings.project.scripts.command")}</Text>
         <TextInput
           testID="script-edit-command"
-          accessibilityLabel={t("project.scriptEdit.commandLabel")}
+          accessibilityLabel={t("settings.project.scripts.commandAccessibility")}
           multiline
           value={script.commandText}
           onChangeText={handleCommandChange}
@@ -1241,23 +1244,25 @@ function ScriptEditModal({ script, onChange, onCancel, onSave }: ScriptEditModal
       <View style={styles.modalSection}>
         <View style={styles.serviceToggleRow}>
           <View style={styles.serviceToggleText}>
-            <Text style={styles.serviceToggleLabel}>{t("project.scriptEdit.serviceLabel")}</Text>
-            <Text style={styles.modalHint}>{t("project.scriptEdit.serviceHint")}</Text>
+            <Text style={styles.serviceToggleLabel}>
+              {t("settings.project.scripts.runAsService")}
+            </Text>
+            <Text style={styles.modalHint}>{t("settings.project.scripts.serviceHint")}</Text>
           </View>
           <Switch
             value={isService}
             onValueChange={handleServiceToggle}
-            accessibilityLabel={t("project.scriptEdit.serviceLabel")}
+            accessibilityLabel={t("settings.project.scripts.runAsService")}
             testID="script-edit-service-toggle"
           />
         </View>
       </View>
       <View style={styles.modalFooter}>
         <Button onPress={onCancel} variant="ghost" size="md" testID="script-edit-cancel">
-          {t("project.actions.cancel")}
+          {t("settings.project.actions.cancel")}
         </Button>
         <Button onPress={handleSavePress} variant="default" size="md" testID="script-edit-save">
-          {t("project.actions.save")}
+          {t("settings.project.actions.save")}
         </Button>
       </View>
     </AdaptiveModalSheet>

@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState } from "react";
 import { Pressable, Text, View } from "react-native";
-import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
+import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { Import as ImportIcon } from "lucide-react-native";
 import type { Theme } from "@/styles/theme";
 
@@ -14,7 +14,7 @@ interface ComposerImportPillProps {
 }
 
 export function ComposerImportPill({ onPress, disabled = false }: ComposerImportPillProps) {
-  const { t } = useTranslation("composer");
+  const { t } = useTranslation();
   const [isHovered, setIsHovered] = useState(false);
   const handleHoverIn = useCallback(() => setIsHovered(true), []);
   const handleHoverOut = useCallback(() => setIsHovered(false), []);
@@ -24,7 +24,7 @@ export function ComposerImportPill({ onPress, disabled = false }: ComposerImport
       <Pressable
         testID="composer-import-agent-pill"
         accessibilityRole="button"
-        accessibilityLabel={t("draft.importPill.accessibilityLabel")}
+        accessibilityLabel={t("importSession.title")}
         onPress={onPress}
         disabled={disabled}
         onHoverIn={handleHoverIn}
@@ -33,7 +33,7 @@ export function ComposerImportPill({ onPress, disabled = false }: ComposerImport
       >
         <ThemedImportIcon size={14} uniProps={iconColorMapping} />
         <Text style={styles.label} numberOfLines={1}>
-          {t("draft.importPill.label")}
+          {t("importSession.title")}
         </Text>
       </Pressable>
     </View>

@@ -1,7 +1,7 @@
 import { isSyntaxThemeId, type SyntaxThemeId } from "@getpaseo/highlight";
 import type { QueryClient } from "@tanstack/react-query";
 import type { DesktopSettings } from "@/desktop/settings/desktop-settings";
-import { isLanguageSetting, type LanguageSetting } from "@/i18n/languages";
+import { parseAppLanguage, type AppLanguage } from "@/i18n/locales";
 import { THEME_TO_UNISTYLES, type ThemeName } from "@/styles/theme";
 
 export const APP_SETTINGS_KEY = "@paseo:app-settings";
@@ -32,7 +32,7 @@ export const MAX_TERMINAL_PADDING = 64;
 
 export interface AppSettings {
   theme: ThemeName | "auto";
-  language: LanguageSetting; // "auto" follows the device locale
+  language: AppLanguage;
   sendBehavior: SendBehavior;
   serviceUrlBehavior: ServiceUrlBehavior;
   terminalScrollbackLines: number;
@@ -55,7 +55,7 @@ export interface Settings extends AppSettings {
 
 export const DEFAULT_CLIENT_SETTINGS: AppSettings = {
   theme: "auto",
-  language: "auto",
+  language: "system",
   sendBehavior: "interrupt",
   serviceUrlBehavior: "ask",
   terminalScrollbackLines: DEFAULT_TERMINAL_SCROLLBACK_LINES,
@@ -167,8 +167,10 @@ function pickAppSettings(stored: Partial<AppSettings>): Partial<AppSettings> {
   if (typeof stored.theme === "string" && VALID_THEMES.has(stored.theme)) {
     result.theme = stored.theme;
   }
-  if (isLanguageSetting(stored.language)) {
-    result.language = stored.language;
+  const language =
+    parseAppLanguage(stored.language) ?? migrateLegacyLanguageSetting(stored.language);
+  if (language !== null) {
+    result.language = language;
   }
   if (stored.sendBehavior === "interrupt" || stored.sendBehavior === "queue") {
     result.sendBehavior = stored.sendBehavior;
@@ -224,6 +226,20 @@ function pickAppSettings(stored: Partial<AppSettings>): Partial<AppSettings> {
     }
   }
   return result;
+}
+
+// COMPAT(forkLanguageSetting): the pre-merge fork persisted language as
+// "auto" | "en" | "zh" | "ja" | "es". Map those legacy values onto upstream's
+// AppLanguage on read so an existing install keeps its language choice.
+// "zh" → "zh-CN"; "auto" and anything unsupported (e.g. "ja") → "system".
+function migrateLegacyLanguageSetting(value: unknown): AppLanguage | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  if (value === "zh") {
+    return "zh-CN";
+  }
+  return "system";
 }
 
 function pickAppSettingsFromLegacy(legacy: Record<string, unknown>): Partial<AppSettings> {

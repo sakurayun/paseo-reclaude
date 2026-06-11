@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState, type ReactElement } from "react";
-import { useTranslation } from "react-i18next";
 import { Pressable, ScrollView, Text, View, type PressableStateCallbackType } from "react-native";
+import { useTranslation } from "react-i18next";
 import { Archive, ChevronDown, ChevronRight } from "lucide-react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { getProviderIcon } from "@/components/provider-icons";
@@ -124,12 +124,12 @@ function SubagentsTrackRow({
   onOpenSubagent,
   onArchiveSubagent,
 }: SubagentsTrackRowProps): ReactElement {
-  const isCompact = useIsCompactFormFactor();
   const { t } = useTranslation();
+  const isCompact = useIsCompactFormFactor();
   const [hovered, setHovered] = useState(false);
   const presentation = useMemo(() => buildRowPresentation(row), [row]);
   const displayLabel =
-    presentation.titleState === "loading" ? t("state.loading") : presentation.label;
+    presentation.titleState === "loading" ? t("common.states.loading") : presentation.label;
   const handlePress = useCallback(() => {
     onOpenSubagent(row.id);
   }, [onOpenSubagent, row.id]);
@@ -182,7 +182,7 @@ function SubagentArchiveButton({
   visible: boolean;
   onPress: () => void;
 }): ReactElement {
-  const { t } = useTranslation("agents");
+  const { t } = useTranslation();
   return (
     <View
       style={visible ? styles.archiveSlotVisible : styles.archiveSlotHidden}
@@ -192,7 +192,7 @@ function SubagentArchiveButton({
         <TooltipTrigger asChild disabled={!visible}>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel={`Archive ${displayLabel}`}
+            accessibilityLabel={t("subagents.archiveAction", { label: displayLabel })}
             testID={`subagents-track-archive-${rowId}`}
             onPress={onPress}
             style={styles.archiveButton}

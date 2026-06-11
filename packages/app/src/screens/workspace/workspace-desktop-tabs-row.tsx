@@ -7,8 +7,6 @@ import {
   type Dispatch,
   type SetStateAction,
 } from "react";
-import { useTranslation } from "react-i18next";
-import type { TFunction } from "i18next";
 import {
   ActivityIndicator,
   Pressable,
@@ -28,11 +26,13 @@ import {
   RotateCw,
   Rows2,
   Globe,
+  Plus,
   SquarePen,
   SquareTerminal,
   X,
 } from "lucide-react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
+import { useTranslation } from "react-i18next";
 import { SortableInlineList } from "@/components/sortable-inline-list";
 import type {
   DraggableListDragHandleProps,
@@ -50,6 +50,7 @@ import { Shortcut } from "@/components/ui/shortcut";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useShortcutKeys } from "@/hooks/use-shortcut-keys";
 import { WORKSPACE_SECONDARY_HEADER_HEIGHT } from "@/constants/layout";
+import type { ShortcutKey } from "@/utils/format-shortcut";
 import { useWorkspaceTabLayout } from "@/screens/workspace/use-workspace-tab-layout";
 import {
   WorkspaceTabPresentationResolver,
@@ -61,6 +62,7 @@ import {
   buildWorkspaceDesktopTabActions,
   type WorkspaceDesktopTabActions,
   type WorkspaceTabMenuEntry,
+  type WorkspaceTabMenuLabels,
 } from "@/screens/workspace/workspace-tab-menu";
 import type { WorkspaceTabDescriptor } from "@/screens/workspace/workspace-tabs-types";
 import type { Theme } from "@/styles/theme";
@@ -68,6 +70,7 @@ import { RenderProfile } from "@/utils/render-profiler";
 
 const DROPDOWN_WIDTH = 220;
 const LOADING_TAB_LABEL_SKELETON_WIDTH = 80;
+const DEFAULT_INLINE_ADD_BUTTON_RESERVED_WIDTH = 36;
 
 const ThemedActivityIndicator = withUnistyles(ActivityIndicator);
 const ThemedX = withUnistyles(X);
@@ -82,12 +85,58 @@ const ThemedSquareTerminal = withUnistyles(SquareTerminal);
 const ThemedGlobe = withUnistyles(Globe);
 const ThemedColumns2 = withUnistyles(Columns2);
 const ThemedRows2 = withUnistyles(Rows2);
+const ThemedPlus = withUnistyles(Plus);
 
 const foregroundColorMapping = (theme: Theme) => ({ color: theme.colors.foreground });
 const mutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
 
 function newTabActionButtonStyle({ hovered, pressed }: PressableStateCallbackType) {
   return [styles.newTabActionButton, (hovered || pressed) && styles.newTabActionButtonHovered];
+}
+
+function inlineAddActionButtonStyle({ hovered, pressed }: PressableStateCallbackType) {
+  return [styles.inlineAddActionButton, (hovered || pressed) && styles.newTabActionButtonHovered];
+}
+
+function updateMeasuredWidth(setWidth: Dispatch<SetStateAction<number>>, event: LayoutChangeEvent) {
+  const nextWidth = Math.round(event.nativeEvent.layout.width);
+  setWidth((current) => (Math.abs(current - nextWidth) > 1 ? nextWidth : current));
+}
+
+interface WorkspaceInlineAddTabButtonProps {
+  shortcutKeys: ShortcutKey[][] | null;
+  onPress: () => void;
+  onLayout: (event: LayoutChangeEvent) => void;
+}
+
+function WorkspaceInlineAddTabButton({
+  shortcutKeys,
+  onPress,
+  onLayout,
+}: WorkspaceInlineAddTabButtonProps) {
+  return (
+    <View style={styles.inlineAddButton} onLayout={onLayout}>
+      <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
+        <TooltipTrigger
+          testID="workspace-new-agent-tab-inline"
+          onPress={onPress}
+          accessibilityRole="button"
+          accessibilityLabel="New agent tab"
+          style={inlineAddActionButtonStyle}
+        >
+          <ThemedPlus size={16} uniProps={mutedColorMapping} />
+        </TooltipTrigger>
+        <TooltipContent side="bottom" align="center" offset={8}>
+          <View style={styles.newTabTooltipRow}>
+            <Text style={styles.newTabTooltipText}>New agent tab</Text>
+            {shortcutKeys ? (
+              <Shortcut chord={shortcutKeys} style={styles.newTabTooltipShortcut} />
+            ) : null}
+          </View>
+        </TooltipContent>
+      </Tooltip>
+    </View>
+  );
 }
 
 function TabContextMenuItem({
@@ -176,20 +225,23 @@ interface WorkspaceDesktopTabsRowProps {
   showPaneSplitActions?: boolean;
 }
 
-function getFallbackTabLabel(tab: WorkspaceTabDescriptor, t: TFunction<"workspaces">): string {
+function getFallbackTabLabel(
+  tab: WorkspaceTabDescriptor,
+  labels: { newAgent: string; setup: string; terminal: string; agent: string },
+): string {
   if (tab.target.kind === "draft") {
-    return t("screen.tab.newAgent");
+    return labels.newAgent;
   }
   if (tab.target.kind === "setup") {
-    return t("screen.tab.setup");
+    return labels.setup;
   }
   if (tab.target.kind === "terminal") {
-    return t("screen.tab.terminal");
+    return labels.terminal;
   }
   if (tab.target.kind === "file") {
     return tab.target.path.split("/").findLast(Boolean) ?? tab.target.path;
   }
-  return t("screen.tab.agent");
+  return labels.agent;
 }
 
 function useMiddleClickClose(onClose: () => void) {
@@ -486,28 +538,34 @@ export function WorkspaceDesktopTabsRow({
   tabDropPreviewIndex = null,
   showPaneSplitActions = true,
 }: WorkspaceDesktopTabsRowProps) {
-  const { t } = useTranslation("workspaces");
+  const { t } = useTranslation();
   const newTabKeys = useShortcutKeys("workspace-tab-new");
   const newTerminalKeys = useShortcutKeys("workspace-terminal-new");
   const splitRightKeys = useShortcutKeys("workspace-pane-split-right");
   const splitDownKeys = useShortcutKeys("workspace-pane-split-down");
   const [tabsContainerWidth, setTabsContainerWidth] = useState<number>(0);
   const [tabsActionsWidth, setTabsActionsWidth] = useState<number>(0);
+  const [inlineAddButtonWidth, setInlineAddButtonWidth] = useState<number>(0);
 
   const handleTabsContainerLayout = useCallback((event: LayoutChangeEvent) => {
-    const nextWidth = Math.round(event.nativeEvent.layout.width);
-    setTabsContainerWidth((current) => (Math.abs(current - nextWidth) > 1 ? nextWidth : current));
+    updateMeasuredWidth(setTabsContainerWidth, event);
   }, []);
 
   const handleTabsActionsLayout = useCallback((event: LayoutChangeEvent) => {
-    const nextWidth = Math.round(event.nativeEvent.layout.width);
-    setTabsActionsWidth((current) => (Math.abs(current - nextWidth) > 1 ? nextWidth : current));
+    updateMeasuredWidth(setTabsActionsWidth, event);
+  }, []);
+
+  const handleInlineAddButtonLayout = useCallback((event: LayoutChangeEvent) => {
+    updateMeasuredWidth(setInlineAddButtonWidth, event);
   }, []);
 
   const layoutMetrics = useMemo(
     () => ({
       rowHorizontalInset: 0,
-      actionsReservedWidth: Math.max(0, tabsActionsWidth),
+      actionsReservedWidth: Math.max(
+        0,
+        tabsActionsWidth + (inlineAddButtonWidth || DEFAULT_INLINE_ADD_BUTTON_RESERVED_WIDTH),
+      ),
       rowPaddingHorizontal: 0,
       tabGap: 0,
       maxTabWidth: 200,
@@ -516,16 +574,41 @@ export function WorkspaceDesktopTabsRow({
       estimatedCharWidth: 7,
       closeButtonWidth: 22,
     }),
-    [tabsActionsWidth],
+    [inlineAddButtonWidth, tabsActionsWidth],
   );
 
+  const fallbackTabLabels = useMemo(
+    () => ({
+      newAgent: t("workspace.tabs.fallback.newAgent"),
+      setup: t("workspace.tabs.fallback.setup"),
+      terminal: t("workspace.tabs.fallback.terminal"),
+      agent: t("workspace.tabs.fallback.agent"),
+    }),
+    [t],
+  );
+  const tabMenuLabels = useMemo<WorkspaceTabMenuLabels>(
+    () => ({
+      copyResumeCommand: t("workspace.tabs.menu.copyResumeCommand"),
+      copyAgentId: t("workspace.tabs.menu.copyAgentId"),
+      rename: t("workspace.tabs.menu.rename"),
+      closeAbove: t("workspace.tabs.menu.closeAbove"),
+      closeBelow: t("workspace.tabs.menu.closeBelow"),
+      closeLeft: t("workspace.tabs.menu.closeLeft"),
+      closeRight: t("workspace.tabs.menu.closeRight"),
+      closeOthers: t("workspace.tabs.menu.closeOthers"),
+      reloadAgent: t("workspace.tabs.menu.reloadAgent"),
+      reloadAgentTooltip: t("workspace.tabs.menu.reloadAgentTooltip"),
+      close: t("workspace.tabs.menu.close"),
+    }),
+    [t],
+  );
   const tabLabelLengths = useMemo(
     () =>
       tabs.map((tab) => {
-        const label = getFallbackTabLabel(tab.tab, t);
+        const label = getFallbackTabLabel(tab.tab, fallbackTabLabels);
         return label.length;
       }),
-    [tabs, t],
+    [fallbackTabLabels, tabs],
   );
 
   const { layout } = useWorkspaceTabLayout({
@@ -612,6 +695,7 @@ export function WorkspaceDesktopTabsRow({
           setHoveredCloseTabKey={setHoveredCloseTabKey}
           onNavigateTab={onNavigateTab}
           onCloseTab={onCloseTab}
+          labels={tabMenuLabels}
           dragHandleProps={dragHandleProps}
           showDropIndicatorBefore={showDropIndicatorBefore}
           showDropIndicatorAfter={showDropIndicatorAfter}
@@ -635,6 +719,7 @@ export function WorkspaceDesktopTabsRow({
       onReloadAgent,
       onRenameTab,
       setHoveredCloseTabKey,
+      tabMenuLabels,
       tabDropPreviewIndex,
       tabs.length,
     ],
@@ -675,6 +760,11 @@ export function WorkspaceDesktopTabsRow({
           getItemData={getTabDragData}
           renderItem={renderTab}
         />
+        <WorkspaceInlineAddTabButton
+          shortcutKeys={newTabKeys}
+          onPress={handleCreateAgentTab}
+          onLayout={handleInlineAddButtonLayout}
+        />
       </ScrollView>
       <View style={styles.tabsActions} onLayout={handleTabsActionsLayout}>
         <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
@@ -682,14 +772,14 @@ export function WorkspaceDesktopTabsRow({
             testID="workspace-new-agent-tab"
             onPress={handleCreateAgentTab}
             accessibilityRole="button"
-            accessibilityLabel={t("screen.tabActions.newAgentTab")}
+            accessibilityLabel={t("workspace.tabs.actions.newAgent")}
             style={newTabActionButtonStyle}
           >
             <ThemedSquarePen size={14} uniProps={mutedColorMapping} />
           </TooltipTrigger>
           <TooltipContent side="bottom" align="center" offset={8}>
             <View style={styles.newTabTooltipRow}>
-              <Text style={styles.newTabTooltipText}>{t("screen.tabActions.newAgentTab")}</Text>
+              <Text style={styles.newTabTooltipText}>{t("workspace.tabs.actions.newAgent")}</Text>
               {newTabKeys ? (
                 <Shortcut chord={newTabKeys} style={styles.newTabTooltipShortcut} />
               ) : null}
@@ -704,8 +794,8 @@ export function WorkspaceDesktopTabsRow({
             accessibilityRole="button"
             accessibilityLabel={
               isWaitingOnTerminalReadiness
-                ? t("screen.tabActions.preparingTerminalTab")
-                : t("screen.tabActions.newTerminalTab")
+                ? t("workspace.tabs.actions.preparingTerminal")
+                : t("workspace.tabs.actions.newTerminal")
             }
             style={newTerminalActionButtonStyle}
           >
@@ -715,8 +805,8 @@ export function WorkspaceDesktopTabsRow({
             <View style={styles.newTabTooltipRow}>
               <Text style={styles.newTabTooltipText}>
                 {isWaitingOnTerminalReadiness
-                  ? t("screen.tabActions.preparingTerminal")
-                  : t("screen.tabActions.newTerminalTab")}
+                  ? t("workspace.tabs.actions.preparingTerminalTooltip")
+                  : t("workspace.tabs.actions.newTerminal")}
               </Text>
               {newTerminalKeys ? (
                 <Shortcut chord={newTerminalKeys} style={styles.newTabTooltipShortcut} />
@@ -730,14 +820,16 @@ export function WorkspaceDesktopTabsRow({
               testID="workspace-new-browser"
               onPress={handleCreateBrowser}
               accessibilityRole="button"
-              accessibilityLabel={t("screen.tabActions.newBrowserTab")}
+              accessibilityLabel={t("workspace.tabs.actions.newBrowser")}
               style={newTabActionButtonStyle}
             >
               <ThemedGlobe size={14} uniProps={mutedColorMapping} />
             </TooltipTrigger>
             <TooltipContent side="bottom" align="center" offset={8}>
               <View style={styles.newTabTooltipRow}>
-                <Text style={styles.newTabTooltipText}>{t("screen.tabActions.newBrowserTab")}</Text>
+                <Text style={styles.newTabTooltipText}>
+                  {t("workspace.tabs.actions.newBrowser")}
+                </Text>
               </View>
             </TooltipContent>
           </Tooltip>
@@ -748,7 +840,7 @@ export function WorkspaceDesktopTabsRow({
               <TooltipTrigger
                 onPress={onSplitRight}
                 accessibilityRole="button"
-                accessibilityLabel={t("screen.tabActions.splitPaneRight")}
+                accessibilityLabel={t("workspace.tabs.actions.splitRight")}
                 style={newTabActionButtonStyle}
               >
                 <ThemedColumns2 size={14} uniProps={mutedColorMapping} />
@@ -756,7 +848,7 @@ export function WorkspaceDesktopTabsRow({
               <TooltipContent side="bottom" align="center" offset={8}>
                 <View style={styles.newTabTooltipRow}>
                   <Text style={styles.newTabTooltipText}>
-                    {t("screen.tabActions.splitPaneRight")}
+                    {t("workspace.tabs.actions.splitRight")}
                   </Text>
                   {splitRightKeys ? (
                     <Shortcut chord={splitRightKeys} style={styles.newTabTooltipShortcut} />
@@ -768,7 +860,7 @@ export function WorkspaceDesktopTabsRow({
               <TooltipTrigger
                 onPress={onSplitDown}
                 accessibilityRole="button"
-                accessibilityLabel={t("screen.tabActions.splitPaneDown")}
+                accessibilityLabel={t("workspace.tabs.actions.splitDown")}
                 style={newTabActionButtonStyle}
               >
                 <ThemedRows2 size={14} uniProps={mutedColorMapping} />
@@ -776,7 +868,7 @@ export function WorkspaceDesktopTabsRow({
               <TooltipContent side="bottom" align="center" offset={8}>
                 <View style={styles.newTabTooltipRow}>
                   <Text style={styles.newTabTooltipText}>
-                    {t("screen.tabActions.splitPaneDown")}
+                    {t("workspace.tabs.actions.splitDown")}
                   </Text>
                   {splitDownKeys ? (
                     <Shortcut chord={splitDownKeys} style={styles.newTabTooltipShortcut} />
@@ -813,6 +905,7 @@ function ResolvedDesktopTabChip({
   setHoveredCloseTabKey,
   onNavigateTab,
   onCloseTab,
+  labels,
   dragHandleProps,
   showDropIndicatorBefore,
   showDropIndicatorAfter,
@@ -837,15 +930,15 @@ function ResolvedDesktopTabChip({
   setHoveredCloseTabKey: Dispatch<SetStateAction<string | null>>;
   onNavigateTab: (tabId: string) => void;
   onCloseTab: (tabId: string) => Promise<void> | void;
+  labels: WorkspaceTabMenuLabels;
   dragHandleProps: DraggableListDragHandleProps | undefined;
   showDropIndicatorBefore: boolean;
   showDropIndicatorAfter: boolean;
 }) {
-  const { t } = useTranslation("workspaces");
+  const { t } = useTranslation();
   const resolvedTab = useMemo(
     () =>
       buildWorkspaceDesktopTabActions({
-        t,
         tab: item.tab,
         index,
         tabCount,
@@ -857,17 +950,18 @@ function ResolvedDesktopTabChip({
         onCloseTabsToLeft,
         onCloseTabsToRight,
         onCloseOtherTabs,
+        labels,
       }),
     [
       index,
       item.tab,
-      t,
       onCloseOtherTabs,
       onCloseTab,
       onCloseTabsToLeft,
       onCloseTabsToRight,
       onCopyAgentId,
       onCopyResumeCommand,
+      labels,
       onReloadAgent,
       onRenameTab,
       tabCount,
@@ -883,7 +977,7 @@ function ResolvedDesktopTabChip({
       {(presentation) => {
         const tooltipLabel =
           presentation.titleState === "loading"
-            ? t("screen.tab.loadingAgentTitle")
+            ? t("workspace.tabs.loadingAgentTitle")
             : presentation.label;
 
         return (
@@ -943,6 +1037,11 @@ const styles = StyleSheet.create((theme) => ({
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: theme.spacing[2],
+  },
+  inlineAddButton: {
+    paddingHorizontal: theme.spacing[1],
+    alignItems: "center",
+    justifyContent: "center",
   },
   tab: {
     // Fixed to the row height (not padding-derived) so the chip fills the tab
@@ -1043,6 +1142,13 @@ const styles = StyleSheet.create((theme) => ({
   newTabActionButton: {
     width: 22,
     height: 22,
+    borderRadius: theme.borderRadius.md,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  inlineAddActionButton: {
+    width: 28,
+    height: 28,
     borderRadius: theme.borderRadius.md,
     alignItems: "center",
     justifyContent: "center",

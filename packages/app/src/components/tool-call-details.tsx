@@ -1,6 +1,6 @@
 import React, { useMemo, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import type { ParseKeys, TFunction } from "i18next";
+import type { TFunction } from "i18next";
 import {
   View,
   Text,
@@ -200,7 +200,6 @@ function WorktreeSetupDetailSection({
   worktreePath,
   ds,
 }: WorktreeSetupDetailProps) {
-  const { t } = useTranslation("timeline");
   const setupLog = log.replace(/^\n+/, "");
   const hasLog = setupLog.length > 0;
   return (
@@ -215,9 +214,7 @@ function WorktreeSetupDetailSection({
           <View style={styles.codeHorizontalContent}>
             <View style={styles.codeLine} dataSet={CODE_SURFACE_DATASET}>
               <Text selectable style={styles.scrollText}>
-                {hasLog
-                  ? setupLog
-                  : t("toolCall.worktreeSetup.preparing", { branchName, worktreePath })}
+                {hasLog ? setupLog : `Preparing worktree ${branchName} at ${worktreePath}`}
               </Text>
             </View>
           </View>
@@ -230,12 +227,12 @@ function WorktreeSetupDetailSection({
 function resolveSubAgentFallbackHeader(
   subAgentType: string | null | undefined,
   description: string | null | undefined,
-  t: TFunction<"timeline">,
+  fallbackText: string,
 ): string {
   if (subAgentType && description) {
     return `${subAgentType}: ${description}`;
   }
-  return subAgentType ?? description ?? t("toolCall.subAgent.activity");
+  return subAgentType ?? description ?? fallbackText;
 }
 
 interface SubAgentDetailProps {
@@ -356,9 +353,13 @@ function SubAgentDetailSection({
   description,
   ds,
 }: SubAgentDetailProps) {
-  const { t } = useTranslation("timeline");
+  const { t } = useTranslation();
   const { actions, remainingLog } = useMemo(() => parseSubAgentLog(log), [log]);
-  const fallbackHeader = resolveSubAgentFallbackHeader(subAgentType, description, t);
+  const fallbackHeader = resolveSubAgentFallbackHeader(
+    subAgentType,
+    description,
+    t("toolCallDetails.subAgentActivity"),
+  );
   const hasActions = actions.length > 0;
   return (
     <View style={ds.sectionFillStyle}>
@@ -373,7 +374,7 @@ function SubAgentDetailSection({
             <View style={styles.codeLine} dataSet={CODE_SURFACE_DATASET}>
               {childSessionId ? (
                 <Text selectable style={styles.subAgentSessionText}>
-                  {t("toolCall.subAgent.session", { sessionId: childSessionId })}
+                  session {childSessionId}
                 </Text>
               ) : null}
               {hasActions ? (
@@ -559,16 +560,12 @@ interface UnknownDetail {
   output: unknown;
 }
 
-const UNKNOWN_SECTION_TITLE_KEY: Record<"input" | "output", ParseKeys<"timeline">> = {
-  input: "toolCall.unknown.input",
-  output: "toolCall.unknown.output",
-};
+const UNKNOWN_SECTION_TITLE_KEY = {
+  input: "toolCallDetails.input",
+  output: "toolCallDetails.output",
+} as const;
 
-function buildUnknownSections(
-  detail: UnknownDetail,
-  ds: DetailStyles,
-  t: TFunction<"timeline">,
-): ReactNode[] {
+function buildUnknownSections(detail: UnknownDetail, ds: DetailStyles, t: TFunction): ReactNode[] {
   const plainInputText =
     typeof detail.input === "string" && detail.output === null ? detail.input : null;
 
@@ -621,7 +618,7 @@ function buildDetailSections(
   detail: ToolCallDetail | undefined,
   diffLines: DiffLine[] | undefined,
   ds: DetailStyles,
-  t: TFunction<"timeline">,
+  t: TFunction,
 ): ReactNode[] {
   if (!detail) return [];
   if (detail.type === "shell") {
@@ -698,10 +695,10 @@ function buildDetailSections(
 }
 
 function ErrorSection({ errorText, ds }: { errorText: string; ds: DetailStyles }) {
-  const { t } = useTranslation("timeline");
+  const { t } = useTranslation();
   return (
     <View style={styles.section}>
-      <Text style={SECTION_TITLE_ERROR_STYLE}>{t("toolCall.error")}</Text>
+      <Text style={SECTION_TITLE_ERROR_STYLE}>{t("toolCallDetails.error")}</Text>
       <View style={ds.jsonBlockErrorCombined}>
         <Text selectable style={SCROLL_TEXT_ERROR_STYLE} dataSet={CODE_SURFACE_DATASET}>
           {errorText}
@@ -736,7 +733,7 @@ function ToolCallDetailsContentInner({
   fillAvailableHeight = false,
   showLoadingSkeleton = false,
 }: ToolCallDetailsContentProps) {
-  const { t } = useTranslation("timeline");
+  const { t } = useTranslation();
   const resolvedMaxHeight = fillAvailableHeight ? undefined : (maxHeight ?? 300);
   const ds = useDetailStyles(detail, resolvedMaxHeight, fillAvailableHeight);
   const diffLines = useDiffLines(detail);
@@ -751,7 +748,7 @@ function ToolCallDetailsContentInner({
     if (showLoadingSkeleton) {
       return <LoadingSkeleton containerStyle={ds.loadingContainerStyle} />;
     }
-    return <Text style={styles.emptyStateText}>{t("toolCall.emptyState")}</Text>;
+    return <Text style={styles.emptyStateText}>{t("toolCallDetails.empty")}</Text>;
   }
 
   return <View style={ds.fullBleedContainerStyle}>{sections}</View>;

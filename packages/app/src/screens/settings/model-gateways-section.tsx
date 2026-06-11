@@ -46,7 +46,7 @@ function getGatewayLabel(id: string, gateway: ModelGatewayConfig): string {
   return gateway.label?.trim() || id;
 }
 
-function getGatewaySubtitle(gateway: ModelGatewayConfig, t: TFunction<"settings">): string {
+function getGatewaySubtitle(gateway: ModelGatewayConfig, t: TFunction): string {
   if (gateway.type === "openai-compatible") {
     const model = gateway.model?.trim();
     const protocol = gateway.protocol?.trim() || CODEX_GATEWAY_PROTOCOL;
@@ -56,7 +56,7 @@ function getGatewaySubtitle(gateway: ModelGatewayConfig, t: TFunction<"settings"
       ? `${provider} · ${protocol} · ${gateway.baseUrl} · model ${model}`
       : `${provider} · ${protocol} · ${gateway.baseUrl}`;
   }
-  return t("modelGateways.nativeSubtitle");
+  return t("settings.modelGateways.nativeSubtitle");
 }
 
 function toOpenAICompatibleDraft(gateway: ModelGatewayConfig | null): {
@@ -80,7 +80,7 @@ function toOpenAICompatibleDraft(gateway: ModelGatewayConfig | null): {
 
 export function ModelGatewaysSection({ serverId }: { serverId: string }) {
   const { theme } = useUnistyles();
-  const { t } = useTranslation("settings");
+  const { t } = useTranslation();
   const client = useHostRuntimeClient(serverId);
   const supportsModelGateways = useSessionStore(
     (state) => state.sessions[serverId]?.serverInfo?.features?.modelGateways === true,
@@ -181,15 +181,15 @@ export function ModelGatewaysSection({ serverId }: { serverId: string }) {
   );
   const modelDiscoveryStatus = useMemo(() => {
     if (isDiscoveringModels) {
-      return t("modelGateways.discovery.loading");
+      return t("settings.modelGateways.discovery.loading");
     }
     if (modelDiscoveryError) {
       return modelDiscoveryError;
     }
     if (discoveredModels.length > 0) {
-      return t("modelGateways.discovery.available", { count: discoveredModels.length });
+      return t("settings.modelGateways.discovery.available", { count: discoveredModels.length });
     }
-    return t("modelGateways.discovery.idle");
+    return t("settings.modelGateways.discovery.idle");
   }, [discoveredModels.length, isDiscoveringModels, modelDiscoveryError, t]);
 
   const handleSave = useCallback(() => {
@@ -200,22 +200,22 @@ export function ModelGatewaysSection({ serverId }: { serverId: string }) {
     const nextApiKey = apiKey.trim();
     if (!nextLabel) {
       Alert.alert(
-        t("modelGateways.alerts.nameRequiredTitle"),
-        t("modelGateways.alerts.nameRequiredMessage"),
+        t("settings.modelGateways.alerts.nameRequiredTitle"),
+        t("settings.modelGateways.alerts.nameRequiredMessage"),
       );
       return;
     }
     if (!nextBaseUrl) {
       Alert.alert(
-        t("modelGateways.alerts.baseUrlRequiredTitle"),
-        t("modelGateways.alerts.baseUrlRequiredMessage"),
+        t("settings.modelGateways.alerts.baseUrlRequiredTitle"),
+        t("settings.modelGateways.alerts.baseUrlRequiredMessage"),
       );
       return;
     }
     if (nextProtocol !== CODEX_GATEWAY_PROTOCOL) {
       Alert.alert(
-        t("modelGateways.alerts.unsupportedProtocolTitle"),
-        t("modelGateways.alerts.unsupportedProtocolMessage"),
+        t("settings.modelGateways.alerts.unsupportedProtocolTitle"),
+        t("settings.modelGateways.alerts.unsupportedProtocolMessage"),
       );
       return;
     }
@@ -241,7 +241,7 @@ export function ModelGatewaysSection({ serverId }: { serverId: string }) {
       .then(() => setIsSheetOpen(false))
       .catch((error) => {
         Alert.alert(
-          t("modelGateways.alerts.saveFailedTitle"),
+          t("settings.modelGateways.alerts.saveFailedTitle"),
           error instanceof Error ? error.message : String(error),
         );
       })
@@ -254,7 +254,7 @@ export function ModelGatewaysSection({ serverId }: { serverId: string }) {
       delete nextGateways[id];
       void patchConfig({ modelGateways: nextGateways }).catch((error) => {
         Alert.alert(
-          t("modelGateways.alerts.removeFailedTitle"),
+          t("settings.modelGateways.alerts.removeFailedTitle"),
           error instanceof Error ? error.message : String(error),
         );
       });
@@ -269,18 +269,18 @@ export function ModelGatewaysSection({ serverId }: { serverId: string }) {
         hitSlop={8}
         style={settingsStyles.sectionHeaderLink}
         accessibilityRole="button"
-        accessibilityLabel={t("modelGateways.addAccessibilityLabel")}
+        accessibilityLabel={t("settings.modelGateways.addAccessibilityLabel")}
         testID="add-model-gateway-button"
       >
         <Plus size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
-        <Text style={settingsStyles.sectionHeaderLinkText}>{t("modelGateways.add")}</Text>
+        <Text style={settingsStyles.sectionHeaderLinkText}>{t("settings.modelGateways.add")}</Text>
       </Pressable>
     ),
     [handleAdd, theme.colors.foregroundMuted, theme.iconSize.sm, t],
   );
 
   const gatewaySheetHeader = useMemo<SheetHeader>(
-    () => ({ title: t("modelGateways.sheetTitle") }),
+    () => ({ title: t("settings.modelGateways.sheetTitle") }),
     [t],
   );
 
@@ -290,15 +290,15 @@ export function ModelGatewaysSection({ serverId }: { serverId: string }) {
 
   return (
     <SettingsSection
-      title={t("modelGateways.title")}
+      title={t("settings.modelGateways.title")}
       trailing={trailing}
       testID="model-gateways-section"
     >
       <View style={settingsStyles.card}>
         {entries.length === 0 ? (
           <View style={styles.emptyState}>
-            <Text style={settingsStyles.rowTitle}>{t("modelGateways.emptyTitle")}</Text>
-            <Text style={settingsStyles.rowHint}>{t("modelGateways.emptyHint")}</Text>
+            <Text style={settingsStyles.rowTitle}>{t("settings.modelGateways.emptyTitle")}</Text>
+            <Text style={settingsStyles.rowHint}>{t("settings.modelGateways.emptyHint")}</Text>
           </View>
         ) : (
           entries.map(([id, gateway], index) => (
@@ -322,27 +322,27 @@ export function ModelGatewaysSection({ serverId }: { serverId: string }) {
       >
         <View style={styles.form}>
           <View style={styles.fieldGroup}>
-            <Text style={styles.fieldLabel}>{t("modelGateways.fields.provider")}</Text>
+            <Text style={styles.fieldLabel}>{t("settings.modelGateways.fields.provider")}</Text>
             <View style={styles.readOnlyField}>
               <Text style={styles.readOnlyFieldText}>{CODEX_PROVIDER_LABEL}</Text>
             </View>
-            <Text style={styles.fieldHint}>{t("modelGateways.fields.providerHint")}</Text>
+            <Text style={styles.fieldHint}>{t("settings.modelGateways.fields.providerHint")}</Text>
           </View>
           <View style={styles.fieldGroup}>
-            <Text style={styles.fieldLabel}>{t("modelGateways.fields.name")}</Text>
+            <Text style={styles.fieldLabel}>{t("settings.modelGateways.fields.name")}</Text>
             <AdaptiveTextInput
               value={label}
               initialValue={label}
               resetKey={`gateway-label-${editingId ?? "new"}-${draftResetKey}`}
               onChangeText={setLabel}
-              placeholder={t("modelGateways.fields.namePlaceholder")}
+              placeholder={t("settings.modelGateways.fields.namePlaceholder")}
               autoCapitalize="none"
               autoCorrect={false}
               testID="model-gateway-label-input"
             />
           </View>
           <View style={styles.fieldGroup}>
-            <Text style={styles.fieldLabel}>{t("modelGateways.fields.baseUrl")}</Text>
+            <Text style={styles.fieldLabel}>{t("settings.modelGateways.fields.baseUrl")}</Text>
             <AdaptiveTextInput
               value={baseUrl}
               initialValue={baseUrl}
@@ -356,13 +356,15 @@ export function ModelGatewaysSection({ serverId }: { serverId: string }) {
             />
           </View>
           <View style={styles.fieldGroup}>
-            <Text style={styles.fieldLabel}>{t("modelGateways.fields.protocol")}</Text>
+            <Text style={styles.fieldLabel}>{t("settings.modelGateways.fields.protocol")}</Text>
             <View ref={protocolAnchorRef} collapsable={false}>
               <Pressable
                 onPress={handleOpenProtocolSelector}
                 style={styles.modelSelector}
                 accessibilityRole="button"
-                accessibilityLabel={t("modelGateways.fields.protocolSelectAccessibilityLabel")}
+                accessibilityLabel={t(
+                  "settings.modelGateways.fields.protocolSelectAccessibilityLabel",
+                )}
                 testID="model-gateway-protocol-input"
               >
                 <Text style={styles.modelSelectorText} numberOfLines={1}>
@@ -376,9 +378,9 @@ export function ModelGatewaysSection({ serverId }: { serverId: string }) {
                 onSelect={setProtocol}
                 searchable
                 placeholder="responses"
-                searchPlaceholder={t("modelGateways.fields.protocolSearchPlaceholder")}
-                emptyText={t("modelGateways.fields.protocolEmpty")}
-                title={t("modelGateways.fields.protocol")}
+                searchPlaceholder={t("settings.modelGateways.fields.protocolSearchPlaceholder")}
+                emptyText={t("settings.modelGateways.fields.protocolEmpty")}
+                title={t("settings.modelGateways.fields.protocol")}
                 open={isProtocolSelectorOpen}
                 onOpenChange={setIsProtocolSelectorOpen}
                 anchorRef={protocolAnchorRef}
@@ -387,17 +389,17 @@ export function ModelGatewaysSection({ serverId }: { serverId: string }) {
                 desktopMinWidth={320}
               />
             </View>
-            <Text style={styles.fieldHint}>{t("modelGateways.fields.protocolHint")}</Text>
+            <Text style={styles.fieldHint}>{t("settings.modelGateways.fields.protocolHint")}</Text>
           </View>
           <View style={styles.fieldGroup}>
-            <Text style={styles.fieldLabel}>{t("modelGateways.fields.apiKey")}</Text>
+            <Text style={styles.fieldLabel}>{t("settings.modelGateways.fields.apiKey")}</Text>
             <AdaptiveTextInput
               value={apiKey}
               initialValue={apiKey}
               resetKey={`gateway-api-key-${editingId ?? "new"}-${draftResetKey}`}
               onChangeText={setApiKey}
               onBlur={handleTriggerModelDiscovery}
-              placeholder={t("modelGateways.fields.apiKeyPlaceholder")}
+              placeholder={t("settings.modelGateways.fields.apiKeyPlaceholder")}
               autoCapitalize="none"
               autoCorrect={false}
               secureTextEntry
@@ -405,17 +407,19 @@ export function ModelGatewaysSection({ serverId }: { serverId: string }) {
             />
           </View>
           <View style={styles.fieldGroup}>
-            <Text style={styles.fieldLabel}>{t("modelGateways.fields.model")}</Text>
+            <Text style={styles.fieldLabel}>{t("settings.modelGateways.fields.model")}</Text>
             <View ref={modelAnchorRef} collapsable={false}>
               <Pressable
                 onPress={handleOpenModelSelector}
                 style={styles.modelSelector}
                 accessibilityRole="button"
-                accessibilityLabel={t("modelGateways.fields.modelSelectAccessibilityLabel")}
+                accessibilityLabel={t(
+                  "settings.modelGateways.fields.modelSelectAccessibilityLabel",
+                )}
                 testID="model-gateway-model-input"
               >
                 <Text style={styles.modelSelectorText} numberOfLines={1}>
-                  {model.trim() || t("modelGateways.fields.modelPlaceholder")}
+                  {model.trim() || t("settings.modelGateways.fields.modelPlaceholder")}
                 </Text>
                 <ChevronDown size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
               </Pressable>
@@ -425,15 +429,15 @@ export function ModelGatewaysSection({ serverId }: { serverId: string }) {
                 onSelect={setModel}
                 searchable
                 allowCustomValue
-                customValuePrefix={t("modelGateways.fields.modelCustomValuePrefix")}
-                placeholder={t("modelGateways.fields.modelPlaceholder")}
-                searchPlaceholder={t("modelGateways.fields.modelSearchPlaceholder")}
+                customValuePrefix={t("settings.modelGateways.fields.modelCustomValuePrefix")}
+                placeholder={t("settings.modelGateways.fields.modelPlaceholder")}
+                searchPlaceholder={t("settings.modelGateways.fields.modelSearchPlaceholder")}
                 emptyText={
                   isDiscoveringModels
-                    ? t("modelGateways.discovery.loading")
-                    : t("modelGateways.fields.modelEmpty")
+                    ? t("settings.modelGateways.discovery.loading")
+                    : t("settings.modelGateways.fields.modelEmpty")
                 }
-                title={t("modelGateways.fields.model")}
+                title={t("settings.modelGateways.fields.model")}
                 open={isModelSelectorOpen}
                 onOpenChange={setIsModelSelectorOpen}
                 anchorRef={modelAnchorRef}
@@ -453,17 +457,17 @@ export function ModelGatewaysSection({ serverId }: { serverId: string }) {
                 disabled={!baseUrl.trim()}
                 testID="refresh-model-gateway-models-button"
               >
-                {t("modelGateways.refresh")}
+                {t("settings.modelGateways.refresh")}
               </Button>
             </View>
-            <Text style={styles.fieldHint}>{t("modelGateways.fields.modelHint")}</Text>
+            <Text style={styles.fieldHint}>{t("settings.modelGateways.fields.modelHint")}</Text>
           </View>
           <View style={styles.formActions}>
             <Button variant="ghost" onPress={handleClose} disabled={isSaving}>
-              {t("modelGateways.cancel")}
+              {t("settings.modelGateways.cancel")}
             </Button>
             <Button variant="default" onPress={handleSave} loading={isSaving}>
-              {t("modelGateways.save")}
+              {t("settings.modelGateways.save")}
             </Button>
           </View>
         </View>
@@ -486,7 +490,7 @@ function ModelGatewayRow({
   onRemove: (id: string) => void;
 }) {
   const { theme } = useUnistyles();
-  const { t } = useTranslation("settings");
+  const { t } = useTranslation();
   const label = getGatewayLabel(id, gateway);
   const rowStyle = useMemo(
     () => [settingsStyles.row, !isFirst && settingsStyles.rowBorder],
@@ -508,7 +512,7 @@ function ModelGatewayRow({
           hitSlop={8}
           onPress={handleEdit}
           accessibilityRole="button"
-          accessibilityLabel={t("modelGateways.row.editAccessibilityLabel", { label })}
+          accessibilityLabel={t("settings.modelGateways.row.editAccessibilityLabel", { label })}
           testID={`edit-model-gateway-${id}`}
         >
           <Pencil size={theme.iconSize.md} color={theme.colors.foregroundMuted} />
@@ -517,7 +521,7 @@ function ModelGatewayRow({
           hitSlop={8}
           onPress={handleRemove}
           accessibilityRole="button"
-          accessibilityLabel={t("modelGateways.row.removeAccessibilityLabel", { label })}
+          accessibilityLabel={t("settings.modelGateways.row.removeAccessibilityLabel", { label })}
           testID={`remove-model-gateway-${id}`}
         >
           <Trash2 size={theme.iconSize.md} color={theme.colors.destructive} />

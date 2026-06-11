@@ -1,6 +1,6 @@
 import { type DesktopHostBridge, getDesktopHost } from "@/desktop/host";
 import { isNative, isWeb } from "@/constants/platform";
-import i18n from "@/i18n";
+import { i18n } from "@/i18n/i18next";
 
 export type DesktopPermissionKind = "notifications" | "microphone";
 
@@ -98,24 +98,24 @@ function mapNotificationPermissionString(permission: string): DesktopPermissionS
   if (permission === "granted") {
     return status({
       state: "granted",
-      detail: i18n.t("settings:permissions.detail.notificationsGranted"),
+      detail: i18n.t("desktop.permissions.notifications.allowed"),
     });
   }
   if (permission === "denied") {
     return status({
       state: "denied",
-      detail: i18n.t("settings:permissions.detail.notificationsDenied"),
+      detail: i18n.t("desktop.permissions.notifications.denied"),
     });
   }
   if (permission === "default") {
     return status({
       state: "prompt",
-      detail: i18n.t("settings:permissions.detail.notificationsPrompt"),
+      detail: i18n.t("desktop.permissions.notifications.notGranted"),
     });
   }
   return status({
     state: "unknown",
-    detail: i18n.t("settings:permissions.detail.notificationsUnexpectedState", {
+    detail: i18n.t("desktop.permissions.notifications.unexpectedState", {
       state: permission,
     }),
   });
@@ -130,7 +130,7 @@ export function createDesktopPermissions(env: DesktopPermissionEnvironment): Des
     if (!env.isWeb) {
       return status({
         state: "unavailable",
-        detail: i18n.t("settings:permissions.detail.notificationsWebOnly"),
+        detail: i18n.t("desktop.permissions.notifications.webOnly"),
       });
     }
 
@@ -141,8 +141,8 @@ export function createDesktopPermissions(env: DesktopPermissionEnvironment): Des
         return status({
           state: supported ? "granted" : "unavailable",
           detail: supported
-            ? i18n.t("settings:permissions.detail.notificationsSupported")
-            : i18n.t("settings:permissions.detail.notificationsNotSupported"),
+            ? i18n.t("desktop.permissions.notifications.supported")
+            : i18n.t("desktop.permissions.notifications.unsupported"),
         });
       } catch {
         // Fall through to web API check
@@ -156,7 +156,7 @@ export function createDesktopPermissions(env: DesktopPermissionEnvironment): Des
 
     return status({
       state: "unavailable",
-      detail: i18n.t("settings:permissions.detail.notificationsApiUnavailable"),
+      detail: i18n.t("desktop.permissions.notifications.apiUnavailable"),
     });
   }
 
@@ -164,7 +164,7 @@ export function createDesktopPermissions(env: DesktopPermissionEnvironment): Des
     if (!env.isWeb) {
       return status({
         state: "unavailable",
-        detail: i18n.t("settings:permissions.detail.microphoneWebOnly"),
+        detail: i18n.t("desktop.permissions.microphone.webOnly"),
       });
     }
 
@@ -172,7 +172,7 @@ export function createDesktopPermissions(env: DesktopPermissionEnvironment): Des
     if (!webNavigator) {
       return status({
         state: "unavailable",
-        detail: i18n.t("settings:permissions.detail.navigatorUnavailable"),
+        detail: i18n.t("desktop.permissions.microphone.navigatorUnavailable"),
       });
     }
 
@@ -183,24 +183,24 @@ export function createDesktopPermissions(env: DesktopPermissionEnvironment): Des
         if (result?.state === "granted") {
           return status({
             state: "granted",
-            detail: i18n.t("settings:permissions.detail.microphoneGranted"),
+            detail: i18n.t("desktop.permissions.microphone.granted"),
           });
         }
         if (result?.state === "denied") {
           return status({
             state: "denied",
-            detail: i18n.t("settings:permissions.detail.microphoneDenied"),
+            detail: i18n.t("desktop.permissions.microphone.denied"),
           });
         }
         if (result?.state === "prompt") {
           return status({
             state: "prompt",
-            detail: i18n.t("settings:permissions.detail.microphonePrompt"),
+            detail: i18n.t("desktop.permissions.microphone.notGranted"),
           });
         }
         return status({
           state: "unknown",
-          detail: i18n.t("settings:permissions.detail.microphoneUnexpectedState", {
+          detail: i18n.t("desktop.permissions.microphone.unexpectedState", {
             state: result?.state ?? "unknown",
           }),
         });
@@ -208,12 +208,12 @@ export function createDesktopPermissions(env: DesktopPermissionEnvironment): Des
         if (isPermissionsQueryRuntimeUnsupported(error)) {
           return status({
             state: "unknown",
-            detail: i18n.t("settings:permissions.detail.microphoneStatusApiRuntimeUnavailable"),
+            detail: i18n.t("desktop.permissions.microphone.statusApiUnavailable"),
           });
         }
         return status({
           state: "unknown",
-          detail: i18n.t("settings:permissions.detail.microphoneQueryFailed", {
+          detail: i18n.t("desktop.permissions.microphone.queryFailed", {
             message: getErrorMessage(error),
           }),
         });
@@ -223,13 +223,13 @@ export function createDesktopPermissions(env: DesktopPermissionEnvironment): Des
     if (typeof webNavigator.mediaDevices?.getUserMedia !== "function") {
       return status({
         state: "unavailable",
-        detail: i18n.t("settings:permissions.detail.microphoneCaptureUnavailable"),
+        detail: i18n.t("desktop.permissions.microphone.captureUnavailable"),
       });
     }
 
     return status({
       state: "unknown",
-      detail: i18n.t("settings:permissions.detail.microphoneStatusApiUnavailable"),
+      detail: i18n.t("desktop.permissions.microphone.permissionApiUnavailable"),
     });
   }
 
@@ -237,7 +237,7 @@ export function createDesktopPermissions(env: DesktopPermissionEnvironment): Des
     if (!env.isWeb) {
       return status({
         state: "unavailable",
-        detail: i18n.t("settings:permissions.detail.notificationsRequestWebOnly"),
+        detail: i18n.t("desktop.permissions.notifications.requestsWebOnly"),
       });
     }
 
@@ -252,7 +252,7 @@ export function createDesktopPermissions(env: DesktopPermissionEnvironment): Des
       } catch (error) {
         return status({
           state: "unknown",
-          detail: i18n.t("settings:permissions.detail.notificationsRequestFailed", {
+          detail: i18n.t("desktop.permissions.notifications.requestFailed", {
             message: getErrorMessage(error),
           }),
         });
@@ -261,7 +261,7 @@ export function createDesktopPermissions(env: DesktopPermissionEnvironment): Des
 
     return status({
       state: "unavailable",
-      detail: i18n.t("settings:permissions.detail.notificationsRequestApiUnavailable"),
+      detail: i18n.t("desktop.permissions.notifications.requestUnavailable"),
     });
   }
 
@@ -269,7 +269,7 @@ export function createDesktopPermissions(env: DesktopPermissionEnvironment): Des
     if (!env.isWeb) {
       return status({
         state: "unavailable",
-        detail: i18n.t("settings:permissions.detail.microphoneRequestWebOnly"),
+        detail: i18n.t("desktop.permissions.microphone.requestsWebOnly"),
       });
     }
 
@@ -277,7 +277,7 @@ export function createDesktopPermissions(env: DesktopPermissionEnvironment): Des
     if (!webNavigator || typeof webNavigator.mediaDevices?.getUserMedia !== "function") {
       return status({
         state: "unavailable",
-        detail: i18n.t("settings:permissions.detail.microphoneCaptureApiUnavailable"),
+        detail: i18n.t("desktop.permissions.microphone.captureApiUnavailable"),
       });
     }
 
@@ -295,18 +295,18 @@ export function createDesktopPermissions(env: DesktopPermissionEnvironment): Des
       if (errorName === "NotAllowedError" || errorName === "PermissionDeniedError") {
         return status({
           state: "denied",
-          detail: i18n.t("settings:permissions.detail.microphoneDeniedByUser"),
+          detail: i18n.t("desktop.permissions.microphone.requestDenied"),
         });
       }
       if (errorName === "NotFoundError" || errorName === "DevicesNotFoundError") {
         return status({
           state: "unavailable",
-          detail: i18n.t("settings:permissions.detail.microphoneNoDevice"),
+          detail: i18n.t("desktop.permissions.microphone.noDevice"),
         });
       }
       return status({
         state: "unknown",
-        detail: i18n.t("settings:permissions.detail.microphoneRequestFailed", {
+        detail: i18n.t("desktop.permissions.microphone.requestFailed", {
           message: getErrorMessage(error),
         }),
       });

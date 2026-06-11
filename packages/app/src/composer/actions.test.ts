@@ -533,7 +533,6 @@ describe("sendQueuedComposerMessageNow", () => {
       agentId: "agent",
       messageId: "msg-1",
       queue,
-      t: ((key: string) => key) as never,
       submitMessage: async (input) => {
         submitted.push(input);
       },
@@ -552,7 +551,6 @@ describe("sendQueuedComposerMessageNow", () => {
       agentId: "agent",
       messageId: "msg-1",
       queue,
-      t: ((key: string) => key) as never,
       submitMessage: async (input) => {
         submitted.push(input);
       },
@@ -578,7 +576,6 @@ describe("sendQueuedComposerMessageNow", () => {
       agentId: "agent",
       messageId: "msg-1",
       queue,
-      t: ((key: string) => key) as never,
       submitMessage: async () => {
         throw new Error("network down");
       },

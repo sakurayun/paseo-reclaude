@@ -1,4 +1,5 @@
 import { useCallback, useMemo } from "react";
+import { useTranslation } from "react-i18next";
 import { useSessionStore, type AgentFileExplorerState } from "@/stores/session-store";
 import { explorerFileFromReadResult } from "@/file-explorer/read-result";
 
@@ -61,6 +62,7 @@ export function dropFailedExpandedPaths(
 }
 
 export function useFileExplorerActions(params: { serverId: string } & FileExplorerWorkspaceScope) {
+  const { t } = useTranslation();
   const { serverId, workspaceId, workspaceRoot } = params;
   const client = useSessionStore((state) => state.sessions[serverId]?.client ?? null);
   const setFileExplorer = useSessionStore((state) => state.setFileExplorer);
@@ -125,7 +127,7 @@ export function useFileExplorerActions(params: { serverId: string } & FileExplor
         updateExplorerState((state) => ({
           ...state,
           isLoading: false,
-          lastError: silent ? state.lastError : "Workspace is unavailable",
+          lastError: silent ? state.lastError : t("workspace.fileExplorer.states.unavailable"),
           pendingRequest: null,
         }));
         return false;
@@ -135,7 +137,7 @@ export function useFileExplorerActions(params: { serverId: string } & FileExplor
         updateExplorerState((state) => ({
           ...state,
           isLoading: false,
-          lastError: silent ? state.lastError : "Host is not connected",
+          lastError: silent ? state.lastError : t("workspace.terminal.hostDisconnected"),
           pendingRequest: null,
         }));
         return false;
@@ -163,7 +165,10 @@ export function useFileExplorerActions(params: { serverId: string } & FileExplor
         });
         return true;
       } catch (error) {
-        const message = error instanceof Error ? error.message : "Failed to list directory";
+        const message =
+          error instanceof Error
+            ? error.message
+            : t("workspace.fileExplorer.errors.failedToListDirectory");
         updateExplorerState((state) => ({
           ...state,
           isLoading: false,
@@ -173,7 +178,7 @@ export function useFileExplorerActions(params: { serverId: string } & FileExplor
         return false;
       }
     },
-    [client, normalizedWorkspaceRoot, updateExplorerState, workspaceStateKey],
+    [client, normalizedWorkspaceRoot, t, updateExplorerState, workspaceStateKey],
   );
 
   const requestFilePreview = useCallback(
@@ -193,7 +198,7 @@ export function useFileExplorerActions(params: { serverId: string } & FileExplor
         updateExplorerState((state) => ({
           ...state,
           isLoading: false,
-          lastError: "Workspace is unavailable",
+          lastError: t("workspace.fileExplorer.states.unavailable"),
           pendingRequest: null,
         }));
         return;
@@ -203,7 +208,7 @@ export function useFileExplorerActions(params: { serverId: string } & FileExplor
         updateExplorerState((state) => ({
           ...state,
           isLoading: false,
-          lastError: "Host is not connected",
+          lastError: t("workspace.terminal.hostDisconnected"),
           pendingRequest: null,
         }));
         return;
@@ -232,21 +237,21 @@ export function useFileExplorerActions(params: { serverId: string } & FileExplor
         updateExplorerState((state) => ({
           ...state,
           isLoading: false,
-          lastError: error instanceof Error ? error.message : "Failed to load file preview",
+          lastError: error instanceof Error ? error.message : t("panels.file.failedToLoadPreview"),
           pendingRequest: null,
         }));
       }
     },
-    [client, normalizedWorkspaceRoot, updateExplorerState, workspaceStateKey],
+    [client, normalizedWorkspaceRoot, t, updateExplorerState, workspaceStateKey],
   );
 
   const requestFileDownloadToken = useCallback(
     async (path: string) => {
       if (!normalizedWorkspaceRoot) {
-        throw new Error("Workspace is unavailable");
+        throw new Error(t("workspace.fileExplorer.states.unavailable"));
       }
       if (!client) {
-        throw new Error("Host is not connected");
+        throw new Error(t("workspace.terminal.hostDisconnected"));
       }
       const payload = await client.requestDownloadToken(normalizedWorkspaceRoot, path);
       if (payload.error) {
@@ -254,7 +259,7 @@ export function useFileExplorerActions(params: { serverId: string } & FileExplor
       }
       return payload;
     },
-    [client, normalizedWorkspaceRoot],
+    [client, normalizedWorkspaceRoot, t],
   );
 
   const selectExplorerEntry = useCallback(

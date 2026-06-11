@@ -23,8 +23,8 @@ export function RealtimeVoiceOverlay({
   onToggleMute,
   onStop,
 }: RealtimeVoiceOverlayProps) {
-  const { t } = useTranslation("voice");
   const { theme } = useUnistyles();
+  const { t } = useTranslation();
   const { volume, isSpeaking } = useVoiceTelemetry();
   const muteButtonStyle = useMemo(
     () => [
@@ -56,7 +56,7 @@ export function RealtimeVoiceOverlay({
           disabled={isSwitching}
           accessibilityRole="button"
           accessibilityLabel={
-            isMuted ? t("overlay.unmuteAccessibilityLabel") : t("overlay.muteAccessibilityLabel")
+            isMuted ? t("realtimeVoice.actions.unmute") : t("realtimeVoice.actions.mute")
           }
           style={muteButtonStyle}
         >
@@ -71,7 +71,7 @@ export function RealtimeVoiceOverlay({
           onPress={onStop}
           disabled={isSwitching}
           accessibilityRole="button"
-          accessibilityLabel={t("overlay.stopAccessibilityLabel")}
+          accessibilityLabel={t("realtimeVoice.actions.stop")}
           style={stopButtonStyle}
         >
           {isSwitching ? (

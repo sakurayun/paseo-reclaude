@@ -15,18 +15,15 @@ function isKnownFeatureId(id: string): id is KnownFeatureId {
   return (KNOWN_FEATURE_IDS as readonly string[]).includes(id);
 }
 
-export function localizeAgentFeature(
-  t: TFunction<"composer">,
-  feature: AgentFeature,
-): AgentFeature {
+export function localizeAgentFeature(t: TFunction, feature: AgentFeature): AgentFeature {
   if (!isKnownFeatureId(feature.id)) {
     return feature;
   }
   return {
     ...feature,
-    label: t(`controls.features.known.${feature.id}.label`),
-    description: t(`controls.features.known.${feature.id}.description`),
-    tooltip: t(`controls.features.known.${feature.id}.tooltip`),
+    label: t(`agentControls.features.known.${feature.id}.label`),
+    description: t(`agentControls.features.known.${feature.id}.description`),
+    tooltip: t(`agentControls.features.known.${feature.id}.tooltip`),
   };
 }
 
@@ -41,12 +38,12 @@ function asThinkingLevelId(value: string): ThinkingLevelId | null {
 }
 
 export function localizeThinkingOptionLabel(
-  t: TFunction<"composer">,
+  t: TFunction,
   option: { id: string; label?: string | null },
 ): string {
   const level = asThinkingLevelId(option.id);
   if (level) {
-    return t(`controls.thinking.levels.${level}`);
+    return t(`agentControls.thinking.levels.${level}`);
   }
   return formatThinkingOptionLabel(option);
 }

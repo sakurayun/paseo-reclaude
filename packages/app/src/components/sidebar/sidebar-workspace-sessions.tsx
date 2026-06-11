@@ -54,7 +54,7 @@ function SidebarSessionRow({
   serverId: string;
   workspaceId: string;
 }) {
-  const { t } = useTranslation("workspaces");
+  const { t } = useTranslation();
   const handlePress = useCallback(() => {
     navigateToPreparedWorkspaceTab({
       serverId,
@@ -85,7 +85,7 @@ function SidebarSessionRow({
         <ProviderIcon size={12} />
       </View>
       <Text style={styles.sessionTitle} numberOfLines={1}>
-        {session.title ?? t("sessionsPanel.untitled")}
+        {session.title ?? t("sessions.workspacePanel.untitled")}
       </Text>
       <Text style={styles.sessionTime} numberOfLines={1}>
         {formatTimeAgo(session.lastActivityAt)}
@@ -105,7 +105,7 @@ export const SidebarWorkspaceSessions = memo(function SidebarWorkspaceSessions({
   workspaceKey: string;
   sessions: AgentDirectoryEntry[];
 }) {
-  const { t } = useTranslation("workspaces");
+  const { t } = useTranslation();
 
   const handleViewAll = useCallback(() => {
     navigateToPreparedWorkspaceTab({
@@ -144,7 +144,7 @@ export const SidebarWorkspaceSessions = memo(function SidebarWorkspaceSessions({
           accessibilityRole="button"
           testID={`sidebar-workspace-sessions-view-all-${workspaceKey}`}
         >
-          <Text style={styles.viewAllText}>{t("sidebarSessions.viewAll")}</Text>
+          <Text style={styles.viewAllText}>{t("sidebar.workspace.sessions.viewAll")}</Text>
         </Pressable>
       ) : null}
     </View>

@@ -1,3 +1,5 @@
+import { i18n } from "@/i18n/i18next";
+
 export type AgentInputSubmitResult = "noop" | "queued" | "submitted" | "failed";
 
 export interface AgentInputSubmitActionInput<TAttachment> {
@@ -15,9 +17,9 @@ export interface AgentInputSubmitActionInput<TAttachment> {
   setUserInput: (text: string) => void;
   setAttachments: (attachments: TAttachment[]) => void;
   setSendError: (message: string | null) => void;
-  fallbackErrorMessage?: string;
   setIsProcessing: (isProcessing: boolean) => void;
   onSubmitError?: (error: unknown) => void;
+  failedToSendMessage?: string;
 }
 
 export async function submitAgentInput<TAttachment>(
@@ -71,7 +73,7 @@ export async function submitAgentInput<TAttachment>(
     input.setSendError(
       error instanceof Error
         ? error.message
-        : (input.fallbackErrorMessage ?? "Failed to send message"),
+        : (input.failedToSendMessage ?? i18n.t("composer.errors.failedToSend")),
     );
     input.setIsProcessing(false);
     return "failed";

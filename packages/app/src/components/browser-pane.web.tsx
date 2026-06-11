@@ -13,7 +13,7 @@ interface BrowserPaneProps {
 }
 
 export function BrowserPane({ browserId }: BrowserPaneProps) {
-  const { t } = useTranslation("app");
+  const { t } = useTranslation();
   const { theme } = useUnistyles();
   const titleStyle = useMemo(
     () => [styles.title, { color: theme.colors.foreground }],
@@ -26,9 +26,9 @@ export function BrowserPane({ browserId }: BrowserPaneProps) {
 
   return (
     <View style={styles.container}>
-      <Text style={titleStyle}>{t("browser.unavailable.title")}</Text>
-      <Text style={subtitleStyle}>{t("browser.unavailable.subtitle")}</Text>
-      <Text style={subtitleStyle}>{t("browser.unavailable.session", { browserId })}</Text>
+      <Text style={titleStyle}>{t("workspace.browser.unavailable.title")}</Text>
+      <Text style={subtitleStyle}>{t("workspace.browser.unavailable.subtitle")}</Text>
+      <Text style={subtitleStyle}>{t("workspace.browser.session", { browserId })}</Text>
     </View>
   );
 }

@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Keyboard, ScrollView, Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
-import type { TFunction } from "i18next";
 import ReanimatedAnimated from "react-native-reanimated";
 import { StyleSheet } from "react-native-unistyles";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -145,7 +144,8 @@ async function submitDraftCreateRequest(input: {
     featureValues: Record<string, unknown> | undefined;
     modelGateway?: AgentSessionConfig["modelGateway"];
   };
-  t: TFunction<"composer">;
+  hostDisconnectedMessage: string;
+  selectModelMessage: string;
 }): Promise<{ agentId: string | null; result: AgentSnapshotPayload }> {
   const {
     attempt,
@@ -157,18 +157,17 @@ async function submitDraftCreateRequest(input: {
     workspaceExecutionAuthority,
     autoSubmitConfig,
     composerState,
-    t,
   } = input;
 
   invariant(workspaceDirectory, "Workspace directory is required");
   invariant(workspaceExecutionAuthority, "Workspace authority is required");
   if (!client) {
-    throw new Error(t("tabs.hostNotConnectedError"));
+    throw new Error(input.hostDisconnectedMessage);
   }
 
   const provider = autoSubmitConfig?.provider ?? composerState.selectedProvider;
   if (!provider) {
-    throw new Error(t("tabs.selectModelError"));
+    throw new Error(input.selectModelMessage);
   }
   const modeIdOverride = resolveDraftModeIdOverride({
     autoSubmitConfig,
@@ -217,10 +216,9 @@ function buildDraftAgentSnapshot(input: {
     selectedProvider: string | null;
     agentControls: { features?: Agent["features"] };
   };
-  t: TFunction<"composer">;
+  selectModelMessage: string;
 }): Agent {
-  const { attempt, serverId, tabId, workspaceDirectory, autoSubmitConfig, composerState, t } =
-    input;
+  const { attempt, serverId, tabId, workspaceDirectory, autoSubmitConfig, composerState } = input;
   invariant(workspaceDirectory, "Workspace directory is required");
   const now = attempt.timestamp;
   const model = autoSubmitConfig?.model ?? (composerState.effectiveModelId || null);
@@ -233,7 +231,7 @@ function buildDraftAgentSnapshot(input: {
   });
   const provider = autoSubmitConfig?.provider ?? composerState.selectedProvider;
   if (!provider) {
-    throw new Error(t("tabs.selectModelError"));
+    throw new Error(input.selectModelMessage);
   }
   return {
     serverId,
@@ -250,7 +248,7 @@ function buildDraftAgentSnapshot(input: {
     pendingPermissions: [],
     persistence: null,
     runtimeInfo: { provider, sessionId: null, model, modeId },
-    title: t("draft.agentTitle"),
+    title: "Agent",
     cwd: workspaceDirectory,
     model,
     features: composerState.agentControls.features,
@@ -308,7 +306,7 @@ function useDraftModelGatewaySelection(
   selectedId: string;
   setSelectedId: (id: string) => void;
 } {
-  const { t } = useTranslation("composer");
+  const { t } = useTranslation();
   const { config: daemonConfig } = useDaemonConfig(serverId);
   const modelGateways = daemonConfig?.modelGateways ?? EMPTY_MODEL_GATEWAYS;
   const entries = useMemo(
@@ -336,7 +334,7 @@ function useDraftModelGatewaySelection(
 
   const options = useMemo(
     () => [
-      { id: NATIVE_MODEL_GATEWAY_ID, label: t("controls.gateway.nativeLabel") },
+      { id: NATIVE_MODEL_GATEWAY_ID, label: t("agentControls.gateway.nativeLabel") },
       ...entries.map(([id, gateway]) => ({
         id,
         label: gateway.label?.trim() || id,
@@ -509,7 +507,7 @@ export function WorkspaceDraftAgentTab({
   onOpenWorkspaceFile,
   onOpenImportSheet,
 }: WorkspaceDraftAgentTabProps) {
-  const { t } = useTranslation("composer");
+  const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const client = useHostRuntimeClient(serverId);
   const isConnected = useHostRuntimeIsConnected(serverId);
@@ -562,7 +560,7 @@ export function WorkspaceDraftAgentTab({
   const selectedModelGatewayLabel =
     selectedModelGateway?.label?.trim() ||
     selectedModelGatewayId ||
-    t("controls.gateway.fallbackLabel");
+    t("agentControls.gateway.fallbackLabel");
   const selectedModelGatewaySelectorProviders = useMemo(
     () =>
       buildModelGatewaySelectorProviders({
@@ -627,7 +625,6 @@ export function WorkspaceDraftAgentTab({
     handleCreateFromInput,
   } = useDraftAgentCreateFlow<Agent, AgentSnapshotPayload>({
     draftId,
-    t,
     getPendingServerId: () => serverId,
     allowEmptyText: allowsEmptyAutoSubmit,
     validateBeforeSubmit: ({ text }) =>
@@ -654,7 +651,7 @@ export function WorkspaceDraftAgentTab({
         workspaceDirectory: draftWorkingDirectory,
         autoSubmitConfig,
         composerState,
-        t,
+        selectModelMessage: t("workspaceSetup.errors.selectModel"),
       }),
     createRequest: async ({ attempt, text, images, attachments }) =>
       submitDraftCreateRequest({
@@ -675,7 +672,8 @@ export function WorkspaceDraftAgentTab({
           ),
           modelGateway: selectedModelGateway,
         },
-        t,
+        hostDisconnectedMessage: t("workspace.terminal.hostDisconnected"),
+        selectModelMessage: t("workspaceSetup.errors.selectModel"),
       }),
     onCreateSuccess: ({ result }) => {
       clearDraftInput("sent");

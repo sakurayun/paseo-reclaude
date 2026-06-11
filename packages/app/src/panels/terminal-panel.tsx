@@ -1,6 +1,6 @@
 import { useCallback } from "react";
-import { useTranslation } from "react-i18next";
 import { useQuery } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
 import { Terminal } from "lucide-react-native";
 import { Text, View } from "react-native";
 import invariant from "tiny-invariant";
@@ -35,7 +35,7 @@ function useTerminalPanelDescriptor(
   target: { kind: "terminal"; terminalId: string },
   context: { serverId: string; workspaceId: string },
 ): PanelDescriptor {
-  const { t } = useTranslation("terminal");
+  const { t } = useTranslation();
   const client = useSessionStore((state) => state.sessions[context.serverId]?.client ?? null);
   const workspaceAuthority = useWorkspaceExecutionAuthority(context.serverId, context.workspaceId)!;
   const workspaceDirectory = workspaceAuthority.ok
@@ -49,7 +49,7 @@ function useTerminalPanelDescriptor(
         if (!client || !workspaceDirectory) {
           throw new Error(
             workspaceAuthority.ok
-              ? t("panel.workspaceDirectoryNotFound")
+              ? "Workspace execution directory not found"
               : workspaceAuthority.message,
           );
         }
@@ -63,8 +63,10 @@ function useTerminalPanelDescriptor(
     terminalsQuery.data?.terminals.find((entry) => entry.id === target.terminalId) ?? null;
 
   return {
-    label: trimNonEmpty(terminal?.title ?? terminal?.name ?? null) ?? t("panel.title"),
-    subtitle: t("panel.subtitle"),
+    label:
+      trimNonEmpty(terminal?.title ?? terminal?.name ?? null) ??
+      t("workspace.tabs.fallback.terminal"),
+    subtitle: t("workspace.tabs.fallback.terminal"),
     titleState: "ready",
     icon: Terminal,
     statusBucket: null,
@@ -72,7 +74,6 @@ function useTerminalPanelDescriptor(
 }
 
 function TerminalPanel() {
-  const { t } = useTranslation("terminal");
   const { serverId, workspaceId, target, openFileInWorkspace } = usePaneContext();
   const { isWorkspaceFocused, isPaneFocused } = usePaneFocus();
   const workspaceAuthority = useWorkspaceExecutionAuthority(serverId, workspaceId)!;
@@ -103,7 +104,7 @@ function TerminalPanel() {
       <View style={CENTERED_PADDED_STYLE}>
         <Text>
           {workspaceAuthority.ok
-            ? t("panel.workspaceDirectoryNotFoundDetail")
+            ? "Workspace execution directory not found."
             : workspaceAuthority.message}
         </Text>
       </View>

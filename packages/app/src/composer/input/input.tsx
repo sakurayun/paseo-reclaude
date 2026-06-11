@@ -23,7 +23,6 @@ import {
 } from "react";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
-import type { ParseKeys, TFunction } from "i18next";
 import { ICON_SIZE, type Theme } from "@/styles/theme";
 import { ArrowUp, Mic, MicOff, CornerDownLeft, Plus, Square } from "lucide-react-native";
 import Animated, { useSharedValue, useAnimatedStyle, withTiming } from "react-native-reanimated";
@@ -62,6 +61,12 @@ import { isImeComposingKeyboardEvent } from "@/utils/keyboard-ime";
 import { isWeb } from "@/constants/platform";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { useComposerHeightMirror } from "./height-mirror";
+import {
+  resolveSendTooltipLabel,
+  resolveSubmitAccessibilityLabel,
+  resolveVoiceAccessibilityLabel,
+  resolveVoiceTooltipText,
+} from "./labels";
 import { computeCanStartDictation } from "./state";
 
 export interface AttachmentMenuItem {
@@ -262,23 +267,24 @@ function AttachmentDropdown({
   attachButtonStyle,
   renderAttachButtonIcon,
   attachmentMenuItems,
+  addAttachmentLabel,
 }: {
   isConnected: boolean;
   disabled: boolean;
   attachButtonStyle: React.ComponentProps<typeof DropdownMenuTrigger>["style"];
   renderAttachButtonIcon: (input: { hovered?: boolean }) => React.ReactElement;
   attachmentMenuItems: AttachmentMenuItem[];
+  addAttachmentLabel: string;
 }) {
-  const { t } = useTranslation("composer");
   const isCompact = useIsCompactFormFactor();
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   useDismissKeyboardOnOpen(isSheetOpen, isCompact);
-  const attachmentSheetHeader = useMemo<SheetHeader>(
-    () => ({ title: t("input.attachment.sheetTitle") }),
-    [t],
-  );
 
   const isButtonDisabled = !isConnected || disabled;
+  const attachmentSheetHeader = useMemo<SheetHeader>(
+    () => ({ title: addAttachmentLabel }),
+    [addAttachmentLabel],
+  );
   const handleOpenSheet = useCallback(() => {
     if (isButtonDisabled) return;
     setIsSheetOpen(true);
@@ -314,7 +320,7 @@ function AttachmentDropdown({
       <>
         <Pressable
           disabled={isButtonDisabled}
-          accessibilityLabel={t("input.attachment.addAccessibilityLabel")}
+          accessibilityLabel={addAttachmentLabel}
           accessibilityRole="button"
           testID="message-input-attach-button"
           onPress={handleOpenSheet}
@@ -341,7 +347,7 @@ function AttachmentDropdown({
         <TooltipTrigger asChild>
           <DropdownMenuTrigger
             disabled={isButtonDisabled}
-            accessibilityLabel={t("input.attachment.addAccessibilityLabel")}
+            accessibilityLabel={addAttachmentLabel}
             accessibilityRole="button"
             testID="message-input-attach-button"
             style={attachButtonStyle}
@@ -350,7 +356,7 @@ function AttachmentDropdown({
           </DropdownMenuTrigger>
         </TooltipTrigger>
         <TooltipContent side="top" align="center" offset={8}>
-          <Text style={styles.tooltipText}>{t("input.attachment.addTooltip")}</Text>
+          <Text style={styles.tooltipText}>{addAttachmentLabel}</Text>
         </TooltipContent>
       </Tooltip>
       <DropdownMenuContent
@@ -435,57 +441,6 @@ function SendButtonContent({
     return <ThemedCornerDownLeft size={buttonIconSize} uniProps={iconAccentForegroundMapping} />;
   }
   return <ThemedArrowUp size={buttonIconSize} uniProps={iconAccentForegroundMapping} />;
-}
-
-function resolveSubmitAccessibilityLabel(
-  input: {
-    submitButtonAccessibilityLabel: string | undefined;
-    canPressLoadingButton: boolean;
-    defaultActionQueues: boolean;
-    isAgentRunning: boolean;
-  },
-  t: TFunction<"composer">,
-): string {
-  if (input.submitButtonAccessibilityLabel) return input.submitButtonAccessibilityLabel;
-  if (input.canPressLoadingButton) return t("input.send.interruptAccessibilityLabel");
-  if (input.defaultActionQueues) return t("input.send.queueAccessibilityLabel");
-  if (input.isAgentRunning) return t("input.send.sendAndInterruptAccessibilityLabel");
-  return t("input.send.sendAccessibilityLabel");
-}
-
-function resolveVoiceAccessibilityLabelKey(input: {
-  isRealtimeVoiceForCurrentAgent: boolean;
-  isMuted: boolean;
-  isDictating: boolean;
-}): ParseKeys<"composer"> {
-  if (input.isRealtimeVoiceForCurrentAgent) {
-    return input.isMuted
-      ? "input.voice.unmuteVoiceModeAccessibilityLabel"
-      : "input.voice.muteVoiceModeAccessibilityLabel";
-  }
-  if (input.isDictating) return "input.voice.stopDictationAccessibilityLabel";
-  return "input.voice.startDictationAccessibilityLabel";
-}
-
-function resolveVoiceTooltipTextKey(input: {
-  isRealtimeVoiceForCurrentAgent: boolean;
-  isMuted: boolean;
-}): ParseKeys<"composer"> {
-  if (input.isRealtimeVoiceForCurrentAgent) {
-    return input.isMuted ? "input.voice.unmuteVoiceTooltip" : "input.voice.muteVoiceTooltip";
-  }
-  return "input.voice.dictationTooltip";
-}
-
-function resolveSendTooltipLabel(
-  input: {
-    submitButtonAccessibilityLabel: string | undefined;
-    defaultActionQueues: boolean;
-  },
-  t: TFunction<"composer">,
-): string {
-  if (input.submitButtonAccessibilityLabel) return input.submitButtonAccessibilityLabel;
-  return input.defaultActionQueues ? t("input.send.queueTooltip") : t("input.send.sendTooltip");
 }
 
 interface DesktopKeyPressContext {
@@ -765,15 +720,16 @@ function MessageInputOverlay({
 function FocusHint({
   visible,
   focusInputKeys,
+  label,
 }: {
   visible: boolean;
   focusInputKeys: ShortcutChord | null | undefined;
+  label: string;
 }) {
-  const { t } = useTranslation("composer");
-  if (!visible || !focusInputKeys) return null;
+  if (!visible || !focusInputKeys || !label.trim()) return null;
   return (
     <Text style={styles.focusHintText} pointerEvents="none">
-      {t("input.focusHint", { shortcut: formatShortcut(focusInputKeys[0], getShortcutOs()) })}
+      {label}
     </Text>
   );
 }
@@ -829,9 +785,8 @@ function SendButtonTooltip({
   isSubmitLoading,
   submitIcon,
   buttonIconSize,
-  submitButtonAccessibilityLabel,
-  defaultActionQueues,
   sendKeys,
+  sendTooltipLabel,
 }: {
   shouldShow: boolean;
   canPressLoadingButton: boolean;
@@ -843,11 +798,9 @@ function SendButtonTooltip({
   isSubmitLoading: boolean;
   submitIcon: "arrow" | "return";
   buttonIconSize: number;
-  submitButtonAccessibilityLabel: string | undefined;
-  defaultActionQueues: boolean;
   sendKeys: ShortcutChord | null | undefined;
+  sendTooltipLabel: string;
 }) {
-  const { t } = useTranslation("composer");
   if (!shouldShow) return null;
   return (
     <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
@@ -865,13 +818,7 @@ function SendButtonTooltip({
         />
       </TooltipTrigger>
       <TooltipContent side="top" align="center" offset={8}>
-        <SendTooltipBody
-          label={resolveSendTooltipLabel(
-            { submitButtonAccessibilityLabel, defaultActionQueues },
-            t,
-          )}
-          sendKeys={sendKeys}
-        />
+        <SendTooltipBody label={sendTooltipLabel} sendKeys={sendKeys} />
       </TooltipContent>
     </Tooltip>
   );
@@ -929,7 +876,7 @@ interface ToggleRealtimeVoiceContext {
   isAgentRunning: boolean;
   handleStopRealtimeVoice: () => Promise<unknown> | void;
   toast: { error: (msg: string) => void };
-  t: TFunction<"composer">;
+  interruptBeforeVoiceMessage: string;
 }
 
 function toggleRealtimeVoiceImpl(ctx: ToggleRealtimeVoiceContext): void {
@@ -942,7 +889,7 @@ function toggleRealtimeVoiceImpl(ctx: ToggleRealtimeVoiceContext): void {
     return;
   }
   if (ctx.isAgentRunning) {
-    ctx.toast.error(ctx.t("input.voice.interruptBeforeVoiceModeError"));
+    ctx.toast.error(ctx.interruptBeforeVoiceMessage);
     return;
   }
   void ctx.voice.startVoice(ctx.voiceServerId, ctx.voiceAgentId).catch((error) => {
@@ -1292,6 +1239,30 @@ function extractErrorMessage(error: unknown): string | null {
   return null;
 }
 
+/** Composer surface chrome: resting shadow by default, animated Ultracode glow when active. */
+function useInputWrapperChrome(input: {
+  isUltracodeActive: boolean;
+  inputWrapperStyle: import("react-native").ViewStyle | undefined;
+  inputAnimatedStyle: ReturnType<typeof useAnimatedStyle>;
+}) {
+  const { isUltracodeActive, inputWrapperStyle, inputAnimatedStyle } = input;
+  useEffect(() => {
+    if (isUltracodeActive) {
+      ensureUltracodeGlowStyle();
+    }
+  }, [isUltracodeActive]);
+  const style = useMemo(
+    () => [
+      styles.inputWrapper,
+      isUltracodeActive ? styles.inputWrapperUltracodeGlow : styles.inputWrapperShadow,
+      inputWrapperStyle,
+      inputAnimatedStyle,
+    ],
+    [inputWrapperStyle, inputAnimatedStyle, isUltracodeActive],
+  );
+  return { style, dataSet: isUltracodeActive ? ULTRACODE_GLOW_DATASET : undefined };
+}
+
 export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
   function MessageInput(props, ref) {
     const {
@@ -1333,11 +1304,11 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       attachmentSlot,
       isUltracodeActive,
     } = resolveMessageInputProps(props);
+    const { t } = useTranslation();
     const isCompact = useIsCompactFormFactor();
     const { height: windowHeight } = useWindowDimensions();
     const maxInputHeight = resolveMaxInputHeight(windowHeight);
     const buttonIconSize = isWeb ? ICON_SIZE.md : ICON_SIZE.lg;
-    const { t } = useTranslation("composer");
     const toast = useToast();
     const voice = useVoiceOptional();
     const sendKeys = useShortcutKeys("message-input-send");
@@ -1590,7 +1561,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
         isAgentRunning,
         handleStopRealtimeVoice,
         toast,
-        t,
+        interruptBeforeVoiceMessage: t("composer.voice.interruptBeforeVoice"),
       });
     }, [
       disabled,
@@ -1770,30 +1741,32 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       isEnabled: isInputFocused && !isSendButtonDisabled,
       onSubmit: handleDefaultSendAction,
     });
-    const submitAccessibilityLabel = resolveSubmitAccessibilityLabel(
-      {
-        submitButtonAccessibilityLabel,
-        canPressLoadingButton,
-        defaultActionQueues,
-        isAgentRunning,
-      },
+    const submitAccessibilityLabel = resolveSubmitAccessibilityLabel({
+      submitButtonAccessibilityLabel,
+      canPressLoadingButton,
+      defaultActionQueues,
+      isAgentRunning,
       t,
-    );
+    });
 
-    const voiceButtonAccessibilityLabel = t(
-      resolveVoiceAccessibilityLabelKey({
-        isRealtimeVoiceForCurrentAgent,
-        isMuted: Boolean(voice?.isMuted),
-        isDictating,
-      }),
-    );
+    const voiceButtonAccessibilityLabel = resolveVoiceAccessibilityLabel({
+      isRealtimeVoiceForCurrentAgent,
+      isMuted: Boolean(voice?.isMuted),
+      isDictating,
+      t,
+    });
 
-    const voiceTooltipText = t(
-      resolveVoiceTooltipTextKey({
-        isRealtimeVoiceForCurrentAgent,
-        isMuted: Boolean(voice?.isMuted),
-      }),
-    );
+    const voiceTooltipText = resolveVoiceTooltipText({
+      isRealtimeVoiceForCurrentAgent,
+      isMuted: Boolean(voice?.isMuted),
+      t,
+    });
+
+    const sendTooltipLabel = resolveSendTooltipLabel({
+      submitButtonAccessibilityLabel,
+      defaultActionQueues,
+      t,
+    });
 
     const handleInputChange = useCallback(
       (nextValue: string) => {
@@ -1838,21 +1811,11 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       void handleStopRealtimeVoice();
     }, [handleStopRealtimeVoice]);
 
-    const inputWrapperCombinedStyle = useMemo(
-      () => [
-        styles.inputWrapper,
-        isUltracodeActive ? styles.inputWrapperUltracodeGlow : styles.inputWrapperShadow,
-        inputWrapperStyle,
-        inputAnimatedStyle,
-      ],
-      [inputWrapperStyle, inputAnimatedStyle, isUltracodeActive],
-    );
-
-    useEffect(() => {
-      if (isUltracodeActive) {
-        ensureUltracodeGlowStyle();
-      }
-    }, [isUltracodeActive]);
+    const inputWrapperChrome = useInputWrapperChrome({
+      isUltracodeActive,
+      inputWrapperStyle,
+      inputAnimatedStyle,
+    });
     const textInputStyle = useMemo(
       () => [styles.textInput, computeTextInputHeightStyle(inputHeight, maxInputHeight)],
       [inputHeight, maxInputHeight],
@@ -1894,8 +1857,8 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
         {/* Regular input */}
         <Animated.View
           ref={inputWrapperRef}
-          style={inputWrapperCombinedStyle}
-          dataSet={isUltracodeActive ? ULTRACODE_GLOW_DATASET : undefined}
+          style={inputWrapperChrome.style}
+          dataSet={inputWrapperChrome.dataSet}
         >
           {attachmentSlot}
           {/* Text input */}
@@ -1904,9 +1867,9 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
               ref={textInputRef}
               value={value}
               onChangeText={handleInputChange}
-              placeholder={placeholder ?? t("input.placeholder")}
+              placeholder={placeholder ?? t("composer.placeholders.fallback")}
               uniProps={textInputPlaceholderColorMapping}
-              accessibilityLabel={t("input.accessibilityLabel")}
+              accessibilityLabel={t("composer.input.accessibilityLabel")}
               onFocus={handleInputFocus}
               onBlur={handleInputBlur}
               style={textInputStyle}
@@ -1922,6 +1885,9 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
             <FocusHint
               visible={isWeb && isPaneFocused && !isInputFocused && !value}
               focusInputKeys={focusInputKeys}
+              label={t("composer.input.focusHint", {
+                shortcut: focusInputKeys ? formatShortcut(focusInputKeys[0], getShortcutOs()) : "",
+              })}
             />
           </View>
 
@@ -1935,6 +1901,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
                 attachButtonStyle={attachButtonStyle}
                 renderAttachButtonIcon={renderAttachButtonIcon}
                 attachmentMenuItems={attachmentMenuItems}
+                addAttachmentLabel={t("composer.input.addAttachment")}
               />
               {leftContent}
             </View>
@@ -1965,9 +1932,8 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
                 isSubmitLoading={isSubmitLoading}
                 submitIcon={submitIcon}
                 buttonIconSize={buttonIconSize}
-                submitButtonAccessibilityLabel={submitButtonAccessibilityLabel}
-                defaultActionQueues={defaultActionQueues}
                 sendKeys={sendKeys}
+                sendTooltipLabel={sendTooltipLabel}
               />
             </View>
           </View>

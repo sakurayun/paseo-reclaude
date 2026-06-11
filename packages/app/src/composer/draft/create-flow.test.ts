@@ -55,7 +55,6 @@ describe("useDraftAgentCreateFlow", () => {
         buildDraftAgent: (currentAttempt) => ({ currentAttempt }),
         createRequest,
         onCreateSuccess,
-        t: ((key: string) => key) as never,
       }),
     );
 

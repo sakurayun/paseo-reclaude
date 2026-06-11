@@ -562,7 +562,7 @@ export function ContextMenuContent({
       <View style={styles.overlay}>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={t("menu.backdropAccessibilityLabel")}
+          accessibilityLabel={t("menu.backdrop")}
           style={styles.backdrop}
           onPress={handleClose}
           testID={testID ? `${testID}-backdrop` : undefined}

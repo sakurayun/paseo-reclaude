@@ -982,7 +982,7 @@ function FilePreviewBody({
   location,
   imagePreviewUri,
 }: FilePreviewBodyProps) {
-  const { t } = useTranslation("app");
+  const { t } = useTranslation();
   const { theme } = useUnistyles();
   const filePath = location.path;
   const isDark = theme.colorScheme === "dark";
@@ -1054,13 +1054,13 @@ function FilePreviewBody({
     content = (
       <FilePaneCenterState>
         <ActivityIndicator size="small" />
-        <Text style={styles.loadingText}>{t("files.preview.loading")}</Text>
+        <Text style={styles.loadingText}>{t("panels.file.loading")}</Text>
       </FilePaneCenterState>
     );
   } else if (!preview) {
     content = (
       <FilePaneCenterState>
-        <Text style={styles.emptyText}>{t("files.preview.noPreview")}</Text>
+        <Text style={styles.emptyText}>{t("panels.file.noPreview")}</Text>
       </FilePaneCenterState>
     );
   } else if (preview.kind === "text" && textRenderData) {
@@ -1119,7 +1119,7 @@ function FilePreviewBody({
   } else {
     content = (
       <FilePaneCenterState>
-        <Text style={styles.emptyText}>{t("files.preview.binaryUnavailable")}</Text>
+        <Text style={styles.emptyText}>{t("panels.file.binaryPreviewUnavailable")}</Text>
         <Text style={styles.binaryMetaText}>{formatFileSize({ size: preview.size })}</Text>
       </FilePaneCenterState>
     );
@@ -1137,7 +1137,7 @@ export function FilePane({
   workspaceRoot: string;
   location: WorkspaceFileLocation;
 }) {
-  const { t } = useTranslation("app");
+  const { t } = useTranslation();
   const isMobile = useIsCompactFormFactor();
   const showDesktopWebScrollbar = isWeb && !isMobile;
 
@@ -1160,7 +1160,10 @@ export function FilePane({
     enabled: Boolean(client && readTarget),
     queryFn: async () => {
       if (!client || !readTarget) {
-        return { file: null as ExplorerFile | null, error: t("files.error.hostNotConnected") };
+        return {
+          file: null as ExplorerFile | null,
+          error: t("workspace.terminal.hostDisconnected"),
+        };
       }
       try {
         const file = await client.readFile(readTarget.cwd, readTarget.path);
@@ -1174,7 +1177,7 @@ export function FilePane({
         return {
           file: null,
           imageAttachment: null,
-          error: error instanceof Error ? error.message : t("files.error.loadFailed"),
+          error: error instanceof Error ? error.message : t("panels.file.failedToLoad"),
         };
       }
     },

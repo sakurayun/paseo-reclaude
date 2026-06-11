@@ -1,7 +1,7 @@
 import { Text, View } from "react-native";
-import { useTranslation } from "react-i18next";
 import { FileText } from "lucide-react-native";
 import invariant from "tiny-invariant";
+import { useTranslation } from "react-i18next";
 import { FilePane } from "@/components/file-pane";
 import { usePaneContext } from "@/panels/pane-context";
 import type { PanelRegistration } from "@/panels/panel-registry";
@@ -26,7 +26,7 @@ function useFilePanelDescriptor(target: { kind: "file"; path: string }) {
 }
 
 function FilePanel() {
-  const { t } = useTranslation("workspaces");
+  const { t } = useTranslation();
   const { serverId, workspaceId, target } = usePaneContext();
   const workspaceAuthority = useWorkspaceExecutionAuthority(serverId, workspaceId);
   const workspaceDirectory = workspaceAuthority?.ok
@@ -36,7 +36,7 @@ function FilePanel() {
   if (!workspaceDirectory) {
     return (
       <View style={CENTERED_PADDED_STYLE}>
-        <Text>{t("filePanel.executionDirectoryNotFound")}</Text>
+        <Text>{t("panels.file.executionDirectoryMissing")}</Text>
       </View>
     );
   }

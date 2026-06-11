@@ -8,10 +8,9 @@ import React, {
   createElement,
 } from "react";
 import { Pressable, Text, TextInput, View } from "react-native";
-import { useTranslation } from "react-i18next";
-import type { TFunction } from "i18next";
 import { ArrowLeft, ArrowRight, MousePointer2, PencilRuler, RotateCw } from "lucide-react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
+import { useTranslation } from "react-i18next";
 import {
   buildWorkspaceAttachmentScopeKey,
   useWorkspaceAttachments,
@@ -69,7 +68,7 @@ function truncateText(value: string, maxLength: number): string {
   return value.length > maxLength ? `${value.slice(0, maxLength).trim()}...` : value;
 }
 
-function getWebviewLoadErrorMessage(event: Event, t: TFunction<"app">): string | null {
+function getWebviewLoadErrorMessage(event: Event, failedToLoadLabel: string): string | null {
   const details = event as Event & {
     errorCode?: unknown;
     errorDescription?: unknown;
@@ -83,7 +82,7 @@ function getWebviewLoadErrorMessage(event: Event, t: TFunction<"app">): string |
   const description =
     typeof details.errorDescription === "string" && details.errorDescription.trim()
       ? details.errorDescription.trim()
-      : t("browser.error.loadFailed");
+      : failedToLoadLabel;
   const url =
     typeof details.validatedURL === "string" && details.validatedURL.trim()
       ? details.validatedURL.trim()
@@ -92,7 +91,7 @@ function getWebviewLoadErrorMessage(event: Event, t: TFunction<"app">): string |
   return url ? `${description}: ${url}` : description;
 }
 
-function getLoadUrlRejectionMessage(error: unknown, t: TFunction<"app">): string | null {
+function getLoadUrlRejectionMessage(error: unknown, failedToLoadLabel: string): string | null {
   if (error instanceof Error && error.message.trim()) {
     if (error.message.includes("ERR_ABORTED") || error.message.includes("ERR_BLOCKED_BY_CLIENT")) {
       return null;
@@ -105,18 +104,21 @@ function getLoadUrlRejectionMessage(error: unknown, t: TFunction<"app">): string
     }
     return error.trim();
   }
-  return t("browser.error.loadFailed");
+  return failedToLoadLabel;
 }
 
-function getUnsafeNavigationMessage(url: string, t: TFunction<"app">): string | null {
+function getUnsafeNavigationMessage(
+  url: string,
+  labels: { invalidUrl: string; unsupportedProtocol: (protocol: string) => string },
+): string | null {
   try {
     const parsed = new URL(url);
     if (ALLOWED_BROWSER_PROTOCOLS.has(parsed.protocol) || parsed.href === "about:blank") {
       return null;
     }
-    return t("browser.error.unsupportedUrl", { protocol: parsed.protocol });
+    return labels.unsupportedProtocol(parsed.protocol);
   } catch {
-    return t("browser.error.invalidUrl");
+    return labels.invalidUrl;
   }
 }
 
@@ -308,7 +310,7 @@ export function BrowserPane({
   isInteractive?: boolean;
   onFocusPane?: () => void;
 }) {
-  const { t } = useTranslation("app");
+  const { t } = useTranslation();
   const { theme } = useUnistyles();
   const browser = useBrowserStore((state) => state.browsersById[browserId] ?? null);
   const updateBrowser = useBrowserStore((state) => state.updateBrowser);
@@ -360,6 +362,17 @@ export function BrowserPane({
     () => [styles.metaError, { color: theme.colors.palette.red[500] }],
     [theme.colors.palette.red],
   );
+  const browserErrorLabels = useMemo(
+    () => ({
+      failedToLoad: t("workspace.browser.errors.failedToLoad"),
+      invalidUrl: t("workspace.browser.errors.invalidUrl"),
+      unsupportedProtocol: (protocol: string) =>
+        t("workspace.browser.errors.unsupportedProtocol", { protocol }),
+    }),
+    [t],
+  );
+  const browserErrorLabelsRef = useRef(browserErrorLabels);
+  browserErrorLabelsRef.current = browserErrorLabels;
 
   useEffect(() => {
     const nextUrl = browser?.url ?? "https://example.com";
@@ -526,7 +539,10 @@ export function BrowserPane({
 
     host.replaceChildren();
 
-    const initialUnsafeNavigationMessage = getUnsafeNavigationMessage(initialUrlRef.current, t);
+    const initialUnsafeNavigationMessage = getUnsafeNavigationMessage(
+      initialUrlRef.current,
+      browserErrorLabelsRef.current,
+    );
     const webview = document.createElement("webview") as ElectronWebview;
     webviewRef.current = webview;
     webview.setAttribute("partition", `persist:paseo-browser-${browserId}`);
@@ -603,7 +619,7 @@ export function BrowserPane({
       updateBrowserRef.current(browserIdRef.current, { faviconUrl: favicons[0] ?? null });
     };
     const handleLoadFailed = (event: Event) => {
-      const message = getWebviewLoadErrorMessage(event, t);
+      const message = getWebviewLoadErrorMessage(event, browserErrorLabelsRef.current.failedToLoad);
       if (!message) {
         return;
       }
@@ -730,7 +746,7 @@ export function BrowserPane({
     (nextUrl: string) => {
       const normalizedUrl = normalizeWorkspaceBrowserUrl(nextUrl);
       const webview = webviewRef.current;
-      const unsafeNavigationMessage = getUnsafeNavigationMessage(normalizedUrl, t);
+      const unsafeNavigationMessage = getUnsafeNavigationMessage(normalizedUrl, browserErrorLabels);
       const previousUrl = browserRef.current?.url ?? initialUrlRef.current;
       pendingNavigationUrlRef.current = unsafeNavigationMessage ? null : normalizedUrl;
       updateBrowserRef.current(browserIdRef.current, {
@@ -749,7 +765,7 @@ export function BrowserPane({
       }
       if (webview?.loadURL) {
         void webview.loadURL(normalizedUrl).catch((error: unknown) => {
-          const message = getLoadUrlRejectionMessage(error, t);
+          const message = getLoadUrlRejectionMessage(error, browserErrorLabels.failedToLoad);
           if (!message) {
             return;
           }
@@ -764,7 +780,7 @@ export function BrowserPane({
         webview.setAttribute("src", normalizedUrl);
       }
     },
-    [t],
+    [browserErrorLabels],
   );
 
   const handleBack = useCallback(() => {
@@ -1139,8 +1155,8 @@ export function BrowserPane({
   if (!isElectronRuntime()) {
     return (
       <View style={styles.unavailableState}>
-        <Text style={titleStyle}>{t("browser.unavailable.title")}</Text>
-        <Text style={subtitleStyle}>{t("browser.unavailable.subtitle")}</Text>
+        <Text style={titleStyle}>{t("workspace.browser.unavailable.title")}</Text>
+        <Text style={subtitleStyle}>{t("workspace.browser.unavailable.subtitle")}</Text>
       </View>
     );
   }
@@ -1152,7 +1168,7 @@ export function BrowserPane({
         <View style={styles.chromeLeft}>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel={t("browser.controls.back")}
+            accessibilityLabel={t("workspace.browser.controls.back")}
             disabled={!browser?.canGoBack}
             onPress={handleBack}
             style={backIconButtonStyle}
@@ -1161,7 +1177,7 @@ export function BrowserPane({
           </Pressable>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel={t("browser.controls.forward")}
+            accessibilityLabel={t("workspace.browser.controls.forward")}
             disabled={!browser?.canGoForward}
             onPress={handleForward}
             style={forwardIconButtonStyle}
@@ -1171,7 +1187,9 @@ export function BrowserPane({
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={
-              browser?.isLoading ? t("browser.controls.stop") : t("browser.controls.refresh")
+              browser?.isLoading
+                ? t("workspace.browser.controls.stopLoading")
+                : t("workspace.browser.controls.refresh")
             }
             onPress={handleRefresh}
             style={baseIconButtonStyle}
@@ -1181,13 +1199,13 @@ export function BrowserPane({
         </View>
         <View style={styles.urlBarWrap}>
           <TextInput
-            accessibilityLabel={t("browser.urlBar.label")}
+            accessibilityLabel={t("workspace.browser.controls.browserUrl")}
             autoCapitalize="none"
             autoCorrect={false}
             onChangeText={setDraftUrl}
             onFocus={handleUrlBarFocus}
             onSubmitEditing={handleNavigateDraftUrl}
-            placeholder={t("browser.urlBar.placeholder")}
+            placeholder={t("workspace.browser.controls.enterUrl")}
             placeholderTextColor={theme.colors.foregroundMuted}
             ref={urlInputRef}
             style={urlInputStyle}
@@ -1199,7 +1217,7 @@ export function BrowserPane({
             <>
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel={t("browser.controls.openDevTools")}
+                accessibilityLabel={t("workspace.browser.controls.openDevTools")}
                 onPress={handleOpenDevTools}
                 style={baseIconButtonStyle}
               >
@@ -1209,8 +1227,8 @@ export function BrowserPane({
                 accessibilityRole="button"
                 accessibilityLabel={
                   selectorActive
-                    ? t("browser.controls.cancelSelector")
-                    : t("browser.controls.selectElement")
+                    ? t("workspace.browser.controls.cancelSelector")
+                    : t("workspace.browser.controls.selectElement")
                 }
                 onPress={handleToggleElementSelector}
                 style={selectorIconButtonStyle}

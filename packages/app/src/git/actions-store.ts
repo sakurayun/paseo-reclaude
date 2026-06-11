@@ -1,4 +1,3 @@
-import type { TFunction } from "i18next";
 import type { QueryKey } from "@tanstack/react-query";
 import type { CheckoutPrMergeMethod } from "@getpaseo/protocol/messages";
 import { create } from "zustand";
@@ -19,6 +18,7 @@ import {
   resolveWorkspaceMapKeyByIdentity,
 } from "@/utils/workspace-execution";
 import { invalidateCheckoutGitQueriesForClient } from "@/git/query-keys";
+import { i18n } from "@/i18n/i18next";
 
 const SUCCESS_DISPLAY_MS = 1000;
 
@@ -49,19 +49,19 @@ function checkoutKey(serverId: string, cwd: string): CheckoutKey {
   return `${serverId}::${cwd}`;
 }
 
-function resolveClient(serverId: string, t: TFunction<"git">) {
+function resolveClient(serverId: string) {
   const session = useSessionStore.getState().sessions[serverId];
   const client = session?.client ?? null;
   if (!client) {
-    throw new Error(t("actions.store.error.daemonClientUnavailable"));
+    throw new Error(i18n.t("common.errors.daemonClientUnavailable"));
   }
   return client;
 }
 
-function assertGitHubAutoMergeActionsSupported(serverId: string, t: TFunction<"git">) {
+function assertGitHubAutoMergeActionsSupported(serverId: string) {
   const session = useSessionStore.getState().sessions[serverId];
   if (session?.serverInfo?.features?.checkoutGithubSetAutoMerge !== true) {
-    throw new Error(t("actions.store.error.autoMergeUpdateHost"));
+    throw new Error("Update the host to use GitHub auto-merge actions.");
   }
 }
 
@@ -234,46 +234,29 @@ interface CheckoutGitActionsStoreState {
     actionId: CheckoutGitAsyncActionId;
   }) => CheckoutGitActionStatus;
 
-  commit: (params: { serverId: string; cwd: string; t: TFunction<"git"> }) => Promise<void>;
-  pull: (params: { serverId: string; cwd: string; t: TFunction<"git"> }) => Promise<void>;
-  push: (params: { serverId: string; cwd: string; t: TFunction<"git"> }) => Promise<void>;
-  pullAndPush: (params: { serverId: string; cwd: string; t: TFunction<"git"> }) => Promise<void>;
-  refresh: (params: { serverId: string; cwd: string; t: TFunction<"git"> }) => Promise<void>;
-  createPr: (params: { serverId: string; cwd: string; t: TFunction<"git"> }) => Promise<void>;
+  commit: (params: { serverId: string; cwd: string }) => Promise<void>;
+  pull: (params: { serverId: string; cwd: string }) => Promise<void>;
+  push: (params: { serverId: string; cwd: string }) => Promise<void>;
+  pullAndPush: (params: { serverId: string; cwd: string }) => Promise<void>;
+  refresh: (params: { serverId: string; cwd: string }) => Promise<void>;
+  createPr: (params: { serverId: string; cwd: string }) => Promise<void>;
   mergePr: (params: {
     serverId: string;
     cwd: string;
     method: CheckoutPrMergeMethod;
-    t: TFunction<"git">;
   }) => Promise<void>;
   enablePrAutoMerge: (params: {
     serverId: string;
     cwd: string;
     method: CheckoutPrMergeMethod;
-    t: TFunction<"git">;
   }) => Promise<void>;
-  disablePrAutoMerge: (params: {
-    serverId: string;
-    cwd: string;
-    t: TFunction<"git">;
-  }) => Promise<void>;
-  mergeBranch: (params: {
-    serverId: string;
-    cwd: string;
-    baseRef: string;
-    t: TFunction<"git">;
-  }) => Promise<void>;
-  mergeFromBase: (params: {
-    serverId: string;
-    cwd: string;
-    baseRef: string;
-    t: TFunction<"git">;
-  }) => Promise<void>;
+  disablePrAutoMerge: (params: { serverId: string; cwd: string }) => Promise<void>;
+  mergeBranch: (params: { serverId: string; cwd: string; baseRef: string }) => Promise<void>;
+  mergeFromBase: (params: { serverId: string; cwd: string; baseRef: string }) => Promise<void>;
   archiveWorktree: (params: {
     serverId: string;
     cwd: string;
     worktreePath: string;
-    t: TFunction<"git">;
   }) => Promise<void>;
 }
 
@@ -335,13 +318,13 @@ export const useCheckoutGitActionsStore = create<CheckoutGitActionsStoreState>()
     return get().statusByCheckout[key]?.[actionId] ?? "idle";
   },
 
-  commit: async ({ serverId, cwd, t }) => {
+  commit: async ({ serverId, cwd }) => {
     await runCheckoutAction({
       serverId,
       cwd,
       actionId: "commit",
       run: async () => {
-        const client = resolveClient(serverId, t);
+        const client = resolveClient(serverId);
         const payload = await client.checkoutCommit(cwd, { addAll: true });
         if (payload.error) {
           throw new Error(payload.error.message);
@@ -350,13 +333,13 @@ export const useCheckoutGitActionsStore = create<CheckoutGitActionsStoreState>()
     });
   },
 
-  pull: async ({ serverId, cwd, t }) => {
+  pull: async ({ serverId, cwd }) => {
     await runCheckoutAction({
       serverId,
       cwd,
       actionId: "pull",
       run: async () => {
-        const client = resolveClient(serverId, t);
+        const client = resolveClient(serverId);
         const payload = await client.checkoutPull(cwd);
         if (payload.error) {
           throw new Error(payload.error.message);
@@ -365,13 +348,13 @@ export const useCheckoutGitActionsStore = create<CheckoutGitActionsStoreState>()
     });
   },
 
-  push: async ({ serverId, cwd, t }) => {
+  push: async ({ serverId, cwd }) => {
     await runCheckoutAction({
       serverId,
       cwd,
       actionId: "push",
       run: async () => {
-        const client = resolveClient(serverId, t);
+        const client = resolveClient(serverId);
         const payload = await client.checkoutPush(cwd);
         if (payload.error) {
           throw new Error(payload.error.message);
@@ -380,13 +363,13 @@ export const useCheckoutGitActionsStore = create<CheckoutGitActionsStoreState>()
     });
   },
 
-  refresh: async ({ serverId, cwd, t }) => {
+  refresh: async ({ serverId, cwd }) => {
     await runCheckoutAction({
       serverId,
       cwd,
       actionId: "refresh",
       run: async () => {
-        const client = resolveClient(serverId, t);
+        const client = resolveClient(serverId);
         const payload = await client.checkoutRefresh(cwd);
         if (payload.error) {
           throw new Error(payload.error.message);
@@ -395,13 +378,13 @@ export const useCheckoutGitActionsStore = create<CheckoutGitActionsStoreState>()
     });
   },
 
-  pullAndPush: async ({ serverId, cwd, t }) => {
+  pullAndPush: async ({ serverId, cwd }) => {
     await runCheckoutAction({
       serverId,
       cwd,
       actionId: "pull-and-push",
       run: async () => {
-        const client = resolveClient(serverId, t);
+        const client = resolveClient(serverId);
         const pullPayload = await client.checkoutPull(cwd);
         if (pullPayload.error) {
           throw new Error(pullPayload.error.message);
@@ -414,13 +397,13 @@ export const useCheckoutGitActionsStore = create<CheckoutGitActionsStoreState>()
     });
   },
 
-  createPr: async ({ serverId, cwd, t }) => {
+  createPr: async ({ serverId, cwd }) => {
     await runCheckoutAction({
       serverId,
       cwd,
       actionId: "create-pr",
       run: async () => {
-        const client = resolveClient(serverId, t);
+        const client = resolveClient(serverId);
         const payload = await client.checkoutPrCreate(cwd, {});
         if (payload.error) {
           throw new Error(payload.error.message);
@@ -429,13 +412,13 @@ export const useCheckoutGitActionsStore = create<CheckoutGitActionsStoreState>()
     });
   },
 
-  mergePr: async ({ serverId, cwd, method, t }) => {
+  mergePr: async ({ serverId, cwd, method }) => {
     await runCheckoutAction({
       serverId,
       cwd,
       actionId: `merge-pr-${method}`,
       run: async () => {
-        const client = resolveClient(serverId, t);
+        const client = resolveClient(serverId);
         const payload = await client.checkoutPrMerge(cwd, { method });
         if (payload.error) {
           throw new Error(payload.error.message);
@@ -444,14 +427,14 @@ export const useCheckoutGitActionsStore = create<CheckoutGitActionsStoreState>()
     });
   },
 
-  enablePrAutoMerge: async ({ serverId, cwd, method, t }) => {
-    assertGitHubAutoMergeActionsSupported(serverId, t);
+  enablePrAutoMerge: async ({ serverId, cwd, method }) => {
+    assertGitHubAutoMergeActionsSupported(serverId);
     await runCheckoutAction({
       serverId,
       cwd,
       actionId: `enable-pr-auto-merge-${method}`,
       run: async () => {
-        const client = resolveClient(serverId, t);
+        const client = resolveClient(serverId);
         const payload = await client.checkoutGithubSetAutoMerge(cwd, { enabled: true, method });
         if (payload.error) {
           throw new Error(payload.error.message);
@@ -460,14 +443,14 @@ export const useCheckoutGitActionsStore = create<CheckoutGitActionsStoreState>()
     });
   },
 
-  disablePrAutoMerge: async ({ serverId, cwd, t }) => {
-    assertGitHubAutoMergeActionsSupported(serverId, t);
+  disablePrAutoMerge: async ({ serverId, cwd }) => {
+    assertGitHubAutoMergeActionsSupported(serverId);
     await runCheckoutAction({
       serverId,
       cwd,
       actionId: "disable-pr-auto-merge",
       run: async () => {
-        const client = resolveClient(serverId, t);
+        const client = resolveClient(serverId);
         const payload = await client.checkoutGithubSetAutoMerge(cwd, { enabled: false });
         if (payload.error) {
           throw new Error(payload.error.message);
@@ -476,13 +459,13 @@ export const useCheckoutGitActionsStore = create<CheckoutGitActionsStoreState>()
     });
   },
 
-  mergeBranch: async ({ serverId, cwd, baseRef, t }) => {
+  mergeBranch: async ({ serverId, cwd, baseRef }) => {
     await runCheckoutAction({
       serverId,
       cwd,
       actionId: "merge-branch",
       run: async () => {
-        const client = resolveClient(serverId, t);
+        const client = resolveClient(serverId);
         const payload = await client.checkoutMerge(cwd, {
           baseRef,
           strategy: "merge",
@@ -495,13 +478,13 @@ export const useCheckoutGitActionsStore = create<CheckoutGitActionsStoreState>()
     });
   },
 
-  mergeFromBase: async ({ serverId, cwd, baseRef, t }) => {
+  mergeFromBase: async ({ serverId, cwd, baseRef }) => {
     await runCheckoutAction({
       serverId,
       cwd,
       actionId: "merge-from-base",
       run: async () => {
-        const client = resolveClient(serverId, t);
+        const client = resolveClient(serverId);
         const payload = await client.checkoutMergeFromBase(cwd, {
           baseRef,
           requireCleanTarget: true,
@@ -513,13 +496,13 @@ export const useCheckoutGitActionsStore = create<CheckoutGitActionsStoreState>()
     });
   },
 
-  archiveWorktree: async ({ serverId, cwd, worktreePath, t }) => {
+  archiveWorktree: async ({ serverId, cwd, worktreePath }) => {
     await runCheckoutAction({
       serverId,
       cwd,
       actionId: "archive-worktree",
       run: async () => {
-        const client = resolveClient(serverId, t);
+        const client = resolveClient(serverId);
         const snapshot = snapshotWorktreeArchiveState({ serverId, worktreePath });
         markWorkspaceArchivePending({
           serverId,

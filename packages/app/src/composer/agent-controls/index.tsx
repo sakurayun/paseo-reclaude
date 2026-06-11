@@ -8,6 +8,7 @@ import {
   type ReactNode,
   type RefObject,
 } from "react";
+import { useTranslation } from "react-i18next";
 import {
   View,
   Text,
@@ -18,8 +19,7 @@ import {
   type ViewStyle,
 } from "react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
-import { useTranslation } from "react-i18next";
-import type { ParseKeys, TFunction } from "i18next";
+import type { TFunction } from "i18next";
 import { useShallow } from "zustand/shallow";
 import {
   Brain,
@@ -61,7 +61,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Combobox, ComboboxItem, type ComboboxOption } from "@/components/ui/combobox";
 import { DraftAgentModeControl, AgentModeControl } from "@/composer/agent-controls/mode-control";
-import { AdaptiveModalSheet } from "@/components/adaptive-modal-sheet";
+import { AdaptiveModalSheet, type SheetHeader } from "@/components/adaptive-modal-sheet";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type {
   AgentFeature,
@@ -74,7 +74,7 @@ import type { AgentProviderDefinition } from "@getpaseo/protocol/provider-manife
 import {
   getFeatureHighlightColor,
   getFeatureTooltip,
-  getAgentControlHint,
+  getAgentControlHintKey,
   resolveFeatureImpliedThinkingOptionId,
   resolveThinkingImpliedFeatureUpdates,
   resolveAgentModelSelection,
@@ -278,7 +278,7 @@ function toComboboxOptions(options: AgentControlOption[] | undefined): ComboboxO
 
 function toThinkingControlOptions(
   options: AgentControlOption[] | undefined,
-  t: TFunction<"composer">,
+  t: TFunction,
 ): AgentControlOption[] {
   return (options ?? []).map((option) => ({
     id: option.id,
@@ -445,7 +445,7 @@ function buildActiveModelGatewayOptions(
 }
 
 function useActiveModelGatewayStatus(agent: AgentControlsSlice) {
-  const { t } = useTranslation("composer");
+  const { t } = useTranslation();
   const modelGatewayId = agent?.modelGatewayId ?? undefined;
   const modelGatewayLabel = agent?.modelGatewayLabel ?? undefined;
   const options = useMemo(
@@ -453,7 +453,7 @@ function useActiveModelGatewayStatus(agent: AgentControlsSlice) {
       buildActiveModelGatewayOptions(
         modelGatewayId,
         modelGatewayLabel,
-        t("controls.gateway.nativeLabel"),
+        t("agentControls.gateway.nativeLabel"),
       ),
     [modelGatewayId, modelGatewayLabel, t],
   );
@@ -592,7 +592,7 @@ function ControlledAgentControls({
   isCompactLayout,
 }: ControlledAgentControlsProps) {
   const { theme } = useUnistyles();
-  const { t } = useTranslation("composer");
+  const { t } = useTranslation();
   const isCompactFormFactor = useIsCompactFormFactor();
   const isCompact = isCompactLayout ?? isCompactFormFactor;
   const [activeSheet, setActiveSheet] = useState<ActiveSheet>(null);
@@ -617,12 +617,12 @@ function ControlledAgentControls({
   const displayProvider = findOptionLabel(
     providerOptions,
     selectedProviderId,
-    t("controls.provider.fallbackLabel"),
+    t("agentControls.provider.fallback"),
   );
   const displayModelGateway = findOptionLabel(
     modelGatewayOptions,
     selectedModelGatewayId,
-    t("controls.gateway.nativeLabel"),
+    t("agentControls.gateway.nativeLabel"),
   );
   const formattedThinkingOptions = useMemo(
     () => toThinkingControlOptions(thinkingOptions, t),
@@ -631,7 +631,7 @@ function ControlledAgentControls({
   const displayThinking = findOptionLabel(
     formattedThinkingOptions,
     selectedThinkingOptionId,
-    formattedThinkingOptions[0]?.label ?? t("controls.thinking.unknownLabel"),
+    formattedThinkingOptions[0]?.label ?? t("agentControls.thinking.unknown"),
   );
 
   const ProviderIcon = resolveProviderIcon(provider);
@@ -990,7 +990,7 @@ const DESKTOP_SEARCH_THRESHOLD = 6;
 
 function DesktopAgentControlsContent(props: DesktopAgentControlsContentProps) {
   const { theme } = useUnistyles();
-  const { t } = useTranslation("composer");
+  const { t } = useTranslation();
   const {
     provider,
     providerOptions,
@@ -1056,7 +1056,7 @@ function DesktopAgentControlsContent(props: DesktopAgentControlsContentProps) {
             onPress={handleProviderPress}
             style={providerPressableStyle}
             accessibilityRole="button"
-            accessibilityLabel={t("controls.provider.selectAccessibilityLabel")}
+            accessibilityLabel={t("agentControls.provider.select")}
             testID="agent-provider-selector"
           >
             <Text style={styles.modeBadgeText}>{displayProvider}</Text>
@@ -1097,7 +1097,7 @@ function DesktopAgentControlsContent(props: DesktopAgentControlsContentProps) {
             </View>
           </TooltipTrigger>
           <TooltipContent side="top" align="center" offset={8}>
-            <Text style={styles.tooltipText}>{getAgentControlHint("model", t)}</Text>
+            <Text style={styles.tooltipText}>{t(getAgentControlHintKey("model"))}</Text>
           </TooltipContent>
         </Tooltip>
       ) : null}
@@ -1128,7 +1128,7 @@ function DesktopAgentControlsContent(props: DesktopAgentControlsContentProps) {
                 onPress={handleThinkingPress}
                 style={thinkingPressableStyle}
                 accessibilityRole="button"
-                accessibilityLabel={t("controls.thinking.selectAccessibilityLabelWithValue", {
+                accessibilityLabel={t("agentControls.thinking.selectWithValue", {
                   value: displayThinking,
                 })}
                 testID="agent-thinking-selector"
@@ -1139,7 +1139,7 @@ function DesktopAgentControlsContent(props: DesktopAgentControlsContentProps) {
               </Pressable>
             </TooltipTrigger>
             <TooltipContent side="top" align="center" offset={8}>
-              <Text style={styles.tooltipText}>{getAgentControlHint("thinking", t)}</Text>
+              <Text style={styles.tooltipText}>{t(getAgentControlHintKey("thinking"))}</Text>
             </TooltipContent>
           </Tooltip>
           <Combobox
@@ -1215,7 +1215,7 @@ interface SheetAgentControlsContentProps {
 
 function SheetAgentControlsContent(props: SheetAgentControlsContentProps) {
   const { theme } = useUnistyles();
-  const { t } = useTranslation("composer");
+  const { t } = useTranslation();
   const {
     provider,
     selectedModelId,
@@ -1256,8 +1256,10 @@ function SheetAgentControlsContent(props: SheetAgentControlsContentProps) {
 
   const hasThinking = comboboxThinkingOptions.length > 0;
   const hasFeatures = Boolean(features && features.length > 0);
-
-  const featuresSheetHeader = useMemo(() => ({ title: t(FEATURES_SHEET_HEADER_TITLE_KEY) }), [t]);
+  const featuresSheetHeader = useMemo<SheetHeader>(
+    () => ({ title: t("agentControls.features.title") }),
+    [t],
+  );
 
   const handleOpenThinking = useCallback(() => handleOpenSheet("thinking"), [handleOpenSheet]);
   const handleOpenFeatures = useCallback(() => handleOpenSheet("features"), [handleOpenSheet]);
@@ -1346,7 +1348,7 @@ function SheetAgentControlsContent(props: SheetAgentControlsContentProps) {
           disabled={disabled || !canSelectThinking}
           style={thinkingButtonStyle}
           accessibilityRole="button"
-          accessibilityLabel={t("controls.thinking.selectAccessibilityLabel")}
+          accessibilityLabel={t("agentControls.thinking.select")}
           testID="agent-controls-thinking"
         >
           <Brain size={theme.iconSize.md} color={theme.colors.foregroundMuted} />
@@ -1359,7 +1361,7 @@ function SheetAgentControlsContent(props: SheetAgentControlsContentProps) {
           disabled={disabled}
           style={featuresButtonStyle}
           accessibilityRole="button"
-          accessibilityLabel={t("controls.features.openAccessibilityLabel")}
+          accessibilityLabel={t("agentControls.features.open")}
           testID="agent-controls-features"
         >
           <Settings2 size={theme.iconSize.md} color={theme.colors.foregroundMuted} />
@@ -1372,7 +1374,7 @@ function SheetAgentControlsContent(props: SheetAgentControlsContentProps) {
           value={selectedThinkingOptionId ?? ""}
           onSelect={handleSelectThinkingAndClose}
           searchable={false}
-          title={t("controls.thinking.sheetTitle")}
+          title={t("agentControls.thinking.title")}
           open={activeSheet === "thinking"}
           onOpenChange={handleThinkingSheetOpenChange}
           anchorRef={thinkingAnchorRef}
@@ -1429,7 +1431,7 @@ function DesktopModelGatewaySelector({
   handleGatewayOpenChange: (open: boolean) => void;
 }) {
   const { theme } = useUnistyles();
-  const { t } = useTranslation("composer");
+  const { t } = useTranslation();
   if (!modelGatewayOptions?.length) {
     return null;
   }
@@ -1444,7 +1446,7 @@ function DesktopModelGatewaySelector({
             onPress={handleGatewayPress}
             style={gatewayPressableStyle}
             accessibilityRole="button"
-            accessibilityLabel={t("controls.gateway.selectAccessibilityLabelWithValue", {
+            accessibilityLabel={t("agentControls.gateway.selectAccessibilityLabelWithValue", {
               value: displayModelGateway,
             })}
             testID="agent-model-gateway-selector"
@@ -1455,7 +1457,7 @@ function DesktopModelGatewaySelector({
           </Pressable>
         </TooltipTrigger>
         <TooltipContent side="top" align="center" offset={8}>
-          <Text style={styles.tooltipText}>{getAgentControlHint("gateway", t)}</Text>
+          <Text style={styles.tooltipText}>{t(getAgentControlHintKey("gateway"))}</Text>
         </TooltipContent>
       </Tooltip>
       <Combobox
@@ -1494,7 +1496,7 @@ function SheetModelGatewaySelector({
   comboboxModelGatewayOptions: ComboboxOption[];
 }) {
   const { theme } = useUnistyles();
-  const { t } = useTranslation("composer");
+  const { t } = useTranslation();
   const gatewayAnchorRef = useRef<View | null>(null);
   const hasGateway = Boolean(
     canSelectModelGateway && modelGatewayOptions && modelGatewayOptions.length > 0,
@@ -1529,7 +1531,7 @@ function SheetModelGatewaySelector({
         disabled={disabled || !canSelectModelGateway}
         style={gatewayButtonStyle}
         accessibilityRole="button"
-        accessibilityLabel={t("controls.gateway.selectAccessibilityLabel")}
+        accessibilityLabel={t("agentControls.gateway.selectAccessibilityLabel")}
         testID="agent-controls-gateway"
       >
         <Route size={theme.iconSize.md} color={theme.colors.foregroundMuted} />
@@ -1539,7 +1541,7 @@ function SheetModelGatewaySelector({
         value={selectedModelGatewayId ?? ""}
         onSelect={handleSelectGatewayAndClose}
         searchable={false}
-        title={t("controls.gateway.sheetTitle")}
+        title={t("agentControls.gateway.sheetTitle")}
         open={activeSheet === "gateway"}
         onOpenChange={handleGatewaySheetOpenChange}
         anchorRef={gatewayAnchorRef}
@@ -1562,7 +1564,7 @@ function DesktopFeatureItem({
   onSetFeature?: (featureId: string, value: unknown) => void;
 }) {
   const { theme } = useUnistyles();
-  const { t } = useTranslation("composer");
+  const { t } = useTranslation();
   const feature = useMemo(() => localizeAgentFeature(t, rawFeature), [t, rawFeature]);
   const featureSelector: AgentControlSelector = `feature-${feature.id}`;
 
@@ -1684,7 +1686,7 @@ function SheetFeatureItem({
   onSetFeature?: (featureId: string, value: unknown) => void;
 }) {
   const { theme } = useUnistyles();
-  const { t } = useTranslation("composer");
+  const { t } = useTranslation();
   const feature = useMemo(() => localizeAgentFeature(t, rawFeature), [t, rawFeature]);
   const featureSelector: AgentControlSelector = `feature-${feature.id}`;
 
@@ -1733,7 +1735,7 @@ function SheetFeatureItem({
           />
           <Text style={styles.sheetSelectText}>{feature.label}</Text>
           <Text style={styles.modeBadgeText}>
-            {feature.value ? t("controls.features.toggleOn") : t("controls.features.toggleOff")}
+            {feature.value ? t("agentControls.features.on") : t("agentControls.features.off")}
           </Text>
         </Pressable>
       </View>
@@ -1821,8 +1823,6 @@ function ThinkingComboboxOption({
   );
 }
 
-const FEATURES_SHEET_HEADER_TITLE_KEY: ParseKeys<"composer"> = "controls.features.sheetTitle";
-
 export const AgentControls = memo(function AgentControls({
   agentId,
   serverId,
@@ -1830,7 +1830,7 @@ export const AgentControls = memo(function AgentControls({
   isCompactLayout,
 }: AgentControlsProps) {
   const { preferences, updatePreferences } = useFormPreferences();
-  const { t } = useTranslation("composer");
+  const { t } = useTranslation();
   const agent = useSessionStore(
     useShallow((state) => selectAgentControlsSlice(state, serverId, agentId)),
   );
@@ -1876,7 +1876,7 @@ export const AgentControls = memo(function AgentControls({
         providerLabel:
           configuredModelGateway?.label?.trim() ||
           agent?.modelGatewayLabel ||
-          t("controls.gateway.fallbackLabel"),
+          t("agentControls.gateway.fallbackLabel"),
         models: gatewayModels,
       });
     }
@@ -1903,7 +1903,6 @@ export const AgentControls = memo(function AgentControls({
     runtimeModelId: agent?.runtimeModelId,
     configuredModelId: agent?.model,
     explicitThinkingOptionId: agent?.thinkingOptionId,
-    t,
   });
 
   const modelOptions = useMemo<AgentControlOption[]>(() => {
@@ -2106,7 +2105,7 @@ export function DraftAgentControls({
   isCompactLayout,
 }: DraftAgentControlsProps) {
   const { preferences, updatePreferences } = useFormPreferences();
-  const { t } = useTranslation("composer");
+  const { t } = useTranslation();
   const isCompactFormFactor = useIsCompactFormFactor();
   const isCompact = isCompactLayout ?? isCompactFormFactor;
 

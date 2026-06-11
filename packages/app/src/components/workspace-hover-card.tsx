@@ -8,8 +8,8 @@ import {
   type ReactElement,
   type ReactNode,
 } from "react";
-import { useTranslation } from "react-i18next";
 import { Dimensions, Text, View } from "react-native";
+import { useTranslation } from "react-i18next";
 import { FadeIn, FadeOut } from "react-native-reanimated";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { CircleCheck, CircleDot, CircleX, ExternalLink } from "lucide-react-native";
@@ -213,7 +213,7 @@ function WorkspaceHoverCardContent({
   triggerRef: React.RefObject<View | null>;
   contentRef: React.RefObject<View | null>;
 }): ReactElement | null {
-  const { t } = useTranslation("workspaces");
+  const { t } = useTranslation();
   const bottomSheetInternal = useBottomSheetModalInternal(true);
   const [triggerRect, setTriggerRect] = useState<Rect | null>(null);
   const [contentSize, setContentSize] = useState<{ width: number; height: number } | null>(null);
@@ -276,7 +276,7 @@ function WorkspaceHoverCardContent({
           collapsable={false}
           onLayout={handleLayout}
           accessibilityRole="menu"
-          accessibilityLabel={t("hoverCard.scriptsAccessibilityLabel")}
+          accessibilityLabel={t("workspace.hoverCard.scriptsAccessibility")}
           testID="workspace-hover-card"
           style={styles.card}
           frameStyle={frameStyle}
@@ -375,7 +375,7 @@ function ChecksSummaryContent({
   checks: NonNullable<PrHint["checks"]>;
   hovered: boolean;
 }) {
-  const { t } = useTranslation("workspaces");
+  const { t } = useTranslation();
   const { passed, failed, pending } = getChecksSummaryCounts(checks);
 
   const labelStyle = hovered ? checksSummaryLabelHoveredCombined : styles.checksSummaryLabel;
@@ -388,7 +388,7 @@ function ChecksSummaryContent({
       ) : (
         <ThemedGitHubIcon size={12} uniProps={iconUniProps} />
       )}
-      <Text style={labelStyle}>{t("hoverCard.checks")}</Text>
+      <Text style={labelStyle}>{t("workspace.git.pr.sections.checks")}</Text>
       <View style={styles.checksSummaryCounts}>
         <ChecksSummaryPill count={passed} kind="passed" />
         <ChecksSummaryPill count={failed} kind="failed" />

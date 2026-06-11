@@ -1,7 +1,6 @@
 import { memo, useCallback, useMemo, useState, type ReactElement } from "react";
-import { Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
-import type { ParseKeys } from "i18next";
+import { Text, View } from "react-native";
 import { FileText, Layers, MessageSquare, Undo2 } from "lucide-react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import {
@@ -36,12 +35,6 @@ function getIcon(mode: RewindMode, color: string): ReactElement {
   }
 }
 
-const MODE_LABEL_KEYS: Record<RewindMode, ParseKeys<"app">> = {
-  conversation: "rewind.mode.conversation",
-  files: "rewind.mode.files",
-  both: "rewind.mode.both",
-};
-
 export const RewindMenu = memo(function RewindMenu({
   capabilities,
   rewoundText,
@@ -50,8 +43,16 @@ export const RewindMenu = memo(function RewindMenu({
   testID = "rewind-menu",
 }: RewindMenuProps) {
   const { theme } = useUnistyles();
-  const { t } = useTranslation("app");
-  const items = useRewindCapabilities(capabilities);
+  const { t } = useTranslation();
+  const rewindLabels = useMemo(
+    () => ({
+      conversation: t("rewind.actions.conversation"),
+      files: t("rewind.actions.files"),
+      both: t("rewind.actions.both"),
+    }),
+    [t],
+  );
+  const items = useRewindCapabilities(capabilities, rewindLabels);
   const [isOpen, setIsOpen] = useState(false);
   const [pendingMode, setPendingMode] = useState<RewindMode | null>(null);
   const isLocked = isPendingProp || pendingMode !== null;
@@ -136,7 +137,7 @@ export const RewindMenu = memo(function RewindMenu({
             status={pendingMode === item.mode ? "pending" : undefined}
             testID={item.testID}
           >
-            {t(MODE_LABEL_KEYS[item.mode])}
+            {item.label}
           </DropdownMenuItem>
         ))}
       </DropdownMenuContent>

@@ -1,6 +1,6 @@
 import { useCallback } from "react";
-import { useTranslation } from "react-i18next";
 import { useMutation } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
 import {
   type DesktopDaemonStatus,
   startDesktopDaemon,
@@ -39,8 +39,8 @@ interface UseBuiltInDaemonManagementResult {
 export function useBuiltInDaemonManagement(
   input: UseBuiltInDaemonManagementInput,
 ): UseBuiltInDaemonManagementResult {
+  const { t } = useTranslation();
   const { daemonStatus, settings, updateSettings, setStatus, refreshStatus } = input;
-  const { t } = useTranslation("app");
   const reportError = useDesktopIpcErrorReporter();
   const { mutate: toggleDaemonManagement, isPending: isUpdating } = useMutation<
     DaemonManagementToggleResult,
@@ -52,10 +52,10 @@ export function useBuiltInDaemonManagement(
         const result = await executeDaemonManagementToggle(wasManagingDaemon, daemonStatus, {
           confirm: () =>
             confirmDialog({
-              title: t("daemon.pause.title"),
-              message: t("daemon.pause.message"),
-              confirmLabel: t("daemon.pause.confirm"),
-              cancelLabel: t("daemon.pause.cancel"),
+              title: t("desktop.daemon.management.pauseTitle"),
+              message: t("desktop.daemon.management.pauseMessage"),
+              confirmLabel: t("desktop.daemon.management.pauseAndStop"),
+              cancelLabel: t("common.actions.cancel"),
               destructive: true,
             }),
           persistSettings: (next) => updateSettings(next) as Promise<void>,

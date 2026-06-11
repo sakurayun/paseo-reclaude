@@ -10,8 +10,8 @@ import { settingsStyles } from "@/styles/settings";
 import { SettingsSection } from "@/screens/settings/settings-section";
 
 export function DesktopPermissionsSection() {
+  const { t } = useTranslation();
   const { theme } = useUnistyles();
-  const { t } = useTranslation("settings");
   const {
     isDesktopApp,
     snapshot,
@@ -61,12 +61,22 @@ export function DesktopPermissionsSection() {
         leftIcon={refreshIcon}
         onPress={handleRefreshPress}
         disabled={isBusy}
-        accessibilityLabel={t("permissions.refreshLabel")}
+        accessibilityLabel={t("settings.permissions.refreshAccessibility")}
       >
-        {isRefreshing ? t("permissions.refreshing") : t("permissions.refresh")}
+        {isRefreshing ? t("settings.permissions.refreshing") : t("settings.permissions.refresh")}
       </Button>
     ),
     [refreshIcon, handleRefreshPress, isBusy, isRefreshing, t],
+  );
+
+  const permissionLabels = useMemo(
+    () => ({
+      granted: t("settings.permissions.actions.granted"),
+      request: t("settings.permissions.actions.request"),
+      requesting: t("settings.permissions.actions.requesting"),
+      busyExtraAction: (label: string) => t("settings.permissions.actions.busySuffix", { label }),
+    }),
+    [t],
   );
 
   if (!isDesktopApp) {
@@ -74,25 +84,27 @@ export function DesktopPermissionsSection() {
   }
 
   return (
-    <SettingsSection title={t("permissions.title")} trailing={refreshButton}>
+    <SettingsSection title={t("settings.permissions.title")} trailing={refreshButton}>
       <View style={settingsStyles.card}>
         <DesktopPermissionRow
-          title={t("permissions.notifications")}
+          title={t("settings.permissions.notifications")}
           status={snapshot?.notifications ?? null}
           isRequesting={requestingPermission === "notifications"}
           onRequest={handleRequestNotifications}
-          extraActionLabel={t("permissions.notificationsTest")}
+          labels={permissionLabels}
+          extraActionLabel={t("settings.permissions.test")}
           isExtraActionBusy={isSendingTestNotification}
           isExtraActionDisabled={!notificationsGranted || isBusy}
           onExtraAction={handleSendTestNotification}
         />
         {testNotificationError ? <Text style={errorTextStyle}>{testNotificationError}</Text> : null}
         <DesktopPermissionRow
-          title={t("permissions.microphone")}
+          title={t("settings.permissions.microphone")}
           showBorder
           status={snapshot?.microphone ?? null}
           isRequesting={requestingPermission === "microphone"}
           onRequest={handleRequestMicrophone}
+          labels={permissionLabels}
         />
       </View>
     </SettingsSection>

@@ -1,4 +1,3 @@
-import type { TFunction } from "i18next";
 import type { GitHubSearchItem } from "@getpaseo/protocol/messages";
 import type {
   AttachmentMetadata,
@@ -18,6 +17,7 @@ import {
   type UserMessageItem,
 } from "@/types/stream";
 import type { PickedImageAttachmentInput } from "@/hooks/image-attachment-picker";
+import { i18n } from "@/i18n/i18next";
 
 export interface QueuedComposerMessage {
   id: string;
@@ -245,7 +245,7 @@ export interface SendQueuedComposerMessageNowInput {
   messageId: string;
   queue: QueueWriter;
   submitMessage: (input: { text: string; attachments: ComposerAttachment[] }) => Promise<void>;
-  t: TFunction<"composer">;
+  failedToSendMessage?: string;
 }
 
 export type SendQueuedComposerMessageNowResult =
@@ -277,7 +277,10 @@ export async function sendQueuedComposerMessageNow(
     });
     return {
       status: "failed",
-      errorMessage: error instanceof Error ? error.message : input.t("flow.sendMessageFailedError"),
+      errorMessage:
+        error instanceof Error
+          ? error.message
+          : (input.failedToSendMessage ?? i18n.t("composer.errors.failedToSend")),
     };
   }
 }

@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { TFunction } from "i18next";
-import { useTranslation } from "react-i18next";
 import { CheckCircle2, ChevronRight, CircleAlert, SquareTerminal } from "lucide-react-native";
+import { useTranslation } from "react-i18next";
 import {
   ActivityIndicator,
   Pressable,
@@ -27,6 +26,7 @@ function useSetupPanelDescriptor(
   target: { kind: "setup"; workspaceId: string },
   context: { serverId: string; workspaceId: string },
 ): PanelDescriptor {
+  const { t } = useTranslation();
   const key = buildWorkspaceTabPersistenceKey({
     serverId: context.serverId,
     workspaceId: target.workspaceId,
@@ -35,8 +35,8 @@ function useSetupPanelDescriptor(
 
   if (snapshot?.status === "completed") {
     return {
-      label: "Setup",
-      subtitle: "Setup completed",
+      label: t("workspace.setup.descriptor.label"),
+      subtitle: t("workspace.setup.descriptor.completed"),
       titleState: "ready",
       icon: CheckCircle2,
       statusBucket: null,
@@ -45,8 +45,8 @@ function useSetupPanelDescriptor(
 
   if (snapshot?.status === "failed") {
     return {
-      label: "Setup",
-      subtitle: "Setup failed",
+      label: t("workspace.setup.descriptor.label"),
+      subtitle: t("workspace.setup.descriptor.failed"),
       titleState: "ready",
       icon: CircleAlert,
       statusBucket: null,
@@ -54,8 +54,8 @@ function useSetupPanelDescriptor(
   }
 
   return {
-    label: "Setup",
-    subtitle: "Workspace setup",
+    label: t("workspace.setup.descriptor.label"),
+    subtitle: t("workspace.setup.descriptor.workspace"),
     titleState: "ready",
     icon: SquareTerminal,
     statusBucket: snapshot?.status === "running" ? "running" : null,
@@ -110,11 +110,14 @@ function resolveAutoExpandIndex(commands: { index: number; status: string }[]): 
   return null;
 }
 
-function resolveSetupStatusLabel(status: string | undefined, t: TFunction<"workspaces">): string {
-  if (status === "running") return t("setupPanel.status.running");
-  if (status === "completed") return t("setupPanel.status.completed");
-  if (status === "failed") return t("setupPanel.status.failed");
-  return t("setupPanel.status.waiting");
+function resolveSetupStatusLabel(
+  status: string | undefined,
+  labels: Record<CommandStatus | "waiting", string>,
+): string {
+  if (status === "running") return labels.running;
+  if (status === "completed") return labels.completed;
+  if (status === "failed") return labels.failed;
+  return labels.waiting;
 }
 
 function resolveCommandLog(
@@ -152,7 +155,7 @@ function buildCommandRowState(args: BuildCommandRowPropsArgs) {
 }
 
 function SetupPanel() {
-  const { t } = useTranslation("workspaces");
+  const { t } = useTranslation();
   const { serverId, target } = usePaneContext();
   invariant(target.kind === "setup", "SetupPanel requires setup target");
 
@@ -217,7 +220,16 @@ function SetupPanel() {
   }, []);
 
   const autoExpandIndex = resolveAutoExpandIndex(commands);
-  const statusLabel = resolveSetupStatusLabel(snapshot?.status, t);
+  const statusLabels = useMemo(
+    () => ({
+      running: t("workspace.setup.status.running"),
+      completed: t("workspace.setup.status.completed"),
+      failed: t("workspace.setup.status.failed"),
+      waiting: t("workspace.setup.status.waiting"),
+    }),
+    [t],
+  );
+  const statusLabel = resolveSetupStatusLabel(snapshot?.status, statusLabels);
 
   return (
     <ScrollView
@@ -233,7 +245,7 @@ function SetupPanel() {
       {isWaiting ? (
         <View style={styles.waitingContainer}>
           <ThemedActivityIndicator size="large" uniProps={foregroundMutedColorMapping} />
-          <Text style={styles.waitingText}>{t("setupPanel.settingUp")}</Text>
+          <Text style={styles.waitingText}>{t("workspace.setup.waiting")}</Text>
         </View>
       ) : null}
       {!isWaiting && hasNoSetupCommands ? (
@@ -241,9 +253,9 @@ function SetupPanel() {
           <Text
             style={styles.emptyText}
             accessible
-            accessibilityLabel={t("setupPanel.noCommandsAccessibilityLabel")}
+            accessibilityLabel={t("workspace.setup.accessibility.noCommands")}
           >
-            {t("setupPanel.noCommands")}
+            {t("workspace.setup.empty.noCommands")}
           </Text>
         </View>
       ) : null}
@@ -306,7 +318,7 @@ function SetupCommandRow({
   errorMessage,
   onToggle,
 }: SetupCommandRowProps) {
-  const { t } = useTranslation("workspaces");
+  const { t } = useTranslation();
   const handlePress = useCallback(() => {
     if (!isExpandable) return;
     onToggle(command.index, isAutoExpanded);
@@ -352,7 +364,7 @@ function SetupCommandRow({
               showsVerticalScrollIndicator
               testID="workspace-setup-log"
               accessible
-              accessibilityLabel={t("setupPanel.logAccessibilityLabel")}
+              accessibilityLabel={t("workspace.setup.accessibility.log")}
             >
               <Text selectable dataSet={CODE_SURFACE_DATASET} style={styles.logText}>
                 {processedLog}
@@ -363,9 +375,9 @@ function SetupCommandRow({
               style={styles.logScrollContent}
               testID="workspace-setup-log"
               accessible
-              accessibilityLabel={t("setupPanel.logAccessibilityLabel")}
+              accessibilityLabel={t("workspace.setup.accessibility.log")}
             >
-              <Text style={styles.emptyLogText}>{t("setupPanel.noOutput")}</Text>
+              <Text style={styles.emptyLogText}>{t("workspace.setup.log.noOutput")}</Text>
             </View>
           )}
           {hasError && errorMessage ? (
@@ -398,7 +410,7 @@ function SetupCommandChevron({ showDetail }: { showDetail: boolean }) {
 }
 
 function StandaloneLogView({ commands, log }: { commands: SetupCommand[]; log: string }) {
-  const { t } = useTranslation("workspaces");
+  const { t } = useTranslation();
   if (commands.length !== 0 || log.trim().length === 0) return null;
   return (
     <ScrollView
@@ -407,7 +419,7 @@ function StandaloneLogView({ commands, log }: { commands: SetupCommand[]; log: s
       showsVerticalScrollIndicator
       testID="workspace-setup-log"
       accessible
-      accessibilityLabel={t("setupPanel.logAccessibilityLabel")}
+      accessibilityLabel={t("workspace.setup.accessibility.log")}
     >
       <Text selectable dataSet={CODE_SURFACE_DATASET} style={styles.logText}>
         {log}

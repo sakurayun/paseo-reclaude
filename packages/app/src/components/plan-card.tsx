@@ -1,8 +1,8 @@
 import { useMemo, type ReactNode } from "react";
-import { useTranslation } from "react-i18next";
 import { Text, View, type StyleProp, type TextStyle, type ViewStyle } from "react-native";
 import Markdown, { type ASTNode } from "react-native-markdown-display";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
+import { useTranslation } from "react-i18next";
 import { createMarkdownStyles } from "@/styles/markdown-styles";
 import { getMarkdownListMarker } from "@/utils/markdown-list";
 
@@ -210,10 +210,10 @@ export function PlanCard({
   testID?: string;
 }) {
   const { theme } = useUnistyles();
-  const { t } = useTranslation("timeline");
-  const resolvedTitle = title ?? t("message.plan");
+  const { t } = useTranslation();
   const markdownStyles = createMarkdownStyles(theme);
   const markdownRules = createPlanMarkdownRules();
+  const resolvedTitle = title ?? t("agentStream.permission.plan");
 
   const containerStyle = useMemo(
     () => [

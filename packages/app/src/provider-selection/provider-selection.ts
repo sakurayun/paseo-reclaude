@@ -5,9 +5,9 @@ import type {
   ProviderSnapshotEntry,
 } from "@getpaseo/protocol/agent-types";
 import type { AgentProviderDefinition } from "@getpaseo/protocol/provider-manifest";
-import i18n from "@/i18n";
 import type { DraftCommandConfig } from "@/hooks/use-agent-commands-query";
 import { buildFavoriteModelKey, type FavoriteModelRow } from "@/hooks/use-form-preferences";
+import { i18n } from "@/i18n/i18next";
 import { compareMatchScores, scoreTextFields } from "@/utils/score-match";
 
 export type ProviderSelectionModelRow = FavoriteModelRow & { isDefault?: boolean };
@@ -62,7 +62,7 @@ function buildSyntheticDefaultRow(
     provider,
     providerLabel,
     modelId: "",
-    modelLabel: "Default",
+    modelLabel: i18n.t("providerSelection.defaultModel"),
     description: undefined,
     isDefault: true,
   };
@@ -100,8 +100,8 @@ function buildEntryModelSelection(
     message:
       entry.error ??
       (entry.status === "unavailable"
-        ? i18n.t("composer:controls.provider.unavailable")
-        : i18n.t("composer:controls.provider.unknownError")),
+        ? i18n.t("providerSelection.unavailable")
+        : i18n.t("providerSelection.unknownError")),
   };
 }
 
@@ -155,25 +155,25 @@ export function resolveSelectedModelLabel(input: {
   selectedModel: string;
   isLoading: boolean;
 }): string {
-  const selectModelLabel = i18n.t("composer:controls.model.selectLabel");
-  const loadingLabel = i18n.t("common:state.loading");
   const selectedProvider = input.selectedProvider.trim();
   if (!selectedProvider) {
-    return selectModelLabel;
+    return i18n.t("providerSelection.selectModel");
   }
 
   const provider = input.providers.find((entry) => entry.id === selectedProvider);
   if (!provider) {
-    return input.isLoading ? loadingLabel : selectModelLabel;
+    return input.isLoading
+      ? i18n.t("providerSelection.loading")
+      : i18n.t("providerSelection.selectModel");
   }
   if (provider.modelSelection.kind === "loading") {
-    return loadingLabel;
+    return i18n.t("providerSelection.loading");
   }
   if (provider.modelSelection.kind === "error") {
-    return i18n.t("common:state.error");
+    return i18n.t("providerSelection.error");
   }
   if (provider.modelSelection.kind !== "models") {
-    return selectModelLabel;
+    return i18n.t("providerSelection.selectModel");
   }
 
   const model = provider.modelSelection.rows.find((entry) => entry.modelId === input.selectedModel);
@@ -182,7 +182,7 @@ export function resolveSelectedModelLabel(input: {
     model?.modelLabel ??
     defaultModel?.modelLabel ??
     provider.modelSelection.rows[0]?.modelLabel ??
-    selectModelLabel
+    i18n.t("providerSelection.selectModel")
   );
 }
 
@@ -287,26 +287,26 @@ export function resolveSubmissionReadiness(input: {
   hasClient: boolean;
 }): ProviderSelectionReadiness {
   if (!input.allowsEmptyAutoSubmit && !input.text.trim()) {
-    return { ok: false, reason: i18n.t("composer:flow.initialPromptRequiredError") };
+    return { ok: false, reason: i18n.t("providerSelection.readiness.initialPromptRequired") };
   }
   if (input.providerCount === 0) {
-    return { ok: false, reason: i18n.t("composer:flow.noProvidersError") };
+    return { ok: false, reason: i18n.t("providerSelection.readiness.noProviders") };
   }
   if (!(input.autoSubmitConfig?.provider ?? input.selection.provider)) {
-    return { ok: false, reason: i18n.t("composer:tabs.selectModelError") };
+    return { ok: false, reason: i18n.t("providerSelection.selectModel") };
   }
   if (input.selection.isModelLoading) {
-    return { ok: false, reason: i18n.t("composer:flow.modelDefaultsLoadingError") };
+    return { ok: false, reason: i18n.t("providerSelection.readiness.modelDefaultsLoading") };
   }
   const hasSelectedModel = Boolean(input.autoSubmitConfig?.model ?? input.selection.modelId);
   if (!hasSelectedModel && input.selection.availableModels.length > 0) {
-    return { ok: false, reason: i18n.t("composer:flow.noModelForProviderError") };
+    return { ok: false, reason: i18n.t("providerSelection.readiness.noModelAvailable") };
   }
   if (!input.workspaceDirectory) {
-    return { ok: false, reason: i18n.t("composer:flow.workspaceDirectoryMissingError") };
+    return { ok: false, reason: i18n.t("providerSelection.readiness.workspaceDirectoryNotFound") };
   }
   if (!input.hasClient) {
-    return { ok: false, reason: i18n.t("composer:tabs.hostNotConnectedError") };
+    return { ok: false, reason: i18n.t("providerSelection.readiness.hostDisconnected") };
   }
   return { ok: true };
 }

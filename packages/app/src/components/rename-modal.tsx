@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useTranslation } from "react-i18next";
 import { Text, TextInput, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
+import { useTranslation } from "react-i18next";
 import {
   AdaptiveModalSheet,
   AdaptiveTextInput,
@@ -36,7 +36,6 @@ export function AdaptiveRenameModal({
   testID,
 }: AdaptiveRenameModalProps) {
   const { t } = useTranslation();
-  const resolvedSubmitLabel = submitLabel ?? t("action.rename");
   const [draft, setDraft] = useState(initialValue);
   const [error, setError] = useState<string | null>(null);
   const [isPending, setIsPending] = useState(false);
@@ -67,7 +66,7 @@ export function AdaptiveRenameModal({
 
   const computeError = useCallback(
     (value: string): string | null => {
-      if (!value.trim()) return t("form.nameRequired");
+      if (!value.trim()) return t("common.errors.nameRequired");
       return validate ? validate(value) : null;
     },
     [validate, t],
@@ -94,7 +93,8 @@ export function AdaptiveRenameModal({
       onClose();
     } catch (err) {
       setIsPending(false);
-      const message = err instanceof Error && err.message ? err.message : t("state.saveFailed");
+      const message =
+        err instanceof Error && err.message ? err.message : t("common.errors.unableToSave");
       setError(message);
     }
   }, [isPending, draft, initialValue, computeError, onSubmit, onClose, t]);
@@ -150,7 +150,7 @@ export function AdaptiveRenameModal({
             disabled={isPending}
             testID={cancelTestID}
           >
-            {t("action.cancel")}
+            {t("common.actions.cancel")}
           </Button>
           <Button
             variant="default"
@@ -160,7 +160,7 @@ export function AdaptiveRenameModal({
             disabled={submitDisabled}
             testID={submitTestID}
           >
-            {isPending ? t("state.saving") : resolvedSubmitLabel}
+            {isPending ? t("renameModal.saving") : (submitLabel ?? t("renameModal.rename"))}
           </Button>
         </View>
       </View>

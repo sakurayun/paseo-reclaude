@@ -8,10 +8,10 @@ import {
   View,
   type PressableStateCallbackType,
 } from "react-native";
-import { useTranslation } from "react-i18next";
 import { Folder } from "lucide-react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { useQuery } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
 import { useKeyboardShortcutsStore } from "@/stores/keyboard-shortcuts-store";
 import { shortenPath } from "@/utils/shorten-path";
 import { useRecommendedProjectPaths } from "@/stores/session-store-hooks";
@@ -61,7 +61,7 @@ function PathRow({ path, active, onSelect }: PathRowProps) {
 
 export function ProjectPickerModal() {
   const { theme } = useUnistyles();
-  const { t } = useTranslation("app");
+  const { t } = useTranslation();
   const serverId = useActiveServerId();
 
   const open = useKeyboardShortcutsStore((s) => s.projectPickerOpen);
@@ -241,7 +241,7 @@ export function ProjectPickerModal() {
               ref={inputRef}
               value={query}
               onChangeText={handleChangeQuery}
-              placeholder={t("projectPicker.searchPlaceholder")}
+              placeholder={t("projectPicker.placeholder")}
               placeholderTextColor={theme.colors.foregroundMuted}
               style={inputStyle}
               autoCapitalize="none"
@@ -263,7 +263,7 @@ export function ProjectPickerModal() {
           >
             {isSubmitting ? <Text style={emptyTextStyle}>{t("projectPicker.opening")}</Text> : null}
             {!isSubmitting && visibleOptions.length === 0 && !query.trim() ? (
-              <Text style={emptyTextStyle}>{t("projectPicker.startTyping")}</Text>
+              <Text style={emptyTextStyle}>{t("projectPicker.empty")}</Text>
             ) : null}
             {!isSubmitting && !(visibleOptions.length === 0 && !query.trim()) ? (
               <>

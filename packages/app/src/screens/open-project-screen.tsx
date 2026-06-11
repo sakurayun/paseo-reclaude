@@ -25,7 +25,7 @@ import { useOpenProject } from "@/hooks/use-open-project";
 import type { Href } from "expo-router";
 
 export function OpenProjectScreen({ serverId }: { serverId: string }) {
-  const { t } = useTranslation("app");
+  const { t } = useTranslation();
   const router = useRouter();
   const openDesktopAgentList = usePanelStore((s) => s.openDesktopAgentList);
   const openProjectPicker = useOpenProjectPicker(serverId);
@@ -78,31 +78,31 @@ export function OpenProjectScreen({ serverId }: { serverId: string }) {
         <View style={styles.tiles}>
           <HomeTile
             icon={FolderOpen}
-            title={t("home.addProject.title")}
-            description={t("home.addProject.description")}
+            title={t("openProject.tiles.addProject.title")}
+            description={t("openProject.tiles.addProject.description")}
             onPress={handleOpenPicker}
             testID="open-project-submit"
             accent
           />
           <HomeTile
             icon={Inbox}
-            title={t("home.importSession.title")}
-            description={t("home.importSession.description")}
+            title={t("openProject.tiles.importSession.title")}
+            description={t("openProject.tiles.importSession.description")}
             onPress={handleOpenImportSession}
             testID="open-project-import-session"
           />
           <HomeTile
             icon={Plug}
-            title={t("home.setupProviders.title")}
-            description={t("home.setupProviders.description")}
+            title={t("openProject.tiles.setupProviders.title")}
+            description={t("openProject.tiles.setupProviders.description")}
             onPress={handleOpenProviders}
             testID="open-project-setup-providers"
           />
           {isLocalDaemon ? (
             <HomeTile
               icon={Smartphone}
-              title={t("home.pairDevice.title")}
-              description={t("home.pairDevice.description")}
+              title={t("openProject.tiles.pairDevice.title")}
+              description={t("openProject.tiles.pairDevice.description")}
               onPress={handleOpenPairDevice}
               testID="open-project-pair-device"
             />

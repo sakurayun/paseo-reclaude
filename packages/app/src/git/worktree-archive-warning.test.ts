@@ -1,23 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import i18n from "@/i18n";
 import {
-  buildWorktreeArchiveConfirmationMessage as buildWorktreeArchiveConfirmationMessageRaw,
-  buildWorktreeArchiveRiskReasons as buildWorktreeArchiveRiskReasonsRaw,
+  buildWorktreeArchiveConfirmationMessage,
+  buildWorktreeArchiveRiskReasons,
 } from "@/git/worktree-archive-warning";
-
-// Real English translator so the risk-reason copy assertions read the en git catalog.
-const tGit = i18n.getFixedT("en", "git");
-function buildWorktreeArchiveConfirmationMessage(
-  input: Parameters<typeof buildWorktreeArchiveConfirmationMessageRaw>[0],
-) {
-  return buildWorktreeArchiveConfirmationMessageRaw(input, tGit);
-}
-function buildWorktreeArchiveRiskReasons(
-  input: Parameters<typeof buildWorktreeArchiveRiskReasonsRaw>[0],
-) {
-  return buildWorktreeArchiveRiskReasonsRaw(input, tGit);
-}
 
 describe("worktree archive warning", () => {
   it("does not require a confirmation for clean and pushed worktrees", () => {

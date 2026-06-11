@@ -1,6 +1,6 @@
 import { useCallback, useMemo } from "react";
-import { Pressable, Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
+import { Pressable, Text, View } from "react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { QrCode, Link2, ClipboardPaste } from "lucide-react-native";
 import { AdaptiveModalSheet, type SheetHeader } from "./adaptive-modal-sheet";
@@ -48,12 +48,8 @@ export function AddHostMethodModal({
   onPasteLink,
 }: AddHostMethodModalProps) {
   const { theme } = useUnistyles();
-  const { t } = useTranslation("app");
-
-  const addConnectionHeader = useMemo<SheetHeader>(
-    () => ({ title: t("addHost.method.title") }),
-    [t],
-  );
+  const { t } = useTranslation();
+  const header = useMemo<SheetHeader>(() => ({ title: t("pairing.connectionMethods.title") }), [t]);
 
   const handleDirect = useCallback(() => {
     onDirectConnection();
@@ -69,7 +65,7 @@ export function AddHostMethodModal({
 
   return (
     <AdaptiveModalSheet
-      header={addConnectionHeader}
+      header={header}
       visible={visible}
       onClose={onClose}
       testID="add-host-method-modal"
@@ -78,13 +74,15 @@ export function AddHostMethodModal({
         style={styles.option}
         onPress={handleDirect}
         accessibilityRole="button"
-        accessibilityLabel={t("addHost.method.direct.label")}
+        accessibilityLabel={t("pairing.connectionMethods.direct.title")}
         testID="add-host-method-direct"
       >
         <Link2 size={18} color={theme.colors.foreground} />
         <View style={styles.optionBody}>
-          <Text style={styles.optionText}>{t("addHost.method.direct.label")}</Text>
-          <Text style={styles.optionSubtext}>{t("addHost.method.direct.subtext")}</Text>
+          <Text style={styles.optionText}>{t("pairing.connectionMethods.direct.title")}</Text>
+          <Text style={styles.optionSubtext}>
+            {t("pairing.connectionMethods.direct.description")}
+          </Text>
         </View>
       </Pressable>
 
@@ -93,12 +91,14 @@ export function AddHostMethodModal({
           style={styles.option}
           onPress={handleScan}
           accessibilityRole="button"
-          accessibilityLabel={t("addHost.method.scan.label")}
+          accessibilityLabel={t("pairing.connectionMethods.scanQr.title")}
         >
           <QrCode size={18} color={theme.colors.foreground} />
           <View style={styles.optionBody}>
-            <Text style={styles.optionText}>{t("addHost.method.scan.label")}</Text>
-            <Text style={styles.optionSubtext}>{t("addHost.method.scan.subtext")}</Text>
+            <Text style={styles.optionText}>{t("pairing.connectionMethods.scanQr.title")}</Text>
+            <Text style={styles.optionSubtext}>
+              {t("pairing.connectionMethods.scanQr.description")}
+            </Text>
           </View>
         </Pressable>
       ) : null}
@@ -107,13 +107,15 @@ export function AddHostMethodModal({
         style={styles.option}
         onPress={handlePaste}
         accessibilityRole="button"
-        accessibilityLabel={t("addHost.method.pasteLink.label")}
+        accessibilityLabel={t("pairing.connectionMethods.pasteLink.title")}
         testID="add-host-method-pair-link"
       >
         <ClipboardPaste size={18} color={theme.colors.foreground} />
         <View style={styles.optionBody}>
-          <Text style={styles.optionText}>{t("addHost.method.pasteLink.label")}</Text>
-          <Text style={styles.optionSubtext}>{t("addHost.method.pasteLink.subtext")}</Text>
+          <Text style={styles.optionText}>{t("pairing.connectionMethods.pasteLink.title")}</Text>
+          <Text style={styles.optionSubtext}>
+            {t("pairing.connectionMethods.pasteLink.description")}
+          </Text>
         </View>
       </Pressable>
     </AdaptiveModalSheet>

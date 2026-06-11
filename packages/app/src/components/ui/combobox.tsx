@@ -1264,12 +1264,12 @@ export function Combobox({
   anchorRef,
   children,
 }: ComboboxProps): ReactElement | null {
-  const { theme } = useUnistyles();
   const { t } = useTranslation();
-  const resolvedPlaceholder = placeholder ?? t("combobox.searchPlaceholder");
-  const resolvedEmptyText = emptyText ?? t("combobox.empty");
-  const resolvedCustomValuePrefix = customValuePrefix ?? t("combobox.useCustomPrefix");
-  const resolvedTitle = title ?? t("combobox.title");
+  const { theme } = useUnistyles();
+  const resolvedPlaceholder = placeholder ?? t("common.placeholders.search");
+  const resolvedEmptyText = emptyText ?? t("common.empty.noOptionsMatchSearch");
+  const resolvedCustomValuePrefix = customValuePrefix ?? t("common.actions.use");
+  const resolvedTitle = title ?? t("common.actions.select");
   const isMobile = useIsCompactFormFactor();
   const titleColor = theme.colors.foreground;
   const effectiveOptionsPosition = resolveEffectiveOptionsPosition(isMobile, optionsPosition);
