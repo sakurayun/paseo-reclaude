@@ -3,6 +3,7 @@ export default {
     openProject: "Open project",
     newWorktree: "New worktree",
     archiveWorktree: "Archive worktree",
+    findInPane: "Find in pane",
     newTab: "New tab",
     closeCurrentTab: "Close current tab",
     jumpToWorkspace: "Jump to workspace",

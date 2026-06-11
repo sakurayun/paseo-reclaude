@@ -2,11 +2,12 @@ import { ClipboardAddon } from "@xterm/addon-clipboard";
 import { FitAddon } from "@xterm/addon-fit";
 import { ImageAddon } from "@xterm/addon-image";
 import { SearchAddon } from "@xterm/addon-search";
+import type { ISearchOptions, ISearchResultChangeEvent } from "@xterm/addon-search";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { LigaturesAddon } from "@xterm/addon-ligatures/lib/addon-ligatures.mjs";
-import { Terminal, type ITheme } from "@xterm/xterm";
+import { Terminal, type IDisposable, type ITheme } from "@xterm/xterm";
 import type { TerminalState } from "@getpaseo/protocol/messages";
 import {
   type TerminalInputModeState,
@@ -62,6 +63,12 @@ export interface TerminalEmulatorRuntimeCallbacks {
     disposition: "main" | "side",
   ) => Promise<void> | void;
   onInputModeChange?: (state: TerminalInputModeState) => Promise<void> | void;
+}
+
+export type TerminalFindResultChangeEvent = ISearchResultChangeEvent;
+
+export interface TerminalFindQueryInput {
+  query: string;
 }
 
 interface TerminalEmulatorRuntimeDisposables {
@@ -131,6 +138,16 @@ function prependTerminalOutput(
   return output;
 }
 
+const TERMINAL_FIND_SEARCH_OPTIONS: ISearchOptions = {
+  caseSensitive: false,
+  decorations: {
+    matchBackground: "#facc15",
+    matchOverviewRuler: "#facc15",
+    activeMatchBackground: "#38bdf8",
+    activeMatchColorOverviewRuler: "#38bdf8",
+  },
+};
+
 const DEFAULT_TERMINAL_FONT_FAMILY = [
   // Prefer common developer fonts, with Nerd Font variants for prompt/TUI glyphs.
   "JetBrains Mono",
@@ -179,6 +196,7 @@ export class TerminalEmulatorRuntime {
   private terminal: Terminal | null = null;
   private fitAddon: FitAddon | null = null;
   private ligaturesAddon: LigaturesAddon | null = null;
+  private searchAddon: SearchAddon | null = null;
   private fitAndEmitResize: ((input?: { force?: boolean; shouldClaim?: boolean }) => void) | null =
     null;
   private lastSize: { rows: number; cols: number } | null = null;
@@ -239,6 +257,7 @@ export class TerminalEmulatorRuntime {
       theme: withOverviewRulerBorderHidden(input.theme),
     });
     const fitAddon = new FitAddon();
+    const searchAddon = new SearchAddon({ highlightLimit: 20_000 });
     const unicode11Addon = new Unicode11Addon();
     let webglAddon: WebglAddon | null = null;
     let imageAddon: ImageAddon | null = null;
@@ -261,7 +280,7 @@ export class TerminalEmulatorRuntime {
         },
       }),
     );
-    terminal.loadAddon(new SearchAddon({ highlightLimit: 20_000 }));
+    terminal.loadAddon(searchAddon);
     terminal.loadAddon(new ClipboardAddon());
     if (input.ligaturesEnabled !== false) {
       this.loadLigaturesAddon(terminal);
@@ -348,6 +367,7 @@ export class TerminalEmulatorRuntime {
 
     this.terminal = terminal;
     this.fitAddon = fitAddon;
+    this.searchAddon = searchAddon;
     window.__paseoTerminal = terminal;
 
     const fitAndEmitResize = (resizeInput?: { force?: boolean; shouldClaim?: boolean }): void => {
@@ -753,6 +773,25 @@ export class TerminalEmulatorRuntime {
     this.terminal?.blur();
   }
 
+  findNext(input: TerminalFindQueryInput): boolean {
+    return this.searchAddon?.findNext(input.query, TERMINAL_FIND_SEARCH_OPTIONS) ?? false;
+  }
+
+  findPrevious(input: TerminalFindQueryInput): boolean {
+    return this.searchAddon?.findPrevious(input.query, TERMINAL_FIND_SEARCH_OPTIONS) ?? false;
+  }
+
+  clearFindDecorations(): void {
+    this.searchAddon?.clearDecorations();
+  }
+
+  onFindResultsChanged(listener: (event: TerminalFindResultChangeEvent) => void): () => void {
+    const disposable: IDisposable | undefined = this.searchAddon?.onDidChangeResults(listener);
+    return () => {
+      disposable?.dispose();
+    };
+  }
+
   private refreshVisibleRows(): void {
     const terminal = this.terminal;
     if (!terminal || terminal.rows <= 0) {
@@ -805,8 +844,9 @@ export class TerminalEmulatorRuntime {
     }
     this.terminal = null;
     this.fitAddon = null;
-    // The terminal dispose (via cleanup) tears down loaded addons; just drop the ref.
+    // The terminal dispose (via cleanup) tears down loaded addons; just drop the refs.
     this.ligaturesAddon = null;
+    this.searchAddon = null;
     this.fitAndEmitResize = null;
     this.lastSize = null;
     this.themeBackgroundElements = [];

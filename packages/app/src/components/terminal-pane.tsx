@@ -49,6 +49,8 @@ import {
   type OpenFileDisposition,
   type WorkspaceFileOpenRequest,
 } from "@/workspace/file-open";
+import { FindBar, usePaneFind, type PaneFindMatchState } from "@/panels/pane-find";
+import type { TerminalFindResultChangeEvent } from "@/terminal/runtime/terminal-emulator-runtime";
 
 interface TerminalPaneProps {
   serverId: string;
@@ -108,8 +110,23 @@ const EMPTY_MODIFIERS: ModifierState = {
   alt: false,
 };
 
+const EMPTY_FIND_MATCH_STATE: PaneFindMatchState = { status: "empty" };
+const NO_FIND_MATCH_STATE: PaneFindMatchState = { status: "no-match" };
+const PENDING_FIND_MATCH_STATE: PaneFindMatchState = { status: "pending" };
+
 function terminalScopeKey(input: { serverId: string; cwd: string }): string {
   return `${input.serverId}:${input.cwd}`;
+}
+
+function terminalFindStateFromResult(event: TerminalFindResultChangeEvent): PaneFindMatchState {
+  if (event.resultCount <= 0 || event.resultIndex < 0) {
+    return NO_FIND_MATCH_STATE;
+  }
+  return {
+    status: "matched",
+    current: event.resultIndex + 1,
+    total: event.resultCount,
+  };
 }
 
 interface ModifierButtonProps {
@@ -240,10 +257,17 @@ export function TerminalPane({
     win32InputMode: false,
   });
   const pendingTerminalInputRef = useRef<PendingTerminalInput[]>([]);
+  const terminalFindQueryRef = useRef("");
   const keyboardRefitTimeoutsRef = useRef<Array<ReturnType<typeof setTimeout>>>([]);
   const lastAutoFocusKeyRef = useRef<string | null>(null);
   const lastPaneFocusResizeKeyRef = useRef<string | null>(null);
   const initialSnapshot = workspaceTerminalSession.snapshots.get({ terminalId });
+  const [terminalFindMatchState, setTerminalFindMatchStateValue] =
+    useState<PaneFindMatchState>(EMPTY_FIND_MATCH_STATE);
+
+  const setTerminalFindMatchState = useCallback((nextState: PaneFindMatchState) => {
+    setTerminalFindMatchStateValue(nextState);
+  }, []);
 
   useEffect(() => {
     terminalIdRef.current = terminalId;
@@ -252,6 +276,19 @@ export function TerminalPane({
       win32InputMode: false,
     };
   }, [terminalId]);
+
+  useEffect(() => {
+    if (!isWorkspaceFocused || !terminalId) {
+      return;
+    }
+
+    return emulatorRef.current?.onFindResultsChanged((event) => {
+      if (terminalFindQueryRef.current.length === 0) {
+        return;
+      }
+      setTerminalFindMatchState(terminalFindStateFromResult(event));
+    });
+  }, [isWorkspaceFocused, setTerminalFindMatchState, terminalId]);
 
   const requestTerminalFocus = useCallback(() => {
     setFocusRequestToken((current) => current + 1);
@@ -279,6 +316,43 @@ export function TerminalPane({
     },
     [terminalId, terminalStreamKey, workspaceTerminalSession.snapshots],
   );
+
+  const clearTerminalFind = useCallback(() => {
+    terminalFindQueryRef.current = "";
+    emulatorRef.current?.clearFindDecorations();
+    setTerminalFindMatchState(EMPTY_FIND_MATCH_STATE);
+  }, [setTerminalFindMatchState]);
+
+  const runTerminalFind = useCallback(
+    (query: string, direction: "next" | "previous"): PaneFindMatchState => {
+      terminalFindQueryRef.current = query;
+      if (query.length === 0) {
+        clearTerminalFind();
+        return EMPTY_FIND_MATCH_STATE;
+      }
+
+      const found =
+        direction === "previous"
+          ? (emulatorRef.current?.findPrevious({ query }) ?? false)
+          : (emulatorRef.current?.findNext({ query }) ?? false);
+      if (!found) {
+        setTerminalFindMatchState(NO_FIND_MATCH_STATE);
+        return NO_FIND_MATCH_STATE;
+      }
+
+      setTerminalFindMatchState(PENDING_FIND_MATCH_STATE);
+      return PENDING_FIND_MATCH_STATE;
+    },
+    [clearTerminalFind, setTerminalFindMatchState],
+  );
+
+  const paneFind = usePaneFind({
+    matchState: terminalFindMatchState,
+    onQuery: (query) => runTerminalFind(query, "next"),
+    onNext: () => runTerminalFind(terminalFindQueryRef.current, "next"),
+    onPrev: () => runTerminalFind(terminalFindQueryRef.current, "previous"),
+    onClose: clearTerminalFind,
+  });
 
   useEffect(() => {
     if (isMobile || !isPaneFocused || !terminalId) {
@@ -781,6 +855,7 @@ export function TerminalPane({
 
   return (
     <Animated.View style={containerStyle}>
+      {paneFind.isOpen ? <FindBar {...paneFind.findBarProps} /> : null}
       <View style={styles.outputContainer}>
         {isWorkspaceFocused ? (
           <View style={terminalPaddingStyle}>

@@ -251,6 +251,32 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
     },
   },
 
+  // --- Find in pane ---
+  {
+    id: "workspace-find-open-cmd-f-mac",
+    action: "workspace.find.open",
+    combo: "Cmd+F",
+    when: { mac: true, commandCenter: false },
+    help: {
+      id: "workspace-find-open",
+      section: "tabs-panes",
+      labelKey: "label.findInPane",
+      keys: ["mod", "F"],
+    },
+  },
+  {
+    id: "workspace-find-open-ctrl-f-non-mac",
+    action: "workspace.find.open",
+    combo: "Ctrl+F",
+    when: { mac: false, commandCenter: false },
+    help: {
+      id: "workspace-find-open",
+      section: "tabs-panes",
+      labelKey: "label.findInPane",
+      keys: ["mod", "F"],
+    },
+  },
+
   // --- Workspace index jump ---
   {
     id: "workspace-navigate-index-cmd-digit-mac",

@@ -3,6 +3,7 @@ export default {
     openProject: "打开项目",
     newWorktree: "新建工作树",
     archiveWorktree: "归档工作树",
+    findInPane: "在面板中查找",
     newTab: "新建标签页",
     closeCurrentTab: "关闭当前标签页",
     jumpToWorkspace: "跳转到工作区",

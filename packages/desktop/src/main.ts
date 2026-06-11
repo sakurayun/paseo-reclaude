@@ -47,6 +47,7 @@ import { registerEditorTargetHandlers } from "./features/editor-targets.js";
 import { setupApplicationMenu } from "./features/menu.js";
 import {
   BROWSER_NEW_TAB_REQUEST_EVENT,
+  clearActivePaseoBrowserFind,
   getPaseoBrowserIdForWebContents,
   getPaseoBrowserWebContents,
   handleBrowserWindowOpenRequest,
@@ -54,6 +55,7 @@ import {
   readBrowserIdFromWebviewAttach,
   registerBrowserWebviewNavigationGuards,
   registerPaseoBrowserWebContents,
+  setActivePaseoBrowserFind,
   setWorkspaceActivePaseoBrowserId,
 } from "./features/browser-webviews/index.js";
 import { parseOpenProjectPathFromArgv } from "./open-project-routing.js";
@@ -307,6 +309,48 @@ ipcMain.handle("paseo:browser:clear-partition", async (_event, browserId: unknow
   await session.fromPartition(partition).clearStorageData();
 });
 
+ipcMain.handle(
+  "paseo:browser:find-in-page",
+  (_event, browserId: unknown, text: unknown, options: unknown): number | null => {
+    if (typeof browserId !== "string" || typeof text !== "string" || text.length === 0) {
+      return null;
+    }
+    const contents = getPaseoBrowserWebContents(browserId);
+    if (!contents) {
+      return null;
+    }
+    setActivePaseoBrowserFind(browserId);
+    const inputOptions =
+      options && typeof options === "object"
+        ? (options as { forward?: unknown; findNext?: unknown; matchCase?: unknown })
+        : {};
+    return contents.findInPage(text, {
+      forward: inputOptions.forward !== false,
+      findNext: inputOptions.findNext === true,
+      matchCase: inputOptions.matchCase === true,
+    });
+  },
+);
+
+ipcMain.handle(
+  "paseo:browser:stop-find-in-page",
+  (_event, browserId: unknown, action: unknown): null => {
+    if (typeof browserId !== "string") {
+      return null;
+    }
+    if (
+      action !== "clearSelection" &&
+      action !== "keepSelection" &&
+      action !== "activateSelection"
+    ) {
+      return null;
+    }
+    getPaseoBrowserWebContents(browserId)?.stopFindInPage(action);
+    clearActivePaseoBrowserFind(browserId);
+    return null;
+  },
+);
+
 protocol.registerSchemesAsPrivileged([
   {
     scheme: APP_SCHEME,
@@ -465,7 +509,7 @@ async function createWindow(
   mainWindow.webContents.on("did-attach-webview", (_event, contents) => {
     const browserId = pendingBrowserWebviewIds.shift() ?? null;
     if (browserId) {
-      registerPaseoBrowserWebContents(contents, browserId);
+      registerPaseoBrowserWebContents(contents, browserId, mainWindow.webContents);
       log.info("[browser-webview] registered", {
         browserId,
         webContentsId: contents.id,

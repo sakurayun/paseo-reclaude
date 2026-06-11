@@ -129,6 +129,7 @@ interface UserMessageProps {
   isFirstInGroup?: boolean;
   isLastInGroup?: boolean;
   disableOuterSpacing?: boolean;
+  findHighlights?: MessageFindHighlight[];
 }
 
 const MessageOuterSpacingContext = createContext(false);
@@ -162,6 +163,19 @@ const MARKDOWN_ALLOWED_IMAGE_HANDLERS = [
   "http://",
 ] as const;
 const MARKDOWN_TOP_LEVEL_MAX_EXCEEDED_ITEM = <Text key="dotdotdot">...</Text>;
+
+export interface MessageFindHighlight {
+  id: string;
+  start: number;
+  end: number;
+  isCurrent: boolean;
+}
+
+interface MessageFindTextSegment {
+  key: string;
+  text: string;
+  highlight?: MessageFindHighlight;
+}
 
 interface MarkdownWithStableRendererProps {
   children: ReactNode;
@@ -213,6 +227,95 @@ const SCROLL_EDGE_EPSILON = 0.5;
 // Lives between theme.fontSize.xs (12) and theme.fontSize.sm (14); no token.
 export const STREAM_METADATA_FONT_SIZE = 13;
 type ScrollAxis = "x" | "y";
+
+function normalizeFindHighlights(
+  textLength: number,
+  highlights: MessageFindHighlight[] | undefined,
+): MessageFindHighlight[] {
+  if (!highlights || highlights.length === 0) {
+    return [];
+  }
+
+  return highlights
+    .map((highlight) => ({
+      ...highlight,
+      start: Math.max(0, Math.min(textLength, highlight.start)),
+      end: Math.max(0, Math.min(textLength, highlight.end)),
+    }))
+    .filter((highlight) => highlight.start < highlight.end)
+    .sort((left, right) => left.start - right.start || left.end - right.end);
+}
+
+function createMessageFindTextSegments(
+  text: string,
+  highlights: MessageFindHighlight[] | undefined,
+): MessageFindTextSegment[] {
+  const normalizedHighlights = normalizeFindHighlights(text.length, highlights);
+  if (normalizedHighlights.length === 0) {
+    return [{ key: "text", text }];
+  }
+
+  const segments: MessageFindTextSegment[] = [];
+  let cursor = 0;
+  for (const highlight of normalizedHighlights) {
+    if (cursor < highlight.start) {
+      segments.push({
+        key: `plain:${cursor}:${highlight.start}`,
+        text: text.slice(cursor, highlight.start),
+      });
+    }
+    segments.push({
+      key: highlight.id,
+      text: text.slice(highlight.start, highlight.end),
+      highlight,
+    });
+    cursor = highlight.end;
+  }
+
+  if (cursor < text.length) {
+    segments.push({
+      key: `plain:${cursor}:${text.length}`,
+      text: text.slice(cursor),
+    });
+  }
+
+  return segments;
+}
+
+interface MarkdownBlockWithOffset {
+  key: string;
+  block: string;
+  startOffset: number;
+}
+
+function createMarkdownBlocksWithOffsets(message: string): MarkdownBlockWithOffset[] {
+  let cursor = 0;
+  return splitMarkdownBlocks(message).map((block, index) => {
+    const startOffset = Math.max(cursor, message.indexOf(block, cursor));
+    cursor = startOffset + block.length;
+    return {
+      key: `${index}:${block.slice(0, 32)}`,
+      block,
+      startOffset,
+    };
+  });
+}
+
+function createBlockFindHighlights(
+  blockStartOffset: number,
+  blockLength: number,
+  highlights: MessageFindHighlight[] | undefined,
+): MessageFindHighlight[] {
+  const blockEndOffset = blockStartOffset + blockLength;
+  return normalizeFindHighlights(blockEndOffset, highlights)
+    .filter((highlight) => highlight.start < blockEndOffset && highlight.end > blockStartOffset)
+    .map((highlight) => ({
+      id: highlight.id,
+      start: Math.max(0, highlight.start - blockStartOffset),
+      end: Math.min(blockLength, highlight.end - blockStartOffset),
+      isCurrent: highlight.isCurrent,
+    }));
+}
 
 function ensureWebToolCallShimmerKeyframes() {
   if (isNative) {
@@ -374,6 +477,14 @@ const userMessageStylesheet = StyleSheet.create((theme) => ({
     lineHeight: 22,
     overflowWrap: "anywhere",
   },
+  findMatchText: {
+    backgroundColor:
+      theme.colorScheme === "dark" ? "rgba(250, 204, 21, 0.32)" : "rgba(250, 204, 21, 0.38)",
+  },
+  findCurrentMatchText: {
+    backgroundColor:
+      theme.colorScheme === "dark" ? "rgba(251, 146, 60, 0.58)" : "rgba(251, 146, 60, 0.48)",
+  },
   imagePreviewContainer: {
     flexDirection: "row",
     gap: theme.spacing[2],
@@ -441,6 +552,28 @@ const userMessageStylesheet = StyleSheet.create((theme) => ({
   },
 }));
 
+function MessageFindHighlightedText({ segments }: { segments: MessageFindTextSegment[] }) {
+  return (
+    <>
+      {segments.map((segment) => (
+        <Text key={segment.key} style={getMessageFindHighlightStyle(segment.highlight)}>
+          {segment.text}
+        </Text>
+      ))}
+    </>
+  );
+}
+
+function getMessageFindHighlightStyle(highlight: MessageFindHighlight | undefined) {
+  if (highlight?.isCurrent) {
+    return userMessageStylesheet.findCurrentMatchText;
+  }
+  if (highlight) {
+    return userMessageStylesheet.findMatchText;
+  }
+  return undefined;
+}
+
 function UserMessageAttachmentThumbnail({ image }: { image: UserMessageImageAttachment }) {
   const uri = useAttachmentPreviewUrl(image);
   const imageSource = useMemo(() => ({ uri: uri ?? "" }), [uri]);
@@ -483,6 +616,7 @@ export const UserMessage = memo(function UserMessage({
   isFirstInGroup = true,
   isLastInGroup = true,
   disableOuterSpacing,
+  findHighlights,
 }: UserMessageProps) {
   const { t } = useTranslation("timeline");
   const isCompact = useIsCompactFormFactor();
@@ -506,6 +640,10 @@ export const UserMessage = memo(function UserMessage({
       return rewindMutation.rewindAgent(input);
     },
     [rewindMutation],
+  );
+  const highlightedMessageSegments = useMemo(
+    () => createMessageFindTextSegments(message, findHighlights),
+    [findHighlights, message],
   );
 
   const containerStyle = useMemo(
@@ -576,7 +714,7 @@ export const UserMessage = memo(function UserMessage({
           ) : null}
           {hasText ? (
             <Text selectable style={userMessageStylesheet.text}>
-              {message}
+              <MessageFindHighlightedText segments={highlightedMessageSegments} />
             </Text>
           ) : null}
         </View>
@@ -785,6 +923,7 @@ interface AssistantMessageProps {
   serverId?: string;
   client?: DaemonClient | null;
   spacing?: "default" | "compactTop" | "compactBottom" | "compactBoth";
+  findHighlights?: MessageFindHighlight[];
 }
 
 export const assistantMessageStylesheet = StyleSheet.create((theme) => ({
@@ -1531,6 +1670,7 @@ interface MemoizedMarkdownBlockProps {
   rules: RenderRules;
   parser: MarkdownIt;
   onLinkPress: (url: string) => boolean;
+  findHighlights?: MessageFindHighlight[];
 }
 
 const MemoizedMarkdownBlock = React.memo(function MemoizedMarkdownBlock({
@@ -1538,22 +1678,56 @@ const MemoizedMarkdownBlock = React.memo(function MemoizedMarkdownBlock({
   rules,
   parser,
   onLinkPress,
+  findHighlights,
 }: MemoizedMarkdownBlockProps) {
+  const textCursorRef = useRef(0);
+  textCursorRef.current = 0;
+  const renderFindHighlightedText = useCallback(
+    (content: string) => {
+      if (!findHighlights || findHighlights.length === 0 || content.length === 0) {
+        return content;
+      }
+
+      const start = text.indexOf(content, textCursorRef.current);
+      if (start < 0) {
+        return content;
+      }
+
+      textCursorRef.current = start + content.length;
+      const end = start + content.length;
+      const contentHighlights = findHighlights
+        .filter((highlight) => highlight.start < end && highlight.end > start)
+        .map((highlight) => ({
+          id: highlight.id,
+          start: Math.max(0, highlight.start - start),
+          end: Math.min(content.length, highlight.end - start),
+          isCurrent: highlight.isCurrent,
+        }));
+      const segments = createMessageFindTextSegments(content, contentHighlights);
+      return <MessageFindHighlightedText segments={segments} />;
+    },
+    [findHighlights, text],
+  );
+
   return (
     <AppearanceStyleBoundary>
-      <ThemedMarkdown
-        uniProps={markdownStyleMapping}
-        rules={rules}
-        markdownit={parser}
-        onLinkPress={onLinkPress}
-        allowedImageHandlers={MARKDOWN_ALLOWED_IMAGE_HANDLERS}
-        topLevelMaxExceededItem={MARKDOWN_TOP_LEVEL_MAX_EXCEEDED_ITEM}
-      >
-        {text}
-      </ThemedMarkdown>
+      <MarkdownFindHighlightContext.Provider value={renderFindHighlightedText}>
+        <ThemedMarkdown
+          uniProps={markdownStyleMapping}
+          rules={rules}
+          markdownit={parser}
+          onLinkPress={onLinkPress}
+          allowedImageHandlers={MARKDOWN_ALLOWED_IMAGE_HANDLERS}
+          topLevelMaxExceededItem={MARKDOWN_TOP_LEVEL_MAX_EXCEEDED_ITEM}
+        >
+          {text}
+        </ThemedMarkdown>
+      </MarkdownFindHighlightContext.Provider>
     </AppearanceStyleBoundary>
   );
 });
+
+const MarkdownFindHighlightContext = createContext<((content: string) => ReactNode) | null>(null);
 
 interface MarkdownInheritedTextProps {
   inheritedStyles: TextStyle;
@@ -1561,6 +1735,7 @@ interface MarkdownInheritedTextProps {
   style?: StyleProp<TextStyle>;
   monoSurface?: boolean;
   children: ReactNode;
+  disableFindHighlight?: boolean;
 }
 
 function MarkdownInheritedText({
@@ -1569,7 +1744,9 @@ function MarkdownInheritedText({
   style: overrideStyle,
   monoSurface,
   children,
+  disableFindHighlight = false,
 }: MarkdownInheritedTextProps) {
+  const renderFindHighlightedText = useContext(MarkdownFindHighlightContext);
   const style = useMemo(
     () => [inheritedStyles, textStyle, overrideStyle],
     [inheritedStyles, textStyle, overrideStyle],
@@ -1580,6 +1757,10 @@ function MarkdownInheritedText({
   // outside a link (and on every other platform, where no provider mounts), so
   // ordinary text is unaffected. See assistant-file-links/link-press-context.
   const linkPress = useAssistantLinkPress();
+  const renderedChildren =
+    !disableFindHighlight && typeof children === "string" && renderFindHighlightedText
+      ? renderFindHighlightedText(children)
+      : children;
   return (
     <MarkdownTextSpan
       monoSurface={monoSurface}
@@ -1587,7 +1768,7 @@ function MarkdownInheritedText({
       onPress={linkPress?.onPress}
       accessibilityRole={linkPress?.accessibilityRole}
     >
-      {children}
+      {renderedChildren}
     </MarkdownTextSpan>
   );
 }
@@ -1622,6 +1803,7 @@ export const AssistantMessage = memo(function AssistantMessage({
   serverId,
   client,
   spacing = "default",
+  findHighlights,
 }: AssistantMessageProps) {
   const markdownParser = useMemo(() => {
     const parser = MarkdownIt({ typographer: true, linkify: true });
@@ -1821,6 +2003,7 @@ export const AssistantMessage = memo(function AssistantMessage({
             inheritedStyles={inheritedStyles}
             textStyle={styles.code_inline}
             monoSurface
+            disableFindHighlight
           >
             {content}
           </MarkdownInheritedText>
@@ -1932,11 +2115,7 @@ export const AssistantMessage = memo(function AssistantMessage({
     };
   }, [client, fileLinkActions, markdownParser, serverId, workspaceRoot]);
 
-  const blocks = useMemo(() => splitMarkdownBlocks(message), [message]);
-  const keyedBlocks = useMemo(
-    () => blocks.map((block, index) => ({ key: `${index}:${block.slice(0, 32)}`, block })),
-    [blocks],
-  );
+  const keyedBlocks = useMemo(() => createMarkdownBlocksWithOffsets(message), [message]);
 
   const assistantContainerStyle = useMemo(
     () => [
@@ -1951,7 +2130,7 @@ export const AssistantMessage = memo(function AssistantMessage({
 
   return (
     <View testID="assistant-message" style={assistantContainerStyle}>
-      {keyedBlocks.map(({ key, block }, index) => (
+      {keyedBlocks.map(({ key, block, startOffset }, index) => (
         <AssistantMessageBlockContainer
           key={key}
           block={block}
@@ -1962,6 +2141,7 @@ export const AssistantMessage = memo(function AssistantMessage({
             rules={markdownRules}
             parser={markdownParser}
             onLinkPress={handleMarkdownLinkPress}
+            findHighlights={createBlockFindHighlights(startOffset, block.length, findHighlights)}
           />
         </AssistantMessageBlockContainer>
       ))}
