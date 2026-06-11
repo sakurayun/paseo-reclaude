@@ -126,6 +126,8 @@ export interface MessageInputProps {
   inputWrapperStyle?: import("react-native").ViewStyle;
   /** Content rendered inside the bordered input surface, above the text input (e.g. attachment pills). */
   attachmentSlot?: React.ReactNode;
+  /** Swaps the resting shadow for the purple Ultracode glow. */
+  isUltracodeActive?: boolean;
 }
 
 export interface MessageInputRef {
@@ -1239,6 +1241,7 @@ interface ResolvedMessageInputProps {
   onHeightChange: ((height: number) => void) | undefined;
   inputWrapperStyle: import("react-native").ViewStyle | undefined;
   attachmentSlot: React.ReactNode;
+  isUltracodeActive: boolean;
 }
 
 function resolveMessageInputProps(props: MessageInputProps): ResolvedMessageInputProps {
@@ -1279,6 +1282,7 @@ function resolveMessageInputProps(props: MessageInputProps): ResolvedMessageInpu
     onHeightChange: props.onHeightChange,
     inputWrapperStyle: props.inputWrapperStyle,
     attachmentSlot: props.attachmentSlot,
+    isUltracodeActive: props.isUltracodeActive ?? false,
   };
 }
 
@@ -1327,6 +1331,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       onHeightChange,
       inputWrapperStyle,
       attachmentSlot,
+      isUltracodeActive,
     } = resolveMessageInputProps(props);
     const isCompact = useIsCompactFormFactor();
     const { height: windowHeight } = useWindowDimensions();
@@ -1834,9 +1839,20 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
     }, [handleStopRealtimeVoice]);
 
     const inputWrapperCombinedStyle = useMemo(
-      () => [styles.inputWrapper, inputWrapperStyle, inputAnimatedStyle],
-      [inputWrapperStyle, inputAnimatedStyle],
+      () => [
+        styles.inputWrapper,
+        isUltracodeActive ? styles.inputWrapperUltracodeGlow : styles.inputWrapperShadow,
+        inputWrapperStyle,
+        inputAnimatedStyle,
+      ],
+      [inputWrapperStyle, inputAnimatedStyle, isUltracodeActive],
     );
+
+    useEffect(() => {
+      if (isUltracodeActive) {
+        ensureUltracodeGlowStyle();
+      }
+    }, [isUltracodeActive]);
     const textInputStyle = useMemo(
       () => [styles.textInput, computeTextInputHeightStyle(inputHeight, maxInputHeight)],
       [inputHeight, maxInputHeight],
@@ -1876,7 +1892,11 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
     return (
       <View ref={rootRef} style={styles.container} testID="message-input-root">
         {/* Regular input */}
-        <Animated.View ref={inputWrapperRef} style={inputWrapperCombinedStyle}>
+        <Animated.View
+          ref={inputWrapperRef}
+          style={inputWrapperCombinedStyle}
+          dataSet={isUltracodeActive ? ULTRACODE_GLOW_DATASET : undefined}
+        >
           {attachmentSlot}
           {/* Text input */}
           <View style={styles.textInputScrollWrapper}>
@@ -1977,6 +1997,49 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
   },
 );
 
+// Flowing violet glow for Ultracode mode. The light sweeps from one side of
+// the input to the other by animating offset box-shadows; reduced-motion users
+// get a static halo instead.
+const ULTRACODE_GLOW_STYLE_ID = "composer-ultracode-glow-style";
+const ULTRACODE_GLOW_DATASET = { "ultracode-glow": "true" } as const;
+
+function ensureUltracodeGlowStyle(): void {
+  if (!isWeb || typeof document === "undefined") {
+    return;
+  }
+  if (document.getElementById(ULTRACODE_GLOW_STYLE_ID)) {
+    return;
+  }
+  const styleElement = document.createElement("style");
+  styleElement.id = ULTRACODE_GLOW_STYLE_ID;
+  styleElement.textContent = `
+    @keyframes paseo-ultracode-glow {
+      0%, 100% {
+        box-shadow:
+          -18px 2px 28px rgba(167, 139, 250, 0.40),
+          0 2px 18px rgba(196, 181, 253, 0.28),
+          18px 2px 28px rgba(129, 140, 248, 0.18);
+      }
+      50% {
+        box-shadow:
+          18px 2px 28px rgba(167, 139, 250, 0.40),
+          0 2px 24px rgba(216, 180, 254, 0.45),
+          -18px 2px 28px rgba(129, 140, 248, 0.18);
+      }
+    }
+    [data-ultracode-glow="true"] {
+      animation: paseo-ultracode-glow 3s ease-in-out infinite;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      [data-ultracode-glow="true"] {
+        animation: none;
+        box-shadow: 0 2px 22px rgba(167, 139, 250, 0.40);
+      }
+    }
+  `;
+  document.head.appendChild(styleElement);
+}
+
 const styles = StyleSheet.create((theme: Theme) => ({
   container: {
     position: "relative",
@@ -2002,6 +2065,26 @@ const styles = StyleSheet.create((theme: Theme) => ({
         }
       : {}),
   },
+  inputWrapperShadow: isWeb
+    ? { boxShadow: "0 2px 16px rgba(0, 0, 0, 0.07)" }
+    : {
+        shadowColor: "#000000",
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.08,
+        shadowRadius: 10,
+        elevation: 3,
+      },
+  // On web the flowing glow is driven by the injected keyframes (see
+  // ensureUltracodeGlowStyle); native gets a static violet halo.
+  inputWrapperUltracodeGlow: isWeb
+    ? {}
+    : {
+        shadowColor: "#a78bfa",
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 0.45,
+        shadowRadius: 14,
+        elevation: 6,
+      },
   textInputScrollWrapper: {
     position: "relative",
   },

@@ -3,6 +3,13 @@ import type { TFunction } from "i18next";
 import type { AgentFeature, AgentModelDefinition } from "@getpaseo/protocol/agent-types";
 
 const CLAUDE_ULTRACODE_FEATURE_ID = "ultracode";
+
+export function isUltracodeFeatureEnabled(features: readonly AgentFeature[] | undefined): boolean {
+  const feature = features?.find(
+    (entry) => entry.type === "toggle" && entry.id === CLAUDE_ULTRACODE_FEATURE_ID,
+  );
+  return Boolean(feature && feature.type === "toggle" && feature.value);
+}
 const CLAUDE_ULTRACODE_THINKING_OPTION_ID = "xhigh";
 
 export type ExplainedStatusSelector = "gateway" | "mode" | "model" | "thinking";

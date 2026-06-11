@@ -46,6 +46,7 @@ import type { ImageAttachment, MessagePayload } from "./types";
 import { ICON_SIZE, type Theme } from "@/styles/theme";
 import type { DraftCommandConfig } from "@/hooks/use-agent-commands-query";
 import { encodeImages } from "@/utils/encode-images";
+import { isUltracodeFeatureEnabled } from "@/composer/agent-controls/utils";
 import { focusWithRetries } from "@/utils/web-focus";
 import {
   cancelComposerAgent,
@@ -192,6 +193,7 @@ function buildAgentStateSelector(serverId: string, agentId: string) {
       totalCostUsd: agent?.lastUsage?.totalCostUsd ?? null,
       model: agent?.model ?? null,
       provider: agent?.provider ?? null,
+      isUltracodeActive: isUltracodeFeatureEnabled(agent?.features),
     };
   };
 }
@@ -1138,6 +1140,10 @@ export function Composer({
 
   const isAgentRunning = agentState.status === "running";
   const hasAgent = agentState.status !== null;
+  const isUltracodeActive = useMemo(
+    () => isUltracodeFeatureEnabled(agentControls?.features) || agentState.isUltracodeActive,
+    [agentControls, agentState.isUltracodeActive],
+  );
 
   const queueWriter = useMemo<QueueWriter>(
     () => ({
@@ -1762,6 +1768,7 @@ export function Composer({
               onFocusChange={handleFocusChange}
               onHeightChange={onComposerHeightChange}
               inputWrapperStyle={inputWrapperStyle}
+              isUltracodeActive={isUltracodeActive}
               attachmentSlot={attachmentTray}
             />
             <Combobox
