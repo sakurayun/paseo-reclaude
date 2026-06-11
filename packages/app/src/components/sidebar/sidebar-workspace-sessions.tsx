@@ -1,9 +1,18 @@
-import { memo, useCallback, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useState, type ComponentType } from "react";
 import { useTranslation } from "react-i18next";
 import { Pressable, Text, View, type PressableStateCallbackType } from "react-native";
 import { useQueryClient } from "@tanstack/react-query";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
-import { getProviderIcon } from "@/components/provider-icons";
+import Animated, {
+  cancelAnimation,
+  Easing,
+  useAnimatedStyle,
+  useSharedValue,
+  withRepeat,
+  withTiming,
+} from "react-native-reanimated";
+import { getProviderBrandColor, getProviderIcon } from "@/components/provider-icons";
+import { deriveSidebarStateBucket } from "@/utils/sidebar-agent-state";
 import { AdaptiveRenameModal } from "@/components/rename-modal";
 import {
   ContextMenu,
@@ -39,15 +48,58 @@ export function useWorkspaceSessions(input: {
   serverId: string;
   workspaceId: string;
 }): AgentDirectoryEntry[] {
-  const { agents } = useAgentHistory({ serverId: input.serverId });
-  const liveAgentsMap = useSessionStore((state) => state.sessions[input.serverId]?.agents);
+  const mergedAgents = useMergedAgentHistory(input.serverId);
   const workspacesMap = useSessionStore((state) => state.sessions[input.serverId]?.workspaces);
   const workspaces = useMemo(
     () => (workspacesMap ? Array.from(workspacesMap.values()) : EMPTY_WORKSPACES),
     [workspacesMap],
   );
 
-  const mergedAgents = useMemo(() => {
+  return useMemo(() => {
+    const sections = buildWorkspaceSessionSections({
+      currentWorkspaceId: input.workspaceId,
+      workspaces,
+      agents: mergedAgents,
+      includeArchived: false,
+      otherSectionTitle: "",
+    });
+    return (
+      sections.find((section) => section.workspaceId === input.workspaceId)?.sessions ??
+      EMPTY_SESSIONS
+    );
+  }, [mergedAgents, input.workspaceId, workspaces]);
+}
+
+/**
+ * Recent non-archived sessions whose cwd falls under the project root. Used by
+ * the workspace group mode for projects without branch (worktree) rows, where
+ * no per-branch row exists to host the session list.
+ */
+export function useProjectSessions(input: {
+  serverId: string;
+  projectRootPath: string | null;
+}): AgentDirectoryEntry[] {
+  const mergedAgents = useMergedAgentHistory(input.serverId);
+
+  return useMemo(() => {
+    const root = input.projectRootPath;
+    if (!root) {
+      return EMPTY_SESSIONS;
+    }
+    return mergedAgents
+      .filter(
+        (agent) =>
+          agent.archivedAt == null && (agent.cwd === root || agent.cwd.startsWith(`${root}/`)),
+      )
+      .sort((left, right) => right.lastActivityAt.getTime() - left.lastActivityAt.getTime());
+  }, [mergedAgents, input.projectRootPath]);
+}
+
+function useMergedAgentHistory(serverId: string): AgentDirectoryEntry[] {
+  const { agents } = useAgentHistory({ serverId });
+  const liveAgentsMap = useSessionStore((state) => state.sessions[serverId]?.agents);
+
+  return useMemo(() => {
     if (!liveAgentsMap || liveAgentsMap.size === 0) {
       return agents;
     }
@@ -73,20 +125,6 @@ export function useWorkspaceSessions(input: {
     }
     return Array.from(byId.values());
   }, [agents, liveAgentsMap]);
-
-  return useMemo(() => {
-    const sections = buildWorkspaceSessionSections({
-      currentWorkspaceId: input.workspaceId,
-      workspaces,
-      agents: mergedAgents,
-      includeArchived: false,
-      otherSectionTitle: "",
-    });
-    return (
-      sections.find((section) => section.workspaceId === input.workspaceId)?.sessions ??
-      EMPTY_SESSIONS
-    );
-  }, [mergedAgents, input.workspaceId, workspaces]);
 }
 
 function SidebarSessionRow({ session }: { session: AgentDirectoryEntry }) {
@@ -140,9 +178,31 @@ function SidebarSessionRow({ session }: { session: AgentDirectoryEntry }) {
     ],
     [],
   );
-  const ProviderIcon = useMemo(
-    () => withUnistyles(getProviderIcon(session.provider), mutedColorMapping),
-    [session.provider],
+
+  const stateBucket = deriveSidebarStateBucket({
+    status: session.status,
+    pendingPermissionCount: session.pendingPermissionCount ?? 0,
+    requiresAttention: session.requiresAttention,
+    attentionReason: session.attentionReason,
+  });
+
+  const ProviderIcon = useMemo(() => {
+    let colorMapping = mutedColorMapping;
+    if (stateBucket === "failed") {
+      colorMapping = failedColorMapping;
+    } else if (stateBucket === "needs_input") {
+      colorMapping = needsInputColorMapping;
+    }
+    return withUnistyles(getProviderIcon(session.provider), colorMapping);
+  }, [session.provider, stateBucket]);
+
+  const titleStyle = useMemo(
+    () => [
+      styles.sessionTitle,
+      stateBucket === "failed" && styles.sessionTitleFailed,
+      stateBucket === "needs_input" && styles.sessionTitleNeedsInput,
+    ],
+    [stateBucket],
   );
 
   return (
@@ -155,8 +215,12 @@ function SidebarSessionRow({ session }: { session: AgentDirectoryEntry }) {
       >
         <View style={styles.sessionIcon}>
           <ProviderIcon size={12} />
+          {stateBucket === "running" ? (
+            <SessionRunningIconOverlay provider={session.provider} />
+          ) : null}
+          {stateBucket === "attention" ? <View style={styles.attentionDot} /> : null}
         </View>
-        <Text style={styles.sessionTitle} numberOfLines={1}>
+        <Text style={titleStyle} numberOfLines={1}>
           {session.title ?? t("sessions.workspacePanel.untitled")}
         </Text>
         <Text style={styles.sessionTime} numberOfLines={1}>
@@ -253,8 +317,60 @@ export const SidebarWorkspaceSessions = memo(function SidebarWorkspaceSessions({
   );
 });
 
+/**
+ * Breathing colored copy of the provider icon, stacked over the gray base
+ * icon while the agent is running. Opacity pulses 0 → 1 so the icon fades
+ * between gray and the provider's brand color (theme accent as fallback).
+ */
+function SessionRunningIconOverlay({ provider }: { provider: string }) {
+  const breath = useSharedValue(0);
+
+  useEffect(() => {
+    breath.value = withRepeat(
+      withTiming(1, { duration: 900, easing: Easing.inOut(Easing.ease) }),
+      -1,
+      true,
+    );
+    return () => {
+      cancelAnimation(breath);
+    };
+  }, [breath]);
+
+  const overlayStyle = useAnimatedStyle(() => ({ opacity: breath.value }));
+  const containerStyle = useMemo(() => [styles.iconOverlay, overlayStyle], [overlayStyle]);
+
+  const OverlayIcon = useMemo((): ComponentType<{ size: number }> => {
+    const Icon = getProviderIcon(provider);
+    const brandColor = getProviderBrandColor(provider);
+    if (brandColor) {
+      const BrandedIcon = ({ size }: { size: number }) => <Icon size={size} color={brandColor} />;
+      BrandedIcon.displayName = `BrandedProviderIcon(${provider})`;
+      return BrandedIcon;
+    }
+    return withUnistyles(Icon, accentColorMapping) as unknown as ComponentType<{ size: number }>;
+  }, [provider]);
+
+  return (
+    <Animated.View style={containerStyle} pointerEvents="none">
+      <OverlayIcon size={12} />
+    </Animated.View>
+  );
+}
+
 const mutedColorMapping = (theme: Theme) => ({
   color: theme.colors.foregroundMuted,
+});
+
+const accentColorMapping = (theme: Theme) => ({
+  color: theme.colors.accent,
+});
+
+const failedColorMapping = (theme: Theme) => ({
+  color: theme.colors.palette.red[500],
+});
+
+const needsInputColorMapping = (theme: Theme) => ({
+  color: theme.colors.palette.amber[500],
 });
 
 const styles = StyleSheet.create((theme) => ({
@@ -276,13 +392,38 @@ const styles = StyleSheet.create((theme) => ({
   sessionIcon: {
     width: 14,
     alignItems: "center",
+    justifyContent: "center",
     flexShrink: 0,
+  },
+  iconOverlay: {
+    position: "absolute",
+    top: 0,
+    bottom: 0,
+    left: 0,
+    right: 0,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  attentionDot: {
+    position: "absolute",
+    right: -2,
+    bottom: -2,
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
+    backgroundColor: theme.colors.palette.green[500],
   },
   sessionTitle: {
     flex: 1,
     minWidth: 0,
     fontSize: theme.fontSize.xs,
     color: theme.colors.foreground,
+  },
+  sessionTitleFailed: {
+    color: theme.colors.palette.red[500],
+  },
+  sessionTitleNeedsInput: {
+    color: theme.colors.palette.amber[500],
   },
   sessionTime: {
     fontSize: theme.fontSize.xs,

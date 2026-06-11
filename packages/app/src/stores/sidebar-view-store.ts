@@ -2,7 +2,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
-export type SidebarGroupMode = "project" | "status";
+export type SidebarGroupMode = "project" | "workspace" | "status";
 
 interface SidebarViewStoreState {
   groupModeByServerId: Record<string, SidebarGroupMode>;

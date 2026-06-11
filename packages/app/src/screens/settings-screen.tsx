@@ -17,7 +17,7 @@ import {
   View,
   type PressableStateCallbackType,
 } from "react-native";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
@@ -1354,6 +1354,17 @@ export default function SettingsScreen({ view }: SettingsScreenProps) {
   const handleAddHost = useCallback(() => {
     setIsAddHostMethodVisible(true);
   }, []);
+
+  // Deep-link entry: the sidebar host menu's "Add host" row lands on
+  // /settings?addHost=1 (or /settings/general?addHost=1 on desktop).
+  const { addHost: addHostParam } = useLocalSearchParams<{ addHost?: string }>();
+  const hasConsumedAddHostParam = useRef(false);
+  useEffect(() => {
+    if (!addHostParam || hasConsumedAddHostParam.current) return;
+    hasConsumedAddHostParam.current = true;
+    router.setParams({ addHost: undefined });
+    handleAddHost();
+  }, [addHostParam, handleAddHost, router]);
 
   const handleSelectDirectConnection = useCallback(() => {
     setIsAddHostMethodVisible(false);

@@ -810,6 +810,7 @@ export const es: TranslationResources = {
       accessibilityLabel: "Agrupación de la barra lateral",
       groupBy: "Agrupar por",
       project: "Proyecto",
+      workspace: "Espacio de trabajo",
       status: "Estado",
     },
     host: {

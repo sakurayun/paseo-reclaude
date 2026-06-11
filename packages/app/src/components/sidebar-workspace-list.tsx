@@ -73,10 +73,12 @@ import {
   type SidebarWorkspaceEntry,
 } from "@/hooks/use-sidebar-workspaces-list";
 import { useSidebarOrderStore } from "@/stores/sidebar-order-store";
+import type { SidebarGroupMode } from "@/stores/sidebar-view-store";
 import { useShowShortcutBadges } from "@/hooks/use-show-shortcut-badges";
 import { navigateToPreparedWorkspaceTab } from "@/utils/workspace-navigation";
 import {
   SidebarWorkspaceSessions,
+  useProjectSessions,
   useWorkspaceSessions,
 } from "@/components/sidebar/sidebar-workspace-sessions";
 import {
@@ -284,7 +286,7 @@ interface SidebarWorkspaceListProps {
   collapsedProjectKeys: ReadonlySet<string>;
   onToggleProjectCollapsed: (projectKey: string) => void;
   shortcutIndexByWorkspaceKey: Map<string, number>;
-  groupMode: "project" | "status";
+  groupMode: SidebarGroupMode;
   isRefreshing?: boolean;
   onRefresh?: () => void;
   onWorkspacePress?: () => void;
@@ -2258,6 +2260,7 @@ function ProjectBlock({
   useNestable,
   creatingWorkspaceIds,
   activeWorkspaceSelection,
+  showProjectSessions = false,
 }: {
   project: SidebarProjectEntry;
   collapsed: boolean;
@@ -2278,6 +2281,7 @@ function ProjectBlock({
   useNestable: boolean;
   creatingWorkspaceIds: ReadonlySet<string>;
   activeWorkspaceSelection: ActiveWorkspaceSelection | null;
+  showProjectSessions?: boolean;
 }) {
   const rowModel = useMemo(
     () =>
@@ -2475,7 +2479,56 @@ function ProjectBlock({
           ) : null}
         </>
       )}
+      {showProjectSessions && (rowModel.kind === "workspace_link" || !collapsed) ? (
+        <ProjectSessionsFallback project={project} serverId={serverId} />
+      ) : null}
     </View>
+  );
+}
+
+/**
+ * Workspace group mode: projects without branch (worktree) rows get their
+ * session list directly under the project row. Projects with branches keep
+ * the per-branch session lists rendered by the workspace rows, and a git
+ * checkout row that is hydrated already lists its own sessions.
+ */
+function ProjectSessionsFallback({
+  project,
+  serverId,
+}: {
+  project: SidebarProjectEntry;
+  serverId: string | null;
+}) {
+  const fallbackWorkspace = project.workspaces[0] ?? null;
+  const hydratedCheckout = useSidebarWorkspaceEntry(
+    serverId,
+    fallbackWorkspace?.workspaceId ?? null,
+  );
+  const sessions = useProjectSessions({
+    serverId: serverId ?? "",
+    projectRootPath: project.iconWorkingDir || null,
+  });
+
+  if (!serverId || !fallbackWorkspace) {
+    return null;
+  }
+  const hasWorktrees = project.workspaces.some(
+    (workspace) => workspace.workspaceKind === "worktree",
+  );
+  if (hasWorktrees) {
+    return null;
+  }
+  if (project.projectKind === "git" && hydratedCheckout) {
+    // The checkout workspace row already renders this session list.
+    return null;
+  }
+  return (
+    <SidebarWorkspaceSessions
+      serverId={serverId}
+      workspaceId={fallbackWorkspace.workspaceId}
+      workspaceKey={fallbackWorkspace.workspaceKey}
+      sessions={sessions}
+    />
   );
 }
 
@@ -2501,6 +2554,7 @@ function areProjectBlockPropsEqual(previous: ProjectBlockProps, next: ProjectBlo
     previous.dragHandleProps === next.dragHandleProps &&
     previous.useNestable === next.useNestable &&
     previous.creatingWorkspaceIds === next.creatingWorkspaceIds &&
+    previous.showProjectSessions === next.showProjectSessions &&
     areProjectBlockSelectionsEqual(previous, next)
   );
 }
@@ -2574,6 +2628,7 @@ export function SidebarWorkspaceList({
       listFooterComponent={listFooterComponent}
       parentGestureRef={parentGestureRef}
       pathname={pathname}
+      showProjectSessions={groupMode === "workspace"}
     />
   );
 }
@@ -2619,8 +2674,10 @@ function ProjectModeList({
   listFooterComponent,
   parentGestureRef,
   pathname,
+  showProjectSessions = false,
 }: Omit<SidebarWorkspaceListProps, "groupMode" | "isRefreshing" | "onRefresh"> & {
   pathname: string;
+  showProjectSessions?: boolean;
 }) {
   const { t } = useTranslation();
   const [creatingWorkspaceIds, setCreatingWorkspaceIds] = useState<Set<string>>(() => new Set());
@@ -2811,6 +2868,7 @@ function ProjectModeList({
           useNestable={platformIsNative}
           creatingWorkspaceIds={creatingWorkspaceIds}
           activeWorkspaceSelection={activeWorkspaceSelection}
+          showProjectSessions={showProjectSessions}
         />
       );
     },
@@ -2828,6 +2886,7 @@ function ProjectModeList({
       shortcutIndexByWorkspaceKey,
       showShortcutBadges,
       creatingWorkspaceIds,
+      showProjectSessions,
     ],
   );
 

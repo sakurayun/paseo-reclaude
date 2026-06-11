@@ -815,6 +815,7 @@ export const fr: TranslationResources = {
       accessibilityLabel: "Regroupement de la barre latérale",
       groupBy: "Regrouper par",
       project: "Projet",
+      workspace: "Espace de travail",
       status: "Statut",
     },
     host: {

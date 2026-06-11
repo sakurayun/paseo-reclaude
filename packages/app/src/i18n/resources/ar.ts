@@ -783,6 +783,7 @@ export const ar: TranslationResources = {
       accessibilityLabel: "تجميع الشريط الجانبي",
       groupBy: "التجميع حسب",
       project: "المشروع",
+      workspace: "مساحة العمل",
       status: "الحالة",
     },
     host: {

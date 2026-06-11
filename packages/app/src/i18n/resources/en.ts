@@ -789,6 +789,7 @@ export const en = {
       accessibilityLabel: "Sidebar grouping",
       groupBy: "Group by",
       project: "Project",
+      workspace: "Workspace",
       status: "Status",
     },
     host: {

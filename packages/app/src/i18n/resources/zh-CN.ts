@@ -76,7 +76,7 @@ export const zhCN: TranslationResources = {
       placeholder: "输入命令或搜索 Agent...",
       noMatches: "没有匹配项",
       actions: "操作",
-      agents: "Agents",
+      agents: "Agent",
       newAgent: "新建 Agent",
       openProject: "打开项目",
       home: "首页",
@@ -157,9 +157,9 @@ export const zhCN: TranslationResources = {
       select: "选择 Agent Provider",
     },
     thinking: {
-      title: "Thinking",
+      title: "思考",
       unknown: "未知",
-      extraHigh: "Extra high",
+      extraHigh: "超高",
       select: "选择 thinking 选项",
       selectWithValue: "选择 thinking 选项（{{value}}）",
       levels: { low: "低", medium: "中", high: "高", xhigh: "超高", max: "最高" },
@@ -168,7 +168,7 @@ export const zhCN: TranslationResources = {
       unknown: "未知 Model",
     },
     features: {
-      title: "Features",
+      title: "功能",
       open: "打开 Agent features",
       on: "开启",
       off: "关闭",
@@ -186,12 +186,12 @@ export const zhCN: TranslationResources = {
       },
     },
     mode: {
-      title: "Mode",
+      title: "模式",
       searchPlaceholder: "搜索 modes...",
       selectWithValue: "选择 Agent mode（{{value}}）",
     },
     hints: {
-      thinking: "Thinking mode",
+      thinking: "思考模式",
       model: "切换 Model",
       mode: "切换权限 Mode",
       gateway: "模型网关",
@@ -208,7 +208,7 @@ export const zhCN: TranslationResources = {
     empty: "开始和这个 Agent 对话...",
     scrollToBottom: "滚动到底部",
     permission: {
-      plan: "Plan",
+      plan: "计划",
       required: "需要权限",
       deny: "拒绝",
       accept: "接受",
@@ -381,7 +381,7 @@ export const zhCN: TranslationResources = {
       manageHost: "管理 Host",
     },
     hoverCard: {
-      scriptsAccessibility: "Workspace scripts",
+      scriptsAccessibility: "工作区脚本",
     },
     fileExplorer: {
       sort: {
@@ -414,10 +414,10 @@ export const zhCN: TranslationResources = {
     },
     setup: {
       descriptor: {
-        label: "Setup",
+        label: "初始化",
         completed: "Setup 已完成",
         failed: "Setup 失败",
-        workspace: "Workspace setup",
+        workspace: "工作区初始化",
       },
       status: {
         running: "正在运行",
@@ -470,12 +470,12 @@ export const zhCN: TranslationResources = {
       emptyPane: "此窗格中没有标签。",
       fallback: {
         newAgent: "新建 Agent",
-        setup: "Setup",
-        workspaceSetup: "Workspace setup",
-        terminal: "Terminal",
+        setup: "初始化",
+        workspaceSetup: "工作区初始化",
+        terminal: "终端",
         browser: "浏览器",
         agent: "Agent",
-        workspace: "Workspace",
+        workspace: "工作区",
         sessions: "会话记录",
       },
       switcher: {
@@ -571,20 +571,20 @@ export const zhCN: TranslationResources = {
       },
     },
     scripts: {
-      title: "Scripts",
+      title: "脚本",
       actions: {
         run: "运行",
         view: "查看",
       },
       accessibility: {
-        trigger: "Workspace scripts",
+        trigger: "工作区脚本",
         openAt: "在 {{label}} 打开 {{scriptName}}",
         viewTerminal: "查看 {{scriptName}} Terminal",
         runScript: "运行 {{scriptName}} script",
-        script: "{{scriptName}} script",
+        script: "{{scriptName}} 脚本",
       },
       states: {
-        exitCode: "exit {{code}}",
+        exitCode: "退出码 {{code}}",
         startFailed: "启动 {{scriptName}} 失败",
       },
     },
@@ -593,17 +593,17 @@ export const zhCN: TranslationResources = {
         moreOptions: "更多选项",
         moreActions: "更多操作",
         commit: {
-          label: "Commit",
+          label: "提交",
           pending: "正在 commit...",
           success: "已 commit",
         },
         pull: {
-          label: "Pull",
+          label: "拉取",
           pending: "正在 pull...",
           success: "已 pull",
         },
         push: {
-          label: "Push",
+          label: "推送",
           pending: "正在 push...",
           success: "已 push",
         },
@@ -634,9 +634,9 @@ export const zhCN: TranslationResources = {
           success: "已归档",
         },
         mergePr: {
-          squash: "Squash and merge",
-          merge: "Create a merge commit",
-          rebase: "Rebase and merge",
+          squash: "Squash 合并",
+          merge: "创建合并提交",
+          rebase: "Rebase 合并",
           pending: "正在 merge PR...",
           success: "PR 已 merge",
         },
@@ -711,8 +711,8 @@ export const zhCN: TranslationResources = {
       diff: {
         binaryFile: "二进制文件",
         tooLarge: "Diff 过大，无法显示",
-        unified: "Unified diff",
-        split: "Side-by-side diff",
+        unified: "统一视图 diff",
+        split: "并排视图 diff",
         hideWhitespace: "隐藏空白差异",
         scrollLongLines: "滚动长行",
         wrapLongLines: "自动换行长行",
@@ -744,17 +744,17 @@ export const zhCN: TranslationResources = {
       },
       pr: {
         sections: {
-          checks: "Checks",
-          reviews: "Reviews",
+          checks: "检查",
+          reviews: "评审",
         },
         accessibility: {
-          pullRequest: "Pull request #{{number}}",
+          pullRequest: "Pull Request #{{number}}",
         },
         states: {
-          draft: "Draft",
+          draft: "草稿",
           merged: "已 merge",
           closed: "已关闭",
-          open: "Open",
+          open: "开放",
         },
         activity: {
           commented: "已评论",
@@ -777,6 +777,7 @@ export const zhCN: TranslationResources = {
       accessibilityLabel: "侧边栏分组",
       groupBy: "分组方式",
       project: "项目",
+      workspace: "工作区",
       status: "状态",
     },
     host: {
@@ -905,8 +906,8 @@ export const zhCN: TranslationResources = {
       status: {
         title: "状态",
         builtInOnly: "这里只显示内置桌面 daemon",
-        running: "running",
-        notRunning: "not running",
+        running: "运行中",
+        notRunning: "未运行",
         pid: "PID {{pid}}",
       },
       management: {
@@ -1200,7 +1201,7 @@ export const zhCN: TranslationResources = {
       title: "直接连接",
       helper: "输入 Paseo server 的地址。",
       fields: {
-        host: "Host",
+        host: "主机",
         port: "端口",
         password: "密码",
         optional: "可选",
@@ -1498,10 +1499,10 @@ export const zhCN: TranslationResources = {
     },
     hostSections: {
       connections: "连接",
-      agents: "Agents",
-      workspaces: "Workspaces",
-      providers: "Providers",
-      host: "Host",
+      agents: "Agent",
+      workspaces: "工作区",
+      providers: "Provider",
+      host: "主机",
     },
     general: {
       title: "通用",
@@ -1558,8 +1559,8 @@ export const zhCN: TranslationResources = {
       releaseChannel: {
         label: "发布通道",
         description: "切换到 Beta 可更早获取更新并参与改进",
-        stable: "Stable",
-        beta: "Beta",
+        stable: "稳定版",
+        beta: "Beta 版",
       },
       updates: {
         label: "应用更新",
@@ -1581,8 +1582,8 @@ export const zhCN: TranslationResources = {
         title: "主题",
         accessibilityLabel: "主题：{{value}}",
         options: {
-          light: "Light",
-          dark: "Dark",
+          light: "浅色",
+          dark: "深色",
           zinc: "Zinc",
           midnight: "Midnight",
           claude: "Claude",
@@ -1772,7 +1773,7 @@ export const zhCN: TranslationResources = {
           reset: "重置",
           save: "保存",
           saving: "保存中...",
-          title: "System prompt",
+          title: "系统提示词",
           hint: "为所有 Agent 添加 system prompt",
           sheetTitle: "追加 system prompt",
           accessibilityLabel: "追加 system prompt",
@@ -1834,7 +1835,7 @@ export const zhCN: TranslationResources = {
       },
     },
     providers: {
-      title: "Providers",
+      title: "Provider",
       addProvider: "添加 Provider",
       providerDetails: "{{name}} Provider 详情",
       enableProvider: "启用 {{name}}",
@@ -1854,7 +1855,7 @@ export const zhCN: TranslationResources = {
         many: "{{count}} 个 Model",
         addModel: "添加 Model",
         addCustomTitle: "添加自定义 Model",
-        modelId: "Model ID",
+        modelId: "模型 ID",
         modelIdPlaceholder: "例如 openai/gpt-5",
         add: "添加",
         adding: "正在添加...",
@@ -1929,13 +1930,13 @@ export const zhCN: TranslationResources = {
         info: "为此 Project 创建或清理 worktree 时运行的命令",
         docs: "文档",
         docsTooltip: "查看命令可用的环境变量和更多细节",
-        setup: "Setup",
+        setup: "初始化",
         setupAccessibility: "Worktree setup 命令",
-        teardown: "Teardown",
+        teardown: "清理",
         teardownAccessibility: "Worktree teardown 命令",
       },
       scripts: {
-        title: "Scripts",
+        title: "脚本",
         info: "可从此 Project 中任意 Agent 启动的长期服务和一次性命令",
         empty: "还没有 scripts。",
         untitled: "未命名 script",
@@ -1969,7 +1970,7 @@ export const zhCN: TranslationResources = {
         branchNamePlaceholder: "分支以 feat/ 或 fix/ 开头，个人分支使用 mb/",
         commitMessage: "提交消息",
         commitMessagePlaceholder: "使用带 scope 的 Conventional Commits",
-        pullRequest: "Pull requests",
+        pullRequest: "Pull Request",
         pullRequestPlaceholder: "先写一段摘要，并包含 Test plan 部分",
       },
       writeFailures: {

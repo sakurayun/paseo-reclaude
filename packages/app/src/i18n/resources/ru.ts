@@ -808,6 +808,7 @@ export const ru: TranslationResources = {
       accessibilityLabel: "Группировка боковой панели",
       groupBy: "Группировать по",
       project: "Проект",
+      workspace: "Рабочее пространство",
       status: "Статус",
     },
     host: {

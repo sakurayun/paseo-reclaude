@@ -59,6 +59,21 @@ function getCatalogProviderIcon(provider: string): ProviderIconComponent {
   return icon;
 }
 
+const PROVIDER_BRAND_COLORS = new Map<string, string>([
+  ["claude", "#D97757"],
+  ["codex", "#10A37F"],
+  ["copilot", "#8957E5"],
+]);
+
+/** Brand tint for a provider's monochrome icon; null when no brand color is known. */
+export function getProviderBrandColor(provider: string): string | null {
+  const name = resolveProviderIconName(provider);
+  if (name.kind === "builtin" || name.kind === "catalog") {
+    return PROVIDER_BRAND_COLORS.get(name.id) ?? null;
+  }
+  return null;
+}
+
 export function getProviderIcon(provider: string): ProviderIconComponent {
   const name = resolveProviderIconName(provider);
   if (name.kind === "builtin") {

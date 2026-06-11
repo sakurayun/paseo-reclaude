@@ -19,6 +19,7 @@ const filterColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMu
 
 const GROUP_MODE_ITEMS: Array<{ value: SidebarGroupMode; labelKey: string }> = [
   { value: "project", labelKey: "sidebar.grouping.project" },
+  { value: "workspace", labelKey: "sidebar.grouping.workspace" },
   { value: "status", labelKey: "sidebar.grouping.status" },
 ];
 

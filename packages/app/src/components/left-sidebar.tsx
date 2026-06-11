@@ -33,7 +33,7 @@ import Animated, {
   useSharedValue,
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { StyleSheet, useUnistyles } from "react-native-unistyles";
+import { StyleSheet, useUnistyles, withUnistyles } from "react-native-unistyles";
 import { TitlebarDragRegion } from "@/components/desktop/titlebar-drag-region";
 import { SidebarHeaderRow } from "@/components/sidebar/sidebar-header-row";
 import { SidebarGroupingSelector } from "@/components/sidebar/sidebar-grouping-selector";
@@ -69,6 +69,7 @@ import {
   buildHostNewWorkspaceRoute,
   buildHostSessionsRoute,
   buildSettingsRoute,
+  buildSettingsSectionRoute,
   mapPathnameToServer,
 } from "@/utils/host-routes";
 import { SidebarAgentListSkeleton } from "./sidebar-agent-list-skeleton";
@@ -175,12 +176,14 @@ export const LeftSidebar = memo(function LeftSidebar({
     activeHostStatusColor = theme.colors.palette.amber[500];
   else activeHostStatusColor = theme.colors.palette.red[500];
   const hostOptions = useMemo(
-    () =>
-      daemons.map((daemon) => ({
+    () => [
+      ...daemons.map((daemon) => ({
         id: daemon.serverId,
         label: daemon.label?.trim() || daemon.serverId,
       })),
-    [daemons],
+      { id: ADD_HOST_OPTION_ID, label: t("settings.addHost") },
+    ],
+    [daemons, t],
   );
   const renderHostOption = useCallback(
     ({
@@ -193,15 +196,18 @@ export const LeftSidebar = memo(function LeftSidebar({
       selected: boolean;
       active: boolean;
       onPress: () => void;
-    }) => (
-      <HostSwitchOption
-        serverId={option.id}
-        label={option.label}
-        selected={selected}
-        active={active}
-        onPress={onPress}
-      />
-    ),
+    }) =>
+      option.id === ADD_HOST_OPTION_ID ? (
+        <AddHostSwitchOption active={active} onPress={onPress} />
+      ) : (
+        <HostSwitchOption
+          serverId={option.id}
+          label={option.label}
+          selected={selected}
+          active={active}
+          onPress={onPress}
+        />
+      ),
     [],
   );
   const hostTriggerRef = useRef<View | null>(null);
@@ -284,11 +290,21 @@ export const LeftSidebar = memo(function LeftSidebar({
       if (!nextServerId) {
         return;
       }
+      if (nextServerId === ADD_HOST_OPTION_ID) {
+        setIsHostPickerOpen(false);
+        if (isCompactLayout) {
+          showMobileAgent();
+          router.push(`${buildSettingsRoute()}?addHost=1`);
+        } else {
+          router.push(`${buildSettingsSectionRoute("general")}?addHost=1`);
+        }
+        return;
+      }
       const nextPath = mapPathnameToServer(pathname, nextServerId);
       setIsHostPickerOpen(false);
       router.push(nextPath);
     },
-    [pathname],
+    [isCompactLayout, pathname, showMobileAgent],
   );
 
   const labels = useMemo(
@@ -393,6 +409,27 @@ function HostPickerTrigger({
         {activeHostLabel}
       </Text>
     </Pressable>
+  );
+}
+
+const ADD_HOST_OPTION_ID = "__add_host__";
+
+const ThemedPlus = withUnistyles(Plus, (theme) => ({
+  size: theme.iconSize.sm,
+  color: theme.colors.foregroundMuted,
+}));
+
+function AddHostSwitchOption({ active, onPress }: { active: boolean; onPress: () => void }) {
+  const { t } = useTranslation();
+  const leadingSlot = useMemo(() => <ThemedPlus />, []);
+  return (
+    <ComboboxItem
+      label={t("settings.addHost")}
+      leadingSlot={leadingSlot}
+      active={active}
+      onPress={onPress}
+      testID="sidebar-add-host"
+    />
   );
 }
 
