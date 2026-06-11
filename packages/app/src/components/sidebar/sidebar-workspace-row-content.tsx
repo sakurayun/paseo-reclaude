@@ -6,6 +6,7 @@ import {
   Text,
   View,
   type GestureResponderEvent,
+  type PressableStateCallbackType,
   type ViewStyle,
 } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
@@ -100,6 +101,9 @@ export const SidebarWorkspaceRowContent = memo(function SidebarWorkspaceRowConte
   isCreating = false,
   shortcutNumber = null,
   showShortcutBadge = false,
+  sessionsCount = 0,
+  sessionsExpanded = false,
+  onToggleSessions,
   children,
 }: {
   workspace: SidebarWorkspaceEntry;
@@ -110,6 +114,9 @@ export const SidebarWorkspaceRowContent = memo(function SidebarWorkspaceRowConte
   isCreating?: boolean;
   shortcutNumber?: number | null;
   showShortcutBadge?: boolean;
+  sessionsCount?: number;
+  sessionsExpanded?: boolean;
+  onToggleSessions?: () => void;
   children?: ReactNode;
 }) {
   const workspaceBranchTextStyle = useMemo(
@@ -126,6 +133,13 @@ export const SidebarWorkspaceRowContent = memo(function SidebarWorkspaceRowConte
     <View style={styles.workspaceRowContent}>
       <View style={styles.workspaceRowMain}>
         <View style={styles.workspaceRowLeft}>
+          {sessionsCount > 0 && onToggleSessions ? (
+            <SessionsCountToggle
+              count={sessionsCount}
+              expanded={sessionsExpanded}
+              onToggle={onToggleSessions}
+            />
+          ) : null}
           <WorkspaceStatusIndicator
             bucket={workspace.statusBucket}
             workspaceKind={workspace.workspaceKind}
@@ -157,6 +171,48 @@ export const SidebarWorkspaceRowContent = memo(function SidebarWorkspaceRowConte
     </View>
   );
 });
+
+function SessionsCountToggle({
+  count,
+  expanded,
+  onToggle,
+}: {
+  count: number;
+  expanded: boolean;
+  onToggle: () => void;
+}) {
+  const handlePress = useCallback(
+    (event: { stopPropagation?: () => void }) => {
+      // Inside the row's navigation pressable on web — keep the toggle local.
+      event.stopPropagation?.();
+      onToggle();
+    },
+    [onToggle],
+  );
+  const pressableStyle = useCallback(
+    ({ hovered, pressed }: PressableStateCallbackType & { hovered?: boolean }) => [
+      styles.sessionsCountToggle,
+      expanded && styles.sessionsCountToggleExpanded,
+      (Boolean(hovered) || pressed) && styles.sessionsCountToggleHovered,
+    ],
+    [expanded],
+  );
+  const accessibilityState = useMemo(() => ({ expanded }), [expanded]);
+  return (
+    <Pressable
+      onPress={handlePress}
+      hitSlop={6}
+      style={pressableStyle}
+      accessibilityRole="button"
+      accessibilityState={accessibilityState}
+      testID="sidebar-workspace-sessions-count"
+    >
+      <Text style={expanded ? styles.sessionsCountTextExpanded : styles.sessionsCountText}>
+        {count}
+      </Text>
+    </Pressable>
+  );
+}
 
 function WorkspaceScriptIcon({ kind }: { kind: SidebarWorkspaceScriptIconKind }) {
   const { t } = useTranslation("workspaces");
@@ -475,6 +531,32 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[2],
     flex: 1,
     minWidth: 0,
+  },
+  sessionsCountToggle: {
+    minWidth: 18,
+    height: 18,
+    paddingHorizontal: 4,
+    borderRadius: theme.borderRadius.full,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: theme.colors.surface2,
+    flexShrink: 0,
+  },
+  sessionsCountToggleExpanded: {
+    backgroundColor: theme.colors.surface3,
+  },
+  sessionsCountToggleHovered: {
+    backgroundColor: theme.colors.surface3,
+  },
+  sessionsCountText: {
+    fontSize: 10,
+    color: theme.colors.foregroundMuted,
+    fontWeight: theme.fontWeight.medium,
+  },
+  sessionsCountTextExpanded: {
+    fontSize: 10,
+    color: theme.colors.foreground,
+    fontWeight: theme.fontWeight.semibold,
   },
   workspaceRowRight: sidebarWorkspaceRowStyles.rowRight,
   shortcutBadgeOverlay: {

@@ -75,7 +75,10 @@ import {
 import { useSidebarOrderStore } from "@/stores/sidebar-order-store";
 import { useShowShortcutBadges } from "@/hooks/use-show-shortcut-badges";
 import { navigateToPreparedWorkspaceTab } from "@/utils/workspace-navigation";
-import { SidebarWorkspaceSessions } from "@/components/sidebar/sidebar-workspace-sessions";
+import {
+  SidebarWorkspaceSessions,
+  useWorkspaceSessions,
+} from "@/components/sidebar/sidebar-workspace-sessions";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -300,6 +303,9 @@ interface WorkspaceRowInnerProps {
   onRename?: () => void;
   onMarkAsRead?: () => void;
   archiveShortcutKeys?: ShortcutKey[][] | null;
+  sessionsCount?: number;
+  sessionsExpanded?: boolean;
+  onToggleSessions?: () => void;
 }
 
 function getWorkspaceArchiveStatus(
@@ -1390,6 +1396,9 @@ function WorkspaceRowInner({
   onShowSessions,
   onRename,
   archiveShortcutKeys,
+  sessionsCount,
+  sessionsExpanded,
+  onToggleSessions,
 }: WorkspaceRowInnerProps) {
   const _isCompact = useIsCompactFormFactor();
   const isTouchPlatform = platformIsNative;
@@ -1459,6 +1468,9 @@ function WorkspaceRowInner({
                 isCreating={isCreating}
                 shortcutNumber={shortcutNumber}
                 showShortcutBadge={showShortcutBadge}
+                sessionsCount={sessionsCount}
+                sessionsExpanded={sessionsExpanded}
+                onToggleSessions={onToggleSessions}
               >
                 <WorkspaceRowRightGroup
                   workspace={workspace}
@@ -1657,6 +1669,15 @@ function WorkspaceRowWithMenu({
     });
   }, [workspace.serverId, workspace.workspaceId]);
 
+  const workspaceSessions = useWorkspaceSessions({
+    serverId: workspace.serverId,
+    workspaceId: workspace.workspaceId,
+  });
+  const [sessionsExpanded, setSessionsExpanded] = useState(false);
+  const handleToggleSessions = useCallback(() => {
+    setSessionsExpanded((current) => !current);
+  }, []);
+
   const renameMutation = useMutation({
     mutationFn: async (branch: string) => {
       const client = getHostRuntimeStore().getClient(workspace.serverId);
@@ -1755,12 +1776,16 @@ function WorkspaceRowWithMenu({
         onRename={canCopyBranchName ? handleOpenRename : undefined}
         onMarkAsRead={hasClearableAttention ? handleMarkAsRead : undefined}
         archiveShortcutKeys={selected ? archiveShortcutKeys : null}
+        sessionsCount={workspaceSessions.length}
+        sessionsExpanded={sessionsExpanded}
+        onToggleSessions={handleToggleSessions}
       />
-      {!isDragging ? (
+      {!isDragging && sessionsExpanded ? (
         <SidebarWorkspaceSessions
           serverId={workspace.serverId}
           workspaceId={workspace.workspaceId}
           workspaceKey={workspace.workspaceKey}
+          sessions={workspaceSessions}
         />
       ) : null}
       <AdaptiveRenameModal
