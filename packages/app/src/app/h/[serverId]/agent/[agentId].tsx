@@ -1,12 +1,16 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useLocalSearchParams, usePathname, useRouter, type Href } from "expo-router";
 import { HostRouteBootstrapBoundary } from "@/components/host-route-bootstrap-boundary";
 import { useSessionStore } from "@/stores/session-store";
 import { useResolveWorkspaceIdByCwd } from "@/stores/session-store-hooks";
-import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
+import { useHostRuntimeClient, useHostRuntimeConnectionStatus } from "@/runtime/host-runtime";
 import { buildHostRootRoute } from "@/utils/host-routes";
 import { resolveWorkspaceIdByExecutionDirectory } from "@/utils/workspace-execution";
 import { navigateToPreparedWorkspaceTab } from "@/utils/workspace-navigation";
+import {
+  AGENT_READY_ROUTE_CONNECTION_FALLBACK_TIMEOUT_MS,
+  shouldFallbackHostAgentReadyRoute,
+} from "./agent-ready-route-state";
 
 export default function HostAgentReadyRoute() {
   return (
@@ -24,10 +28,12 @@ function HostAgentReadyRouteContent() {
     agentId?: string;
   }>();
   const redirectedRef = useRef(false);
+  const [connectionFallbackReady, setConnectionFallbackReady] = useState(false);
   const serverId = typeof params.serverId === "string" ? params.serverId : "";
   const agentId = typeof params.agentId === "string" ? params.agentId : "";
   const client = useHostRuntimeClient(serverId);
-  const isConnected = useHostRuntimeIsConnected(serverId);
+  const connectionStatus = useHostRuntimeConnectionStatus(serverId);
+  const isConnected = connectionStatus === "online";
   const agentCwd = useSessionStore((state) => {
     if (!serverId || !agentId) {
       return null;
@@ -38,6 +44,28 @@ function HostAgentReadyRouteContent() {
     serverId ? (state.sessions[serverId]?.hasHydratedWorkspaces ?? false) : false,
   );
   const resolvedWorkspaceId = useResolveWorkspaceIdByCwd(serverId, agentCwd);
+
+  useEffect(() => {
+    setConnectionFallbackReady(false);
+  }, [agentId, serverId]);
+
+  useEffect(() => {
+    if (!serverId || !agentId || redirectedRef.current) {
+      return;
+    }
+    if (client && isConnected) {
+      setConnectionFallbackReady(false);
+      return;
+    }
+
+    setConnectionFallbackReady(false);
+    const handle = setTimeout(() => {
+      setConnectionFallbackReady(true);
+    }, AGENT_READY_ROUTE_CONNECTION_FALLBACK_TIMEOUT_MS);
+    return () => {
+      clearTimeout(handle);
+    };
+  }, [agentId, client, isConnected, serverId]);
 
   useEffect(() => {
     if (redirectedRef.current) {
@@ -67,14 +95,28 @@ function HostAgentReadyRouteContent() {
     if (!serverId || !agentId) {
       return;
     }
-    if (agentCwd?.trim() && !hasHydratedWorkspaces) {
-      return;
-    }
-    if (!client || !isConnected) {
+    if (
+      shouldFallbackHostAgentReadyRoute({
+        agentCwd,
+        hasHydratedWorkspaces,
+        hasClient: Boolean(client),
+        isConnected,
+        connectionFallbackReady,
+      })
+    ) {
       redirectedRef.current = true;
       router.replace(buildHostRootRoute(serverId));
     }
-  }, [agentCwd, agentId, client, hasHydratedWorkspaces, isConnected, router, serverId]);
+  }, [
+    agentCwd,
+    agentId,
+    client,
+    connectionFallbackReady,
+    hasHydratedWorkspaces,
+    isConnected,
+    router,
+    serverId,
+  ]);
 
   useEffect(() => {
     if (redirectedRef.current) {
