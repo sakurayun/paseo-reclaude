@@ -268,6 +268,9 @@ export default {
     executionDirectoryNotFound: "Workspace execution directory not found.",
   },
   sidebarSessions: {
+    editTitle: "Edit title",
+    archive: "Archive session",
+    archivePending: "Archiving…",
     toggle: "Sessions",
     viewAll: "View all sessions",
   },

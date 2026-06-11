@@ -266,6 +266,9 @@ export default {
     executionDirectoryNotFound: "未找到工作区执行目录。",
   },
   sidebarSessions: {
+    editTitle: "编辑标题",
+    archive: "归档会话",
+    archivePending: "归档中…",
     toggle: "会话记录",
     viewAll: "查看全部会话",
   },

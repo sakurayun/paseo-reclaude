@@ -15,9 +15,9 @@ import {
   ExternalLink,
   Folder,
   FolderGit2,
+  GitBranch,
   GitPullRequest,
   Globe,
-  Monitor,
   SquareTerminal,
 } from "lucide-react-native";
 import { GitHubIcon } from "@/components/icons/github-icon";
@@ -57,9 +57,9 @@ const ThemedGitHubIcon = withUnistyles(GitHubIcon);
 const ThemedActivityIndicator = withUnistyles(ActivityIndicator);
 const ThemedCircleAlert = withUnistyles(CircleAlert);
 const ThemedSyncedLoader = withUnistyles(SyncedLoader);
-const ThemedMonitor = withUnistyles(Monitor);
 const ThemedFolder = withUnistyles(Folder);
 const ThemedFolderGit2 = withUnistyles(FolderGit2);
+const ThemedGitBranch = withUnistyles(GitBranch);
 const ThemedGlobe = withUnistyles(Globe);
 const ThemedSquareTerminal = withUnistyles(SquareTerminal);
 
@@ -266,10 +266,11 @@ function WorkspaceStatusIndicator({
     );
   }
 
-  let KindIcon: typeof ThemedMonitor;
-  if (workspaceKind === "local_checkout") KindIcon = ThemedMonitor;
-  else if (workspaceKind === "worktree") KindIcon = ThemedFolderGit2;
-  else KindIcon = ThemedFolder;
+  let KindIcon: typeof ThemedGitBranch;
+  if (workspaceKind === "worktree") KindIcon = ThemedFolderGit2;
+  else if (workspaceKind === "directory") KindIcon = ThemedFolder;
+  // Git checkouts (local or managed) read as branches in the sidebar.
+  else KindIcon = ThemedGitBranch;
 
   const dotColorStyle = getStatusDotColorStyle(bucket);
   const statusDotSize = isEmphasizedStatusDotBucket(bucket)
