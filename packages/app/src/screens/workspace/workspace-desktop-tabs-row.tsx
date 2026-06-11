@@ -945,8 +945,11 @@ const styles = StyleSheet.create((theme) => ({
     paddingHorizontal: theme.spacing[2],
   },
   tab: {
+    // Fixed to the row height (not padding-derived) so the chip fills the tab
+    // bar exactly and the active indicator at top:0 touches the header divider
+    // above with no gap.
+    height: WORKSPACE_SECONDARY_HEADER_HEIGHT,
     paddingHorizontal: theme.spacing[3],
-    paddingVertical: theme.spacing[2],
     borderRightWidth: 1,
     borderRightColor: theme.colors.border,
     flexDirection: "row",
