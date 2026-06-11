@@ -45,6 +45,7 @@ import {
 } from "@/utils/project-config-form";
 import { buildProjectsSettingsRoute } from "@/utils/host-routes";
 import type { ProjectHostEntry, ProjectSummary } from "@/utils/projects";
+import { getProjectNameEditValue, resolveProjectNameSave } from "./project-settings-name-editor";
 
 const SCRIPT_SERVICE_TYPE = "service";
 
@@ -803,7 +804,7 @@ function ProjectNameEditor({ project, client }: ProjectNameEditorProps) {
   const queryClient = useQueryClient();
   const toast = useToast();
   const [isEditing, setIsEditing] = useState(false);
-  const [value, setValue] = useState(project.projectCustomName ?? "");
+  const [value, setValue] = useState(() => getProjectNameEditValue(project));
 
   const renameMutation = useMutation({
     mutationFn: (customName: string | null) => client.renameProject(project.projectKey, customName),
@@ -819,24 +820,27 @@ function ProjectNameEditor({ project, client }: ProjectNameEditorProps) {
   });
 
   const handleStartEdit = useCallback(() => {
-    setValue(project.projectCustomName ?? "");
+    setValue(getProjectNameEditValue(project));
     setIsEditing(true);
-  }, [project.projectCustomName]);
+  }, [project]);
 
   const handleCancel = useCallback(() => {
     setIsEditing(false);
-    setValue(project.projectCustomName ?? "");
-  }, [project.projectCustomName]);
+    setValue(getProjectNameEditValue(project));
+  }, [project]);
 
   const handleSave = useCallback(() => {
-    const trimmed = value.trim();
-    const next = trimmed.length === 0 ? null : trimmed;
-    if (next === (project.projectCustomName ?? null)) {
+    const result = resolveProjectNameSave({
+      projectName: project.projectName,
+      projectCustomName: project.projectCustomName,
+      value,
+    });
+    if (!result.hasChange) {
       setIsEditing(false);
       return;
     }
-    renameMutation.mutate(next);
-  }, [value, project.projectCustomName, renameMutation]);
+    renameMutation.mutate(result.customName);
+  }, [value, project.projectName, project.projectCustomName, renameMutation]);
 
   const handleReset = useCallback(() => {
     renameMutation.mutate(null);
