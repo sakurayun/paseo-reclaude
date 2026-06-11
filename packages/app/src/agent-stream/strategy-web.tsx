@@ -511,18 +511,19 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
     viewportRef,
   ]);
 
+  const bottomContentInset = props.bottomContentInset ?? 0;
   const contentContainerStyle = useMemo((): CSSProperties => {
     return {
       display: "flex",
       flexDirection: "column",
       minHeight: "100%",
       paddingTop: 16,
-      paddingBottom: 16,
+      paddingBottom: 16 + bottomContentInset,
       paddingLeft: isMobileBreakpoint ? 8 : 16,
       paddingRight: isMobileBreakpoint ? 8 : 16,
       boxSizing: "border-box",
     };
-  }, [isMobileBreakpoint]);
+  }, [bottomContentInset, isMobileBreakpoint]);
   const scrollContainerStyle = useMemo((): CSSProperties => {
     return {
       flex: 1,

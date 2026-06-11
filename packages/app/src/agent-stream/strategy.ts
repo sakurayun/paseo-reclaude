@@ -75,6 +75,8 @@ export interface StreamRenderInput {
   listStyle: StyleProp<ViewStyle>;
   baseListContentContainerStyle: StyleProp<ViewStyle>;
   forwardListContentContainerStyle: StyleProp<ViewStyle>;
+  /** Extra bottom padding so content can scroll clear of the overlaid composer. */
+  bottomContentInset?: number;
 }
 
 export interface ResolveStreamRenderStrategyInput {

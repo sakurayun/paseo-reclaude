@@ -2,6 +2,7 @@ import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
 import type { TFunction } from "i18next";
 import { SquarePen } from "lucide-react-native";
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { LayoutChangeEvent } from "react-native";
 import { useTranslation } from "react-i18next";
 import { ActivityIndicator, Text, View } from "react-native";
 import ReanimatedAnimated from "react-native-reanimated";
@@ -1106,6 +1107,15 @@ function ChatAgentReadyContent({
       agentId,
     }),
   });
+  // The composer floats over the stream so the frosted glass shows the
+  // messages scrolling underneath. The stream reserves 1.1x the measured
+  // composer height so the last message stays readable above it.
+  const [composerOverlayHeight, setComposerOverlayHeight] = useState(0);
+  const handleComposerOverlayLayout = useCallback((event: LayoutChangeEvent) => {
+    const height = event.nativeEvent.layout.height;
+    setComposerOverlayHeight((current) => (Math.abs(current - height) > 0.5 ? height : current));
+  }, []);
+  const streamBottomInset = composerOverlayHeight > 0 ? Math.round(composerOverlayHeight * 1.1) : 0;
   const streamSection = (
     <RenderProfile id={`AgentStreamSection:${agentId}`}>
       <AgentStreamSection
@@ -1117,6 +1127,7 @@ function ChatAgentReadyContent({
         hasAppliedAuthoritativeHistory={hasAppliedAuthoritativeHistory}
         toast={panelToast.api}
         onOpenWorkspaceFile={onOpenWorkspaceFile}
+        bottomContentInset={streamBottomInset}
       />
     </RenderProfile>
   );
@@ -1151,7 +1162,13 @@ function ChatAgentReadyContent({
           <View style={styles.container}>
             {contentContainer}
 
-            {composerSection}
+            <View
+              style={styles.composerOverlay}
+              pointerEvents="box-none"
+              onLayout={handleComposerOverlayLayout}
+            >
+              {composerSection}
+            </View>
 
             {showHistorySyncOverlay ? (
               <View style={styles.historySyncOverlay} testID="agent-history-overlay">
@@ -1188,6 +1205,7 @@ const AgentStreamSection = memo(function AgentStreamSection({
   hasAppliedAuthoritativeHistory,
   toast,
   onOpenWorkspaceFile,
+  bottomContentInset,
 }: {
   streamViewRef: React.RefObject<AgentStreamViewHandle | null>;
   serverId: string;
@@ -1197,6 +1215,7 @@ const AgentStreamSection = memo(function AgentStreamSection({
   hasAppliedAuthoritativeHistory: boolean;
   toast: ReturnType<typeof useToastHost>["api"];
   onOpenWorkspaceFile?: (request: WorkspaceFileOpenRequest) => void;
+  bottomContentInset?: number;
 }) {
   const streamItemsRaw = useSessionStore((state) =>
     agentId ? state.sessions[serverId]?.agentStreamTail?.get(agentId) : undefined,
@@ -1241,6 +1260,7 @@ const AgentStreamSection = memo(function AgentStreamSection({
       isAuthoritativeHistoryReady={hasAppliedAuthoritativeHistory}
       toast={toast}
       onOpenWorkspaceFile={onOpenWorkspaceFile}
+      bottomContentInset={bottomContentInset}
     />
   );
 });
@@ -1563,7 +1583,12 @@ const styles = StyleSheet.create((theme) => ({
   },
   inputAreaWrapper: {
     width: "100%",
-    backgroundColor: theme.colors.surface0,
+  },
+  composerOverlay: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
   },
   historySyncOverlay: {
     position: "absolute",

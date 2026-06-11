@@ -91,6 +91,7 @@ import {
   usePaneFind,
 } from "@/panels/pane-find";
 import { isWeb } from "@/constants/platform";
+import { inlineUnistylesStyle } from "@/styles/unistyles-inline-style";
 import type { Theme } from "@/styles/theme";
 import { recordRenderProfileReasons } from "@/utils/render-profiler";
 
@@ -291,6 +292,8 @@ export interface AgentStreamViewProps {
   isAuthoritativeHistoryReady?: boolean;
   toast?: ToastApi | null;
   onOpenWorkspaceFile?: (request: WorkspaceFileOpenRequest) => void;
+  /** Extra bottom padding so content can scroll clear of the overlaid composer. */
+  bottomContentInset?: number;
 }
 
 const AGENT_CAPABILITY_FLAG_KEYS: (keyof AgentCapabilityFlags)[] = [
@@ -319,6 +322,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       isAuthoritativeHistoryReady = true,
       toast,
       onOpenWorkspaceFile,
+      bottomContentInset = 0,
     },
     ref,
   ) {
@@ -876,6 +880,27 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       [renderModel, emptyStateStyle],
     );
 
+    const bottomInsetStyle = useMemo(
+      () =>
+        bottomContentInset > 0 ? inlineUnistylesStyle({ paddingBottom: bottomContentInset }) : null,
+      [bottomContentInset],
+    );
+    const baseListContentContainerStyle = useMemo(
+      () => [stylesheet.listContentContainer, bottomInsetStyle],
+      [bottomInsetStyle],
+    );
+    const forwardListContentContainerStyle = useMemo(
+      () => [stylesheet.forwardListContentContainer, bottomInsetStyle],
+      [bottomInsetStyle],
+    );
+    const scrollToBottomContainerStyle = useMemo(
+      () => [
+        stylesheet.scrollToBottomContainer,
+        bottomContentInset > 0 ? inlineUnistylesStyle({ bottom: 16 + bottomContentInset }) : null,
+      ],
+      [bottomContentInset],
+    );
+
     const { boundary, auxiliary } = renderModel;
 
     const layoutHistoryItemById = useMemo(() => {
@@ -966,13 +991,14 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
               hasOlderHistory: hasOlder,
               scrollEnabled: streamScrollEnabled,
               listStyle: stylesheet.list,
-              baseListContentContainerStyle: stylesheet.listContentContainer,
-              forwardListContentContainerStyle: stylesheet.forwardListContentContainer,
+              baseListContentContainerStyle: baseListContentContainerStyle,
+              forwardListContentContainerStyle: forwardListContentContainerStyle,
+              bottomContentInset,
             })}
           </MessageOuterSpacingProvider>
           {!isNearBottom && (
             <Animated.View
-              style={stylesheet.scrollToBottomContainer}
+              style={scrollToBottomContainerStyle}
               entering={scrollIndicatorFadeIn}
               exiting={scrollIndicatorFadeOut}
             >
@@ -1052,6 +1078,7 @@ function agentStreamViewPropsEqual(
   }
   if (left.toast !== right.toast) reasons.push("toast");
   if (left.onOpenWorkspaceFile !== right.onOpenWorkspaceFile) reasons.push("onOpenWorkspaceFile");
+  if (left.bottomContentInset !== right.bottomContentInset) reasons.push("bottomContentInset");
   recordRenderProfileReasons(`AgentStreamView:${right.agentId}`, reasons);
   return reasons.length === 0;
 }

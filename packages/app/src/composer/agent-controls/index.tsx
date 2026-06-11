@@ -196,8 +196,6 @@ const FEATURE_ICONS: Record<string, typeof Zap> = {
   zap: Zap,
 };
 
-const ULTRACODE_ACTIVE_COLOR = "#A06AF5";
-
 function getFeatureIcon(featureId: string, icon?: string) {
   if (featureId === "ultracode") {
     return Code2;
@@ -209,28 +207,33 @@ function getFeatureIcon(featureId: string, icon?: string) {
 function getFeatureIconColor(
   featureId: string,
   enabled: boolean,
-  palette: {
-    blue: { 400: string };
-    green: { 400: string };
-    yellow: { 400: string };
+  colors: {
+    palette: {
+      blue: { 400: string };
+      green: { 400: string };
+      yellow: { 400: string };
+    };
+    ultracodeGlow: { halo: string };
+    foregroundMuted: string;
   },
-  foregroundMuted: string,
 ): string {
   if (!enabled) {
-    return foregroundMuted;
+    return colors.foregroundMuted;
   }
 
   switch (getFeatureHighlightColor(featureId)) {
     case "blue":
-      return palette.blue[400];
+      return colors.palette.blue[400];
     case "green":
-      return palette.green[400];
+      return colors.palette.green[400];
     case "purple":
-      return ULTRACODE_ACTIVE_COLOR;
+      // Ultracode follows the theme glow (violet by default, terracotta on
+      // the Claude themes).
+      return colors.ultracodeGlow.halo;
     case "yellow":
-      return palette.yellow[400];
+      return colors.palette.yellow[400];
     default:
-      return foregroundMuted;
+      return colors.foregroundMuted;
   }
 }
 
@@ -1616,12 +1619,7 @@ function DesktopFeatureItem({
           >
             <FeatureIcon
               size={theme.iconSize.md}
-              color={getFeatureIconColor(
-                feature.id,
-                feature.value,
-                theme.colors.palette,
-                theme.colors.foregroundMuted,
-              )}
+              color={getFeatureIconColor(feature.id, feature.value, theme.colors)}
             />
           </Pressable>
         </TooltipTrigger>
@@ -1731,12 +1729,7 @@ function SheetFeatureItem({
         >
           <FeatureIcon
             size={theme.iconSize.md}
-            color={getFeatureIconColor(
-              feature.id,
-              feature.value,
-              theme.colors.palette,
-              theme.colors.foregroundMuted,
-            )}
+            color={getFeatureIconColor(feature.id, feature.value, theme.colors)}
           />
           <Text style={styles.sheetSelectText}>{feature.label}</Text>
           <Text style={styles.modeBadgeText}>
