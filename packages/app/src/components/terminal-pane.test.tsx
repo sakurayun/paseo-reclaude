@@ -245,7 +245,17 @@ vi.mock("@/hooks/use-keyboard-shift-style", () => ({
 }));
 
 vi.mock("@/hooks/use-settings", () => ({
-  useAppSettings: () => ({ settings: { terminalScrollbackLines: 1000 } }),
+  useAppSettings: () => ({
+    settings: {
+      terminalScrollbackLines: 1000,
+      monoFontFamily: "",
+      terminalLigaturesEnabled: true,
+      terminalPaddingTop: 0,
+      terminalPaddingBottom: 0,
+      terminalPaddingLeft: 0,
+      terminalPaddingRight: 0,
+    },
+  }),
 }));
 
 vi.mock("@/constants/layout", () => ({
