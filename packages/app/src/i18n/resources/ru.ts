@@ -861,6 +861,9 @@ export const ru: TranslationResources = {
     workspace: {
       sessions: {
         viewAll: "Показать все сессии",
+        editTitle: "Изменить название",
+        archive: "Архивировать",
+        archivePending: "Архивация…",
       },
       status: {
         scriptsAvailable: "Доступны скрипты",

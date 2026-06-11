@@ -3,6 +3,7 @@ import type { ToolCallDetail } from "@getpaseo/protocol/agent-types";
 import type { ToolCallDisplayInput } from "@/utils/tool-call-display";
 import { buildToolCallDisplayModel } from "@/utils/tool-call-display";
 import { extractToolCallFilePath } from "@/utils/extract-tool-call-file-path";
+import { resolveToolCallColor, type ToolCallSchemeColor } from "@/utils/tool-call-colors";
 import {
   hasMeaningfulToolCallDetail,
   isPendingToolCallDetail,
@@ -26,6 +27,7 @@ export interface ToolCallPresentation {
   summary?: string;
   errorText?: string;
   icon: ToolCallPresentationIcon;
+  labelColor?: ToolCallSchemeColor;
   isLoadingDetails: boolean;
   hasDetails: boolean;
   canOpenDetails: boolean;
@@ -70,6 +72,7 @@ export function buildToolCallPresentation(
     summary: displayModel.summary,
     errorText: displayModel.errorText,
     icon: input.resolveIcon(input.toolName, input.detail),
+    labelColor: resolveToolCallColor(input.toolName, input.detail),
     isLoadingDetails,
     hasDetails,
     canOpenDetails: hasDetails || isLoadingDetails,

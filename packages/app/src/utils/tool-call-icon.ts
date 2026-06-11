@@ -11,6 +11,7 @@ import {
   Wrench,
 } from "lucide-react-native";
 import type { ToolCallDetail } from "@getpaseo/protocol/agent-types";
+import { McpLogo } from "@/components/icons/mcp-logo";
 import { PaseoLogo } from "@/components/icons/paseo-logo";
 import { resolveToolCallIconName, type ToolCallIcon } from "./tool-call-icon-name";
 
@@ -27,6 +28,7 @@ const ICON_COMPONENTS: Record<ToolCallIcon, ToolCallIconComponent> = {
   brain: Brain,
   mic_vocal: MicVocal,
   paseo: PaseoLogo,
+  mcp: McpLogo,
 };
 
 export function componentForToolCallIcon(name: ToolCallIcon): ToolCallIconComponent {

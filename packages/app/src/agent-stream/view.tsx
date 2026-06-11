@@ -898,12 +898,18 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       () => [stylesheet.forwardListContentContainer, bottomInsetStyle],
       [bottomInsetStyle],
     );
+    // On compact form factors the composer sits below the stream in normal
+    // flow, so the stream's bottom edge already clears it — the base 16px
+    // offset is enough. On desktop the composer floats over the stream and
+    // the button has to clear the reserved inset.
     const scrollToBottomContainerStyle = useMemo(
       () => [
         stylesheet.scrollToBottomContainer,
-        bottomContentInset > 0 ? inlineUnistylesStyle({ bottom: 16 + bottomContentInset }) : null,
+        !isMobile && bottomContentInset > 0
+          ? inlineUnistylesStyle({ bottom: 16 + bottomContentInset })
+          : null,
       ],
-      [bottomContentInset],
+      [bottomContentInset, isMobile],
     );
 
     const { boundary, auxiliary } = renderModel;
@@ -1502,12 +1508,12 @@ const permissionStyles = StyleSheet.create((theme) => ({
   },
   title: {
     fontSize: theme.fontSize.base,
-    lineHeight: 22,
+    lineHeight: Math.round(theme.fontSize.base * 1.4),
     color: theme.colors.foreground,
   },
   description: {
     fontSize: theme.fontSize.sm,
-    lineHeight: 20,
+    lineHeight: Math.round(theme.fontSize.sm * 1.45),
     color: theme.colors.foregroundMuted,
   },
   section: {

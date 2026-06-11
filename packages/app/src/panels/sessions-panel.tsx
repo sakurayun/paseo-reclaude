@@ -15,6 +15,7 @@ import {
 } from "@/panels/sessions-panel-model";
 import { useSessionStore, type WorkspaceDescriptor } from "@/stores/session-store";
 import type { AgentDirectoryEntry } from "@/types/agent-directory";
+import { navigateToAgentDirectoryEntry } from "@/utils/navigate-to-agent-directory-entry";
 import type { Theme } from "@/styles/theme";
 import { formatTimeAgo } from "@/utils/time";
 
@@ -39,10 +40,10 @@ function SessionRow({
   onOpen,
 }: {
   session: AgentDirectoryEntry;
-  onOpen: (agentId: string) => void;
+  onOpen: (session: AgentDirectoryEntry) => void;
 }) {
   const { t } = useTranslation();
-  const handlePress = useCallback(() => onOpen(session.id), [onOpen, session.id]);
+  const handlePress = useCallback(() => onOpen(session), [onOpen, session]);
   const pressableStyle = useCallback(
     ({ hovered, pressed }: PressableStateCallbackType & { hovered?: boolean }) => [
       styles.sessionRow,
@@ -108,7 +109,7 @@ function SectionHeader({ section }: { section: WorkspaceSessionSection }) {
 
 function SessionsPanel() {
   const { t } = useTranslation();
-  const { serverId, target, openTab } = usePaneContext();
+  const { serverId, target } = usePaneContext();
   invariant(target.kind === "sessions", "SessionsPanel requires sessions target");
 
   const [includeArchived, setIncludeArchived] = useState(false);
@@ -131,12 +132,9 @@ function SessionsPanel() {
     [agents, includeArchived, t, target.workspaceId, workspaces],
   );
 
-  const handleOpenSession = useCallback(
-    (agentId: string) => {
-      openTab({ kind: "agent", agentId });
-    },
-    [openTab],
-  );
+  const handleOpenSession = useCallback((session: AgentDirectoryEntry) => {
+    navigateToAgentDirectoryEntry(session);
+  }, []);
 
   const handleToggleArchived = useCallback(() => {
     setIncludeArchived((current) => !current);

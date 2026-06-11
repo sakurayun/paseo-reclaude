@@ -4,7 +4,7 @@ import { View, Text, ScrollView as RNScrollView } from "react-native";
 import { ScrollView as GHScrollView } from "react-native-gesture-handler";
 import { StyleSheet } from "react-native-unistyles";
 import type { DiffLine } from "@/utils/tool-call-parsers";
-import { diffLinePrefix } from "@/utils/diff-highlight";
+import { diffLineCode, diffLinePrefix } from "@/utils/diff-highlight";
 import { syntaxTokenStyleFor } from "@/styles/syntax-token-styles";
 import { useWebScrollbarStyle } from "@/hooks/use-web-scrollbar-style";
 import { inlineUnistylesStyle } from "@/styles/unistyles-inline-style";
@@ -43,8 +43,9 @@ function DiffLineRow({ line }: { line: DiffLine }) {
     [line.type],
   );
 
-  const prefixStyle = React.useMemo(
+  const gutterTextStyle = React.useMemo(
     () => [
+      styles.gutterText,
       line.type === "add" && styles.addText,
       line.type === "remove" && styles.removeText,
       line.type === "context" && styles.contextText,
@@ -52,35 +53,33 @@ function DiffLineRow({ line }: { line: DiffLine }) {
     [line.type],
   );
 
+  let content: React.ReactNode;
   if (line.tokens) {
-    return (
-      <View style={lineContainerStyle}>
-        <Text style={styles.lineText}>
-          <Text style={prefixStyle}>{diffLinePrefix(line)}</Text>
-          <DiffTokens tokens={line.tokens} />
-        </Text>
-      </View>
+    content = (
+      <Text style={styles.lineText}>
+        <DiffTokens tokens={line.tokens} />
+      </Text>
     );
+  } else if (line.segments) {
+    content = (
+      <Text style={styles.lineText}>
+        {line.segments.map((segment) => (
+          <DiffSegment
+            key={`${segment.changed ? "c" : "u"}:${segment.text}`}
+            segment={segment}
+            lineType={line.type}
+          />
+        ))}
+      </Text>
+    );
+  } else {
+    content = <Text style={plainLineTextStyle}>{diffLineCode(line)}</Text>;
   }
 
   return (
     <View style={lineContainerStyle}>
-      {line.segments ? (
-        <Text style={styles.lineText}>
-          <Text style={line.type === "add" ? styles.addText : styles.removeText}>
-            {line.content[0]}
-          </Text>
-          {line.segments.map((segment) => (
-            <DiffSegment
-              key={`${segment.changed ? "c" : "u"}:${segment.text}`}
-              segment={segment}
-              lineType={line.type}
-            />
-          ))}
-        </Text>
-      ) : (
-        <Text style={plainLineTextStyle}>{line.content}</Text>
-      )}
+      <Text style={gutterTextStyle}>{diffLinePrefix(line)}</Text>
+      {content}
     </View>
   );
 }
@@ -217,16 +216,29 @@ const styles = StyleSheet.create((theme) => {
     },
     horizontalContent: {
       flexDirection: "column" as const,
-      paddingRight: insets.extraRight,
     },
+    // No horizontal padding: the marker gutter and line backgrounds run flush
+    // to the panel edges.
     linesContainer: {
       alignSelf: "flex-start",
-      padding: insets.padding,
+      paddingVertical: insets.padding,
     },
     line: {
       minWidth: "100%",
-      paddingHorizontal: 0,
+      flexDirection: "row" as const,
       paddingVertical: theme.spacing[1],
+    },
+    gutterText: {
+      width: 20,
+      textAlign: "center" as const,
+      fontFamily: theme.fontFamily.mono,
+      fontSize: theme.fontSize.code,
+      color: theme.colors.foregroundMuted,
+      ...(isWeb
+        ? {
+            whiteSpace: "pre",
+          }
+        : null),
     },
     lineText: {
       fontFamily: theme.fontFamily.mono,

@@ -18,7 +18,9 @@ export function diffLinePrefix(line: DiffLine): string {
   }
 }
 
-function diffLineCode(line: DiffLine): string {
+// The code on the line with the diff marker prefix stripped, so the marker can
+// be rendered in its own gutter column.
+export function diffLineCode(line: DiffLine): string {
   const { content, type } = line;
   if (type === "add" || type === "remove") {
     return content.startsWith(type === "add" ? "+" : "-") ? content.slice(1) : content;

@@ -828,6 +828,9 @@ export const zhCN: TranslationResources = {
     workspace: {
       sessions: {
         viewAll: "查看全部会话",
+        editTitle: "修改标题",
+        archive: "归档",
+        archivePending: "归档中…",
       },
       status: {
         scriptsAvailable: "有可用 scripts",

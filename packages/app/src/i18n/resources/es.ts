@@ -863,6 +863,9 @@ export const es: TranslationResources = {
     workspace: {
       sessions: {
         viewAll: "Ver todas las sesiones",
+        editTitle: "Editar título",
+        archive: "Archivar",
+        archivePending: "Archivando…",
       },
       status: {
         scriptsAvailable: "Guiones disponibles",

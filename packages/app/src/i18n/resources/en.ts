@@ -842,6 +842,9 @@ export const en = {
     workspace: {
       sessions: {
         viewAll: "View all sessions",
+        editTitle: "Edit title",
+        archive: "Archive",
+        archivePending: "Archiving…",
       },
       status: {
         scriptsAvailable: "Scripts available",

@@ -135,6 +135,7 @@ const lightStatusColors = {
   statusDanger: "#b91c1c", // red-700
   statusWarning: "#d97706", // amber-600
   statusMerged: "#7c3aed", // purple-600
+  statusPlanning: "#0e7490", // cyan-700
 };
 
 const darkStatusColors = {
@@ -142,6 +143,7 @@ const darkStatusColors = {
   statusDanger: "#dc2626", // red-600
   statusWarning: "#f59e0b", // amber-500
   statusMerged: "#9333ea", // purple-600
+  statusPlanning: "#06b6d4", // cyan-500
 };
 
 // Glass tints are precomputed here because Unistyles serves theme colors as

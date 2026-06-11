@@ -165,6 +165,26 @@ describe("shared tool-call display mapping", () => {
     expect(display.displayName).toBe("List Agents");
   });
 
+  it("humanizes non-Paseo MCP tool names as server: tool", () => {
+    const display = buildToolCallDisplayModel({
+      name: "mcp__playwright__browser_click",
+      status: "running",
+      error: null,
+      detail: { type: "unknown", input: null, output: null },
+    });
+    expect(display.displayName).toBe("Playwright: Browser Click");
+  });
+
+  it("humanizes hyphenated MCP server names", () => {
+    const display = buildToolCallDisplayModel({
+      name: "mcp__chrome-devtools__take_screenshot",
+      status: "running",
+      error: null,
+      detail: { type: "unknown", input: null, output: null },
+    });
+    expect(display.displayName).toBe("Chrome Devtools: Take Screenshot");
+  });
+
   it("does not override speak tool display name", () => {
     const display = buildToolCallDisplayModel({
       name: "speak",

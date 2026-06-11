@@ -15,6 +15,7 @@ import {
   useIsolatedBottomSheetVisibility,
 } from "@/components/ui/isolated-bottom-sheet-modal";
 import type { ToolCallIconComponent } from "@/utils/tool-call-icon";
+import { pickToolCallSchemeColor, type ToolCallSchemeColor } from "@/utils/tool-call-colors";
 import { ToolCallDetailsContent } from "./tool-call-details";
 
 // ----- Types -----
@@ -25,6 +26,7 @@ export interface ToolCallSheetData {
   detail?: ToolCallDetail;
   errorText?: string;
   icon: ToolCallIconComponent;
+  tintColor?: ToolCallSchemeColor;
   showLoadingSkeleton?: boolean;
 }
 
@@ -139,15 +141,27 @@ interface ToolCallSheetContentProps {
 
 function ToolCallSheetContent({ data, onClose }: ToolCallSheetContentProps) {
   const { theme } = useUnistyles();
-  const { displayName, detail, errorText, icon: IconComponent, showLoadingSkeleton } = data;
+  const {
+    displayName,
+    detail,
+    errorText,
+    icon: IconComponent,
+    tintColor,
+    showLoadingSkeleton,
+  } = data;
+  const tintedColor = tintColor ? pickToolCallSchemeColor(tintColor, theme.colorScheme) : undefined;
+  const headerTitleStyle = useMemo(
+    () => [styles.headerTitle, tintedColor ? { color: tintedColor } : null],
+    [tintedColor],
+  );
 
   return (
     <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerLeft}>
-          <IconComponent size={20} color={theme.colors.foreground} />
-          <Text style={styles.headerTitle} numberOfLines={1}>
+          <IconComponent size={20} color={tintedColor ?? theme.colors.foreground} />
+          <Text style={headerTitleStyle} numberOfLines={1}>
             {displayName}
           </Text>
         </View>

@@ -836,6 +836,9 @@ export const ar: TranslationResources = {
     workspace: {
       sessions: {
         viewAll: "عرض جميع الجلسات",
+        editTitle: "تعديل العنوان",
+        archive: "أرشفة",
+        archivePending: "جارٍ الأرشفة…",
       },
       status: {
         scriptsAvailable: "البرامج النصية المتاحة",

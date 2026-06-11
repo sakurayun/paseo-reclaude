@@ -29,8 +29,13 @@ import { useToast } from "@/contexts/toast-context";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { toErrorMessage } from "@/utils/error-messages";
 import { formatAgentModeLabel } from "@/composer/agent-controls/utils";
+import type { Theme } from "@/styles/theme";
 import type { AgentMode, AgentProvider } from "@getpaseo/protocol/agent-types";
-import { getModeVisuals, type AgentProviderDefinition } from "@getpaseo/protocol/provider-manifest";
+import {
+  getModeVisuals,
+  type AgentModeColorTier,
+  type AgentProviderDefinition,
+} from "@getpaseo/protocol/provider-manifest";
 
 export type AgentModeControlPlacement = "toolbar" | "footer";
 
@@ -51,6 +56,28 @@ const MODE_ICONS: Record<string, ComponentType<ModeIconProps>> = {
   ShieldQuestionMark,
 };
 
+// Color the mode by what it does: red for bypass (dangerous), cyan for plan
+// (planning), purple for accept-file-edits, orange for the remaining
+// auto-approval tiers. "safe" modes keep the default muted styling (null).
+function getModeAccentColor(
+  modeId: string,
+  colorTier: AgentModeColorTier | undefined,
+  theme: Theme,
+): string | null {
+  if (colorTier?.startsWith("#")) return colorTier;
+  if (modeId === "acceptEdits") return theme.colors.statusMerged;
+  switch (colorTier) {
+    case "dangerous":
+      return theme.colors.statusDanger;
+    case "planning":
+      return theme.colors.statusPlanning;
+    case "moderate":
+      return theme.colors.statusWarning;
+    default:
+      return null;
+  }
+}
+
 interface ModeComboboxOptionProps {
   option: ComboboxOption;
   selected: boolean;
@@ -70,15 +97,24 @@ function ModeComboboxOption({
   providerDefinitions,
   iconColor,
 }: ModeComboboxOptionProps) {
+  const { theme } = useUnistyles();
   const visuals = getModeVisuals(provider, option.id, providerDefinitions);
+  const accentColor = getModeAccentColor(option.id, visuals?.colorTier, theme);
   const IconComponent = visuals?.icon ? MODE_ICONS[visuals.icon] : undefined;
+  const resolvedIconColor = accentColor ?? iconColor;
   const leadingSlot = useMemo(
-    () => (IconComponent ? <IconComponent size={16} color={iconColor} /> : null),
-    [IconComponent, iconColor],
+    () => (IconComponent ? <IconComponent size={16} color={resolvedIconColor} /> : null),
+    [IconComponent, resolvedIconColor],
+  );
+  const labelStyle = useMemo(
+    () =>
+      accentColor ? { color: accentColor, fontWeight: theme.fontWeight.bold as "bold" } : null,
+    [accentColor, theme.fontWeight.bold],
   );
   return (
     <ComboboxItem
       label={option.label}
+      labelStyle={labelStyle}
       selected={selected}
       active={active}
       onPress={onPress}
@@ -123,7 +159,10 @@ function AgentModeControlView({
     ? getModeVisuals(provider, selectedMode.id, providerDefinitions)
     : undefined;
   const Icon = visuals?.icon ? MODE_ICONS[visuals.icon] : undefined;
-  const iconColor = theme.colors.foregroundMuted;
+  const accentColor = selectedMode
+    ? getModeAccentColor(selectedMode.id, visuals?.colorTier, theme)
+    : null;
+  const iconColor = accentColor ?? theme.colors.foregroundMuted;
   const selectedModeLabel = selectedMode ? formatAgentModeLabel(selectedMode) : "";
 
   const allOptions = useMemo<ComboboxOption[]>(
@@ -180,7 +219,13 @@ function AgentModeControlView({
     [open, disabled],
   );
 
-  const labelStyle = styles.chipLabel;
+  const labelStyle = useMemo(
+    () => [
+      styles.chipLabel,
+      accentColor ? { color: accentColor, fontWeight: theme.fontWeight.bold as "bold" } : null,
+    ],
+    [accentColor, theme.fontWeight.bold],
+  );
 
   const sheetHeader = useMemo<SheetHeader>(
     () => ({
@@ -212,7 +257,7 @@ function AgentModeControlView({
       >
         {Icon ? <Icon size={theme.iconSize.md} color={iconColor} /> : null}
         <Text style={labelStyle}>{selectedModeLabel}</Text>
-        <ChevronDown size={theme.iconSize.sm} color={iconColor} />
+        <ChevronDown size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
       </Pressable>
       <Combobox
         options={options}

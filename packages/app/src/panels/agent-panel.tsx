@@ -1108,15 +1108,25 @@ function ChatAgentReadyContent({
       agentId,
     }),
   });
-  // The composer floats over the stream so the frosted glass shows the
-  // messages scrolling underneath. The stream reserves 1.1x the measured
-  // composer height so the last message stays readable above it.
+  // On compact form factors the composer sits in normal flow below the
+  // stream and takes its own height. On desktop it floats over the stream
+  // (frosted glass, content scrolls underneath) instead of reserving layout
+  // height. Either way the stream reserves 1.1x the measured composer height
+  // as extra bottom inset so the last message keeps its breathing room.
+  const isCompactFormFactor = useIsCompactFormFactor();
   const [composerOverlayHeight, setComposerOverlayHeight] = useState(0);
   const handleComposerOverlayLayout = useCallback((event: LayoutChangeEvent) => {
     const height = event.nativeEvent.layout.height;
     setComposerOverlayHeight((current) => (Math.abs(current - height) > 0.5 ? height : current));
   }, []);
   const streamBottomInset = composerOverlayHeight > 0 ? Math.round(composerOverlayHeight * 1.1) : 0;
+  const composerOverlayStyle = useMemo(
+    () =>
+      isCompactFormFactor
+        ? styles.composerOverlay
+        : [styles.composerOverlay, styles.composerOverlayFloating],
+    [isCompactFormFactor],
+  );
   const streamSection = (
     <RenderProfile id={`AgentStreamSection:${agentId}`}>
       <AgentStreamSection
@@ -1164,7 +1174,7 @@ function ChatAgentReadyContent({
             {contentContainer}
 
             <View
-              style={styles.composerOverlay}
+              style={composerOverlayStyle}
               pointerEvents="box-none"
               onLayout={handleComposerOverlayLayout}
             >
@@ -1587,6 +1597,9 @@ const styles = StyleSheet.create((theme) => ({
     width: "100%",
   },
   composerOverlay: {
+    width: "100%",
+  },
+  composerOverlayFloating: {
     position: "absolute",
     left: 0,
     right: 0,

@@ -1,3 +1,16 @@
+<table>
+  <tr>
+    <td width="120" align="center">
+      <a href="https://www.reclaude.ai/">
+        <img src="docs/assets/reclaude-logo.png" width="96" height="96" alt="Reclaude logo">
+      </a>
+    </td>
+    <td>
+      本项目基于由 <a href="https://www.reclaude.ai/"><b>Reclaude</b></a> 赞助的 Claude Code 进行二次开发，仅供学习与研究使用，不进行任何商业用途。
+    </td>
+  </tr>
+</table>
+
 <p align="center">
   <img src="packages/website/public/logo.svg" width="64" height="64" alt="Paseo logo">
 </p>

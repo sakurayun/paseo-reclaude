@@ -92,3 +92,24 @@ export function isLikelyExternalToolName(name: string): boolean {
   }
   return isLikelyNamespacedToolName(normalized);
 }
+
+export interface McpToolNameParts {
+  serverName: string;
+  toolName: string;
+}
+
+// Parses `mcp__server__tool` style names. Matches the Paseo MCP tools too —
+// callers that special-case Paseo must check isPaseoToolName first.
+export function parseMcpToolName(name: string): McpToolNameParts | null {
+  const segments = name
+    .trim()
+    .split("__")
+    .filter((segment) => segment.length > 0);
+  if (segments.length < 3 || segments[0].toLowerCase() !== "mcp") {
+    return null;
+  }
+  return {
+    serverName: segments[1],
+    toolName: segments.slice(2).join("__"),
+  };
+}

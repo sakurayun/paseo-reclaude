@@ -1,5 +1,9 @@
 import type { ToolCallTimelineItem } from "./agent-types.js";
-import { getPaseoToolLeafName, isPaseoToolName } from "@getpaseo/protocol/tool-name-normalization";
+import {
+  getPaseoToolLeafName,
+  isPaseoToolName,
+  parseMcpToolName,
+} from "@getpaseo/protocol/tool-name-normalization";
 import { stripCwdPrefix } from "./path-utils.js";
 
 export type ToolCallDisplayInput = Pick<
@@ -28,6 +32,15 @@ function readString(value: unknown): string | undefined {
   return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
+function capitalizeWords(segment: string): string {
+  return segment
+    .replace(/[._-]+/g, " ")
+    .split(" ")
+    .filter((part) => part.length > 0)
+    .map((part) => `${part[0]?.toUpperCase() ?? ""}${part.slice(1)}`)
+    .join(" ");
+}
+
 function humanizeToolName(name: string): string {
   const trimmed = name.trim();
   if (!trimmed) {
@@ -39,16 +52,15 @@ function humanizeToolName(name: string): string {
       return humanizeToolName(leaf);
     }
   }
+  const mcp = parseMcpToolName(trimmed);
+  if (mcp) {
+    return `${capitalizeWords(mcp.serverName)}: ${capitalizeWords(mcp.toolName)}`;
+  }
   if (/[:./]/.test(trimmed) || trimmed.includes("__")) {
     return trimmed;
   }
 
-  return trimmed
-    .replace(/[._-]+/g, " ")
-    .split(" ")
-    .filter((segment) => segment.length > 0)
-    .map((segment) => `${segment[0]?.toUpperCase() ?? ""}${segment.slice(1)}`)
-    .join(" ");
+  return capitalizeWords(trimmed);
 }
 
 function formatErrorText(error: unknown): string | undefined {

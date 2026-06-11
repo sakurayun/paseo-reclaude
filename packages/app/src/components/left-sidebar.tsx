@@ -1,4 +1,5 @@
 import { router, usePathname } from "expo-router";
+import { useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { FolderPlus, Home, MessagesSquare, Plus, Search, Settings, X } from "lucide-react-native";
 import {
@@ -42,6 +43,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { isWeb } from "@/constants/platform";
 import { useSidebarAnimation } from "@/contexts/sidebar-animation-context";
+import { agentHistoryQueryKey } from "@/hooks/agent-history-query-key";
 import { useOpenProjectPicker } from "@/hooks/use-open-project-picker";
 import { useShortcutKeys } from "@/hooks/use-shortcut-keys";
 import { useSidebarShortcutModel } from "@/hooks/use-sidebar-shortcut-model";
@@ -217,11 +219,16 @@ export const LeftSidebar = memo(function LeftSidebar({
   );
 
   const [isManualRefresh, setIsManualRefresh] = useState(false);
+  const queryClient = useQueryClient();
 
   const handleRefresh = useCallback(() => {
     setIsManualRefresh(true);
     refreshAll();
-  }, [refreshAll]);
+    // Also refresh the per-workspace session history rows.
+    if (activeServerId) {
+      void queryClient.invalidateQueries({ queryKey: agentHistoryQueryKey(activeServerId) });
+    }
+  }, [activeServerId, queryClient, refreshAll]);
 
   useEffect(() => {
     if (!isRevalidating && isManualRefresh) {

@@ -449,7 +449,7 @@ const prBadgeStyles = StyleSheet.create((theme) => ({
   text: {
     fontSize: theme.fontSize.xs,
     fontWeight: theme.fontWeight.normal,
-    lineHeight: 14,
+    lineHeight: Math.round(theme.fontSize.xs * 1.3),
     color: theme.colors.foregroundMuted,
   },
   textHovered: {
@@ -1727,7 +1727,7 @@ function WorkspaceRowWithMenu({
     serverId: workspace.serverId,
     workspaceId: workspace.workspaceId,
   });
-  const [sessionsExpanded, setSessionsExpanded] = useState(false);
+  const [sessionsExpanded, setSessionsExpanded] = useState(true);
   const handleToggleSessions = useCallback(() => {
     setSessionsExpanded((current) => !current);
   }, []);
@@ -3160,7 +3160,7 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.foreground,
     fontSize: theme.fontSize.sm,
     fontWeight: "400",
-    lineHeight: 20,
+    lineHeight: Math.round(theme.fontSize.sm * 1.45),
     opacity: 0.76,
     flex: 1,
     minWidth: 0,
