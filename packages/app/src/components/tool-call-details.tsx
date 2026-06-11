@@ -765,18 +765,20 @@ const styles = StyleSheet.create((theme) => {
   return {
     paddedContainer: {
       gap: theme.spacing[4],
-      padding: 0,
+      padding: theme.spacing[3],
     },
     fullBleedContainer: {
       gap: theme.spacing[2],
-      padding: 0,
+      padding: theme.spacing[3],
     },
     groupHeader: {
       flexDirection: "row",
       alignItems: "center",
       gap: theme.spacing[2],
-      paddingHorizontal: theme.spacing[3],
-      paddingVertical: theme.spacing[2],
+      // The padded container already insets content; keep headers flush with
+      // the card edges below them.
+      paddingHorizontal: 0,
+      paddingBottom: theme.spacing[1],
     },
     groupHeaderText: {
       color: theme.colors.foregroundMuted,
@@ -819,9 +821,9 @@ const styles = StyleSheet.create((theme) => {
     },
     fullBleedBlock: {
       borderWidth: 0,
-      borderRadius: 0,
+      borderRadius: theme.borderRadius.base,
       overflow: "hidden",
-      backgroundColor: theme.colors.surface1,
+      backgroundColor: theme.colors.surface2,
     },
     codeVerticalScroll: {},
     codeVerticalContent: {
