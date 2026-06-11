@@ -2044,9 +2044,10 @@ function ensureUltracodeGlowStyle(): void {
     [data-ultracode-glow="true"] {
       animation: paseo-ultracode-glow 3s ease-in-out infinite;
     }
-    /* Unistyles applies the active theme name as a class on <html>; Claude
-       Light swaps the violet sweep for the brand terracotta. */
-    html.lightClaude [data-ultracode-glow="true"] {
+    /* Unistyles applies the active theme name as a class on <html>; the two
+       Claude themes swap the violet sweep for the brand terracotta. */
+    html.lightClaude [data-ultracode-glow="true"],
+    html.darkClaude [data-ultracode-glow="true"] {
       animation-name: paseo-ultracode-glow-terracotta;
     }
     @media (prefers-reduced-motion: reduce) {
@@ -2054,7 +2055,8 @@ function ensureUltracodeGlowStyle(): void {
         animation: none;
         box-shadow: 0 2px 22px rgba(167, 139, 250, 0.26);
       }
-      html.lightClaude [data-ultracode-glow="true"] {
+      html.lightClaude [data-ultracode-glow="true"],
+      html.darkClaude [data-ultracode-glow="true"] {
         animation: none;
         box-shadow: 0 2px 22px rgba(217, 119, 87, 0.28);
       }

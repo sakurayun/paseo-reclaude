@@ -338,6 +338,7 @@ interface DarkThemeConfig {
   accentBright: string;
   accentForeground?: string;
   destructive: string;
+  ultracodeGlow?: { border: string; halo: string };
 }
 
 const darkTerminalAnsi = {
@@ -381,7 +382,7 @@ function buildDarkSemanticColors(tint: DarkThemeConfig) {
     accentBright: tint.accentBright,
     accentForeground: tint.accentForeground ?? "#ffffff",
 
-    ultracodeGlow: {
+    ultracodeGlow: tint.ultracodeGlow ?? {
       border: "#c4b5fd",
       halo: "#a78bfa",
     },
@@ -501,6 +502,7 @@ const claudeDarkColors = buildDarkSemanticColors({
   accent: "#d97757",
   accentBright: "#e89a7f",
   destructive: "#cf513e", // warm orange-red, hue ~10 — sits with the Claude orange accent
+  ultracodeGlow: { border: "#c97c5d", halo: "#d97757" },
 });
 
 // Ghostty — blue-tinted dark based on Ghostty default background
