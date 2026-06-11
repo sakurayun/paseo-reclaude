@@ -541,6 +541,10 @@ const styles = StyleSheet.create((theme) => ({
     justifyContent: "center",
     backgroundColor: theme.colors.surface2,
     flexShrink: 0,
+    // The workspace row indents its content by two spacing[3] steps under the
+    // project header (see workspaceRow in sidebar-workspace-list); pull the
+    // count pill back into that gutter so no blank space precedes it.
+    marginLeft: -(theme.spacing[3] + theme.spacing[3]),
   },
   sessionsCountToggleExpanded: {
     backgroundColor: theme.colors.surface3,
