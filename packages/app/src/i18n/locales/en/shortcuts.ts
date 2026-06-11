@@ -63,11 +63,12 @@ export default {
     resetAll: "Reset all",
   },
   commandCenter: {
-    placeholder: "Type a command or search agents...",
+    placeholder: "Type a command or search agents and files...",
     empty: "No matches",
     sections: {
       actions: "Actions",
       agents: "Agents",
+      files: "Files",
     },
     actions: {
       openProject: "Open project",

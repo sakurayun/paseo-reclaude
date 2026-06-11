@@ -29,6 +29,8 @@ import {
   BottomSheetScrollView,
   BottomSheetTextInput,
 } from "@gorhom/bottom-sheet";
+import { getFileIconSvg } from "@/components/material-file-icons";
+import { SvgXml } from "react-native-svg";
 
 function agentKey(agent: Pick<AggregatedAgent, "serverId" | "id">): string {
   return `${agent.serverId}:${agent.id}`;
@@ -238,6 +240,111 @@ function CommandCenterAgentRowContent({ agent }: CommandCenterAgentRowContentPro
   );
 }
 
+interface CommandCenterFileRowProps {
+  item: Extract<ReturnType<typeof useCommandCenter>["items"][number], { kind: "file" }>;
+  rowIndex: number;
+  active: boolean;
+  rowRefs: React.MutableRefObject<Map<number, View>>;
+  onLayout?: (event: { nativeEvent: { layout: { y: number; height: number } } }) => void;
+  onSelect: (item: ReturnType<typeof useCommandCenter>["items"][number]) => void;
+}
+
+function CommandCenterFileRow({
+  item,
+  rowIndex,
+  active,
+  rowRefs,
+  onLayout,
+  onSelect,
+}: CommandCenterFileRowProps) {
+  const { theme } = useUnistyles();
+  const handlePress = useCallback(() => onSelect(item), [onSelect, item]);
+  const file = item.file;
+  const iconSvg = getFileIconSvg(file.name);
+  const titleStyle = useMemo(
+    () => [styles.title, { color: theme.colors.foreground }],
+    [theme.colors.foreground],
+  );
+  const subtitleStyle = useMemo(
+    () => [styles.subtitle, { color: theme.colors.foregroundMuted }],
+    [theme.colors.foregroundMuted],
+  );
+  return (
+    <CommandCenterRowContainer
+      rowIndex={rowIndex}
+      active={active}
+      rowRefs={rowRefs}
+      onPress={handlePress}
+      onLayout={onLayout}
+    >
+      <View style={styles.rowContent}>
+        <View style={styles.rowMain}>
+          <View style={styles.iconSlot}>
+            <SvgXml xml={iconSvg} width={16} height={16} color={theme.colors.foregroundMuted} />
+          </View>
+          <View style={styles.textContent}>
+            <Text style={titleStyle} numberOfLines={1}>
+              {file.name}
+            </Text>
+            <Text style={subtitleStyle} numberOfLines={1}>
+              {shortenPath(
+                file.directory === "." ? file.workspaceId : `${file.workspaceId}/${file.directory}`,
+              )}
+            </Text>
+          </View>
+        </View>
+      </View>
+    </CommandCenterRowContainer>
+  );
+}
+
+interface FileItemsSectionProps {
+  fileItems: Extract<ReturnType<typeof useCommandCenter>["items"][number], { kind: "file" }>[];
+  actionItemsLength: number;
+  activeIndex: number;
+  rowRefs: React.MutableRefObject<Map<number, View>>;
+  onRowLayout: (
+    rowIndex: number,
+  ) => (event: { nativeEvent: { layout: { y: number; height: number } } }) => void;
+  onSelect: (item: ReturnType<typeof useCommandCenter>["items"][number]) => void;
+  sectionDividerStyle: React.ComponentProps<typeof View>["style"];
+  sectionLabelStyle: React.ComponentProps<typeof Text>["style"];
+  t: TFunction<"shortcuts">;
+}
+
+function FileItemsSection({
+  fileItems,
+  actionItemsLength,
+  activeIndex,
+  rowRefs,
+  onRowLayout,
+  onSelect,
+  sectionDividerStyle,
+  sectionLabelStyle,
+  t,
+}: FileItemsSectionProps) {
+  return (
+    <>
+      {actionItemsLength > 0 ? <View style={sectionDividerStyle} /> : null}
+      <Text style={sectionLabelStyle}>{t("commandCenter.sections.files")}</Text>
+      {fileItems.map((item, index) => {
+        const rowIndex = actionItemsLength + index;
+        return (
+          <CommandCenterFileRow
+            key={`file:${item.file.serverId}:${item.file.workspaceId}:${item.file.path}`}
+            item={item}
+            rowIndex={rowIndex}
+            active={rowIndex === activeIndex}
+            rowRefs={rowRefs}
+            onLayout={onRowLayout(rowIndex)}
+            onSelect={onSelect}
+          />
+        );
+      })}
+    </>
+  );
+}
+
 interface AgentItemsSectionProps {
   agentItems: Extract<ReturnType<typeof useCommandCenter>["items"][number], { kind: "agent" }>[];
   actionItemsLength: number;
@@ -405,6 +512,7 @@ export function CommandCenter() {
   );
 
   const actionItems = useMemo(() => items.filter((item) => item.kind === "action"), [items]);
+  const fileItems = useMemo(() => items.filter((item) => item.kind === "file"), [items]);
   const agentItems = useMemo(() => items.filter((item) => item.kind === "agent"), [items]);
 
   const panelStyle = useMemo(
@@ -471,10 +579,24 @@ export function CommandCenter() {
           </>
         ) : null}
 
+        {fileItems.length > 0 ? (
+          <FileItemsSection
+            fileItems={fileItems}
+            actionItemsLength={actionItems.length}
+            activeIndex={activeIndex}
+            rowRefs={rowRefs}
+            onRowLayout={handleRowLayout}
+            onSelect={handleSelectItem}
+            sectionDividerStyle={sectionDividerStyle}
+            sectionLabelStyle={sectionLabelStyle}
+            t={t}
+          />
+        ) : null}
+
         {agentItems.length > 0 ? (
           <AgentItemsSection
             agentItems={agentItems}
-            actionItemsLength={actionItems.length}
+            actionItemsLength={actionItems.length + fileItems.length}
             activeIndex={activeIndex}
             rowRefs={rowRefs}
             onRowLayout={handleRowLayout}

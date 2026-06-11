@@ -63,11 +63,12 @@ export default {
     resetAll: "全部重置",
   },
   commandCenter: {
-    placeholder: "输入命令或搜索 Agent…",
+    placeholder: "输入命令或搜索 Agent 与文件…",
     empty: "无匹配结果",
     sections: {
       actions: "操作",
       agents: "Agent",
+      files: "文件",
     },
     actions: {
       openProject: "打开项目",
