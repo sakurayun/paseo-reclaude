@@ -26,6 +26,7 @@ import {
   Ellipsis,
   EllipsisVertical,
   Globe,
+  History,
   Import as ImportIcon,
   PanelRight,
   Pencil,
@@ -237,6 +238,7 @@ const ThemedSquareTerminal = withUnistyles(SquareTerminal);
 const ThemedGlobe = withUnistyles(Globe);
 const ThemedImport = withUnistyles(ImportIcon);
 const ThemedSettings = withUnistyles(Settings);
+const ThemedHistory = withUnistyles(History);
 const ThemedPanelRight = withUnistyles(PanelRight);
 const ThemedSourceControlPanelIcon = withUnistyles(SourceControlPanelIcon);
 
@@ -251,6 +253,7 @@ const MENU_NEW_BROWSER_ICON = <ThemedGlobe size={16} uniProps={mutedColorMapping
 const MENU_IMPORT_ICON = <ThemedImport size={16} uniProps={mutedColorMapping} />;
 const MENU_COPY_ICON = <ThemedCopy size={16} uniProps={mutedColorMapping} />;
 const MENU_SETTINGS_ICON = <ThemedSettings size={16} uniProps={mutedColorMapping} />;
+const MENU_SESSIONS_ICON = <ThemedHistory size={16} uniProps={mutedColorMapping} />;
 const GATED_WORKSPACE_HEADER_LEFT = <SidebarMenuToggle />;
 
 interface WorkspaceScreenProps {
@@ -337,6 +340,9 @@ function getFallbackTabOptionDescription(
   }
   if (tab.target.kind === "browser") {
     return t("screen.tab.browser");
+  }
+  if (tab.target.kind === "sessions") {
+    return t("sessionsPanel.tabLabel");
   }
   return tab.target.path;
 }
@@ -897,6 +903,7 @@ interface WorkspaceHeaderMenuProps {
   menuImportIcon: ReactElement;
   menuCopyIcon: ReactElement;
   menuSettingsIcon: ReactElement;
+  menuSessionsIcon: ReactElement;
   onCreateDraftTab: () => void;
   onCreateTerminal: () => void;
   onCreateBrowser: () => void;
@@ -904,6 +911,7 @@ interface WorkspaceHeaderMenuProps {
   onCopyWorkspacePath: () => void;
   onCopyBranchName: () => void;
   onOpenSetupTab: () => void;
+  onOpenSessionsTab: () => void;
 }
 
 function WorkspaceHeaderMenuTriggerIcon({
@@ -934,6 +942,7 @@ function WorkspaceHeaderMenu({
   menuImportIcon,
   menuCopyIcon,
   menuSettingsIcon,
+  menuSessionsIcon,
   onCreateDraftTab,
   onCreateTerminal,
   onCreateBrowser,
@@ -941,6 +950,7 @@ function WorkspaceHeaderMenu({
   onCopyWorkspacePath,
   onCopyBranchName,
   onOpenSetupTab,
+  onOpenSessionsTab,
 }: WorkspaceHeaderMenuProps) {
   const { t } = useTranslation("workspaces");
   const renderTriggerIcon = useCallback(
@@ -1010,6 +1020,13 @@ function WorkspaceHeaderMenu({
             {t("screen.header.copyBranchName")}
           </DropdownMenuItem>
         ) : null}
+        <DropdownMenuItem
+          testID="workspace-header-show-sessions"
+          leading={menuSessionsIcon}
+          onSelect={onOpenSessionsTab}
+        >
+          {t("screen.header.showSessions")}
+        </DropdownMenuItem>
         {showWorkspaceSetup ? (
           <>
             <DropdownMenuSeparator />
@@ -1049,6 +1066,7 @@ interface WorkspaceHeaderTitleBarProps {
   menuImportIcon: ReactElement;
   menuCopyIcon: ReactElement;
   menuSettingsIcon: ReactElement;
+  menuSessionsIcon: ReactElement;
   onCreateDraftTab: () => void;
   onCreateTerminal: () => void;
   onCreateBrowser: () => void;
@@ -1056,6 +1074,7 @@ interface WorkspaceHeaderTitleBarProps {
   onCopyWorkspacePath: () => void;
   onCopyBranchName: () => void;
   onOpenSetupTab: () => void;
+  onOpenSessionsTab: () => void;
   onScriptTerminalStarted: (terminalId: string) => void;
   onViewScriptTerminal: (terminalId: string) => void;
   onOpenUrlInBrowserTab: (url: string) => void;
@@ -1083,6 +1102,7 @@ function WorkspaceHeaderTitleBar({
   menuImportIcon,
   menuCopyIcon,
   menuSettingsIcon,
+  menuSessionsIcon,
   onCreateDraftTab,
   onCreateTerminal,
   onCreateBrowser,
@@ -1090,6 +1110,7 @@ function WorkspaceHeaderTitleBar({
   onCopyWorkspacePath,
   onCopyBranchName,
   onOpenSetupTab,
+  onOpenSessionsTab,
   onScriptTerminalStarted,
   onViewScriptTerminal,
   onOpenUrlInBrowserTab,
@@ -1135,6 +1156,7 @@ function WorkspaceHeaderTitleBar({
           menuImportIcon={menuImportIcon}
           menuCopyIcon={menuCopyIcon}
           menuSettingsIcon={menuSettingsIcon}
+          menuSessionsIcon={menuSessionsIcon}
           onCreateDraftTab={onCreateDraftTab}
           onCreateTerminal={onCreateTerminal}
           onCreateBrowser={onCreateBrowser}
@@ -1142,6 +1164,7 @@ function WorkspaceHeaderTitleBar({
           onCopyWorkspacePath={onCopyWorkspacePath}
           onCopyBranchName={onCopyBranchName}
           onOpenSetupTab={onOpenSetupTab}
+          onOpenSessionsTab={onOpenSessionsTab}
         />
         {isMobile && workspaceScripts.length > 0 ? (
           <WorkspaceScriptsButton
@@ -2610,6 +2633,20 @@ function WorkspaceScreenContent({
     openWorkspaceTabFocused(persistenceKey, target);
   }, [normalizedWorkspaceId, openWorkspaceTabFocused, persistenceKey]);
 
+  const handleOpenSessionsTab = useCallback(() => {
+    if (!persistenceKey) {
+      return;
+    }
+    const target = normalizeWorkspaceTabTarget({
+      kind: "sessions",
+      workspaceId: normalizedWorkspaceId,
+    });
+    if (!target) {
+      return;
+    }
+    openWorkspaceTabFocused(persistenceKey, target);
+  }, [normalizedWorkspaceId, openWorkspaceTabFocused, persistenceKey]);
+
   const handleBulkCloseTabs = useCallback(
     async (input: { tabsToClose: WorkspaceTabDescriptor[]; title: string; logLabel: string }) => {
       const { tabsToClose, title, logLabel } = input;
@@ -3413,6 +3450,7 @@ function WorkspaceScreenContent({
                 menuImportIcon={MENU_IMPORT_ICON}
                 menuCopyIcon={menuCopyIcon}
                 menuSettingsIcon={menuSettingsIcon}
+                menuSessionsIcon={MENU_SESSIONS_ICON}
                 onCreateDraftTab={handleCreateDraftTab}
                 onCreateTerminal={handleCreateTerminal}
                 onCreateBrowser={handleCreateBrowserTab}
@@ -3420,6 +3458,7 @@ function WorkspaceScreenContent({
                 onCopyWorkspacePath={handleCopyWorkspacePath}
                 onCopyBranchName={handleCopyBranchName}
                 onOpenSetupTab={handleOpenSetupTab}
+                onOpenSessionsTab={handleOpenSessionsTab}
                 onScriptTerminalStarted={handleScriptTerminalStarted}
                 onViewScriptTerminal={handleViewScriptTerminal}
                 onOpenUrlInBrowserTab={handleOpenUrlInBrowserTab}

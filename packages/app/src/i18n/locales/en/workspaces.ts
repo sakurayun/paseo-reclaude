@@ -48,6 +48,7 @@ export default {
       copyWorkspacePath: "Copy workspace path",
       copyBranchName: "Copy branch name",
       showSetup: "Show setup",
+      showSessions: "Show sessions",
     },
     explorer: {
       toggle: "Toggle explorer",
@@ -264,6 +265,17 @@ export default {
   },
   filePanel: {
     executionDirectoryNotFound: "Workspace execution directory not found.",
+  },
+  sessionsPanel: {
+    tabLabel: "Sessions",
+    tabSubtitle: "Workspace session history",
+    title: "Sessions",
+    includeArchived: "Show archived",
+    empty: "No sessions in this workspace yet",
+    otherSection: "Other locations",
+    archivedBadge: "Archived",
+    currentBadge: "Current",
+    untitled: "Untitled session",
   },
   setupPanel: {
     status: {

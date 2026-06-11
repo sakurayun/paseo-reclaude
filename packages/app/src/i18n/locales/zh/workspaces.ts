@@ -48,6 +48,7 @@ export default {
       copyWorkspacePath: "复制工作区路径",
       copyBranchName: "复制分支名称",
       showSetup: "显示设置",
+      showSessions: "查看会话记录",
     },
     explorer: {
       toggle: "切换资源管理器",
@@ -262,6 +263,17 @@ export default {
   },
   filePanel: {
     executionDirectoryNotFound: "未找到工作区执行目录。",
+  },
+  sessionsPanel: {
+    tabLabel: "会话记录",
+    tabSubtitle: "工作区会话历史",
+    title: "会话记录",
+    includeArchived: "显示已归档",
+    empty: "该工作区还没有会话记录",
+    otherSection: "其他位置",
+    archivedBadge: "已归档",
+    currentBadge: "当前",
+    untitled: "未命名会话",
   },
   setupPanel: {
     status: {
