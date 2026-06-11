@@ -207,11 +207,20 @@ export function createMarkdownStyles(theme: Theme) {
     // TABLES
     // =========================================================================
 
+    // Interior separators that can never double the outer frame, without
+    // :last-child support:
+    //  - Row lines are each body cell's TOP border — the first body row's top
+    //    edge is the header underline, and the last row ends with no bottom
+    //    line against the frame.
+    //  - Column lines are each cell's RIGHT border; rows overhang the frame by
+    //    1px (tr marginRight: -1) so the rightmost cell's line is clipped by
+    //    the table's overflow:hidden instead of doubling the frame.
     table: {
       borderWidth: 1,
       borderColor: theme.colors.border,
       borderRadius: theme.borderRadius.md,
       marginVertical: theme.spacing[3],
+      overflow: "hidden" as const,
     },
 
     thead: {
@@ -223,7 +232,6 @@ export function createMarkdownStyles(theme: Theme) {
     th: {
       ...webSelectableTextStyle,
       padding: theme.spacing[2],
-      borderBottomWidth: 1,
       borderRightWidth: 1,
       borderColor: theme.colors.border,
       backgroundColor: theme.colors.surface2,
@@ -231,17 +239,18 @@ export function createMarkdownStyles(theme: Theme) {
       color: theme.colors.foreground,
       fontSize: theme.fontSize.sm,
       textAlign: "left" as const,
+      flex: 1,
     },
 
     tr: {
-      borderBottomWidth: 1,
-      borderColor: theme.colors.border,
       flexDirection: "row" as const,
+      marginRight: -1,
     },
 
     td: {
       ...webSelectableTextStyle,
       padding: theme.spacing[2],
+      borderTopWidth: 1,
       borderRightWidth: 1,
       borderColor: theme.colors.border,
       color: theme.colors.foreground,
