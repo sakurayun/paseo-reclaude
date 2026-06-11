@@ -29,6 +29,7 @@ import { terminalEmulatorWebViewHtml } from "../terminal/webview/terminal-emulat
 import type { PendingTerminalModifiers } from "../utils/terminal-keys";
 import type { TerminalRendererReadyChange } from "../utils/terminal-renderer-readiness";
 import { openExternalUrl } from "../utils/open-external-url";
+import * as Clipboard from "expo-clipboard";
 
 export interface TerminalEmulatorHandle {
   writeOutput: (data: TerminalOutputData) => void;
@@ -36,6 +37,7 @@ export interface TerminalEmulatorHandle {
   renderSnapshot: (state: TerminalState | null) => void;
   clear: () => void;
   blur: () => void;
+  requestClipboardRead: () => void;
 }
 
 interface TerminalEmulatorProps {
@@ -108,7 +110,8 @@ type BridgeInboundMessage =
       streamKey: string;
       requestId: number;
       target: TerminalLocalFileLinkTarget | null;
-    };
+    }
+  | { type: "clipboardText"; streamKey: string; text: string };
 
 type BridgeOutboundMessage =
   | { type: "bridgeReady" }
@@ -141,6 +144,7 @@ type BridgeOutboundMessage =
     }
   | { type: "swipeLeft"; streamKey: string }
   | { type: "swipeRight"; streamKey: string }
+  | { type: "clipboardRead"; streamKey: string }
   | { type: "debug"; message: string; details?: unknown };
 
 const TERMINAL_WEBVIEW_SOURCE = { html: terminalEmulatorWebViewHtml };
@@ -186,6 +190,70 @@ function createMountMessage(input: {
     pendingModifiers: input.pendingModifiers,
     swipeGesturesEnabled: input.swipeGesturesEnabled,
   };
+}
+
+interface TerminalSessionMessageCallbacks {
+  onInput?: (data: string) => Promise<void> | void;
+  onResize?: (input: { rows: number; cols: number; shouldClaim: boolean }) => Promise<void> | void;
+  onTerminalKey?: (input: {
+    key: string;
+    ctrl: boolean;
+    shift: boolean;
+    alt: boolean;
+    meta: boolean;
+  }) => Promise<void> | void;
+  onPendingModifiersConsumed?: () => Promise<void> | void;
+  onInputModeChange?: (state: TerminalInputModeState) => Promise<void> | void;
+}
+
+// Returns true when the message was a terminal session message and was handled.
+function dispatchTerminalSessionMessage(
+  message: BridgeOutboundMessage,
+  callbacks: TerminalSessionMessageCallbacks,
+): boolean {
+  switch (message.type) {
+    case "input":
+      callbacks.onInput?.(message.data);
+      return true;
+    case "resize":
+      callbacks.onResize?.({
+        rows: message.rows,
+        cols: message.cols,
+        shouldClaim: message.shouldClaim !== false,
+      });
+      return true;
+    case "terminalKey":
+      callbacks.onTerminalKey?.({
+        key: message.key,
+        ctrl: message.ctrl,
+        shift: message.shift,
+        alt: message.alt,
+        meta: message.meta,
+      });
+      return true;
+    case "pendingModifiersConsumed":
+      callbacks.onPendingModifiersConsumed?.();
+      return true;
+    case "inputModeChange":
+      callbacks.onInputModeChange?.(message.state);
+      return true;
+    default:
+      return false;
+  }
+}
+
+async function forwardClipboardToWebView(
+  streamKey: string,
+  sendToWebView: (message: BridgeInboundMessage) => void,
+): Promise<void> {
+  try {
+    const text = await Clipboard.getStringAsync();
+    if (text) {
+      sendToWebView({ type: "clipboardText", streamKey, text });
+    }
+  } catch {
+    // Clipboard permission denied or unavailable — silently ignore.
+  }
 }
 
 export default function TerminalEmulator({
@@ -382,6 +450,11 @@ export default function TerminalEmulator({
         );
         Keyboard.dismiss();
       },
+      requestClipboardRead: () => {
+        webViewRef.current?.injectJavaScript(
+          "window.__PASEO_TERMINAL_WEBVIEW_REQUEST_CLIPBOARD_READ__ && window.__PASEO_TERMINAL_WEBVIEW_REQUEST_CLIPBOARD_READ__(); true;",
+        );
+      },
     }),
     [sendToWebView, streamKey],
   );
@@ -527,32 +600,10 @@ export default function TerminalEmulator({
         callbacksRef.current.onOpenLocalFileLink?.(message.target, message.disposition);
         return;
       }
+      if (dispatchTerminalSessionMessage(message, callbacksRef.current)) {
+        return;
+      }
       switch (message.type) {
-        case "input":
-          callbacksRef.current.onInput?.(message.data);
-          break;
-        case "resize":
-          callbacksRef.current.onResize?.({
-            rows: message.rows,
-            cols: message.cols,
-            shouldClaim: message.shouldClaim !== false,
-          });
-          break;
-        case "terminalKey":
-          callbacksRef.current.onTerminalKey?.({
-            key: message.key,
-            ctrl: message.ctrl,
-            shift: message.shift,
-            alt: message.alt,
-            meta: message.meta,
-          });
-          break;
-        case "pendingModifiersConsumed":
-          callbacksRef.current.onPendingModifiersConsumed?.();
-          break;
-        case "inputModeChange":
-          callbacksRef.current.onInputModeChange?.(message.state);
-          break;
         case "openExternalUrl":
           void openExternalUrl(message.url);
           break;
@@ -562,11 +613,14 @@ export default function TerminalEmulator({
         case "swipeRight":
           callbacksRef.current.onSwipeRight?.();
           break;
+        case "clipboardRead":
+          void forwardClipboardToWebView(message.streamKey, sendToWebView);
+          break;
         case "debug":
           break;
       }
     },
-    [resolveLocalFileLink],
+    [resolveLocalFileLink, sendToWebView],
   );
 
   const handleMessage = useCallback(

@@ -54,6 +54,7 @@ export interface TerminalEmulatorHandle {
   findPrevious: (input: { query: string }) => boolean;
   clearFindDecorations: () => void;
   onFindResultsChanged: (listener: (event: TerminalFindResultChangeEvent) => void) => () => void;
+  requestClipboardRead: () => void;
 }
 
 const SCROLLBAR_HANDLE_WIDTH_IDLE = 6;
@@ -358,6 +359,18 @@ export default function TerminalEmulator({
       },
       onFindResultsChanged: (listener: (event: TerminalFindResultChangeEvent) => void) => {
         return runtimeRef.current?.onFindResultsChanged(listener) ?? (() => {});
+      },
+      requestClipboardRead: () => {
+        void (async () => {
+          try {
+            const text = await navigator.clipboard.readText();
+            if (text) {
+              runtimeRef.current?.paste(text);
+            }
+          } catch {
+            // Clipboard permission denied or unavailable — silently ignore.
+          }
+        })();
       },
     }),
     [],

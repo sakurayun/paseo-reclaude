@@ -181,6 +181,26 @@ function VirtualKeyButton({ id, labelKey, keyValue, onSend, t }: VirtualKeyButto
   );
 }
 
+interface PasteKeyButtonProps {
+  onPress: () => void;
+  t: TFunction<"terminal">;
+}
+
+function PasteKeyButton({ onPress, t }: PasteKeyButtonProps) {
+  const pressableStyle = useCallback(
+    ({ hovered, pressed }: PressableStateCallbackType & { hovered?: boolean }) => [
+      styles.keyButton,
+      (Boolean(hovered) || pressed) && styles.keyButtonHovered,
+    ],
+    [],
+  );
+  return (
+    <Pressable testID="terminal-key-paste" onPress={onPress} style={pressableStyle}>
+      <Text style={styles.keyButtonText}>{t("pane.key.paste")}</Text>
+    </Pressable>
+  );
+}
+
 export function TerminalPane({
   serverId,
   cwd,
@@ -826,6 +846,11 @@ export function TerminalPane({
     [keyboardPaddingStyle],
   );
 
+  const handlePaste = useCallback(() => {
+    emulatorRef.current?.requestClipboardRead();
+    requestTerminalFocus();
+  }, [requestTerminalFocus]);
+
   const handleSwipeRight = useCallback(() => {
     if (!swipeGesturesEnabled) return;
     emulatorRef.current?.blur();
@@ -976,6 +1001,8 @@ export function TerminalPane({
                   t={t}
                 />
               ))}
+
+              <PasteKeyButton onPress={handlePaste} t={t} />
             </View>
           </View>
         </View>

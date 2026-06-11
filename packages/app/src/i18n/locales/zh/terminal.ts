@@ -12,6 +12,7 @@ export default {
       right: "→",
       enter: "Enter",
       backspace: "⌫",
+      paste: "粘贴",
       space: "空格",
     },
     hostNotConnected: "主机未连接",

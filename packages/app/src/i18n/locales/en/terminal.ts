@@ -13,6 +13,7 @@ export default {
       enter: "Enter",
       backspace: "⌫",
       space: "Space",
+      paste: "Paste",
     },
     hostNotConnected: "Host is not connected",
   },

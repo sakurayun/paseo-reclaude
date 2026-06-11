@@ -48,6 +48,7 @@ const { client, findListeners, terminalProps, theme, terminalHandle, resetTermin
       findNext: vi.fn(() => true),
       findPrevious: vi.fn(() => true),
       clearFindDecorations: vi.fn(),
+      requestClipboardRead: vi.fn(),
       onFindResultsChanged: vi.fn((listener: (event: FindResultChange) => void) => {
         listeners.push(listener);
         return () => {

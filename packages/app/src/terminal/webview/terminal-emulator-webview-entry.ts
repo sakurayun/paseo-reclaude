@@ -45,7 +45,8 @@ type InboundMessage =
       streamKey: string;
       requestId: number;
       target: TerminalLocalFileLinkTarget | null;
-    };
+    }
+  | { type: "clipboardText"; streamKey: string; text: string };
 
 type OutboundMessage =
   | { type: "bridgeReady" }
@@ -78,6 +79,7 @@ type OutboundMessage =
     }
   | { type: "swipeLeft"; streamKey: string }
   | { type: "swipeRight"; streamKey: string }
+  | { type: "clipboardRead"; streamKey: string }
   | { type: "debug"; message: string; details?: unknown };
 
 declare global {
@@ -87,6 +89,7 @@ declare global {
     };
     __PASEO_TERMINAL_WEBVIEW_RECEIVE__?: (message: InboundMessage) => void;
     __PASEO_TERMINAL_WEBVIEW_BLUR__?: () => void;
+    __PASEO_TERMINAL_WEBVIEW_REQUEST_CLIPBOARD_READ__?: () => void;
   }
 }
 
@@ -253,6 +256,11 @@ class TerminalWebViewBridge {
       case "resize":
         this.runtime?.resize({ force: true, shouldClaim: message.shouldClaim !== false });
         break;
+      case "clipboardText":
+        if (message.text) {
+          this.runtime?.paste(message.text);
+        }
+        break;
     }
   }
 
@@ -342,6 +350,12 @@ class TerminalWebViewBridge {
 
   blur = (): void => {
     this.runtime?.blur();
+  };
+
+  requestClipboardRead = (): void => {
+    if (this.streamKey) {
+      sendToNative({ type: "clipboardRead", streamKey: this.streamKey });
+    }
   };
 
   private unmount(streamKey: string | null): void {
@@ -529,4 +543,5 @@ document.body.appendChild(root);
 const bridge = new TerminalWebViewBridge(root, host);
 window.__PASEO_TERMINAL_WEBVIEW_RECEIVE__ = bridge.receive;
 window.__PASEO_TERMINAL_WEBVIEW_BLUR__ = bridge.blur;
+window.__PASEO_TERMINAL_WEBVIEW_REQUEST_CLIPBOARD_READ__ = bridge.requestClipboardRead;
 sendToNative({ type: "bridgeReady" });
