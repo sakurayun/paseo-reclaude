@@ -564,7 +564,7 @@ const styles = StyleSheet.create((theme) => ({
     flex: 1,
     fontSize: theme.fontSize.base,
     fontWeight: theme.fontWeight.medium,
-    lineHeight: 22,
+    lineHeight: Math.round(theme.fontSize.base * 1.4),
   },
   optionsWrap: {
     gap: theme.spacing[1],
@@ -615,7 +615,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   optionDescription: {
     fontSize: theme.fontSize.xs,
-    lineHeight: 16,
+    lineHeight: Math.round(theme.fontSize.xs * 1.35),
   },
   optionCheckSlot: {
     width: 16,

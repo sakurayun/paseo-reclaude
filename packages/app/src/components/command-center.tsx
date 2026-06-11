@@ -772,11 +772,11 @@ const styles = StyleSheet.create((theme) => ({
   title: {
     fontSize: theme.fontSize.base,
     fontWeight: "400",
-    lineHeight: 20,
+    lineHeight: Math.round(theme.fontSize.base * 1.3),
   },
   subtitle: {
     fontSize: theme.fontSize.sm,
-    lineHeight: 18,
+    lineHeight: Math.round(theme.fontSize.sm * 1.3),
   },
   emptyText: {
     paddingHorizontal: theme.spacing[4],

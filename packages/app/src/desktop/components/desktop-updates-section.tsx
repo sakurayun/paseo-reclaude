@@ -515,7 +515,7 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.xs,
     fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
-    lineHeight: 18,
+    lineHeight: Math.round(theme.fontSize.xs * 1.5),
   },
   modalActions: {
     flexDirection: "row",

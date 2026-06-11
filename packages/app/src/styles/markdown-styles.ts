@@ -3,6 +3,13 @@ import { isWeb } from "@/constants/platform";
 
 const webSelectableTextStyle = isWeb ? { userSelect: "text" as const } : {};
 
+// Adaptive line heights: always derived from the (user-scalable) font size, never
+// fixed pixels — fixed values clip tall glyphs (CJK) and break when the appearance
+// settings scale the type ramp. Prose breathes at 1.4; headings sit tighter at 1.3.
+const PROSE_LINE_HEIGHT = 1.4;
+const HEADING_LINE_HEIGHT = 1.3;
+const lh = (fontSize: number, ratio: number) => Math.round(fontSize * ratio);
+
 /**
  * Creates comprehensive markdown styles for react-native-markdown-display.
  *
@@ -22,7 +29,7 @@ export function createMarkdownStyles(theme: Theme) {
       fontSize: theme.fontSize.base,
       // Prose line-height scales with the UI ramp (≈22 at base 16), NOT the
       // code-size-coupled lineHeight.diff token used by code/diff surfaces.
-      lineHeight: Math.round(theme.fontSize.base * 1.4),
+      lineHeight: lh(theme.fontSize.base, PROSE_LINE_HEIGHT),
       flexShrink: 1,
       minWidth: 0,
       width: "100%" as const,
@@ -59,7 +66,7 @@ export function createMarkdownStyles(theme: Theme) {
       color: theme.colors.foreground,
       marginTop: theme.spacing[6],
       marginBottom: theme.spacing[3],
-      lineHeight: 32,
+      lineHeight: lh(theme.fontSize["3xl"], HEADING_LINE_HEIGHT),
       borderBottomWidth: 1,
       borderBottomColor: theme.colors.border,
       paddingBottom: theme.spacing[2],
@@ -72,7 +79,7 @@ export function createMarkdownStyles(theme: Theme) {
       color: theme.colors.foreground,
       marginTop: theme.spacing[6],
       marginBottom: theme.spacing[3],
-      lineHeight: 28,
+      lineHeight: lh(theme.fontSize["2xl"], HEADING_LINE_HEIGHT),
       borderBottomWidth: 1,
       borderBottomColor: theme.colors.border,
       paddingBottom: theme.spacing[2],
@@ -85,7 +92,7 @@ export function createMarkdownStyles(theme: Theme) {
       color: theme.colors.foreground,
       marginTop: theme.spacing[4],
       marginBottom: theme.spacing[2],
-      lineHeight: 26,
+      lineHeight: lh(theme.fontSize.xl, HEADING_LINE_HEIGHT),
     },
 
     heading4: {
@@ -95,7 +102,7 @@ export function createMarkdownStyles(theme: Theme) {
       color: theme.colors.foreground,
       marginTop: theme.spacing[4],
       marginBottom: theme.spacing[2],
-      lineHeight: 24,
+      lineHeight: lh(theme.fontSize.lg, PROSE_LINE_HEIGHT),
     },
 
     heading5: {
@@ -105,7 +112,7 @@ export function createMarkdownStyles(theme: Theme) {
       color: theme.colors.foreground,
       marginTop: theme.spacing[3],
       marginBottom: theme.spacing[1],
-      lineHeight: 22,
+      lineHeight: lh(theme.fontSize.base, PROSE_LINE_HEIGHT),
     },
 
     heading6: {
@@ -115,7 +122,7 @@ export function createMarkdownStyles(theme: Theme) {
       color: theme.colors.foregroundMuted,
       marginTop: theme.spacing[3],
       marginBottom: theme.spacing[1],
-      lineHeight: 20,
+      lineHeight: lh(theme.fontSize.base, HEADING_LINE_HEIGHT),
       textTransform: "uppercase" as const,
       letterSpacing: 0.5,
     },
@@ -299,7 +306,7 @@ export function createMarkdownStyles(theme: Theme) {
       color: theme.colors.foregroundMuted,
       marginRight: 4,
       fontSize: theme.fontSize.base,
-      lineHeight: 22,
+      lineHeight: lh(theme.fontSize.base, PROSE_LINE_HEIGHT),
     },
 
     ordered_list_icon: {
@@ -308,7 +315,7 @@ export function createMarkdownStyles(theme: Theme) {
       marginRight: 4,
       fontSize: theme.fontSize.base,
       fontWeight: theme.fontWeight.normal,
-      lineHeight: 22,
+      lineHeight: lh(theme.fontSize.base, PROSE_LINE_HEIGHT),
       minWidth: 12,
     },
 
@@ -370,7 +377,7 @@ export function createCompactMarkdownStyles(theme: Theme) {
     body: {
       ...baseStyles.body,
       fontSize: theme.fontSize.sm,
-      lineHeight: 20,
+      lineHeight: lh(theme.fontSize.sm, PROSE_LINE_HEIGHT),
     },
 
     heading1: {
@@ -378,7 +385,7 @@ export function createCompactMarkdownStyles(theme: Theme) {
       fontSize: theme.fontSize.xl,
       marginTop: theme.spacing[4],
       marginBottom: theme.spacing[2],
-      lineHeight: 26,
+      lineHeight: lh(theme.fontSize.xl, HEADING_LINE_HEIGHT),
     },
 
     heading2: {
@@ -386,7 +393,7 @@ export function createCompactMarkdownStyles(theme: Theme) {
       fontSize: theme.fontSize.lg,
       marginTop: theme.spacing[3],
       marginBottom: theme.spacing[2],
-      lineHeight: 24,
+      lineHeight: lh(theme.fontSize.lg, HEADING_LINE_HEIGHT),
     },
 
     heading3: {
@@ -394,7 +401,7 @@ export function createCompactMarkdownStyles(theme: Theme) {
       fontSize: theme.fontSize.base,
       marginTop: theme.spacing[3],
       marginBottom: theme.spacing[1],
-      lineHeight: 22,
+      lineHeight: lh(theme.fontSize.base, PROSE_LINE_HEIGHT),
     },
 
     paragraph: {

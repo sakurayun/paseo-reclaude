@@ -231,7 +231,7 @@ const styles = StyleSheet.create((theme) => ({
   tileDescription: {
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.sm,
-    lineHeight: 18,
+    lineHeight: Math.round(theme.fontSize.sm * 1.3),
   },
   communityRow: {
     position: "absolute",

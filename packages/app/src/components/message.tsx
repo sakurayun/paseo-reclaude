@@ -474,7 +474,7 @@ const userMessageStylesheet = StyleSheet.create((theme) => ({
   text: {
     color: theme.colors.foreground,
     fontSize: theme.fontSize.base,
-    lineHeight: 22,
+    lineHeight: Math.round(theme.fontSize.base * 1.4),
     overflowWrap: "anywhere",
   },
   findMatchText: {
@@ -2194,7 +2194,7 @@ const speakMessageStylesheet = StyleSheet.create((theme) => ({
   text: {
     fontFamily: theme.fontFamily.ui,
     fontSize: theme.fontSize.base,
-    lineHeight: 22,
+    lineHeight: Math.round(theme.fontSize.base * 1.4),
     color: theme.colors.foreground,
   },
 }));
@@ -2280,7 +2280,7 @@ const activityLogStylesheet = StyleSheet.create((theme) => ({
   },
   messageText: {
     fontSize: theme.fontSize.sm,
-    lineHeight: 20,
+    lineHeight: Math.round(theme.fontSize.sm * 1.45),
   },
   detailsRow: {
     flexDirection: "row",
@@ -2304,7 +2304,7 @@ const activityLogStylesheet = StyleSheet.create((theme) => ({
     color: theme.colors.foreground,
     fontSize: theme.fontSize.code,
     fontFamily: theme.fontFamily.mono,
-    lineHeight: 16,
+    lineHeight: Math.round(theme.fontSize.code * 1.35),
   },
 }));
 

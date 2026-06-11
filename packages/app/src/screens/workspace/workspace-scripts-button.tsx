@@ -533,7 +533,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   splitButtonText: {
     fontSize: theme.fontSize.sm,
-    lineHeight: theme.fontSize.sm * 1.5,
+    lineHeight: Math.round(theme.fontSize.sm * 1.5),
     color: theme.colors.foreground,
     fontWeight: theme.fontWeight.normal,
   },
@@ -562,7 +562,7 @@ const styles = StyleSheet.create((theme) => ({
   scriptName: {
     fontSize: theme.fontSize.sm,
     fontWeight: theme.fontWeight.normal,
-    lineHeight: 18,
+    lineHeight: Math.round(theme.fontSize.sm * 1.3),
     flexShrink: 1,
     minWidth: 0,
     color: theme.colors.foregroundMuted,
@@ -588,7 +588,7 @@ const styles = StyleSheet.create((theme) => ({
   hostLabel: {
     flexShrink: 1,
     fontSize: theme.fontSize.xs,
-    lineHeight: 14,
+    lineHeight: Math.round(theme.fontSize.xs * 1.3),
     color: theme.colors.foregroundMuted,
   },
   hostLabelActive: {
@@ -609,7 +609,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   exitBadgeText: {
     fontSize: 10,
-    lineHeight: 12,
+    lineHeight: Math.round(10 * 1.3),
     fontWeight: theme.fontWeight.medium,
     color: theme.colors.foregroundMuted,
   },

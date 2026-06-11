@@ -352,7 +352,7 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.sm,
     fontWeight: theme.fontWeight.normal,
     color: theme.colors.foreground,
-    lineHeight: 19,
+    lineHeight: Math.round(theme.fontSize.sm * 1.35),
   },
   divider: {
     height: 1,
@@ -435,7 +435,7 @@ const styles = StyleSheet.create((theme) => ({
   rowBody: {
     fontSize: theme.fontSize.xs,
     color: theme.colors.foregroundMuted,
-    lineHeight: 16,
+    lineHeight: Math.round(theme.fontSize.xs * 1.35),
   },
   avatar: {
     width: 20,

@@ -338,7 +338,7 @@ const styles = StyleSheet.create((theme) => ({
   rowText: {
     fontSize: theme.fontSize.base,
     fontWeight: "400",
-    lineHeight: 20,
+    lineHeight: Math.round(theme.fontSize.base * 1.3),
     flexShrink: 1,
   },
   emptyText: {

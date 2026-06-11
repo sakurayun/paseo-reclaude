@@ -623,7 +623,7 @@ const styles = StyleSheet.create((theme) => ({
   rowPreview: {
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.sm,
-    lineHeight: 20,
+    lineHeight: Math.round(theme.fontSize.sm * 1.45),
   },
   rowCwd: {
     color: theme.colors.foregroundMuted,
