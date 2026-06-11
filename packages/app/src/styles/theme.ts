@@ -173,6 +173,12 @@ const lightSemanticColors = {
   accentBright: "#239956",
   accentForeground: "#ffffff",
 
+  // Ultracode composer glow
+  ultracodeGlow: {
+    border: "#c4b5fd",
+    halo: "#a78bfa",
+  },
+
   // Semantic
   destructive: "#b04138", // dark warm red on white — calm but unambiguously red
   destructiveForeground: "#ffffff",
@@ -253,6 +259,12 @@ const claudeLightSemanticColors = {
   accent: "#c96442",
   accentBright: "#d97757",
   accentForeground: "#ffffff",
+
+  // Ultracode composer glow — terracotta instead of the default violet
+  ultracodeGlow: {
+    border: "#e0a285",
+    halo: "#d97757",
+  },
 
   // Semantic
   destructive: "#ab3a2e", // warm red that sits with the terracotta accent
@@ -368,6 +380,11 @@ function buildDarkSemanticColors(tint: DarkThemeConfig) {
     accent: tint.accent,
     accentBright: tint.accentBright,
     accentForeground: tint.accentForeground ?? "#ffffff",
+
+    ultracodeGlow: {
+      border: "#c4b5fd",
+      halo: "#a78bfa",
+    },
 
     destructive: tint.destructive,
     destructiveForeground: "#ffffff",

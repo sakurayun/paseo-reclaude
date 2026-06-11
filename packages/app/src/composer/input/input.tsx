@@ -2027,13 +2027,36 @@ function ensureUltracodeGlowStyle(): void {
           -18px 2px 28px rgba(129, 140, 248, 0.12);
       }
     }
+    @keyframes paseo-ultracode-glow-terracotta {
+      0%, 100% {
+        box-shadow:
+          -18px 2px 28px rgba(217, 119, 87, 0.28),
+          0 2px 18px rgba(232, 154, 127, 0.18),
+          18px 2px 28px rgba(201, 100, 66, 0.12);
+      }
+      50% {
+        box-shadow:
+          18px 2px 28px rgba(217, 119, 87, 0.28),
+          0 2px 24px rgba(232, 154, 127, 0.32),
+          -18px 2px 28px rgba(201, 100, 66, 0.12);
+      }
+    }
     [data-ultracode-glow="true"] {
       animation: paseo-ultracode-glow 3s ease-in-out infinite;
+    }
+    /* Unistyles applies the active theme name as a class on <html>; Claude
+       Light swaps the violet sweep for the brand terracotta. */
+    html.lightClaude [data-ultracode-glow="true"] {
+      animation-name: paseo-ultracode-glow-terracotta;
     }
     @media (prefers-reduced-motion: reduce) {
       [data-ultracode-glow="true"] {
         animation: none;
         box-shadow: 0 2px 22px rgba(167, 139, 250, 0.26);
+      }
+      html.lightClaude [data-ultracode-glow="true"] {
+        animation: none;
+        box-shadow: 0 2px 22px rgba(217, 119, 87, 0.28);
       }
     }
   `;
@@ -2077,13 +2100,13 @@ const styles = StyleSheet.create((theme: Theme) => ({
         elevation: 5,
       },
   // On web the flowing glow is driven by the injected keyframes (see
-  // ensureUltracodeGlowStyle); native gets a static violet halo. The border
-  // turns violet on both platforms.
+  // ensureUltracodeGlowStyle); native gets a static halo. Colors come from the
+  // theme's ultracodeGlow token (violet by default, terracotta on Claude Light).
   inputWrapperUltracodeGlow: isWeb
-    ? { borderColor: "#c4b5fd" }
+    ? { borderColor: theme.colors.ultracodeGlow.border }
     : {
-        borderColor: "#c4b5fd",
-        shadowColor: "#a78bfa",
+        borderColor: theme.colors.ultracodeGlow.border,
+        shadowColor: theme.colors.ultracodeGlow.halo,
         shadowOffset: { width: 0, height: 0 },
         shadowOpacity: 0.3,
         shadowRadius: 14,
