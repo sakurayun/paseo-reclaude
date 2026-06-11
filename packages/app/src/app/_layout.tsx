@@ -17,6 +17,7 @@ import {
   useSyncExternalStore,
 } from "react";
 import { View } from "react-native";
+import { SystemBars } from "react-native-edge-to-edge";
 import { Gesture, GestureDetector, GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { Extrapolation, interpolate, runOnJS, useSharedValue } from "react-native-reanimated";
@@ -958,9 +959,17 @@ function RootProviders({ children }: { children: ReactNode }) {
   );
 }
 
+const LIGHT_SYSTEM_BARS_STYLE = { statusBar: "dark" as const };
+const DARK_SYSTEM_BARS_STYLE = { statusBar: "light" as const };
+
 export default function RootLayout() {
+  const { theme } = useUnistyles();
+  const systemBarsStyle =
+    theme.colorScheme === "light" ? LIGHT_SYSTEM_BARS_STYLE : DARK_SYSTEM_BARS_STYLE;
+
   return (
     <GestureHandlerRootView style={flexStyle}>
+      <SystemBars style={systemBarsStyle} />
       <GrabRoot>
         <View style={layoutStyles.surfaceFill}>
           <RootProviders>
