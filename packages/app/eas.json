@@ -17,6 +17,7 @@
     },
     "production": {
       "channel": "production",
+      "node": "22.14.0",
       "env": {
         "APP_VARIANT": "production"
       },
