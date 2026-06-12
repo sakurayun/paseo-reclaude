@@ -56,6 +56,8 @@ import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
 import { ToolCallDetailsContent } from "@/components/tool-call-details";
 import { QuestionFormCard } from "@/components/question-form-card";
 import { ToolCallSheetProvider } from "@/components/tool-call-sheet";
+import { buildRulerMarks, type RulerMark } from "@/agent-stream/ruler-marks";
+import { StreamRuler } from "@/agent-stream/stream-ruler";
 import { type AgentStreamRenderModel, buildAgentStreamRenderModel } from "./model";
 import { resolveStreamRenderStrategy } from "./strategy-resolver";
 import { type StreamSegmentRenderers, type StreamViewportHandle } from "./strategy";
@@ -480,6 +482,14 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         }),
       [agent.cwd, isMobile, streamHead, streamItems],
     );
+    const rulerMarks = useMemo(() => buildRulerMarks(searchModel.entries), [searchModel]);
+    const handlePressRulerMark = useCallback((mark: RulerMark) => {
+      viewportRef.current?.scrollToStreamItem({
+        source: mark.source,
+        index: mark.index,
+        itemId: mark.id,
+      });
+    }, []);
     const [findState, setFindState] = useState<AgentStreamFindState>(EMPTY_AGENT_STREAM_FIND_STATE);
     const findQuery = findState.query;
     const findMatches = findState.matches;
@@ -1007,6 +1017,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
               bottomContentInset,
             })}
           </MessageOuterSpacingProvider>
+          {!isMobile ? <StreamRuler marks={rulerMarks} onPressMark={handlePressRulerMark} /> : null}
           {!isNearBottom && (
             <Animated.View
               style={scrollToBottomContainerStyle}

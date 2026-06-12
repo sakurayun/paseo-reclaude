@@ -10,6 +10,7 @@ import React, {
 import { ActivityIndicator } from "react-native";
 import { measureElement as measureVirtualElement, useVirtualizer } from "@tanstack/react-virtual";
 import { estimateStreamItemHeight } from "./web-virtualization";
+import { getStreamItemElementId } from "./stream-item-element-id";
 import type { StreamRenderInput, StreamStrategy, StreamViewportHandle } from "./strategy";
 import { createStreamStrategy } from "./strategy";
 
@@ -64,10 +65,6 @@ function scrollElementToBottom(
     top: scrollContainer.scrollHeight,
     behavior,
   });
-}
-
-function getStreamItemElementId(itemId: string): string {
-  return `agent-stream-row-${itemId}`;
 }
 
 // The row id wrapper must stay a flex column: stream rows center themselves

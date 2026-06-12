@@ -66,6 +66,8 @@ import { buildWorkspaceTabPersistenceKey } from "@/stores/workspace-tabs-store";
 import type { Theme } from "@/styles/theme";
 import { useArchiveSubagent, useSubagentsForParent } from "@/subagents";
 import { SubagentsTrack } from "@/subagents/track";
+import { TodoTrack, useLatestAgentTodos } from "@/components/todo-track";
+import { SidechainTrack, useCurrentRunSidechainCalls } from "@/components/sidechain-track";
 import type { PendingPermission } from "@/types/shared";
 import type { StreamItem } from "@/types/stream";
 import { getInitDeferred, getInitKey } from "@/utils/agent-initialization";
@@ -1373,6 +1375,8 @@ function ActiveAgentComposer({
     serverId,
     parentAgentId: agentId,
   });
+  const latestTodos = useLatestAgentTodos(serverId, agentId);
+  const sidechainCalls = useCurrentRunSidechainCalls(serverId, agentId);
   const handleOpenSubagent = useCallback(
     (subagentId: string) => {
       navigateToAgent({ serverId, agentId: subagentId });
@@ -1477,6 +1481,8 @@ function ActiveAgentComposer({
         onOpenSubagent={handleOpenSubagent}
         onArchiveSubagent={handleArchiveSubagent}
       />
+      <SidechainTrack calls={sidechainCalls} />
+      <TodoTrack items={latestTodos} />
       <Composer
         agentId={agentId}
         serverId={serverId}

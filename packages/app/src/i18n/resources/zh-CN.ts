@@ -895,6 +895,24 @@ export const zhCN: TranslationResources = {
       searchPlaceholder: "搜索分支和 PR",
       title: "起始位置",
     },
+    repoPicker: {
+      title: "仓库",
+      choose: "选择仓库",
+      searchPlaceholder: "搜索仓库",
+      rootLabel: "仓库根目录",
+      empty: "未找到 git 仓库。",
+      branchCount: "{{count}} 个分支",
+    },
+  },
+  todoTrack: {
+    header: "待办 {{completed}}/{{total}}",
+    allDone: "全部待办已完成",
+  },
+  sidechainTrack: {
+    header: "子 agent {{completed}}/{{total}}",
+    allDone: "全部子 agent 已完成",
+    closePanel: "关闭子 agent 状态面板",
+    removeEntry: "从列表中移除",
   },
   desktop: {
     quitting: {
@@ -1785,6 +1803,11 @@ export const zhCN: TranslationResources = {
       },
       workspaces: {
         unavailable: "连接到这个 Host 以管理 Workspace",
+        autoArchive: {
+          title: "自动归档已合并 PR 的 workspace",
+          hint: "PR 合并后，自动归档没有未提交改动的 Paseo workspace",
+          updateFailedTitle: "无法更新 workspace 设置",
+        },
       },
       daemon: {
         rename: {

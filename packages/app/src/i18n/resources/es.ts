@@ -931,6 +931,24 @@ export const es: TranslationResources = {
       searchPlaceholder: "Buscar sucursales y relaciones públicas",
       title: "Empezar desde",
     },
+    repoPicker: {
+      title: "Repositorio",
+      choose: "Elegir repositorio",
+      searchPlaceholder: "Buscar repositorios",
+      rootLabel: "Raíz del repositorio",
+      empty: "No se encontraron repositorios.",
+      branchCount: "{{count}} ramas",
+    },
+  },
+  todoTrack: {
+    header: "Tareas {{completed}}/{{total}}",
+    allDone: "Todas las tareas completadas",
+  },
+  sidechainTrack: {
+    header: "Subagentes {{completed}}/{{total}}",
+    allDone: "Todos los subagentes terminaron",
+    closePanel: "Ocultar estado de subagentes",
+    removeEntry: "Quitar de la lista",
   },
   desktop: {
     quitting: {
@@ -1848,6 +1866,11 @@ export const es: TranslationResources = {
       },
       workspaces: {
         unavailable: "Connect to this host to manage workspaces",
+        autoArchive: {
+          title: "Archivar espacios de trabajo con PR fusionado",
+          hint: "Archiva automáticamente los espacios de trabajo de Paseo sin cambios pendientes cuando su pull request se fusiona",
+          updateFailedTitle: "No se pudo actualizar los espacios de trabajo",
+        },
       },
       daemon: {
         rename: {

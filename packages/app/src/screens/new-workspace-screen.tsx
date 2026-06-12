@@ -6,7 +6,15 @@ import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { createNameId } from "mnemonic-id";
 import { useQuery } from "@tanstack/react-query";
-import { Check, ChevronDown, Folder, GitBranch, GitPullRequest, X } from "lucide-react-native";
+import {
+  Check,
+  ChevronDown,
+  Folder,
+  FolderGit2,
+  GitBranch,
+  GitPullRequest,
+  X,
+} from "lucide-react-native";
 import { Composer } from "@/composer";
 import { DraftAgentModeControl } from "@/composer/agent-controls/mode-control";
 import { splitComposerAttachmentsForSubmit } from "@/composer/attachments/submit";
@@ -48,7 +56,11 @@ import {
 import { useProjectIconDataByProjectKey } from "@/projects/project-icons";
 import type { ComposerAttachment, UserComposerAttachment } from "@/attachments/types";
 import type { ImageAttachment, MessagePayload } from "@/composer/types";
-import type { AgentAttachment, GitHubSearchItem } from "@getpaseo/protocol/messages";
+import type {
+  AgentAttachment,
+  GitHubSearchItem,
+  ScannedGitRepo,
+} from "@getpaseo/protocol/messages";
 import type { CreatePaseoWorktreeInput } from "@getpaseo/client/internal/daemon-client";
 import type { AgentProvider } from "@getpaseo/protocol/agent-types";
 import { isEmptyWorkspaceSubmission, runCreateEmptyWorkspace } from "./new-workspace-empty";
@@ -116,6 +128,7 @@ interface NewWorkspaceProjectPickerState {
 const BRANCH_OPTION_PREFIX = "branch:";
 const PR_OPTION_PREFIX = "github-pr:";
 const PROJECT_OPTION_PREFIX = "project:";
+const REPO_OPTION_PREFIX = "repo:";
 
 function RefPickerBadgeContent({
   selectedItem,
@@ -252,6 +265,53 @@ function ProjectPickerTrigger({
       </TooltipTrigger>
       <TooltipContent side="top" align="center" offset={8}>
         <Text style={styles.tooltipText}>Choose project</Text>
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+function RepoPickerTrigger({
+  pickerAnchorRef,
+  onPress,
+  disabled,
+  badgePressableStyle,
+  label,
+  tooltipLabel,
+  iconColor,
+  iconSize,
+}: {
+  pickerAnchorRef: React.RefObject<View | null>;
+  onPress: () => void;
+  disabled: boolean;
+  badgePressableStyle: React.ComponentProps<typeof Pressable>["style"];
+  label: string;
+  tooltipLabel: string;
+  iconColor: string;
+  iconSize: number;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild triggerRefProp="ref">
+        <Pressable
+          ref={pickerAnchorRef}
+          testID="new-workspace-repo-picker-trigger"
+          onPress={onPress}
+          disabled={disabled}
+          style={badgePressableStyle}
+          accessibilityRole="button"
+          accessibilityLabel={tooltipLabel}
+        >
+          <View style={styles.badgeIconBox}>
+            <FolderGit2 size={iconSize} color={iconColor} />
+          </View>
+          <Text style={styles.badgeText} numberOfLines={1}>
+            {label}
+          </Text>
+          <ChevronDown size={iconSize} color={iconColor} />
+        </Pressable>
+      </TooltipTrigger>
+      <TooltipContent side="top" align="center" offset={8}>
+        <Text style={styles.tooltipText}>{tooltipLabel}</Text>
       </TooltipContent>
     </Tooltip>
   );
@@ -413,6 +473,192 @@ function prOptionId(number: number): string {
 
 function projectOptionId(projectId: string): string {
   return `${PROJECT_OPTION_PREFIX}${projectId}`;
+}
+
+function repoOptionId(path: string): string {
+  return `${REPO_OPTION_PREFIX}${path}`;
+}
+
+function repoOptionLabel(repo: ScannedGitRepo, rootLabel: string): string {
+  return repo.relativePath === "." ? rootLabel : repo.relativePath;
+}
+
+function RepoOptionItem({
+  testID,
+  label,
+  description,
+  selected,
+  active,
+  disabled,
+  onPress,
+  iconColor,
+  iconSize,
+}: {
+  testID: string;
+  label: string;
+  description: string | undefined;
+  selected: boolean;
+  active: boolean;
+  disabled: boolean;
+  onPress: () => void;
+  iconColor: string;
+  iconSize: number;
+}) {
+  const leadingSlot = useMemo(
+    () => (
+      <View style={styles.rowIconBox}>
+        <FolderGit2 size={iconSize} color={iconColor} />
+      </View>
+    ),
+    [iconColor, iconSize],
+  );
+  return (
+    <ComboboxItem
+      testID={testID}
+      label={label}
+      description={description}
+      selected={selected}
+      active={active}
+      disabled={disabled}
+      onPress={onPress}
+      leadingSlot={leadingSlot}
+    />
+  );
+}
+
+interface NewWorkspaceRepoScanInput {
+  serverId: string;
+  selectedSourceDirectory: string | null;
+  client: ReturnType<typeof useHostRuntimeClient>;
+  isConnected: boolean;
+  t: ReturnType<typeof useTranslation>["t"];
+  onRepoSelected: () => void;
+}
+
+interface NewWorkspaceRepoScanState {
+  effectiveSourceDirectory: string | null;
+  selectedRepoPath: string | null;
+  scannedRepos: ScannedGitRepo[];
+  repoPickerOptions: ComboboxOptionType[];
+  repoByOptionId: Map<string, ScannedGitRepo>;
+  selectedRepoOptionId: string;
+  repoTriggerLabel: string;
+  repoPickerOpen: boolean;
+  repoPickerAnchorRef: React.RefObject<View | null>;
+  openRepoPicker: () => void;
+  handleRepoPickerOpenChange: (nextOpen: boolean) => void;
+  handleSelectRepoOption: (id: string) => void;
+}
+
+function useNewWorkspaceRepoScan({
+  serverId,
+  selectedSourceDirectory,
+  client,
+  isConnected,
+  t,
+  onRepoSelected,
+}: NewWorkspaceRepoScanInput): NewWorkspaceRepoScanState {
+  const scanGitReposEnabled = useSessionStore(
+    (state) => state.sessions[serverId]?.serverInfo?.features?.workspaceScanGitRepos === true,
+  );
+  const [selectedRepoPath, setSelectedRepoPath] = useState<string | null>(null);
+  const [repoPickerOpen, setRepoPickerOpen] = useState(false);
+  const repoPickerAnchorRef = useRef<View>(null);
+
+  useEffect(() => {
+    setSelectedRepoPath(null);
+  }, [selectedSourceDirectory]);
+
+  const gitRepoScanQuery = useQuery({
+    queryKey: ["workspace-git-repo-scan", serverId, selectedSourceDirectory],
+    queryFn: async () => {
+      if (!selectedSourceDirectory) {
+        throw new Error("Choose a project");
+      }
+      if (!client || !isConnected) {
+        throw new Error(t("newWorkspace.errors.hostDisconnected"));
+      }
+      return client.scanGitRepos({ rootPath: selectedSourceDirectory });
+    },
+    enabled:
+      Boolean(client) && isConnected && selectedSourceDirectory !== null && scanGitReposEnabled,
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
+  });
+
+  const scannedRepos = useMemo<ScannedGitRepo[]>(() => {
+    const data = gitRepoScanQuery.data;
+    if (!data || data.error) return [];
+    return data.repos;
+  }, [gitRepoScanQuery.data]);
+
+  // When the project directory itself is not a repo but contains repos,
+  // default to the first discovered repo so branch lookups have a valid cwd.
+  useEffect(() => {
+    if (selectedRepoPath !== null || scannedRepos.length === 0) return;
+    const hasRootRepo = scannedRepos.some((repo) => repo.relativePath === ".");
+    if (!hasRootRepo) {
+      setSelectedRepoPath(scannedRepos[0]?.path ?? null);
+    }
+  }, [scannedRepos, selectedRepoPath]);
+
+  const repoRootLabel = t("newWorkspace.repoPicker.rootLabel");
+  const repoPickerData = useMemo(() => {
+    const repoByOptionId = new Map<string, ScannedGitRepo>();
+    const repoOptions = scannedRepos.map((repo) => {
+      const id = repoOptionId(repo.path);
+      repoByOptionId.set(id, repo);
+      return { id, label: repoOptionLabel(repo, repoRootLabel) };
+    });
+    return { options: repoOptions, repoByOptionId };
+  }, [repoRootLabel, scannedRepos]);
+
+  const selectedRepoOptionId = useMemo(() => {
+    if (selectedRepoPath) return repoOptionId(selectedRepoPath);
+    const rootRepo = scannedRepos.find((repo) => repo.relativePath === ".");
+    return rootRepo ? repoOptionId(rootRepo.path) : "";
+  }, [scannedRepos, selectedRepoPath]);
+
+  const repoTriggerLabel = useMemo(() => {
+    const repo = selectedRepoOptionId
+      ? repoPickerData.repoByOptionId.get(selectedRepoOptionId)
+      : undefined;
+    return repo ? repoOptionLabel(repo, repoRootLabel) : t("newWorkspace.repoPicker.choose");
+  }, [repoPickerData, repoRootLabel, selectedRepoOptionId, t]);
+
+  const handleSelectRepoOption = useCallback(
+    (id: string) => {
+      const repo = repoPickerData.repoByOptionId.get(id);
+      if (!repo) return;
+      setSelectedRepoPath(repo.path);
+      setRepoPickerOpen(false);
+      onRepoSelected();
+    },
+    [onRepoSelected, repoPickerData],
+  );
+
+  const openRepoPicker = useCallback(() => {
+    setRepoPickerOpen(true);
+  }, []);
+
+  const handleRepoPickerOpenChange = useCallback((nextOpen: boolean) => {
+    setRepoPickerOpen(nextOpen);
+  }, []);
+
+  return {
+    effectiveSourceDirectory: selectedRepoPath ?? selectedSourceDirectory,
+    selectedRepoPath,
+    scannedRepos,
+    repoPickerOptions: repoPickerData.options,
+    repoByOptionId: repoPickerData.repoByOptionId,
+    selectedRepoOptionId,
+    repoTriggerLabel,
+    repoPickerOpen,
+    repoPickerAnchorRef,
+    openRepoPicker,
+    handleRepoPickerOpenChange,
+    handleSelectRepoOption,
+  };
 }
 
 function formatPrLabel(item: { number: number; title: string }): string {
@@ -813,6 +1059,32 @@ export function NewWorkspaceScreen({
     displayName: displayNameProp,
   });
   const projectIconDataByProjectKey = useProjectIconDataByProjectKey({ serverId, projects });
+
+  const handleRepoSelected = useCallback(() => {
+    setManualPickerSelection(null);
+  }, []);
+  const {
+    effectiveSourceDirectory,
+    selectedRepoPath,
+    scannedRepos,
+    repoPickerOptions,
+    repoByOptionId,
+    selectedRepoOptionId,
+    repoTriggerLabel,
+    repoPickerOpen,
+    repoPickerAnchorRef,
+    openRepoPicker,
+    handleRepoPickerOpenChange,
+    handleSelectRepoOption,
+  } = useNewWorkspaceRepoScan({
+    serverId,
+    selectedSourceDirectory,
+    client,
+    isConnected,
+    t,
+    onRepoSelected: handleRepoSelected,
+  });
+
   const draftKey = `new-workspace:${serverId}:${selectedSourceDirectory ?? "choose-project"}`;
   const chatDraft = useAgentInputDraft({
     draftKey,
@@ -820,7 +1092,7 @@ export function NewWorkspaceScreen({
       serverId,
       isConnected,
       workspaceDirectory: workspace?.workspaceDirectory ?? null,
-      sourceDirectory: selectedSourceDirectory,
+      sourceDirectory: effectiveSourceDirectory,
     }),
   });
   const composerState = chatDraft.composerState;
@@ -841,13 +1113,13 @@ export function NewWorkspaceScreen({
   const pickerQueryEnabled = pickerOpen && clientReady && hasSelectedSourceDirectory;
 
   const checkoutStatusQuery = useQuery({
-    queryKey: ["checkout-status", serverId, selectedSourceDirectory],
+    queryKey: ["checkout-status", serverId, effectiveSourceDirectory],
     queryFn: async () => {
-      if (!selectedSourceDirectory) {
+      if (!effectiveSourceDirectory) {
         throw new Error("Choose a project");
       }
       const connectedClient = withConnectedClient();
-      return connectedClient.getCheckoutStatus(selectedSourceDirectory);
+      return connectedClient.getCheckoutStatus(effectiveSourceDirectory);
     },
     enabled: clientReady && hasSelectedSourceDirectory,
     staleTime: Infinity,
@@ -859,14 +1131,19 @@ export function NewWorkspaceScreen({
   const currentBranch = checkoutStatusQuery.data?.currentBranch ?? null;
 
   const branchSuggestionsQuery = useQuery({
-    queryKey: ["branch-suggestions", serverId, selectedSourceDirectory, debouncedPickerSearchQuery],
+    queryKey: [
+      "branch-suggestions",
+      serverId,
+      effectiveSourceDirectory,
+      debouncedPickerSearchQuery,
+    ],
     queryFn: async () => {
-      if (!selectedSourceDirectory) {
+      if (!effectiveSourceDirectory) {
         throw new Error("Choose a project");
       }
       const connectedClient = withConnectedClient();
       return connectedClient.getBranchSuggestions({
-        cwd: selectedSourceDirectory,
+        cwd: effectiveSourceDirectory,
         query: debouncedPickerSearchQuery || undefined,
         limit: 20,
       });
@@ -878,7 +1155,7 @@ export function NewWorkspaceScreen({
   const githubPrSearchQuery = useGithubSearchQuery({
     client,
     serverId,
-    cwd: selectedSourceDirectory ?? "",
+    cwd: effectiveSourceDirectory ?? "",
     query: debouncedPickerSearchQuery,
     kinds: ["github-pr"],
     enabled: pickerQueryEnabled,
@@ -947,6 +1224,41 @@ export function NewWorkspaceScreen({
       setManualPickerSelection(null);
     },
     [projectByOptionId, selectProjectOption],
+  );
+
+  const renderRepoOption = useCallback(
+    ({
+      option,
+      selected,
+      active,
+      onPress,
+    }: {
+      option: ComboboxOptionType;
+      selected: boolean;
+      active: boolean;
+      onPress: () => void;
+    }) => {
+      const repo = repoByOptionId.get(option.id);
+      if (!repo) return <View key={option.id} />;
+      const descriptionParts = [
+        repo.currentBranch,
+        t("newWorkspace.repoPicker.branchCount", { count: repo.branches.length }),
+      ].filter(Boolean);
+      return (
+        <RepoOptionItem
+          testID={`new-workspace-repo-picker-option-${repo.relativePath}`}
+          label={option.label}
+          description={descriptionParts.join(" · ")}
+          selected={selected}
+          active={active}
+          disabled={isPending}
+          onPress={onPress}
+          iconColor={theme.colors.foregroundMuted}
+          iconSize={theme.iconSize.sm}
+        />
+      );
+    },
+    [isPending, repoByOptionId, t, theme.colors.foregroundMuted, theme.iconSize.sm],
   );
 
   const checkoutHintPrAttachment = useMemo(
@@ -1022,7 +1334,7 @@ export function NewWorkspaceScreen({
       const hasFirstAgentContext = trimmedPrompt.length > 0 || input.attachments.length > 0;
 
       return {
-        cwd: selectedProject.iconWorkingDir,
+        cwd: selectedRepoPath ?? selectedProject.iconWorkingDir,
         projectId: selectedProject.projectKey,
         worktreeSlug: createNameId(),
         ...(hasFirstAgentContext
@@ -1036,7 +1348,7 @@ export function NewWorkspaceScreen({
         ...checkoutRequest,
       };
     },
-    [currentBranch, selectedItem, selectedProject],
+    [currentBranch, selectedItem, selectedProject, selectedRepoPath],
   );
 
   const ensureWorkspace = useCallback(
@@ -1234,6 +1546,34 @@ export function NewWorkspaceScreen({
             renderOption={renderProjectOption}
           />
         </View>
+        {scannedRepos.length > 1 ? (
+          <View>
+            <RepoPickerTrigger
+              pickerAnchorRef={repoPickerAnchorRef}
+              onPress={openRepoPicker}
+              disabled={isPending}
+              badgePressableStyle={badgePressableStyle}
+              label={repoTriggerLabel}
+              tooltipLabel={t("newWorkspace.repoPicker.choose")}
+              iconColor={theme.colors.foregroundMuted}
+              iconSize={theme.iconSize.sm}
+            />
+            <Combobox
+              options={repoPickerOptions}
+              value={selectedRepoOptionId}
+              onSelect={handleSelectRepoOption}
+              searchable
+              searchPlaceholder={t("newWorkspace.repoPicker.searchPlaceholder")}
+              title={t("newWorkspace.repoPicker.title")}
+              open={repoPickerOpen}
+              onOpenChange={handleRepoPickerOpenChange}
+              desktopPlacement="bottom-start"
+              anchorRef={repoPickerAnchorRef}
+              emptyText={t("newWorkspace.repoPicker.empty")}
+              renderOption={renderRepoOption}
+            />
+          </View>
+        ) : null}
         <View>
           <RefPickerTrigger
             pickerAnchorRef={pickerAnchorRef}
@@ -1306,6 +1646,16 @@ export function NewWorkspaceScreen({
       projectIconDataByProjectKey,
       renderPickerOption,
       renderProjectOption,
+      renderRepoOption,
+      repoPickerAnchorRef,
+      repoPickerOptions,
+      repoPickerOpen,
+      repoTriggerLabel,
+      handleRepoPickerOpenChange,
+      handleSelectRepoOption,
+      openRepoPicker,
+      scannedRepos.length,
+      selectedRepoOptionId,
       selectedItem,
       selectedOptionId,
       selectedProject,
@@ -1346,7 +1696,7 @@ export function NewWorkspaceScreen({
               onChangeText={chatDraft.setText}
               attachments={chatDraft.attachments}
               onChangeAttachments={chatDraft.setAttachments}
-              cwd={selectedSourceDirectory ?? ""}
+              cwd={effectiveSourceDirectory ?? ""}
               clearDraft={handleClearDraft}
               autoFocus
               commandDraftConfig={composerState?.commandDraftConfig}

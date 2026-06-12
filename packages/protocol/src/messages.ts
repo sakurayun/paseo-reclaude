@@ -1618,6 +1618,15 @@ export const DirectorySuggestionsRequestSchema = z.object({
   requestId: z.string(),
 });
 
+export const WorkspaceScanGitReposRequestSchema = z.object({
+  type: z.literal("workspace.scan_git_repos.request"),
+  /** Directory to scan recursively for git repositories (including nested sub-repos). */
+  rootPath: z.string(),
+  /** Maximum directory depth below rootPath to descend into. */
+  maxDepth: z.number().int().min(1).max(12).optional(),
+  requestId: z.string(),
+});
+
 export const PaseoWorktreeListRequestSchema = z.object({
   type: z.literal("paseo_worktree_list_request"),
   cwd: z.string().optional(),
@@ -2009,6 +2018,7 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   BranchSuggestionsRequestSchema,
   GitHubSearchRequestSchema,
   DirectorySuggestionsRequestSchema,
+  WorkspaceScanGitReposRequestSchema,
   PaseoWorktreeListRequestSchema,
   PaseoWorktreeArchiveRequestSchema,
   CreatePaseoWorktreeRequestSchema,
@@ -2237,6 +2247,8 @@ export const ServerInfoStatusPayloadSchema = z
         checkoutRefresh: z.boolean().optional(),
         // COMPAT(dictationModelSelection): added in v0.1.92, remove gate after 2026-12-09.
         dictationModelSelection: z.boolean().optional(),
+        // COMPAT(workspaceScanGitRepos): added in v0.1.97, remove gate after 2026-12-12.
+        workspaceScanGitRepos: z.boolean().optional(),
       })
       .optional(),
   })
@@ -3509,6 +3521,31 @@ export const DirectorySuggestionsResponseSchema = z.object({
   }),
 });
 
+export const ScannedGitRepoSchema = z.object({
+  /** Absolute path of the repository working directory. */
+  path: z.string(),
+  /** Path relative to the scanned root ("." for the root itself). */
+  relativePath: z.string(),
+  /** Currently checked-out branch, null when detached or unborn. */
+  currentBranch: z.string().nullable(),
+  /** Local branch names, most recently committed first. */
+  branches: z.array(z.string()),
+  /** Default branch from origin/HEAD when resolvable. */
+  defaultBranch: z.string().nullable().optional(),
+});
+
+export const WorkspaceScanGitReposResponseSchema = z.object({
+  type: z.literal("workspace.scan_git_repos.response"),
+  payload: z.object({
+    rootPath: z.string(),
+    repos: z.array(ScannedGitRepoSchema),
+    /** True when scanning stopped early due to repo/directory limits. */
+    truncated: z.boolean(),
+    error: z.string().nullable(),
+    requestId: z.string(),
+  }),
+});
+
 const PaseoWorktreeSchema = z.object({
   worktreePath: z.string(),
   createdAt: z.string(),
@@ -4004,6 +4041,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   BranchSuggestionsResponseSchema,
   GitHubSearchResponseSchema,
   DirectorySuggestionsResponseSchema,
+  WorkspaceScanGitReposResponseSchema,
   PaseoWorktreeListResponseSchema,
   PaseoWorktreeArchiveResponseSchema,
   CreatePaseoWorktreeResponseSchema,
@@ -4307,6 +4345,9 @@ export type GitHubSearchResponse = z.infer<typeof GitHubSearchResponseSchema>;
 export type CreatePaseoWorktreeRequest = z.infer<typeof CreatePaseoWorktreeRequestSchema>;
 export type DirectorySuggestionsRequest = z.infer<typeof DirectorySuggestionsRequestSchema>;
 export type DirectorySuggestionsResponse = z.infer<typeof DirectorySuggestionsResponseSchema>;
+export type ScannedGitRepo = z.infer<typeof ScannedGitRepoSchema>;
+export type WorkspaceScanGitReposRequest = z.infer<typeof WorkspaceScanGitReposRequestSchema>;
+export type WorkspaceScanGitReposResponse = z.infer<typeof WorkspaceScanGitReposResponseSchema>;
 export type PaseoWorktreeListRequest = z.infer<typeof PaseoWorktreeListRequestSchema>;
 export type PaseoWorktreeListResponse = z.infer<typeof PaseoWorktreeListResponseSchema>;
 export type PaseoWorktreeArchiveRequest = z.infer<typeof PaseoWorktreeArchiveRequestSchema>;

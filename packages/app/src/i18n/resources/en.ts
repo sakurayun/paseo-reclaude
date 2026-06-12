@@ -910,6 +910,24 @@ export const en = {
       searchPlaceholder: "Search branches and PRs",
       title: "Start from",
     },
+    repoPicker: {
+      title: "Repository",
+      choose: "Choose repository",
+      searchPlaceholder: "Search repositories",
+      rootLabel: "Repository root",
+      empty: "No repositories found.",
+      branchCount: "{{count}} branches",
+    },
+  },
+  todoTrack: {
+    header: "Todos {{completed}}/{{total}}",
+    allDone: "All todos completed",
+  },
+  sidechainTrack: {
+    header: "Subagents {{completed}}/{{total}}",
+    allDone: "All subagents finished",
+    closePanel: "Hide subagent status",
+    removeEntry: "Remove from list",
   },
   desktop: {
     quitting: {
@@ -1814,6 +1832,11 @@ export const en = {
       },
       workspaces: {
         unavailable: "Connect to this host to manage workspaces",
+        autoArchive: {
+          title: "Archive merged PR workspaces",
+          hint: "Automatically archive clean Paseo workspaces after their pull request is merged",
+          updateFailedTitle: "Unable to update workspaces",
+        },
       },
       daemon: {
         rename: {

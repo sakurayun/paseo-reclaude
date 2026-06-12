@@ -48,6 +48,7 @@ import type {
   GitHubSearchResponse,
   GitHubSearchRequest,
   DirectorySuggestionsResponse,
+  WorkspaceScanGitReposResponse,
   PaseoWorktreeListResponse,
   PaseoWorktreeArchiveResponse,
   ProjectIconResponse,
@@ -309,6 +310,7 @@ type ValidateBranchPayload = ValidateBranchResponse["payload"];
 type BranchSuggestionsPayload = BranchSuggestionsResponse["payload"];
 type GitHubSearchPayload = GitHubSearchResponse["payload"];
 type DirectorySuggestionsPayload = DirectorySuggestionsResponse["payload"];
+export type WorkspaceScanGitReposPayload = WorkspaceScanGitReposResponse["payload"];
 type PaseoWorktreeListPayload = PaseoWorktreeListResponse["payload"];
 type PaseoWorktreeArchivePayload = PaseoWorktreeArchiveResponse["payload"];
 type CreatePaseoWorktreePayload = Extract<
@@ -3269,6 +3271,22 @@ export class DaemonClient {
       },
       responseType: "directory_suggestions_response",
       timeout: 10000,
+    });
+  }
+
+  async scanGitRepos(
+    options: { rootPath: string; maxDepth?: number },
+    requestId?: string,
+  ): Promise<WorkspaceScanGitReposPayload> {
+    return this.sendCorrelatedSessionRequest({
+      requestId,
+      message: {
+        type: "workspace.scan_git_repos.request",
+        rootPath: options.rootPath,
+        ...(options.maxDepth !== undefined ? { maxDepth: options.maxDepth } : {}),
+      },
+      responseType: "workspace.scan_git_repos.response",
+      timeout: 60000,
     });
   }
 

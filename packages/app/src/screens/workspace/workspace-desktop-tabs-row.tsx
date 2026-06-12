@@ -20,6 +20,7 @@ import {
   CopyX,
   ArrowLeftToLine,
   ArrowRightToLine,
+  ChevronDown,
   Columns2,
   Copy,
   Pencil,
@@ -67,6 +68,19 @@ import {
 import type { WorkspaceTabDescriptor } from "@/screens/workspace/workspace-tabs-types";
 import type { Theme } from "@/styles/theme";
 import { RenderProfile } from "@/utils/render-profiler";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { getProviderIcon } from "@/components/provider-icons";
+import { useSubagentsForParent, type SubagentRow } from "@/subagents";
+import {
+  buildSubagentRowPresentationData,
+  formatHeaderLabel,
+} from "@/subagents/track-presentation";
+import { navigateToAgent } from "@/utils/navigate-to-agent";
 
 const DROPDOWN_WIDTH = 220;
 const LOADING_TAB_LABEL_SKELETON_WIDTH = 80;
@@ -86,6 +100,7 @@ const ThemedGlobe = withUnistyles(Globe);
 const ThemedColumns2 = withUnistyles(Columns2);
 const ThemedRows2 = withUnistyles(Rows2);
 const ThemedPlus = withUnistyles(Plus);
+const ThemedChevronDown = withUnistyles(ChevronDown);
 
 const foregroundColorMapping = (theme: Theme) => ({ color: theme.colors.foreground });
 const mutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
@@ -296,8 +311,110 @@ function TabHandleContent({
   );
 }
 
+function TabSubagentItem({ row, onOpen }: { row: SubagentRow; onOpen: (agentId: string) => void }) {
+  const { t } = useTranslation();
+  const presentation = useMemo<WorkspaceTabPresentation>(
+    () => ({
+      ...buildSubagentRowPresentationData(row),
+      icon: getProviderIcon(row.provider),
+    }),
+    [row],
+  );
+  const displayLabel =
+    presentation.titleState === "loading" ? t("common.states.loading") : presentation.label;
+  const handleSelect = useCallback(() => {
+    onOpen(row.id);
+  }, [onOpen, row.id]);
+  const leading = useMemo(() => <WorkspaceTabIcon presentation={presentation} />, [presentation]);
+  return (
+    <DropdownMenuItem
+      onSelect={handleSelect}
+      leading={leading}
+      testID={`workspace-tab-subagent-${row.id}`}
+    >
+      {displayLabel}
+    </DropdownMenuItem>
+  );
+}
+
+function TabSubagentsDropdown({
+  serverId,
+  parentAgentId,
+}: {
+  serverId: string;
+  parentAgentId: string;
+}) {
+  const rows = useSubagentsForParent({ serverId, parentAgentId });
+  // Block the tab's drag/navigate handlers so pressing the chevron only
+  // opens the dropdown.
+  const dragBlockers = isWeb
+    ? ({
+        onPointerDown: (event: { stopPropagation?: () => void }) => {
+          event.stopPropagation?.();
+        },
+        onMouseDown: (event: { stopPropagation?: () => void }) => {
+          event.stopPropagation?.();
+        },
+      } as const)
+    : undefined;
+
+  const handleOpenSubagent = useCallback(
+    (agentId: string) => {
+      navigateToAgent({ serverId, agentId });
+    },
+    [serverId],
+  );
+
+  const handleTriggerPressIn = useCallback((event: { stopPropagation?: () => void }) => {
+    event.stopPropagation?.();
+  }, []);
+
+  const triggerStyle = useCallback(
+    ({ hovered, pressed, open }: { hovered: boolean; pressed: boolean; open: boolean }) => [
+      styles.tabSubagentsButton,
+      (hovered || pressed || open) && styles.tabSubagentsButtonActive,
+    ],
+    [],
+  );
+
+  if (rows.length === 0) {
+    return null;
+  }
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        {...(dragBlockers as object | undefined)}
+        onPressIn={handleTriggerPressIn}
+        style={triggerStyle}
+        accessibilityLabel={formatHeaderLabel(rows)}
+        testID={`workspace-tab-subagents-${parentAgentId}`}
+        hitSlop={6}
+      >
+        {({ hovered, pressed, open }) => (
+          <>
+            <Text style={styles.tabSubagentsCount} selectable={false}>
+              {rows.length}
+            </Text>
+            <ThemedChevronDown
+              size={10}
+              uniProps={hovered || pressed || open ? foregroundColorMapping : mutedColorMapping}
+            />
+          </>
+        )}
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" minWidth={DROPDOWN_WIDTH} maxHeight={320} scrollable>
+        {rows.map((row) => (
+          <TabSubagentItem key={row.id} row={row} onOpen={handleOpenSubagent} />
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 function TabChip({
   tab,
+  serverId,
   isActive,
   isDragging,
   isFocused,
@@ -315,6 +432,7 @@ function TabChip({
   dragHandleProps,
 }: {
   tab: WorkspaceTabDescriptor;
+  serverId: string;
   isActive: boolean;
   isDragging: boolean;
   isFocused: boolean;
@@ -449,6 +567,10 @@ function TabChip({
                 tabLabelSkeletonStyle={tabLabelSkeletonStyle}
                 tabLabelStyle={tabLabelStyle}
               />
+
+              {tab.target.kind === "agent" ? (
+                <TabSubagentsDropdown serverId={serverId} parentAgentId={tab.target.agentId} />
+              ) : null}
 
               {showCloseButton ? (
                 <Pressable
@@ -985,6 +1107,7 @@ function ResolvedDesktopTabChip({
             {showDropIndicatorBefore ? <View style={TAB_DROP_INDICATOR_BEFORE_STYLE} /> : null}
             <TabChip
               tab={item.tab}
+              serverId={normalizedServerId}
               isActive={item.isActive}
               isDragging={isDragging}
               isFocused={isFocused}
@@ -1132,6 +1255,22 @@ const styles = StyleSheet.create((theme) => ({
     borderRadius: theme.borderRadius.sm,
     alignItems: "center",
     justifyContent: "center",
+  },
+  tabSubagentsButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 2,
+    height: 18,
+    paddingHorizontal: theme.spacing[1],
+    borderRadius: theme.borderRadius.sm,
+    flexShrink: 0,
+  },
+  tabSubagentsButtonActive: {
+    backgroundColor: theme.colors.surface3,
+  },
+  tabSubagentsCount: {
+    fontSize: theme.fontSize.xs,
+    color: theme.colors.foregroundMuted,
   },
   tabCloseButtonShown: {
     opacity: 1,

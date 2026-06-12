@@ -1,7 +1,12 @@
 import type { AgentProvider, ToolCallDetail } from "@getpaseo/protocol/agent-types";
 import type { AgentAttachment, AgentStreamEventPayload } from "@getpaseo/protocol/messages";
 import type { AttachmentMetadata } from "@/attachments/types";
-import { extractTaskEntriesFromToolCall } from "../utils/tool-call-parsers";
+import {
+  applyTaskToolCallEffect,
+  extractTaskEntriesFromToolCall,
+  extractTaskToolCallEffect,
+  resolveTaskToolKind,
+} from "../utils/tool-call-parsers";
 import { splitMarkdownBlocks } from "@/utils/split-markdown-blocks";
 
 /**
@@ -158,6 +163,8 @@ export interface CompactionItem {
 export interface TodoEntry {
   text: string;
   completed: boolean;
+  /** Tasks-system task id; lets incremental TaskUpdate calls find the entry. */
+  sourceId?: string;
 }
 
 export interface TodoListItem {
@@ -510,6 +517,20 @@ function inputFromUnknownDetail(detail: ToolCallDetail): unknown {
   return detail.type === "unknown" ? detail.input : null;
 }
 
+function outputFromUnknownDetail(detail: ToolCallDetail): unknown {
+  return detail.type === "unknown" ? detail.output : null;
+}
+
+function latestTodoEntries(state: StreamItem[], provider: AgentProvider): TodoEntry[] {
+  for (let index = state.length - 1; index >= 0; index -= 1) {
+    const item = state[index];
+    if (item && item.kind === "todo_list" && item.provider === provider) {
+      return item.items;
+    }
+  }
+  return [];
+}
+
 function mergeAgentToolCallStatus(
   existing: AgentToolCallStatus,
   incoming: AgentToolCallStatus,
@@ -625,6 +646,7 @@ function appendTodoList(
   const normalizedItems = items.map((item) => ({
     text: item.text,
     completed: item.completed,
+    ...(item.sourceId ? { sourceId: item.sourceId } : {}),
   }));
 
   const lastItem = state[state.length - 1];
@@ -684,6 +706,48 @@ function reduceTimelineToolCall(
       tasks.map((entry) => ({ text: entry.text, completed: entry.completed })),
       timestamp,
     );
+  }
+
+  // Anthropic Tasks system: incremental task tool calls fold into the same
+  // todo_list checklist that TodoWrite produces.
+  const taskToolKind = resolveTaskToolKind(item.name);
+  if (taskToolKind) {
+    if (item.status === "failed") {
+      // Keep failures visible as regular tool calls so errors aren't lost.
+      return appendAgentToolCall(
+        state,
+        {
+          provider: event.provider,
+          callId: item.callId,
+          name: item.name,
+          status: item.status,
+          error: item.error,
+          detail: item.detail,
+          metadata: item.metadata,
+        },
+        timestamp,
+      );
+    }
+    // TaskGet is a read; running calls have no output yet — swallow both. The
+    // completed call carries the output (where TaskCreate reports the task id
+    // and TaskList reports the authoritative list).
+    if (taskToolKind === "get" || item.status !== "completed") {
+      return state;
+    }
+    const effect = extractTaskToolCallEffect(
+      item.name,
+      inputFromUnknownDetail(item.detail),
+      outputFromUnknownDetail(item.detail),
+    );
+    if (!effect) {
+      return state;
+    }
+    const nextItems = applyTaskToolCallEffect(
+      latestTodoEntries(state, event.provider),
+      effect,
+      `call:${item.callId}`,
+    );
+    return appendTodoList(state, event.provider, nextItems, timestamp);
   }
 
   const tasks = extractTaskEntriesFromToolCall(item.name, inputFromUnknownDetail(item.detail));

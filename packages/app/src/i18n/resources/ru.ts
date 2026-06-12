@@ -929,6 +929,24 @@ export const ru: TranslationResources = {
       searchPlaceholder: "Поиск филиалов и PR",
       title: "Начать с",
     },
+    repoPicker: {
+      title: "Репозиторий",
+      choose: "Выбрать репозиторий",
+      searchPlaceholder: "Поиск репозиториев",
+      rootLabel: "Корень репозитория",
+      empty: "Репозитории не найдены.",
+      branchCount: "Ветки: {{count}}",
+    },
+  },
+  todoTrack: {
+    header: "Задачи {{completed}}/{{total}}",
+    allDone: "Все задачи выполнены",
+  },
+  sidechainTrack: {
+    header: "Субагенты {{completed}}/{{total}}",
+    allDone: "Все субагенты завершили работу",
+    closePanel: "Скрыть статус субагентов",
+    removeEntry: "Убрать из списка",
   },
   desktop: {
     quitting: {
@@ -1848,6 +1866,11 @@ export const ru: TranslationResources = {
       },
       workspaces: {
         unavailable: "Connect to this host to manage workspaces",
+        autoArchive: {
+          title: "Архивировать рабочие пространства со слитым PR",
+          hint: "Автоматически архивировать чистые рабочие пространства Paseo после слияния их pull request",
+          updateFailedTitle: "Не удалось обновить рабочие пространства",
+        },
       },
       daemon: {
         rename: {

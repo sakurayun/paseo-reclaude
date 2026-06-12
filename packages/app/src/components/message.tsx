@@ -476,6 +476,14 @@ const userMessageStylesheet = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.base,
     lineHeight: Math.round(theme.fontSize.base * 1.4),
     overflowWrap: "anywhere",
+    // Native TextKit re-wraps the text inside the frame Yoga assigns, while
+    // the bubble's height was measured at the (possibly fractionally wider)
+    // pre-rounding content width. When a line ends flush with that measured
+    // width, the rounded-down frame pushes the last character onto an extra
+    // line that falls outside the measured height and gets clipped. Reserving
+    // 1pt of right padding keeps the measure width <= the native render
+    // width, so the re-wrap can never produce more lines than were measured.
+    paddingRight: 1,
   },
   findMatchText: {
     backgroundColor:
@@ -3334,7 +3342,7 @@ export const ToolCall = memo(function ToolCall({
   onOpenFilePath,
 }: ToolCallProps) {
   const { openToolCall } = useToolCallSheet();
-  const [isExpanded, setIsExpanded] = useState(false);
+  const [expandedOverride, setExpandedOverride] = useState<boolean | null>(null);
 
   const isMobile = useIsCompactFormFactor();
 
@@ -3351,6 +3359,13 @@ export const ToolCall = memo(function ToolCall({
     }
     return undefined;
   }, [detail, args, result]);
+
+  // Edit and write tool calls start expanded so their diffs are visible
+  // without a click. Derived from the detail (not initial state) because the
+  // detail can arrive after mount while the call is still executing; a manual
+  // toggle always wins once made.
+  const defaultExpanded = effectiveDetail?.type === "edit" || effectiveDetail?.type === "write";
+  const isExpanded = expandedOverride ?? defaultExpanded;
 
   const presentation = useMemo(
     () =>
@@ -3385,9 +3400,10 @@ export const ToolCall = memo(function ToolCall({
         showLoadingSkeleton: presentation.isLoadingDetails,
       });
     } else {
-      setIsExpanded((prev) => !prev);
+      setExpandedOverride((prev) => !(prev ?? defaultExpanded));
     }
   }, [
+    defaultExpanded,
     isMobile,
     openToolCall,
     presentation.displayName,

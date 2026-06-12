@@ -936,6 +936,24 @@ export const fr: TranslationResources = {
       searchPlaceholder: "Rechercher des succursales et des PR",
       title: "Commencer à partir de",
     },
+    repoPicker: {
+      title: "Dépôt",
+      choose: "Choisir un dépôt",
+      searchPlaceholder: "Rechercher des dépôts",
+      rootLabel: "Racine du dépôt",
+      empty: "Aucun dépôt trouvé.",
+      branchCount: "{{count}} branches",
+    },
+  },
+  todoTrack: {
+    header: "Tâches {{completed}}/{{total}}",
+    allDone: "Toutes les tâches sont terminées",
+  },
+  sidechainTrack: {
+    header: "Sous-agents {{completed}}/{{total}}",
+    allDone: "Tous les sous-agents ont terminé",
+    closePanel: "Masquer l'état des sous-agents",
+    removeEntry: "Retirer de la liste",
   },
   desktop: {
     quitting: {
@@ -1860,6 +1878,11 @@ export const fr: TranslationResources = {
       },
       workspaces: {
         unavailable: "Connect to this host to manage workspaces",
+        autoArchive: {
+          title: "Archiver les espaces de travail dont la PR est fusionnée",
+          hint: "Archive automatiquement les espaces de travail Paseo sans modifications en attente une fois leur pull request fusionnée",
+          updateFailedTitle: "Impossible de mettre à jour les espaces de travail",
+        },
       },
       daemon: {
         rename: {

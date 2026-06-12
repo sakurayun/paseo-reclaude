@@ -904,6 +904,24 @@ export const ar: TranslationResources = {
       searchPlaceholder: "بحث الفروع والعلاقات العامة",
       title: "ابدأ من",
     },
+    repoPicker: {
+      title: "المستودع",
+      choose: "اختر المستودع",
+      searchPlaceholder: "البحث في المستودعات",
+      rootLabel: "جذر المستودع",
+      empty: "لم يتم العثور على مستودعات.",
+      branchCount: "{{count}} فروع",
+    },
+  },
+  todoTrack: {
+    header: "المهام {{completed}}/{{total}}",
+    allDone: "اكتملت جميع المهام",
+  },
+  sidechainTrack: {
+    header: "الوكلاء الفرعيون {{completed}}/{{total}}",
+    allDone: "انتهى جميع الوكلاء الفرعيين",
+    closePanel: "إخفاء حالة الوكلاء الفرعيين",
+    removeEntry: "إزالة من القائمة",
   },
   desktop: {
     quitting: {
@@ -1806,6 +1824,11 @@ export const ar: TranslationResources = {
       },
       workspaces: {
         unavailable: "Connect to this host to manage workspaces",
+        autoArchive: {
+          title: "أرشفة مساحات العمل بعد دمج طلب السحب",
+          hint: "أرشفة مساحات عمل Paseo الخالية من التغييرات تلقائيًا بعد دمج طلب السحب الخاص بها",
+          updateFailedTitle: "تعذر تحديث مساحات العمل",
+        },
       },
       daemon: {
         rename: {

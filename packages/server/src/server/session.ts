@@ -205,6 +205,7 @@ import {
 import { validateBranchSlug } from "@getpaseo/protocol/branch-slug";
 import { getProjectIcon } from "../utils/project-icon.js";
 import { expandTilde } from "../utils/path.js";
+import { scanGitRepos } from "./scan-git-repos.js";
 import { searchHomeDirectories, searchWorkspaceEntries } from "../utils/directory-suggestions.js";
 import { toCheckoutError } from "./checkout-git-utils.js";
 import { CheckoutDiffManager } from "./checkout-diff-manager.js";
@@ -2260,6 +2261,8 @@ export class Session {
     switch (msg.type) {
       case "fetch_workspaces_request":
         return this.handleFetchWorkspacesRequest(msg);
+      case "workspace.scan_git_repos.request":
+        return this.handleWorkspaceScanGitReposRequest(msg);
       case "paseo_worktree_list_request":
         return this.handlePaseoWorktreeListRequest(msg);
       case "paseo_worktree_archive_request":
@@ -4865,6 +4868,38 @@ export class Session {
         payload: {
           branches: [],
           branchDetails: [],
+          error: error instanceof Error ? error.message : String(error),
+          requestId,
+        },
+      });
+    }
+  }
+
+  private async handleWorkspaceScanGitReposRequest(
+    msg: Extract<SessionInboundMessage, { type: "workspace.scan_git_repos.request" }>,
+  ): Promise<void> {
+    const { rootPath, maxDepth, requestId } = msg;
+
+    try {
+      const resolvedRootPath = expandTilde(rootPath);
+      const result = await scanGitRepos({ rootPath: resolvedRootPath, maxDepth });
+      this.emit({
+        type: "workspace.scan_git_repos.response",
+        payload: {
+          rootPath: resolvedRootPath,
+          repos: result.repos,
+          truncated: result.truncated,
+          error: null,
+          requestId,
+        },
+      });
+    } catch (error) {
+      this.emit({
+        type: "workspace.scan_git_repos.response",
+        payload: {
+          rootPath,
+          repos: [],
+          truncated: false,
           error: error instanceof Error ? error.message : String(error),
           requestId,
         },
