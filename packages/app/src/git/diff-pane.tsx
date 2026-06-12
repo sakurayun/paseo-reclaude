@@ -1242,6 +1242,8 @@ interface GitDiffPaneProps {
   cwd: string;
   hideHeaderRow?: boolean;
   enabled?: boolean;
+  /** Show only this repo-relative file's diff (single-file preview tabs). */
+  focusFile?: string;
 }
 
 type PressableStyleFn = (
@@ -1740,6 +1742,7 @@ export function GitDiffPane({
   cwd,
   hideHeaderRow,
   enabled,
+  focusFile,
 }: GitDiffPaneProps) {
   const { settings: appSettings } = useAppSettings();
   const { t } = useTranslation();
@@ -1861,7 +1864,7 @@ export function GitDiffPane({
   const diffMode = diffModeOverride ?? activeReviewMode ?? autoDiffMode;
 
   const {
-    files,
+    files: allFiles,
     payloadError: diffPayloadError,
     isLoading: isDiffLoading,
   } = useCheckoutDiffQuery({
@@ -1872,6 +1875,10 @@ export function GitDiffPane({
     ignoreWhitespace: changesPreferences.hideWhitespace,
     enabled: shouldEnableCheckoutDiff({ paneEnabled: enabled !== false, isGit }),
   });
+  const files = useMemo(
+    () => (focusFile ? allFiles.filter((file) => file.path === focusFile) : allFiles),
+    [allFiles, focusFile],
+  );
   const reviewDraftKey = useMemo(
     () =>
       buildReviewDraftKey({

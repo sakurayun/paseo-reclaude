@@ -94,3 +94,5 @@ app.json
 .spec-workflow/templates/requirements-template.md
 .spec-workflow/templates/structure-template.md
 .spec-workflow/templates/tech-template.md
+packages/app/app.config.js
+package-lock.json

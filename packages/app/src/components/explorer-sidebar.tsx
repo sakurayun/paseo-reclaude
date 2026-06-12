@@ -31,6 +31,7 @@ import { useSidebarAnimation } from "@/contexts/sidebar-animation-context";
 import { canCloseRightSidebarGesture } from "@/utils/sidebar-animation-state";
 import { HEADER_INNER_HEIGHT, useIsCompactFormFactor } from "@/constants/layout";
 import { GitDiffPane } from "@/git/diff-pane";
+import { SourceControlPane } from "@/git/source-control-pane";
 import { FileExplorerPane } from "./file-explorer-pane";
 import { useKeyboardShiftStyle } from "@/hooks/use-keyboard-shift-style";
 import { useWindowControlsPadding } from "@/utils/desktop-window";
@@ -47,6 +48,7 @@ interface ExplorerSidebarProps {
   workspaceRoot: string;
   isGit: boolean;
   onOpenFile?: (filePath: string) => void;
+  onOpenDiffFile?: (filePath: string) => void;
 }
 
 export function ExplorerSidebar({
@@ -55,6 +57,7 @@ export function ExplorerSidebar({
   workspaceRoot,
   isGit,
   onOpenFile,
+  onOpenDiffFile,
 }: ExplorerSidebarProps) {
   const { theme } = useUnistyles();
   const isScreenFocused = useIsFocused();
@@ -332,6 +335,7 @@ export function ExplorerSidebar({
               isMobile={isMobile}
               isOpen={isOpen}
               onOpenFile={onOpenFile}
+              onOpenDiffFile={onOpenDiffFile}
             />
           </Animated.View>
         </GestureDetector>
@@ -363,6 +367,7 @@ export function ExplorerSidebar({
           isMobile={false}
           isOpen={isOpen}
           onOpenFile={onOpenFile}
+          onOpenDiffFile={onOpenDiffFile}
         />
       </View>
     </Animated.View>
@@ -397,6 +402,21 @@ function ExplorerTabButton({
   );
 }
 
+// Non-git checkouts only have a files view; the PR tab needs an open PR.
+function resolveVisibleExplorerTab(
+  activeTab: ExplorerTab,
+  isGit: boolean,
+  hasPullRequest: boolean,
+): ExplorerTab {
+  if (!isGit && activeTab !== "files") {
+    return "files";
+  }
+  if (activeTab === "pr" && !hasPullRequest) {
+    return "changes";
+  }
+  return activeTab;
+}
+
 interface SidebarContentProps {
   activeTab: ExplorerTab;
   onTabPress: (tab: ExplorerTab) => void;
@@ -408,6 +428,7 @@ interface SidebarContentProps {
   isMobile: boolean;
   isOpen: boolean;
   onOpenFile?: (filePath: string) => void;
+  onOpenDiffFile?: (filePath: string) => void;
 }
 
 function SidebarContent({
@@ -421,6 +442,7 @@ function SidebarContent({
   isMobile,
   isOpen,
   onOpenFile,
+  onOpenDiffFile,
 }: SidebarContentProps) {
   const { theme } = useUnistyles();
   const { t } = useTranslation();
@@ -433,10 +455,7 @@ function SidebarContent({
     timelineEnabled: activeTab === "pr" && canQueryPullRequest && isOpen,
   });
   const hasPullRequest = prPane.prNumber !== null;
-  const requestedTab: ExplorerTab =
-    !isGit && (activeTab === "changes" || activeTab === "pr") ? "files" : activeTab;
-  const resolvedTab: ExplorerTab =
-    requestedTab === "pr" && !hasPullRequest ? "changes" : requestedTab;
+  const resolvedTab = resolveVisibleExplorerTab(activeTab, isGit, hasPullRequest);
   const prTabLabel = formatPrTabLabel(prPane.prNumber);
   const workspaceAttachmentScopeKey = useMemo(
     () => buildWorkspaceAttachmentScopeKey({ serverId, workspaceId, cwd: workspaceRoot }),
@@ -470,6 +489,15 @@ function SidebarContent({
             onTabPress={onTabPress}
             testID="explorer-tab-files"
           />
+          {isGit && (
+            <ExplorerTabButton
+              tab="git"
+              active={resolvedTab === "git"}
+              label={t("workspace.tabs.explorer.git")}
+              onTabPress={onTabPress}
+              testID="explorer-tab-git"
+            />
+          )}
           {isGit && hasPullRequest && (
             <ExplorerTabButton
               tab="pr"
@@ -521,6 +549,16 @@ function SidebarContent({
             cwd={workspaceRoot}
             data={prPane.data}
             workspaceAttachmentScopeKey={workspaceAttachmentScopeKey}
+          />
+        )}
+        {resolvedTab === "git" && (
+          <SourceControlPane
+            serverId={serverId}
+            cwd={workspaceRoot}
+            workspaceId={workspaceId}
+            enabled={isOpen}
+            onOpenFile={onOpenFile}
+            onOpenDiffFile={onOpenDiffFile}
           />
         )}
       </View>

@@ -623,7 +623,7 @@ export const DEFAULT_UI_FONT_STACK: string = Platform.select({
 export const DEFAULT_MONO_FONT_STACK: string = Platform.select({
   ios: "ui-monospace",
   default: "monospace",
-  web: "SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace",
+  web: "'Maple Mono NF CN', SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace",
 });
 
 // `fontSize`, `fontFamily`, and `lineHeight` are deliberately widened to plain

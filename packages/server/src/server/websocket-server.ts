@@ -1121,6 +1121,10 @@ export class VoiceAssistantWebSocketServer {
         ...(this.dictationSettings ? { dictationModelSelection: true } : {}),
         // COMPAT(workspaceScanGitRepos): added in v0.1.97, remove gate after 2026-12-12.
         workspaceScanGitRepos: true,
+        // COMPAT(checkoutGitLog): added in v0.1.98, remove gate after 2026-12-12.
+        checkoutGitLog: true,
+        // COMPAT(checkoutGitOps): added in v0.1.98, remove gate after 2026-12-12.
+        checkoutGitOps: true,
       },
     };
   }

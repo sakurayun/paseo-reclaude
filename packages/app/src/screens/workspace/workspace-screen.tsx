@@ -2346,6 +2346,26 @@ function WorkspaceScreenContent({
     [isMobile, navigateToTabId, openWorkspaceTabFocused, persistenceKey, showMobileAgent],
   );
 
+  const handleOpenDiffFileFromExplorer = useCallback(
+    function handleOpenDiffFileFromExplorer(filePath: string) {
+      if (isMobile) {
+        showMobileAgent();
+      }
+      if (!persistenceKey) {
+        return;
+      }
+      const path = filePath.trim().replace(/\\/g, "/");
+      if (!path) {
+        return;
+      }
+      const tabId = openWorkspaceTabFocused(persistenceKey, { kind: "file-diff", path });
+      if (tabId) {
+        navigateToTabId(tabId);
+      }
+    },
+    [isMobile, navigateToTabId, openWorkspaceTabFocused, persistenceKey, showMobileAgent],
+  );
+
   const handleOpenFileFromChat = useCallback(
     (location: WorkspaceFileLocation, options?: { parentTabId?: string | null }) => {
       const normalizedLocation = normalizeWorkspaceFileLocation(location);
@@ -3763,6 +3783,7 @@ function WorkspaceScreenContent({
                   workspaceRoot={workspaceDirectory}
                   isGit={isGitCheckout}
                   onOpenFile={handleOpenFileFromExplorer}
+                  onOpenDiffFile={handleOpenDiffFileFromExplorer}
                 />
               ) : null}
             </View>

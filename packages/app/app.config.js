@@ -103,6 +103,15 @@ export default {
     plugins: [
       "expo-router",
       [
+        "expo-font",
+        {
+          fonts: [
+            "./src/assets/fonts/MapleMono-NF-CN-Regular.ttf",
+            "./src/assets/fonts/MapleMono-NF-CN-Bold.ttf",
+          ],
+        },
+      ],
+      [
         "expo-camera",
         {
           cameraPermission: "Allow $(PRODUCT_NAME) to access your camera to scan pairing QR codes.",

@@ -1,5 +1,5 @@
 import type { QueryKey } from "@tanstack/react-query";
-import type { CheckoutPrMergeMethod } from "@getpaseo/protocol/messages";
+import type { CheckoutGitOp, CheckoutPrMergeMethod } from "@getpaseo/protocol/messages";
 import { create } from "zustand";
 import { queryClient as appQueryClient } from "@/query/query-client";
 import {
@@ -40,7 +40,11 @@ export type CheckoutGitAsyncActionId =
   | "disable-pr-auto-merge"
   | "merge-branch"
   | "merge-from-base"
-  | "archive-worktree";
+  | "archive-worktree"
+  | "stash-save"
+  | "stash-pop"
+  | "switch-branch"
+  | `git-op-${CheckoutGitOp}`;
 
 type CheckoutKey = string;
 type StatusMap = Partial<Record<CheckoutGitAsyncActionId, CheckoutGitActionStatus>>;
@@ -234,7 +238,16 @@ interface CheckoutGitActionsStoreState {
     actionId: CheckoutGitAsyncActionId;
   }) => CheckoutGitActionStatus;
 
-  commit: (params: { serverId: string; cwd: string }) => Promise<void>;
+  commit: (params: {
+    serverId: string;
+    cwd: string;
+    message?: string;
+    /** Stage everything before committing (default true). False commits only staged files. */
+    addAll?: boolean;
+  }) => Promise<void>;
+  stashSave: (params: { serverId: string; cwd: string; branch?: string }) => Promise<void>;
+  stashPop: (params: { serverId: string; cwd: string; stashIndex: number }) => Promise<void>;
+  switchBranch: (params: { serverId: string; cwd: string; branch: string }) => Promise<void>;
   pull: (params: { serverId: string; cwd: string }) => Promise<void>;
   push: (params: { serverId: string; cwd: string }) => Promise<void>;
   pullAndPush: (params: { serverId: string; cwd: string }) => Promise<void>;
@@ -257,6 +270,17 @@ interface CheckoutGitActionsStoreState {
     serverId: string;
     cwd: string;
     worktreePath: string;
+  }) => Promise<void>;
+  gitOp: (params: {
+    serverId: string;
+    cwd: string;
+    op: CheckoutGitOp;
+    name?: string;
+    url?: string;
+    message?: string;
+    addAll?: boolean;
+    stashIndex?: number;
+    paths?: string[];
   }) => Promise<void>;
 }
 
@@ -318,14 +342,63 @@ export const useCheckoutGitActionsStore = create<CheckoutGitActionsStoreState>()
     return get().statusByCheckout[key]?.[actionId] ?? "idle";
   },
 
-  commit: async ({ serverId, cwd }) => {
+  commit: async ({ serverId, cwd, message, addAll }) => {
     await runCheckoutAction({
       serverId,
       cwd,
       actionId: "commit",
       run: async () => {
         const client = resolveClient(serverId);
-        const payload = await client.checkoutCommit(cwd, { addAll: true });
+        const trimmed = message?.trim();
+        const payload = await client.checkoutCommit(cwd, {
+          addAll: addAll ?? true,
+          ...(trimmed ? { message: trimmed } : {}),
+        });
+        if (payload.error) {
+          throw new Error(payload.error.message);
+        }
+      },
+    });
+  },
+
+  stashSave: async ({ serverId, cwd, branch }) => {
+    await runCheckoutAction({
+      serverId,
+      cwd,
+      actionId: "stash-save",
+      run: async () => {
+        const client = resolveClient(serverId);
+        const payload = await client.stashSave(cwd, branch ? { branch } : undefined);
+        if (payload.error) {
+          throw new Error(payload.error.message);
+        }
+      },
+    });
+  },
+
+  stashPop: async ({ serverId, cwd, stashIndex }) => {
+    await runCheckoutAction({
+      serverId,
+      cwd,
+      actionId: "stash-pop",
+      run: async () => {
+        const client = resolveClient(serverId);
+        const payload = await client.stashPop(cwd, stashIndex);
+        if (payload.error) {
+          throw new Error(payload.error.message);
+        }
+      },
+    });
+  },
+
+  switchBranch: async ({ serverId, cwd, branch }) => {
+    await runCheckoutAction({
+      serverId,
+      cwd,
+      actionId: "switch-branch",
+      run: async () => {
+        const client = resolveClient(serverId);
+        const payload = await client.checkoutSwitchBranch(cwd, branch);
         if (payload.error) {
           throw new Error(payload.error.message);
         }
@@ -488,6 +561,33 @@ export const useCheckoutGitActionsStore = create<CheckoutGitActionsStoreState>()
         const payload = await client.checkoutMergeFromBase(cwd, {
           baseRef,
           requireCleanTarget: true,
+        });
+        if (payload.error) {
+          throw new Error(payload.error.message);
+        }
+      },
+    });
+  },
+
+  gitOp: async ({ serverId, cwd, op, name, url, message, addAll, stashIndex, paths }) => {
+    const session = useSessionStore.getState().sessions[serverId];
+    if (session?.serverInfo?.features?.checkoutGitOps !== true) {
+      throw new Error(i18n.t("workspace.sourceControl.updateHost"));
+    }
+    await runCheckoutAction({
+      serverId,
+      cwd,
+      actionId: `git-op-${op}`,
+      run: async () => {
+        const client = resolveClient(serverId);
+        const payload = await client.checkoutGitOp(cwd, {
+          op,
+          name,
+          url,
+          message,
+          addAll,
+          stashIndex,
+          paths,
         });
         if (payload.error) {
           throw new Error(payload.error.message);

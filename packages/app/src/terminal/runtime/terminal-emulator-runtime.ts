@@ -149,6 +149,8 @@ const TERMINAL_FIND_SEARCH_OPTIONS: ISearchOptions = {
 };
 
 const DEFAULT_TERMINAL_FONT_FAMILY = [
+  // Bundled with the app (registered at startup): Nerd Font glyphs + CJK.
+  "'Maple Mono NF CN'",
   // Prefer common developer fonts, with Nerd Font variants for prompt/TUI glyphs.
   "JetBrains Mono",
   "JetBrainsMono Nerd Font",

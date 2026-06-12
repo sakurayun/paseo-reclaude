@@ -20,6 +20,8 @@ export interface AdaptiveRenameModalProps {
   onSubmit: (value: string) => Promise<void> | void;
   validate?: (value: string) => string | null;
   maxLength?: number;
+  /** Multi-line text area; Enter inserts a newline instead of submitting. */
+  multiline?: boolean;
   testID?: string;
 }
 
@@ -33,6 +35,7 @@ export function AdaptiveRenameModal({
   onSubmit,
   validate,
   maxLength,
+  multiline = false,
   testID,
 }: AdaptiveRenameModalProps) {
   const { t } = useTranslation();
@@ -114,6 +117,10 @@ export function AdaptiveRenameModal({
   const submitTestID = testID ? `${testID}-submit` : undefined;
   const cancelTestID = testID ? `${testID}-cancel` : undefined;
   const sheetHeader = useMemo<SheetHeader>(() => ({ title }), [title]);
+  const inputStyle = useMemo(
+    () => [styles.input, multiline ? styles.inputMultiline : null],
+    [multiline],
+  );
 
   return (
     <AdaptiveModalSheet
@@ -132,8 +139,9 @@ export function AdaptiveRenameModal({
           autoCorrect={false}
           editable={!isPending}
           maxLength={maxLength}
-          onSubmitEditing={handleSubmitVoid}
-          style={styles.input}
+          multiline={multiline}
+          onSubmitEditing={multiline ? undefined : handleSubmitVoid}
+          style={inputStyle}
           testID={inputTestID}
         />
         {error ? (
@@ -182,6 +190,11 @@ const styles = StyleSheet.create((theme) => ({
     borderWidth: 1,
     borderColor: theme.colors.border,
     fontSize: theme.fontSize.base,
+  },
+  inputMultiline: {
+    minHeight: 120,
+    maxHeight: 240,
+    textAlignVertical: "top",
   },
   errorText: {
     color: theme.colors.palette.red[300],

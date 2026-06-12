@@ -26,7 +26,7 @@ export const MAX_CODE_FONT_SIZE = 22; // line-height 1.5×22=33 stays safe
 export const MAX_FONT_FAMILY_LENGTH = 200;
 // Ligatures were always-on before the setting existed, so the default keeps that behavior.
 export const DEFAULT_TERMINAL_LIGATURES_ENABLED = true;
-export const DEFAULT_TERMINAL_PADDING = 0;
+export const DEFAULT_TERMINAL_PADDING = 5;
 export const MIN_TERMINAL_PADDING = 0;
 export const MAX_TERMINAL_PADDING = 64;
 

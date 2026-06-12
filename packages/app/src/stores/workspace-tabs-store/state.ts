@@ -22,6 +22,7 @@ export type WorkspaceTabTarget =
   | { kind: "terminal"; terminalId: string }
   | { kind: "browser"; browserId: string }
   | WorkspaceFileTabTarget
+  | { kind: "file-diff"; path: string }
   | { kind: "setup"; workspaceId: string }
   | { kind: "sessions"; workspaceId: string };
 
@@ -521,6 +522,9 @@ function coerceWorkspaceTabTarget(raw: Record<string, unknown>): WorkspaceTabTar
       lineStart: typeof raw.lineStart === "number" ? raw.lineStart : undefined,
       lineEnd: typeof raw.lineEnd === "number" ? raw.lineEnd : undefined,
     });
+  }
+  if (kind === "file-diff" && typeof raw.path === "string") {
+    return normalizeWorkspaceTabTarget({ kind: "file-diff", path: raw.path });
   }
   if (kind === "setup" && typeof raw.workspaceId === "string") {
     return normalizeWorkspaceTabTarget({ kind: "setup", workspaceId: raw.workspaceId });

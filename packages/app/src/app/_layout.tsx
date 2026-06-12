@@ -1,4 +1,7 @@
 import "@/styles/unistyles";
+import { registerBundledFonts } from "@/styles/bundled-fonts";
+
+registerBundledFonts();
 import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
 import { PortalProvider } from "@gorhom/portal";
 import { QueryClientProvider } from "@tanstack/react-query";

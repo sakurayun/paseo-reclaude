@@ -1,6 +1,8 @@
 import equal from "fast-deep-equal";
 import { v4 as uuidv4 } from "uuid";
 import { realpathSync } from "node:fs";
+import { promises as fs } from "node:fs";
+import nodePath from "node:path";
 import type { FSWatcher } from "node:fs";
 import { basename, resolve, sep } from "path";
 import { homedir } from "node:os";
@@ -19,6 +21,9 @@ import {
   type FileUploadRequest,
   type GitSetupOptions,
   type CheckoutRenameBranchRequest,
+  type CheckoutGitOpRequest,
+  type CheckoutGitRefsRequest,
+  type CheckoutGitStatusFilesRequest,
   type StartWorkspaceScriptRequest,
   type CloseItemsRequest,
   type SubscribeCheckoutDiffRequest,
@@ -206,6 +211,16 @@ import { validateBranchSlug } from "@getpaseo/protocol/branch-slug";
 import { getProjectIcon } from "../utils/project-icon.js";
 import { expandTilde } from "../utils/path.js";
 import { scanGitRepos } from "./scan-git-repos.js";
+import { getCheckoutLog, getCommitFiles } from "../utils/git-log.js";
+import {
+  countTextBufferLines,
+  parseGitNumstat,
+  parseGitRemotes,
+  parseGitStatusFiles,
+  parseGitTags,
+  planGitOp,
+  requirePaths,
+} from "../utils/git-ops.js";
 import { searchHomeDirectories, searchWorkspaceEntries } from "../utils/directory-suggestions.js";
 import { toCheckoutError } from "./checkout-git-utils.js";
 import { CheckoutDiffManager } from "./checkout-diff-manager.js";
@@ -323,6 +338,7 @@ type GitMutationRefreshReason =
   | "create-branch"
   | "stash-push"
   | "stash-pop"
+  | "git-op"
   | "create-worktree";
 
 // TODO: Remove once all app store clients are on >=0.1.45 and understand arbitrary provider strings.
@@ -2226,6 +2242,12 @@ export class Session {
         return this.handleCheckoutSwitchBranchRequest(msg);
       case "checkout.rename_branch.request":
         return this.handleCheckoutRenameBranchRequest(msg);
+      case "checkout.git_op.request":
+        return this.handleCheckoutGitOpRequest(msg);
+      case "checkout.git_refs.request":
+        return this.handleCheckoutGitRefsRequest(msg);
+      case "checkout.git_status_files.request":
+        return this.handleCheckoutGitStatusFilesRequest(msg);
       case "checkout_commit_request":
         return this.handleCheckoutCommitRequest(msg);
       case "checkout_merge_request":
@@ -2271,6 +2293,10 @@ export class Session {
         return this.handleFetchWorkspacesRequest(msg);
       case "workspace.scan_git_repos.request":
         return this.handleWorkspaceScanGitReposRequest(msg);
+      case "checkout.get_log.request":
+        return this.handleCheckoutGetLogRequest(msg);
+      case "checkout.get_commit_files.request":
+        return this.handleCheckoutGetCommitFilesRequest(msg);
       case "paseo_worktree_list_request":
         return this.handlePaseoWorktreeListRequest(msg);
       case "paseo_worktree_archive_request":
@@ -4915,6 +4941,66 @@ export class Session {
     }
   }
 
+  private async handleCheckoutGetCommitFilesRequest(
+    msg: Extract<SessionInboundMessage, { type: "checkout.get_commit_files.request" }>,
+  ): Promise<void> {
+    const { cwd, hash, requestId } = msg;
+
+    try {
+      const resolvedCwd = expandTilde(cwd);
+      const files = await getCommitFiles({ cwd: resolvedCwd, hash });
+      this.emit({
+        type: "checkout.get_commit_files.response",
+        payload: { cwd: resolvedCwd, hash, files, error: null, requestId },
+      });
+    } catch (error) {
+      this.emit({
+        type: "checkout.get_commit_files.response",
+        payload: {
+          cwd,
+          hash,
+          files: [],
+          error: error instanceof Error ? error.message : String(error),
+          requestId,
+        },
+      });
+    }
+  }
+
+  private async handleCheckoutGetLogRequest(
+    msg: Extract<SessionInboundMessage, { type: "checkout.get_log.request" }>,
+  ): Promise<void> {
+    const { cwd, limit, anchor, skip, requestId } = msg;
+
+    try {
+      const resolvedCwd = expandTilde(cwd);
+      const result = await getCheckoutLog({ cwd: resolvedCwd, limit, anchor, skip });
+      this.emit({
+        type: "checkout.get_log.response",
+        payload: {
+          cwd: resolvedCwd,
+          commits: result.commits,
+          anchor: result.anchor,
+          hasMore: result.hasMore,
+          error: null,
+          requestId,
+        },
+      });
+    } catch (error) {
+      this.emit({
+        type: "checkout.get_log.response",
+        payload: {
+          cwd,
+          commits: [],
+          anchor: null,
+          hasMore: false,
+          error: error instanceof Error ? error.message : String(error),
+          requestId,
+        },
+      });
+    }
+  }
+
   private async handleGitHubSearchRequest(
     msg: Extract<SessionInboundMessage, { type: "github_search_request" }>,
   ): Promise<void> {
@@ -5281,6 +5367,200 @@ export class Session {
           error: toCheckoutError(error),
           requestId,
         },
+      });
+    }
+  }
+
+  /** Append the given repo-relative paths to the repo root .gitignore. */
+  private async appendToGitignore(cwd: string, paths: string[]): Promise<void> {
+    const topLevel = await execCommand("git", ["rev-parse", "--show-toplevel"], { cwd });
+    const repoRoot = (topLevel.stdout ?? "").trim();
+    if (!repoRoot) {
+      throw new Error("Could not resolve the repository root");
+    }
+    const gitignorePath = nodePath.join(repoRoot, ".gitignore");
+    let existing = "";
+    try {
+      existing = await fs.readFile(gitignorePath, "utf8");
+    } catch {
+      // No .gitignore yet — start a fresh one.
+    }
+    const present = new Set(existing.split("\n").map((line) => line.trim()));
+    const additions = paths.filter((entry) => !present.has(entry));
+    if (additions.length === 0) {
+      return;
+    }
+    const prefix = existing.length > 0 && !existing.endsWith("\n") ? "\n" : "";
+    await fs.appendFile(gitignorePath, `${prefix}${additions.join("\n")}\n`, "utf8");
+  }
+
+  private async handleCheckoutGitOpRequest(msg: CheckoutGitOpRequest): Promise<void> {
+    const { cwd, requestId } = msg;
+    try {
+      const outputs: string[] = [];
+      if (msg.op === "ignore-paths") {
+        // Not a git command: appends to the repo root .gitignore.
+        await this.appendToGitignore(cwd, requirePaths(msg.paths));
+      } else {
+        const plan = planGitOp({
+          op: msg.op,
+          name: msg.name,
+          url: msg.url,
+          message: msg.message,
+          addAll: msg.addAll,
+          stashIndex: msg.stashIndex,
+          paths: msg.paths,
+        });
+        for (const args of plan.commands) {
+          const result = await execCommand("git", args, { cwd });
+          const combined = `${result.stdout ?? ""}\n${result.stderr ?? ""}`.trim();
+          if (combined) {
+            outputs.push(combined);
+          }
+        }
+      }
+      // Read-only ops (e.g. diff-paths for copy-as-patch) skip cache refresh.
+      if (msg.op !== "diff-paths") {
+        await this.notifyGitMutation(cwd, "git-op", { invalidateGithub: true });
+        this.checkoutDiffManager.scheduleRefreshForCwd(cwd);
+        // Branch-affecting ops should reflect in the sidebar/header immediately.
+        await this.emitWorkspaceUpdateForCwd(cwd);
+      }
+      this.emit({
+        type: "checkout.git_op.response",
+        payload: {
+          cwd,
+          success: true,
+          output: outputs.join("\n").trim() || undefined,
+          error: null,
+          requestId,
+        },
+      });
+    } catch (error) {
+      this.emit({
+        type: "checkout.git_op.response",
+        payload: { cwd, success: false, error: toCheckoutError(error), requestId },
+      });
+    }
+  }
+
+  private async handleCheckoutGitRefsRequest(msg: CheckoutGitRefsRequest): Promise<void> {
+    const { cwd, requestId } = msg;
+    try {
+      const [remotesResult, tagsResult] = await Promise.all([
+        execCommand("git", ["remote", "-v"], { cwd }),
+        execCommand("git", ["tag", "--list"], { cwd }),
+      ]);
+      this.emit({
+        type: "checkout.git_refs.response",
+        payload: {
+          cwd,
+          remotes: parseGitRemotes(remotesResult.stdout ?? ""),
+          tags: parseGitTags(tagsResult.stdout ?? ""),
+          error: null,
+          requestId,
+        },
+      });
+    } catch (error) {
+      this.emit({
+        type: "checkout.git_refs.response",
+        payload: { cwd, remotes: [], tags: [], error: toCheckoutError(error), requestId },
+      });
+    }
+  }
+
+  private static readonly UNTRACKED_LINECOUNT_MAX_FILES = 200;
+  private static readonly UNTRACKED_LINECOUNT_MAX_BYTES = 1024 * 1024;
+
+  /**
+   * Line counts for untracked files (numstat never covers them): the whole
+   * file counts as added lines. Binary, oversized, and unreadable files are
+   * skipped, as are collapsed untracked directories ("dir/").
+   */
+  private async countUntrackedAddedLines(
+    repoRoot: string,
+    paths: string[],
+  ): Promise<Map<string, number>> {
+    const counts = new Map<string, number>();
+    const candidates = paths
+      .filter((path) => !path.endsWith("/"))
+      .slice(0, Session.UNTRACKED_LINECOUNT_MAX_FILES);
+    await Promise.all(
+      candidates.map(async (path) => {
+        try {
+          const absolute = nodePath.join(repoRoot, path);
+          const stats = await fs.stat(absolute);
+          if (!stats.isFile() || stats.size > Session.UNTRACKED_LINECOUNT_MAX_BYTES) {
+            return;
+          }
+          const lines = countTextBufferLines(await fs.readFile(absolute));
+          if (lines !== null) {
+            counts.set(path, lines);
+          }
+        } catch {
+          // Unreadable file — just skip the badge.
+        }
+      }),
+    );
+    return counts;
+  }
+
+  private async handleCheckoutGitStatusFilesRequest(
+    msg: CheckoutGitStatusFilesRequest,
+  ): Promise<void> {
+    const { cwd, requestId } = msg;
+    try {
+      const [statusResult, worktreeNumstat, indexNumstat, topLevel] = await Promise.all([
+        execCommand("git", ["status", "--porcelain=v1", "-z"], { cwd }),
+        execCommand("git", ["diff", "--numstat"], { cwd }),
+        execCommand("git", ["diff", "--cached", "--numstat"], { cwd }),
+        execCommand("git", ["rev-parse", "--show-toplevel"], { cwd }),
+      ]);
+      const worktreeStats = new Map(
+        parseGitNumstat(worktreeNumstat.stdout ?? "").map((entry) => [entry.path, entry]),
+      );
+      const indexStats = new Map(
+        parseGitNumstat(indexNumstat.stdout ?? "").map((entry) => [entry.path, entry]),
+      );
+      const parsedFiles = parseGitStatusFiles(statusResult.stdout ?? "");
+      const repoRoot = (topLevel.stdout ?? "").trim();
+      const untrackedCounts = repoRoot
+        ? await this.countUntrackedAddedLines(
+            repoRoot,
+            parsedFiles.filter((file) => file.indexStatus === "?").map((file) => file.path),
+          )
+        : new Map<string, number>();
+      const files = parsedFiles.map((file) => {
+        const worktree = worktreeStats.get(file.path);
+        const index = indexStats.get(file.path);
+        const untrackedLines = untrackedCounts.get(file.path);
+        let worktreeAdditions = worktree?.additions;
+        let worktreeDeletions = worktree?.deletions;
+        if (!worktree && untrackedLines !== undefined) {
+          // Untracked file: the whole file counts as added lines.
+          worktreeAdditions = untrackedLines;
+          worktreeDeletions = 0;
+        }
+        return Object.assign(file, {
+          worktreeAdditions,
+          worktreeDeletions,
+          indexAdditions: index?.additions,
+          indexDeletions: index?.deletions,
+        });
+      });
+      this.emit({
+        type: "checkout.git_status_files.response",
+        payload: {
+          cwd,
+          files,
+          error: null,
+          requestId,
+        },
+      });
+    } catch (error) {
+      this.emit({
+        type: "checkout.git_status_files.response",
+        payload: { cwd, files: [], error: toCheckoutError(error), requestId },
       });
     }
   }

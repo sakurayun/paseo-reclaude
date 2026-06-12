@@ -1577,6 +1577,78 @@ export const CheckoutRenameBranchRequestSchema = z.object({
   requestId: z.string(),
 });
 
+/**
+ * Whitelisted repository operations runnable via checkout.git_op.request.
+ * Each maps to a fixed git command sequence on the daemon — never raw argv.
+ */
+export const CheckoutGitOpSchema = z.enum([
+  "fetch",
+  "fetch-prune",
+  "fetch-all",
+  "pull-rebase",
+  "stage-all",
+  "unstage-all",
+  "discard-all",
+  "commit-amend",
+  "undo-last-commit",
+  "abort-rebase",
+  "create-branch",
+  "delete-branch",
+  "publish-branch",
+  "merge-ref",
+  "rebase-ref",
+  "remote-add",
+  "remote-remove",
+  "stash",
+  "stash-untracked",
+  "stash-staged",
+  "stash-apply",
+  "stash-drop",
+  "stash-clear",
+  "tag-create",
+  "tag-delete",
+  "tag-delete-remote",
+  "push-tags",
+  "stage-paths",
+  "unstage-paths",
+  "discard-paths",
+  "clean-paths",
+  "ignore-paths",
+  "stash-paths",
+  "diff-paths",
+]);
+
+export const CheckoutGitOpRequestSchema = z.object({
+  type: z.literal("checkout.git_op.request"),
+  cwd: z.string(),
+  op: CheckoutGitOpSchema,
+  /** Branch / tag / remote / ref name, depending on the op. */
+  name: z.string().optional(),
+  /** Remote URL for remote-add. */
+  url: z.string().optional(),
+  /** Commit message for commit-amend (keeps the old message when absent). */
+  message: z.string().optional(),
+  /** Stage everything first for commit-amend. */
+  addAll: z.boolean().optional(),
+  /** Zero-based index from stash_list_response for stash-apply / stash-drop. */
+  stashIndex: z.number().int().min(0).optional(),
+  /** Repo-relative paths for the *-paths ops. */
+  paths: z.array(z.string()).optional(),
+  requestId: z.string(),
+});
+
+export const CheckoutGitRefsRequestSchema = z.object({
+  type: z.literal("checkout.git_refs.request"),
+  cwd: z.string(),
+  requestId: z.string(),
+});
+
+export const CheckoutGitStatusFilesRequestSchema = z.object({
+  type: z.literal("checkout.git_status_files.request"),
+  cwd: z.string(),
+  requestId: z.string(),
+});
+
 export const StashSaveRequestSchema = z.object({
   type: z.literal("stash_save_request"),
   cwd: z.string(),
@@ -1650,6 +1722,26 @@ export const WorkspaceScanGitReposRequestSchema = z.object({
   rootPath: z.string(),
   /** Maximum directory depth below rootPath to descend into. */
   maxDepth: z.number().int().min(1).max(12).optional(),
+  requestId: z.string(),
+});
+
+export const CheckoutGetLogRequestSchema = z.object({
+  type: z.literal("checkout.get_log.request"),
+  cwd: z.string(),
+  /** Number of commits to return per page. */
+  limit: z.number().int().min(1).max(200).optional(),
+  /** Snapshot anchor (HEAD oid from the first page) so later pages stay stable. */
+  anchor: z.string().optional(),
+  /** Number of commits to skip from the anchor, for pagination. */
+  skip: z.number().int().min(0).optional(),
+  requestId: z.string(),
+});
+
+export const CheckoutGetCommitFilesRequestSchema = z.object({
+  type: z.literal("checkout.get_commit_files.request"),
+  cwd: z.string(),
+  /** Commit oid whose changed files to list (diff against its first parent). */
+  hash: z.string(),
   requestId: z.string(),
 });
 
@@ -2038,6 +2130,9 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   PullRequestTimelineRequestSchema,
   CheckoutSwitchBranchRequestSchema,
   CheckoutRenameBranchRequestSchema,
+  CheckoutGitOpRequestSchema,
+  CheckoutGitRefsRequestSchema,
+  CheckoutGitStatusFilesRequestSchema,
   StashSaveRequestSchema,
   StashPopRequestSchema,
   StashListRequestSchema,
@@ -2046,6 +2141,8 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   GitHubSearchRequestSchema,
   DirectorySuggestionsRequestSchema,
   WorkspaceScanGitReposRequestSchema,
+  CheckoutGetLogRequestSchema,
+  CheckoutGetCommitFilesRequestSchema,
   PaseoWorktreeListRequestSchema,
   PaseoWorktreeArchiveRequestSchema,
   CreatePaseoWorktreeRequestSchema,
@@ -2278,6 +2375,10 @@ export const ServerInfoStatusPayloadSchema = z
         dictationModelSelection: z.boolean().optional(),
         // COMPAT(workspaceScanGitRepos): added in v0.1.97, remove gate after 2026-12-12.
         workspaceScanGitRepos: z.boolean().optional(),
+        // COMPAT(checkoutGitLog): added in v0.1.98, remove gate after 2026-12-12.
+        checkoutGitLog: z.boolean().optional(),
+        // COMPAT(checkoutGitOps): added in v0.1.98, remove gate after 2026-12-12.
+        checkoutGitOps: z.boolean().optional(),
       })
       .optional(),
   })
@@ -3527,6 +3628,61 @@ export const CheckoutRenameBranchResponseSchema = z.object({
   }),
 });
 
+export const CheckoutGitOpResponseSchema = z.object({
+  type: z.literal("checkout.git_op.response"),
+  payload: z.object({
+    cwd: z.string(),
+    success: z.boolean(),
+    /** Trimmed combined git output, for surfacing results in the UI. */
+    output: z.string().optional(),
+    error: CheckoutErrorSchema.nullable(),
+    requestId: z.string(),
+  }),
+});
+
+const CheckoutGitRemoteSchema = z.object({
+  name: z.string(),
+  url: z.string(),
+});
+
+export const CheckoutGitRefsResponseSchema = z.object({
+  type: z.literal("checkout.git_refs.response"),
+  payload: z.object({
+    cwd: z.string(),
+    remotes: z.array(CheckoutGitRemoteSchema),
+    tags: z.array(z.string()),
+    error: CheckoutErrorSchema.nullable(),
+    requestId: z.string(),
+  }),
+});
+
+const CheckoutGitStatusFileSchema = z.object({
+  /** Repo-relative path ("dir/" suffix for untracked directories). */
+  path: z.string(),
+  /** Porcelain index status letter (X column), " " when clean. */
+  indexStatus: z.string(),
+  /** Porcelain worktree status letter (Y column), " " when clean. */
+  worktreeStatus: z.string(),
+  /** Added lines staged in the index (git diff --cached --numstat). */
+  indexAdditions: z.number().int().optional(),
+  /** Deleted lines staged in the index. */
+  indexDeletions: z.number().int().optional(),
+  /** Added lines in the worktree vs the index (git diff --numstat). */
+  worktreeAdditions: z.number().int().optional(),
+  /** Deleted lines in the worktree vs the index. */
+  worktreeDeletions: z.number().int().optional(),
+});
+
+export const CheckoutGitStatusFilesResponseSchema = z.object({
+  type: z.literal("checkout.git_status_files.response"),
+  payload: z.object({
+    cwd: z.string(),
+    files: z.array(CheckoutGitStatusFileSchema),
+    error: CheckoutErrorSchema.nullable(),
+    requestId: z.string(),
+  }),
+});
+
 const StashEntrySchema = z.object({
   index: z.number().int().min(0),
   message: z.string(),
@@ -3642,6 +3798,66 @@ export const WorkspaceScanGitReposResponseSchema = z.object({
     repos: z.array(ScannedGitRepoSchema),
     /** True when scanning stopped early due to repo/directory limits. */
     truncated: z.boolean(),
+    error: z.string().nullable(),
+    requestId: z.string(),
+  }),
+});
+
+export const GitLogCommitSchema = z.object({
+  /** Full commit oid. */
+  hash: z.string(),
+  /** Parent commit oids; >1 for merges, empty for root commits. */
+  parents: z.array(z.string()),
+  /** First line of the commit message. */
+  subject: z.string(),
+  /** Commit message body (everything after the subject), may be empty. */
+  body: z.string().optional().default(""),
+  authorName: z.string(),
+  authorEmail: z.string().optional().default(""),
+  /** Author date as strict ISO 8601. */
+  authorDate: z.string(),
+  /** Decorations from %D: "HEAD -> main", "origin/main", "tag: v1.0". */
+  refs: z.array(z.string()),
+});
+
+export const CheckoutGetLogResponseSchema = z.object({
+  type: z.literal("checkout.get_log.response"),
+  payload: z.object({
+    cwd: z.string(),
+    commits: z.array(GitLogCommitSchema),
+    /** HEAD oid the page was resolved against; null for unborn HEAD (empty repo). */
+    anchor: z.string().nullable(),
+    hasMore: z.boolean(),
+    error: z.string().nullable(),
+    requestId: z.string(),
+  }),
+});
+
+export const GitCommitFileStatusSchema = z.enum([
+  "added",
+  "modified",
+  "deleted",
+  "renamed",
+  "copied",
+  "type-changed",
+  "unmerged",
+  "unknown",
+]);
+
+export const GitCommitFileSchema = z.object({
+  /** Path relative to the repository root. */
+  path: z.string(),
+  /** Previous path for renames/copies. */
+  oldPath: z.string().nullable(),
+  status: GitCommitFileStatusSchema,
+});
+
+export const CheckoutGetCommitFilesResponseSchema = z.object({
+  type: z.literal("checkout.get_commit_files.response"),
+  payload: z.object({
+    cwd: z.string(),
+    hash: z.string(),
+    files: z.array(GitCommitFileSchema),
     error: z.string().nullable(),
     requestId: z.string(),
   }),
@@ -4136,6 +4352,9 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   PullRequestTimelineResponseSchema,
   CheckoutSwitchBranchResponseSchema,
   CheckoutRenameBranchResponseSchema,
+  CheckoutGitOpResponseSchema,
+  CheckoutGitRefsResponseSchema,
+  CheckoutGitStatusFilesResponseSchema,
   StashSaveResponseSchema,
   StashPopResponseSchema,
   StashListResponseSchema,
@@ -4144,6 +4363,8 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   GitHubSearchResponseSchema,
   DirectorySuggestionsResponseSchema,
   WorkspaceScanGitReposResponseSchema,
+  CheckoutGetLogResponseSchema,
+  CheckoutGetCommitFilesResponseSchema,
   PaseoWorktreeListResponseSchema,
   PaseoWorktreeArchiveResponseSchema,
   CreatePaseoWorktreeResponseSchema,
@@ -4436,6 +4657,14 @@ export type CheckoutSwitchBranchRequest = z.infer<typeof CheckoutSwitchBranchReq
 export type CheckoutSwitchBranchResponse = z.infer<typeof CheckoutSwitchBranchResponseSchema>;
 export type CheckoutRenameBranchRequest = z.infer<typeof CheckoutRenameBranchRequestSchema>;
 export type CheckoutRenameBranchResponse = z.infer<typeof CheckoutRenameBranchResponseSchema>;
+export type CheckoutGitOp = z.infer<typeof CheckoutGitOpSchema>;
+export type CheckoutGitOpRequest = z.infer<typeof CheckoutGitOpRequestSchema>;
+export type CheckoutGitOpResponse = z.infer<typeof CheckoutGitOpResponseSchema>;
+export type CheckoutGitRefsRequest = z.infer<typeof CheckoutGitRefsRequestSchema>;
+export type CheckoutGitRefsResponse = z.infer<typeof CheckoutGitRefsResponseSchema>;
+export type CheckoutGitStatusFile = z.infer<typeof CheckoutGitStatusFileSchema>;
+export type CheckoutGitStatusFilesRequest = z.infer<typeof CheckoutGitStatusFilesRequestSchema>;
+export type CheckoutGitStatusFilesResponse = z.infer<typeof CheckoutGitStatusFilesResponseSchema>;
 export type StashSaveRequest = z.infer<typeof StashSaveRequestSchema>;
 export type StashSaveResponse = z.infer<typeof StashSaveResponseSchema>;
 export type StashPopRequest = z.infer<typeof StashPopRequestSchema>;
@@ -4457,6 +4686,13 @@ export type DirectorySuggestionsResponse = z.infer<typeof DirectorySuggestionsRe
 export type ScannedGitRepo = z.infer<typeof ScannedGitRepoSchema>;
 export type WorkspaceScanGitReposRequest = z.infer<typeof WorkspaceScanGitReposRequestSchema>;
 export type WorkspaceScanGitReposResponse = z.infer<typeof WorkspaceScanGitReposResponseSchema>;
+export type GitLogCommit = z.infer<typeof GitLogCommitSchema>;
+export type CheckoutGetLogRequest = z.infer<typeof CheckoutGetLogRequestSchema>;
+export type GitCommitFileStatus = z.infer<typeof GitCommitFileStatusSchema>;
+export type GitCommitFile = z.infer<typeof GitCommitFileSchema>;
+export type CheckoutGetCommitFilesRequest = z.infer<typeof CheckoutGetCommitFilesRequestSchema>;
+export type CheckoutGetCommitFilesResponse = z.infer<typeof CheckoutGetCommitFilesResponseSchema>;
+export type CheckoutGetLogResponse = z.infer<typeof CheckoutGetLogResponseSchema>;
 export type PaseoWorktreeListRequest = z.infer<typeof PaseoWorktreeListRequestSchema>;
 export type PaseoWorktreeListResponse = z.infer<typeof PaseoWorktreeListResponseSchema>;
 export type PaseoWorktreeArchiveRequest = z.infer<typeof PaseoWorktreeArchiveRequestSchema>;

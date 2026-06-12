@@ -22,6 +22,30 @@ export function checkoutDiffQueryKey(
   return ["checkoutDiff", serverId, cwd, mode, baseRef ?? "", ignoreWhitespace === true] as const;
 }
 
+export function gitLogQueryKey(serverId: string, cwd: string) {
+  return ["gitLog", serverId, cwd] as const;
+}
+
+export function gitCommitFilesQueryKey(serverId: string, cwd: string, hash: string) {
+  return ["gitCommitFiles", serverId, cwd, hash] as const;
+}
+
+export function gitBranchesQueryKey(serverId: string, cwd: string) {
+  return ["gitBranches", serverId, cwd] as const;
+}
+
+export function gitStashesQueryKey(serverId: string, cwd: string) {
+  return ["gitStashes", serverId, cwd] as const;
+}
+
+export function gitRefsQueryKey(serverId: string, cwd: string) {
+  return ["gitRefs", serverId, cwd] as const;
+}
+
+export function gitStatusFilesQueryKey(serverId: string, cwd: string) {
+  return ["gitStatusFiles", serverId, cwd] as const;
+}
+
 export function checkoutPrStatusQueryKey(serverId: string, cwd: string) {
   return ["checkoutPrStatus", serverId, cwd] as const;
 }
@@ -42,6 +66,21 @@ export async function invalidateCheckoutGitQueriesForClient(
     }),
     queryClient.invalidateQueries({
       predicate: checkoutQueryPredicate(prPaneTimelineQueryKind, identity),
+    }),
+    queryClient.invalidateQueries({
+      predicate: checkoutQueryPredicate("gitLog", identity),
+    }),
+    queryClient.invalidateQueries({
+      predicate: checkoutQueryPredicate("gitBranches", identity),
+    }),
+    queryClient.invalidateQueries({
+      predicate: checkoutQueryPredicate("gitStashes", identity),
+    }),
+    queryClient.invalidateQueries({
+      predicate: checkoutQueryPredicate("gitRefs", identity),
+    }),
+    queryClient.invalidateQueries({
+      predicate: checkoutQueryPredicate("gitStatusFiles", identity),
     }),
   ]);
 }

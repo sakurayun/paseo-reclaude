@@ -41,6 +41,10 @@ import type {
   CheckoutPrStatusResponse,
   PullRequestTimelineResponse,
   CheckoutSwitchBranchResponse,
+  CheckoutGitOp,
+  CheckoutGitOpResponse,
+  CheckoutGitRefsResponse,
+  CheckoutGitStatusFilesResponse,
   StashSaveResponse,
   StashPopResponse,
   StashListResponse,
@@ -50,6 +54,8 @@ import type {
   GitHubSearchRequest,
   DirectorySuggestionsResponse,
   WorkspaceScanGitReposResponse,
+  CheckoutGetLogResponse,
+  CheckoutGetCommitFilesResponse,
   PaseoWorktreeListResponse,
   PaseoWorktreeArchiveResponse,
   ProjectIconResponse,
@@ -305,6 +311,9 @@ type CheckoutPrStatusPayload = CheckoutPrStatusResponse["payload"];
 type PullRequestTimelinePayload = PullRequestTimelineResponse["payload"];
 type CheckoutSwitchBranchPayload = CheckoutSwitchBranchResponse["payload"];
 export type RenameBranchResult = z.infer<typeof CheckoutRenameBranchResponseSchema>["payload"];
+export type CheckoutGitOpPayload = CheckoutGitOpResponse["payload"];
+export type CheckoutGitRefsPayload = CheckoutGitRefsResponse["payload"];
+export type CheckoutGitStatusFilesPayload = CheckoutGitStatusFilesResponse["payload"];
 type StashSavePayload = StashSaveResponse["payload"];
 type StashPopPayload = StashPopResponse["payload"];
 type StashListPayload = StashListResponse["payload"];
@@ -313,6 +322,8 @@ type BranchSuggestionsPayload = BranchSuggestionsResponse["payload"];
 type GitHubSearchPayload = GitHubSearchResponse["payload"];
 type DirectorySuggestionsPayload = DirectorySuggestionsResponse["payload"];
 export type WorkspaceScanGitReposPayload = WorkspaceScanGitReposResponse["payload"];
+export type CheckoutGetLogPayload = CheckoutGetLogResponse["payload"];
+export type CheckoutGetCommitFilesPayload = CheckoutGetCommitFilesResponse["payload"];
 type PaseoWorktreeListPayload = PaseoWorktreeListResponse["payload"];
 type PaseoWorktreeArchivePayload = PaseoWorktreeArchiveResponse["payload"];
 type CreatePaseoWorktreePayload = Extract<
@@ -3121,6 +3132,64 @@ export class DaemonClient {
     });
   }
 
+  async checkoutGitOp(
+    cwd: string,
+    input: {
+      op: CheckoutGitOp;
+      name?: string;
+      url?: string;
+      message?: string;
+      addAll?: boolean;
+      stashIndex?: number;
+      paths?: string[];
+    },
+    requestId?: string,
+  ): Promise<CheckoutGitOpPayload> {
+    return this.sendCorrelatedSessionRequest({
+      requestId,
+      message: {
+        type: "checkout.git_op.request",
+        cwd,
+        op: input.op,
+        name: input.name,
+        url: input.url,
+        message: input.message,
+        addAll: input.addAll,
+        stashIndex: input.stashIndex,
+        paths: input.paths,
+      },
+      responseType: "checkout.git_op.response",
+      timeout: 60000,
+    });
+  }
+
+  async checkoutGitStatusFiles(
+    cwd: string,
+    requestId?: string,
+  ): Promise<CheckoutGitStatusFilesPayload> {
+    return this.sendCorrelatedSessionRequest({
+      requestId,
+      message: {
+        type: "checkout.git_status_files.request",
+        cwd,
+      },
+      responseType: "checkout.git_status_files.response",
+      timeout: 30000,
+    });
+  }
+
+  async checkoutGitRefs(cwd: string, requestId?: string): Promise<CheckoutGitRefsPayload> {
+    return this.sendCorrelatedSessionRequest({
+      requestId,
+      message: {
+        type: "checkout.git_refs.request",
+        cwd,
+      },
+      responseType: "checkout.git_refs.response",
+      timeout: 30000,
+    });
+  }
+
   async stashSave(
     cwd: string,
     options?: { branch?: string },
@@ -3315,6 +3384,40 @@ export class DaemonClient {
       },
       responseType: "workspace.scan_git_repos.response",
       timeout: 60000,
+    });
+  }
+
+  async getCommitFiles(
+    options: { cwd: string; hash: string },
+    requestId?: string,
+  ): Promise<CheckoutGetCommitFilesPayload> {
+    return this.sendCorrelatedSessionRequest({
+      requestId,
+      message: {
+        type: "checkout.get_commit_files.request",
+        cwd: options.cwd,
+        hash: options.hash,
+      },
+      responseType: "checkout.get_commit_files.response",
+      timeout: 15000,
+    });
+  }
+
+  async getCheckoutLog(
+    options: { cwd: string; limit?: number; anchor?: string; skip?: number },
+    requestId?: string,
+  ): Promise<CheckoutGetLogPayload> {
+    return this.sendCorrelatedSessionRequest({
+      requestId,
+      message: {
+        type: "checkout.get_log.request",
+        cwd: options.cwd,
+        ...(options.limit !== undefined ? { limit: options.limit } : {}),
+        ...(options.anchor !== undefined ? { anchor: options.anchor } : {}),
+        ...(options.skip !== undefined ? { skip: options.skip } : {}),
+      },
+      responseType: "checkout.get_log.response",
+      timeout: 30000,
     });
   }
 
