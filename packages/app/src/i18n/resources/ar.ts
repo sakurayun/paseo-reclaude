@@ -469,7 +469,7 @@ export const ar: TranslationResources = {
       loadingAgentTitle: "جارٍ تحميل عنوان الوكيل",
       emptyPane: "لا توجد علامات تبويب في هذا الجزء.",
       fallback: {
-        newAgent: "جديد Agent",
+        newAgent: "وكيل جديد",
         setup: "يثبت",
         workspaceSetup: "إعداد Workspace",
         terminal: "Terminal",
@@ -487,6 +487,7 @@ export const ar: TranslationResources = {
         openFor: "فتح القائمة لـ{{label}}",
         copyResumeCommand: "نسخ أمر السيرة الذاتية",
         copyAgentId: "نسخ معرف الوكيل",
+        copyFilePath: "Copy file path",
         rename: "إعادة تسمية",
         closeAbove: "إغلاق علامات التبويب أعلاه",
         closeBelow: "إغلاق علامات التبويب أدناه",
@@ -500,13 +501,15 @@ export const ar: TranslationResources = {
         renameAgent: "إعادة تسمية الوكيل",
       },
       actions: {
-        newAgent: "علامة تبويب الوكيل الجديد",
-        newTerminal: "علامة تبويب طرفية جديدة",
+        newAgent: "وكيل جديد",
+        newTerminal: "محطة جديدة",
         preparingTerminal: "إعداد علامة التبويب المحطة الطرفية",
         preparingTerminalTooltip: "جارٍ تحضير المحطة...",
-        newBrowser: "علامة تبويب متصفح جديدة",
+        newBrowser: "متصفح جديد",
         splitRight: "تقسيم الجزء الأيمن",
         splitDown: "تقسيم الجزء لأسفل",
+        terminalProfilesMenu: "Terminal profiles",
+        editTerminalProfiles: "Edit profiles…",
       },
       explorer: {
         open: "افتح المستكشف",
@@ -519,6 +522,7 @@ export const ar: TranslationResources = {
         copyFailed: "فشل النسخ",
         agentIdCopiedLabel: "AgentID",
         resumeCommandCopiedLabel: "أمر الاستئناف",
+        filePathCopiedLabel: "File path",
         resumeIdUnavailable: "السيرة الذاتية ID غير متوفرة",
         resumeCommandUnavailable: "أمر الاستئناف غير متوفر",
         reloadingAgent: "وكيل إعادة التحميل...",
@@ -1373,7 +1377,7 @@ export const ar: TranslationResources = {
   },
   panels: {
     draft: {
-      newAgent: "جديد Agent",
+      newAgent: "وكيل جديد",
       creatingAgent: "وكيل الخلق",
     },
     file: {
@@ -1394,7 +1398,7 @@ export const ar: TranslationResources = {
   },
   renameModal: {
     rename: "إعادة تسمية",
-    saving: "توفير...",
+    saving: "جارٍ الحفظ...",
   },
   sidebarCallout: {
     dismiss: "رفض",
@@ -1540,13 +1544,18 @@ export const ar: TranslationResources = {
       agents: "Agents",
       workspaces: "Workspaces",
       providers: "مقدمي الخدمات",
+      terminals: "Terminals",
       host: "Host",
     },
     general: {
       title: "عام",
       defaultSend: {
         label: "إرسال افتراضي",
-        description: "ماذا يحدث عند الضغط على Enter أثناء تشغيل الوكيل",
+        descriptions: {
+          interrupt:
+            "عند تشغيل الوكيل، يوقف Enter التشغيل. Command/Ctrl+Enter يضيف إلى قائمة الانتظار.",
+          queue: "عند تشغيل الوكيل، يضيف Enter إلى قائمة الانتظار. Command/Ctrl+Enter يرسل.",
+        },
         options: {
           interrupt: "مقاطعة",
           queue: "طابور",
@@ -1808,15 +1817,15 @@ export const ar: TranslationResources = {
           accessibilityLabel: "حقن أدوات Paseo",
         },
         systemPrompt: {
-          edit: "تعديل",
-          reset: "إعادة تعيين",
-          save: "حفظ",
-          saving: "جارٍ الحفظ...",
           title: "موجه النظام",
           hint: "إضافة موجه النظام إلى كافة الوكلاء",
           sheetTitle: "إلحاق موجه النظام",
           accessibilityLabel: "إلحاق موجه النظام",
           placeholder: "اجعل الردود موجزة دائمًا.",
+          edit: "تحرير",
+          reset: "إعادة ضبط",
+          save: "حفظ",
+          saving: "جارٍ الحفظ...",
         },
       },
       agents: {
@@ -1830,12 +1839,33 @@ export const ar: TranslationResources = {
           updateFailedTitle: "تعذر تحديث مساحات العمل",
         },
       },
+      terminalProfiles: {
+        unavailable: "Connect to this host to manage terminal profiles",
+        sectionTitle: "Terminal profiles",
+        editProfile: "Edit profile",
+        addProfileTitle: "Add terminal profile",
+        editProfileTitle: "Edit terminal profile",
+        namePlaceholder: "Claude Code",
+        commandPlaceholder: "claude",
+        argsPlaceholder: "--dangerously-skip-permissions",
+        nameLabel: "Name",
+        commandLabel: "Command",
+        argsLabel: "Arguments",
+        argsHint: "Space-separated arguments passed to the command",
+        remove: "Remove",
+        removeConfirmTitle: "Remove profile?",
+        removeConfirmMessage: 'Remove "{{name}}"?',
+        moveUp: "Move up",
+        moveDown: "Move down",
+        save: "Save",
+        emptyState: "No profiles yet. Add one to launch terminals with a specific command.",
+      },
       daemon: {
         rename: {
           editLabel: "تحرير التسمية",
-          submit: "حفظ",
           title: "إعادة تسمية المضيف",
           placeholder: "بلدي Host",
+          submit: "إعادة تسمية",
         },
         restart: {
           title: "إعادة تشغيل البرنامج الخفي",
@@ -2030,9 +2060,9 @@ export const ar: TranslationResources = {
       actions: {
         reload: "إعادة تحميل",
         tryAgain: "حاول ثانية",
-        save: "يحفظ",
+        save: "حفظ",
         saved: "تم حفظ المشروع",
-        saving: "توفير...",
+        saving: "جارٍ الحفظ...",
         cancel: "يلغي",
       },
     },

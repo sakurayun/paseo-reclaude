@@ -49,7 +49,7 @@ interface MarkdownParagraphViewProps {
   children: ReactNode;
 }
 
-const MARKDOWN_PARAGRAPH_RESET: ViewStyle = { marginBottom: 0 };
+const MARKDOWN_PARAGRAPH_RESET: ViewStyle = {};
 
 // UITextView re-wraps its text inside the frame Yoga assigns, while the
 // paragraph's height was measured by RN's TextLayoutManager at the (possibly

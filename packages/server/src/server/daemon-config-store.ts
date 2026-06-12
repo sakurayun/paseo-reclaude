@@ -230,6 +230,9 @@ function mergeMutableConfigIntoPersistedConfig(params: {
       },
       autoArchiveAfterMerge: mutable.autoArchiveAfterMerge,
       appendSystemPrompt: mutable.appendSystemPrompt,
+      ...(mutable.terminalProfiles !== undefined
+        ? { terminalProfiles: mutable.terminalProfiles }
+        : {}),
     },
     agents: nextAgents,
   } as PersistedConfig;
