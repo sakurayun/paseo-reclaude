@@ -4,7 +4,7 @@ compatibility_date = "2024-12-01"
 compatibility_flags = ["nodejs_compat"]
 main = "./src/server-entry.ts"
 
-routes = [{ pattern = "paseo.vup.im", custom_domain = true }]
+# Fork note: no routes — paseo.vup.im belongs to the web app (Pages).
 
 [observability]
 enabled = true
