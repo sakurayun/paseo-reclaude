@@ -71,6 +71,8 @@ import { Shortcut } from "@/components/ui/shortcut";
 import { useShortcutKeys } from "@/hooks/use-shortcut-keys";
 import { AutocompletePopover } from "@/components/ui/autocomplete-popover";
 import { useAgentAutocomplete } from "@/hooks/use-agent-autocomplete";
+import { usePromptHistory } from "@/hooks/use-prompt-history";
+import { useGlobalPromptHistoryStore } from "@/stores/prompt-history-store";
 import {
   useHostRuntimeAgentDirectoryStatus,
   useHostRuntimeClient,
@@ -1071,6 +1073,18 @@ export function Composer({
   const autocompleteOnKeyPressRef = useRef(autocomplete.onKeyPress);
   autocompleteOnKeyPressRef.current = autocomplete.onKeyPress;
 
+  const promptHistory = usePromptHistory({
+    value: userInput,
+    cursorIndex,
+    agentId,
+    serverId,
+    onApply: setUserInput,
+  });
+  const promptHistoryOnKeyPressRef = useRef(promptHistory.onKeyPress);
+  promptHistoryOnKeyPressRef.current = promptHistory.onKeyPress;
+  const promptHistoryResetRef = useRef(promptHistory.reset);
+  promptHistoryResetRef.current = promptHistory.reset;
+
   // Clear send error when user edits the input
   useEffect(() => {
     if (sendError && userInput) {
@@ -1244,6 +1258,10 @@ export function Composer({
         },
         failedToSendMessage: t("composer.errors.failedToSend"),
       });
+      if (result === "submitted" || result === "queued") {
+        useGlobalPromptHistoryStore.getState().pushPrompt(outgoingMessage);
+        promptHistoryResetRef.current();
+      }
       completeSubmit({
         result,
         outgoingAttachments,
@@ -1467,8 +1485,10 @@ export function Composer({
 
   // Handle keyboard navigation for command autocomplete.
   const handleCommandKeyPress = useCallback(
-    (event: { key: string; preventDefault: () => void }) =>
-      autocompleteOnKeyPressRef.current(event),
+    (event: { key: string; preventDefault: () => void }) => {
+      if (autocompleteOnKeyPressRef.current(event)) return true;
+      return promptHistoryOnKeyPressRef.current(event);
+    },
     [],
   );
 
