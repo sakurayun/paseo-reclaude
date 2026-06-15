@@ -89,10 +89,6 @@ packages/server/src/server/fixtures/dictation/dictation-debug-largest.transcript
 packages/desktop/.cache/
 packages/desktop/src-tauri/resources/managed-runtime/
 app.json
-.spec-workflow/templates/design-template.md
-.spec-workflow/templates/product-template.md
-.spec-workflow/templates/requirements-template.md
-.spec-workflow/templates/structure-template.md
-.spec-workflow/templates/tech-template.md
+.spec-workflow/templates/
 packages/app/app.config.js
 package-lock.json
