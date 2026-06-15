@@ -1586,6 +1586,7 @@ export class DaemonClient {
   sendHeartbeat(params: {
     deviceType: "web" | "mobile";
     focusedAgentId: string | null;
+    focusedTerminalId?: string | null;
     lastActivityAt: string;
     appVisible: boolean;
     appVisibilityChangedAt?: string;
@@ -1594,6 +1595,7 @@ export class DaemonClient {
       type: "client_heartbeat",
       deviceType: params.deviceType,
       focusedAgentId: params.focusedAgentId,
+      focusedTerminalId: params.focusedTerminalId ?? null,
       lastActivityAt: params.lastActivityAt,
       appVisible: params.appVisible,
       appVisibilityChangedAt: params.appVisibilityChangedAt,

@@ -668,6 +668,9 @@ function isClaudeNoResponsePlaceholderText(value: unknown): boolean {
 
 const LOCAL_COMMAND_STDOUT_PATTERN =
   /^\s*<local-command-stdout>[\s\S]*<\/local-command-stdout>\s*$/;
+const CLAUDE_COMMAND_MESSAGE_PATTERN = /<command-message>([\s\S]*?)<\/command-message>/;
+const CLAUDE_COMMAND_ARGS_PATTERN = /<command-args>([\s\S]*?)<\/command-args>/;
+const CLAUDE_COMMAND_NAME_PATTERN = /<command-name>([\s\S]*?)<\/command-name>/;
 
 function isClaudeLocalCommandStdout(value: unknown): boolean {
   const normalized = normalizeClaudeTranscriptText(value);
@@ -723,7 +726,7 @@ export function extractUserMessageText(content: unknown): string | null {
     if (!normalized || isClaudeTranscriptNoiseText(normalized)) {
       return null;
     }
-    return normalized;
+    return normalizeClaudeUserPromptText(normalized);
   }
 
   if (!Array.isArray(content)) {
@@ -739,7 +742,10 @@ export function extractUserMessageText(content: unknown): string | null {
     if (text && text.trim()) {
       const trimmed = text.trim();
       if (!isClaudeTranscriptNoiseText(trimmed)) {
-        parts.push(trimmed);
+        const normalized = normalizeClaudeUserPromptText(trimmed);
+        if (normalized) {
+          parts.push(normalized);
+        }
       }
       continue;
     }
@@ -747,7 +753,10 @@ export function extractUserMessageText(content: unknown): string | null {
     if (input && input.trim()) {
       const trimmed = input.trim();
       if (!isClaudeTranscriptNoiseText(trimmed)) {
-        parts.push(trimmed);
+        const normalized = normalizeClaudeUserPromptText(trimmed);
+        if (normalized) {
+          parts.push(normalized);
+        }
       }
     }
   }
@@ -5343,6 +5352,38 @@ function normalizeImportablePromptPreview(text: string): string | null {
   return normalized.length > 160 ? normalized.slice(0, 160) : normalized;
 }
 
+function normalizeClaudeUserPromptText(text: string): string | null {
+  const normalized = text.trim();
+  if (!CLAUDE_COMMAND_MESSAGE_PATTERN.test(normalized)) {
+    return normalized || null;
+  }
+
+  const command = readClaudeCommandPromptName(normalized);
+  if (!command) {
+    return null;
+  }
+
+  const commandArgs = normalized.match(CLAUDE_COMMAND_ARGS_PATTERN)?.[1]?.trim();
+  if (commandArgs) {
+    return `${command} ${commandArgs}`;
+  }
+
+  return command;
+}
+
+function readClaudeCommandPromptName(text: string): string | null {
+  const commandName = text.match(CLAUDE_COMMAND_NAME_PATTERN)?.[1]?.trim();
+  if (commandName) {
+    return commandName.startsWith("/") ? commandName : `/${commandName}`;
+  }
+
+  const commandMessage = text.match(CLAUDE_COMMAND_MESSAGE_PATTERN)?.[1]?.trim();
+  if (!commandMessage) {
+    return null;
+  }
+  return commandMessage.startsWith("/") ? commandMessage : `/${commandMessage}`;
+}
+
 function extractClaudeUserText(messageRaw: unknown): string | null {
   const message = toObjectRecord(messageRaw);
   if (!message) {
@@ -5350,11 +5391,13 @@ function extractClaudeUserText(messageRaw: unknown): string | null {
   }
   if (typeof message.content === "string") {
     const normalized = message.content.trim();
-    return normalized && !isClaudeTranscriptNoiseText(normalized) ? normalized : null;
+    if (!normalized || isClaudeTranscriptNoiseText(normalized)) return null;
+    return normalizeClaudeUserPromptText(normalized);
   }
   if (typeof message.text === "string") {
     const normalized = message.text.trim();
-    return normalized && !isClaudeTranscriptNoiseText(normalized) ? normalized : null;
+    if (!normalized || isClaudeTranscriptNoiseText(normalized)) return null;
+    return normalizeClaudeUserPromptText(normalized);
   }
   if (isUnknownArray(message.content)) {
     for (const block of message.content) {
@@ -5362,7 +5405,7 @@ function extractClaudeUserText(messageRaw: unknown): string | null {
       if (blockRecord && typeof blockRecord.text === "string") {
         const normalized = blockRecord.text.trim();
         if (normalized && !isClaudeTranscriptNoiseText(normalized)) {
-          return normalized;
+          return normalizeClaudeUserPromptText(normalized);
         }
       }
     }

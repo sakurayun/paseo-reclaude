@@ -5,7 +5,7 @@ import { useTranslation } from "react-i18next";
 import { GitDiffPane } from "@/git/diff-pane";
 import { usePaneContext } from "@/panels/pane-context";
 import type { PanelRegistration } from "@/panels/panel-registry";
-import { useWorkspaceExecutionAuthority } from "@/stores/session-store-hooks";
+import { useWorkspaceDirectory } from "@/stores/session-store-hooks";
 
 const CENTERED_PADDED_STYLE = {
   flex: 1,
@@ -29,15 +29,12 @@ function useFileDiffPanelDescriptor(target: { kind: "file-diff"; path: string })
 function FileDiffPanel() {
   const { t } = useTranslation();
   const { serverId, workspaceId, target } = usePaneContext();
-  const workspaceAuthority = useWorkspaceExecutionAuthority(serverId, workspaceId);
-  const workspaceDirectory = workspaceAuthority?.ok
-    ? workspaceAuthority.authority.workspaceDirectory
-    : null;
+  const workspaceDirectory = useWorkspaceDirectory(serverId, workspaceId);
   invariant(target.kind === "file-diff", "FileDiffPanel requires file-diff target");
   if (!workspaceDirectory) {
     return (
       <View style={CENTERED_PADDED_STYLE}>
-        <Text>{t("panels.file.executionDirectoryMissing")}</Text>
+        <Text>{t("panels.file.directoryMissing")}</Text>
       </View>
     );
   }

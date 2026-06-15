@@ -128,10 +128,7 @@ import type { PrHint } from "@/git/use-pr-status-query";
 import { buildSidebarProjectRowModel } from "@/utils/sidebar-project-row-model";
 import { redirectIfArchivingActiveWorkspace } from "@/utils/sidebar-workspace-archive-redirect";
 import { openExternalUrl } from "@/utils/open-external-url";
-import {
-  requireWorkspaceExecutionDirectory,
-  resolveWorkspaceExecutionDirectory,
-} from "@/utils/workspace-execution";
+import { requireWorkspaceDirectory, resolveWorkspaceDirectory } from "@/utils/workspace-directory";
 import {
   confirmRiskyWorktreeArchive,
   type WorktreeArchiveWarningLabels,
@@ -1574,7 +1571,7 @@ function WorkspaceRowWithMenu({
   const queryClient = useQueryClient();
   const [isArchivingWorkspace, setIsArchivingWorkspace] = useState(false);
   const [isRenameOpen, setIsRenameOpen] = useState(false);
-  const workspaceDirectory = resolveWorkspaceExecutionDirectory({
+  const workspaceDirectory = resolveWorkspaceDirectory({
     workspaceDirectory: workspace.workspaceDirectory,
   });
   const archiveStatus = useCheckoutGitActionsStore((state) =>
@@ -1616,7 +1613,7 @@ function WorkspaceRowWithMenu({
     }
     let archiveDirectory: string;
     try {
-      archiveDirectory = requireWorkspaceExecutionDirectory({
+      archiveDirectory = requireWorkspaceDirectory({
         workspaceId: workspace.workspaceId,
         workspaceDirectory: workspace.workspaceDirectory,
       });
@@ -1696,7 +1693,7 @@ function WorkspaceRowWithMenu({
   const handleCopyPath = useCallback(() => {
     let copyTargetDirectory: string;
     try {
-      copyTargetDirectory = requireWorkspaceExecutionDirectory({
+      copyTargetDirectory = requireWorkspaceDirectory({
         workspaceId: workspace.workspaceId,
         workspaceDirectory: workspace.workspaceDirectory,
       });
@@ -1740,7 +1737,7 @@ function WorkspaceRowWithMenu({
       if (!client) {
         throw new Error(t("sidebar.workspace.toasts.hostDisconnected"));
       }
-      const targetCwd = requireWorkspaceExecutionDirectory({
+      const targetCwd = requireWorkspaceDirectory({
         workspaceId: workspace.workspaceId,
         workspaceDirectory: workspace.workspaceDirectory,
       });

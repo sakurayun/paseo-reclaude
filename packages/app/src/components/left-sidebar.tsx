@@ -659,6 +659,7 @@ function MobileSidebar({
     windowWidth,
     animateToOpen,
     animateToClose,
+    overlayVisible,
     isGesturing,
     mobilePanelState,
     gestureAnimatingRef,
@@ -798,7 +799,6 @@ function MobileSidebar({
 
   const backdropAnimatedStyle = useAnimatedStyle(() => ({
     opacity: backdropOpacity.value,
-    pointerEvents: backdropOpacity.value > 0.01 ? "auto" : "none",
   }));
 
   let overlayPointerEvents: "auto" | "none" | "box-none";
@@ -807,8 +807,15 @@ function MobileSidebar({
   else overlayPointerEvents = "none";
 
   const backdropStyle = useMemo(
-    () => [staticStyles.backdrop, backdropAnimatedStyle],
-    [backdropAnimatedStyle],
+    () => [
+      staticStyles.backdrop,
+      backdropAnimatedStyle,
+      // pointerEvents is React-owned, not worklet-owned: Reanimated never
+      // touches it, so a stale animated-prop revert can't wedge an invisible
+      // tap-eating backdrop.
+      { pointerEvents: isOpen ? ("auto" as const) : ("none" as const) },
+    ],
+    [backdropAnimatedStyle, isOpen],
   );
   const mobileSidebarStyle = useMemo(
     () => [
@@ -819,9 +826,19 @@ function MobileSidebar({
     ],
     [mobileSidebarInsetStyle, sidebarAnimatedStyle, theme.colors.surfaceSidebar],
   );
+  // display is React-owned on the plain wrapper View (no animated styles), so
+  // a hidden overlay stays hidden no matter what Reanimated's Fabric overlay
+  // reverts the panel transform to after a heavy commit (reanimated#9635).
+  const overlayStyle = useMemo(
+    () => [
+      StyleSheet.absoluteFillObject,
+      { display: overlayVisible ? ("flex" as const) : ("none" as const) },
+    ],
+    [overlayVisible],
+  );
 
   return (
-    <View style={StyleSheet.absoluteFillObject} pointerEvents={overlayPointerEvents}>
+    <View style={overlayStyle} pointerEvents={overlayPointerEvents}>
       <Animated.View style={backdropStyle} />
 
       <GestureDetector gesture={closeGesture} touchAction="pan-y">

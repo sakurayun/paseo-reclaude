@@ -523,6 +523,7 @@ function MobileGestureWrapper({
     windowWidth,
     animateToOpen,
     animateToClose,
+    setOverlayPeek,
     isGesturing,
     mobilePanelState,
     gestureAnimatingRef,
@@ -591,6 +592,8 @@ function MobileGestureWrapper({
         })
         .onStart(() => {
           isGesturing.value = true;
+          // The overlay is display:none while closed; reveal it for the drag.
+          runOnJS(setOverlayPeek)(true);
         })
         .onUpdate((event) => {
           const newTranslateX = Math.min(0, -windowWidth + event.translationX);
@@ -614,6 +617,7 @@ function MobileGestureWrapper({
         })
         .onFinalize(() => {
           isGesturing.value = false;
+          runOnJS(setOverlayPeek)(false);
         }),
     [
       openGestureEnabled,
@@ -623,6 +627,7 @@ function MobileGestureWrapper({
       mobilePanelState,
       animateToOpen,
       animateToClose,
+      setOverlayPeek,
       handleGestureOpen,
       isGesturing,
       openGestureRef,

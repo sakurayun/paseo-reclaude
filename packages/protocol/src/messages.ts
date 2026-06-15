@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { TerminalActivitySchema } from "./terminal-activity.js";
 import { CLIENT_CAPS } from "./client-capabilities.js";
 import { AGENT_LIFECYCLE_STATUSES } from "./agent-lifecycle.js";
 import { MAX_EXPLICIT_AGENT_TITLE_CHARS } from "@getpaseo/protocol/agent-title-limits";
@@ -166,6 +167,7 @@ export const MutableDaemonConfigSchema = z
     modelGateways: z.record(z.string(), ModelGatewayConfigSchema).default({}),
     metadataGeneration: MutableMetadataGenerationConfigSchema.default({ providers: [] }),
     autoArchiveAfterMerge: z.boolean().default(false),
+    enableTerminalAgentHooks: z.boolean().default(false),
     appendSystemPrompt: z.string().default(""),
     terminalProfiles: z.array(TerminalProfileSchema).optional(),
   })
@@ -180,6 +182,7 @@ export const MutableDaemonConfigPatchSchema = z
     modelGateways: z.record(z.string(), ModelGatewayConfigSchema).optional(),
     metadataGeneration: MutableMetadataGenerationConfigSchema.partial().optional(),
     autoArchiveAfterMerge: z.boolean().optional(),
+    enableTerminalAgentHooks: z.boolean().optional(),
     appendSystemPrompt: z.string().optional(),
     terminalProfiles: z.array(TerminalProfileSchema).optional(),
   })
@@ -979,6 +982,7 @@ export const FetchWorkspacesRequestMessageSchema = z.object({
     .object({
       query: z.string().optional(),
       projectId: z.string().optional(),
+      // Unused: accepted so older clients still parse, but the server does not filter on it.
       idPrefix: z.string().optional(),
     })
     .optional(),
@@ -1802,6 +1806,7 @@ export const LegacyOpenInEditorRequestSchema = z.object({
 
 export const OpenProjectRequestSchema = z.object({
   type: z.literal("open_project_request"),
+  // Path used only for workspace lookup/creation. Use the returned workspace.id for all subsequent references.
   cwd: z.string(),
   requestId: z.string(),
 });
@@ -1924,6 +1929,8 @@ export const ClientHeartbeatMessageSchema = z.object({
   type: z.literal("client_heartbeat"),
   deviceType: z.enum(["web", "mobile"]),
   focusedAgentId: z.string().nullable(),
+  // COMPAT(terminalFocusHeartbeat): added in v0.1.97, remove optional default after 2026-12-13 once old clients no longer send heartbeats without terminal focus.
+  focusedTerminalId: z.string().nullable().optional().default(null),
   lastActivityAt: z.string(),
   appVisible: z.boolean(),
   appVisibilityChangedAt: z.string().optional(),
@@ -2827,6 +2834,8 @@ export const OpenProjectResponseMessageSchema = z.object({
     requestId: z.string(),
     workspace: WorkspaceDescriptorPayloadSchema.nullable(),
     error: z.string().nullable(),
+    // Unknown codes from newer daemons degrade to null; clients fall back to `error`.
+    errorCode: z.enum(["directory_not_found"]).nullish().catch(null),
   }),
 });
 
@@ -4065,6 +4074,7 @@ const TerminalInfoSchema = z.object({
   name: z.string(),
   cwd: z.string(),
   title: z.string().optional(),
+  activity: TerminalActivitySchema.nullable().optional(),
 });
 
 export const TerminalCellSchema = z.object({
@@ -4274,6 +4284,20 @@ export const ProviderQuotaMessageSchema = z.object({
 export type ProviderQuotaMessage = z.infer<typeof ProviderQuotaMessageSchema>;
 export type ProviderQuotaWindow = z.infer<typeof ProviderQuotaWindowSchema>;
 
+export const TerminalAttentionRequiredSchema = z.object({
+  type: z.literal("terminal_attention_required"),
+  payload: z.object({
+    serverId: z.string().optional(),
+    terminalId: z.string(),
+    cwd: z.string(),
+    workspaceId: z.string().optional(),
+    reason: z.enum(["finished", "needs_input"]),
+    title: z.string(),
+    body: z.string(),
+    shouldNotify: z.boolean(),
+  }),
+});
+
 export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   ActivityLogMessageSchema,
   AssistantChunkMessageSchema,
@@ -4390,6 +4414,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   CaptureTerminalResponseSchema,
   TerminalStreamExitSchema,
   ProviderQuotaMessageSchema,
+  TerminalAttentionRequiredSchema,
   ChatCreateResponseSchema,
   ChatListResponseSchema,
   ChatInspectResponseSchema,
@@ -4559,6 +4584,7 @@ export type DictationStreamFinishMessage = z.infer<typeof DictationStreamFinishM
 export type DictationStreamCancelMessage = z.infer<typeof DictationStreamCancelMessageSchema>;
 export type CreateAgentRequestMessage = z.infer<typeof CreateAgentRequestMessageSchema>;
 export type AgentAttachment = z.infer<typeof AgentAttachmentSchema>;
+export type UploadedFileAttachment = z.infer<typeof UploadedFileAttachmentSchema>;
 export type FirstAgentContext = z.infer<typeof FirstAgentContextSchema>;
 export type ReviewAttachment = z.infer<typeof ReviewAttachmentSchema>;
 export type ListProviderModelsRequestMessage = z.infer<

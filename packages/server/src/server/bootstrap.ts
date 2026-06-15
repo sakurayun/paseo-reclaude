@@ -8,6 +8,7 @@ import path from "node:path";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
 import type { Logger } from "pino";
+import { z } from "zod";
 import { createBranchChangeRouteHandler } from "./script-route-branch-handler.js";
 
 export type ListenTarget =
@@ -112,11 +113,13 @@ import { LoopService } from "./loop-service.js";
 import { ScheduleService } from "./schedule/service.js";
 import { DaemonConfigStore } from "./daemon-config-store.js";
 import { WorkspaceGitServiceImpl } from "./workspace-git-service.js";
+import { resolveRegisteredWorkspaceIdForCwd } from "./workspace-directory.js";
 import { archivePersistedWorkspaceRecord } from "./workspace-archive-service.js";
 import { setupAutoArchiveOnMerge } from "./auto-archive-on-merge/index.js";
 import { wrapSessionMessage, type SessionOutboundMessage } from "./messages.js";
 import type { TerminalManager } from "../terminal/terminal-manager.js";
 import { createConfiguredTerminalManager } from "../terminal/terminal-manager-factory.js";
+import { applyTerminalAgentHookSetting } from "../terminal/agent-hooks/terminal-agent-hook-setting.js";
 import { createConnectionOfferV2, encodeOfferToFragmentUrl } from "./connection-offer.js";
 import { loadOrCreateDaemonKeyPair } from "./daemon-keypair.js";
 import { startRelayTransport, type RelayTransportController } from "./relay-transport.js";
@@ -172,6 +175,75 @@ function createAgentMcpBaseUrl(listenTarget: ListenTarget | null): string | null
     "/mcp/agents",
     `http://${formatHostForHttpUrl(host)}:${listenTarget.port}`,
   ).toString();
+}
+
+function createTerminalActivityUrl(listenTarget: ListenTarget | null): string | null {
+  if (!listenTarget || listenTarget.type !== "tcp") {
+    return null;
+  }
+  const host = resolveAgentMcpClientHost(listenTarget.host);
+  return new URL(
+    "/api/terminal-activity",
+    `http://${formatHostForHttpUrl(host)}:${listenTarget.port}`,
+  ).toString();
+}
+
+const TerminalActivityReportSchema = z.object({
+  terminalId: z.string().min(1),
+  token: z.string().min(1),
+  state: z.enum(["running", "idle", "needs-input"]),
+});
+
+const TERMINAL_ACTIVITY_STATE_MAP = {
+  running: "working",
+  idle: "idle",
+  "needs-input": "attention",
+} as const;
+
+const LOOPBACK_REMOTE_ADDRESSES = new Set(["127.0.0.1", "::1", "::ffff:127.0.0.1"]);
+
+function isLoopbackRemoteAddress(remoteAddress: string | undefined): boolean {
+  return remoteAddress !== undefined && LOOPBACK_REMOTE_ADDRESSES.has(remoteAddress);
+}
+
+export function createTerminalActivityRouteHandler(
+  terminalManager: TerminalManager,
+): express.RequestHandler {
+  return async (req, res) => {
+    if (!isLoopbackRemoteAddress(req.socket.remoteAddress)) {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
+
+    const parsed = TerminalActivityReportSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: "Invalid terminal activity report" });
+      return;
+    }
+
+    const validation = terminalManager.validateTerminalActivityToken(
+      parsed.data.terminalId,
+      parsed.data.token,
+    );
+    if (validation !== "valid") {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
+
+    try {
+      const updated = await terminalManager.setTerminalActivity(
+        parsed.data.terminalId,
+        TERMINAL_ACTIVITY_STATE_MAP[parsed.data.state],
+      );
+      if (!updated) {
+        res.status(403).json({ error: "Forbidden" });
+        return;
+      }
+      res.status(204).end();
+    } catch {
+      res.status(500).json({ error: "Failed to update terminal activity" });
+    }
+  };
 }
 
 function summarizeAgentMcpDebugMessage(body: unknown): Record<string, unknown> {
@@ -243,6 +315,7 @@ export interface PaseoDaemonConfig {
   mcpEnabled?: boolean;
   mcpInjectIntoAgents?: boolean;
   autoArchiveAfterMerge?: boolean;
+  enableTerminalAgentHooks?: boolean;
   appendSystemPrompt?: string;
   terminalProfiles?: TerminalProfile[];
   staticDir: string;
@@ -295,6 +368,33 @@ export interface PaseoDaemon {
   getListenTarget(): ListenTarget | null;
 }
 
+/** Translate the daemon config into the initial mutable settings for DaemonConfigStore. */
+function buildDaemonConfigStoreSettings(
+  config: PaseoDaemonConfig,
+): ConstructorParameters<typeof DaemonConfigStore>[1] {
+  return {
+    mcp: { injectIntoAgents: config.mcpInjectIntoAgents ?? true },
+    providers: Object.fromEntries(
+      Object.entries(config.providerOverrides ?? {}).map(([providerId, override]) => [
+        providerId,
+        {
+          ...(override.enabled !== undefined ? { enabled: override.enabled } : {}),
+          ...(override.additionalModels ? { additionalModels: override.additionalModels } : {}),
+          ...(override.command ? { command: override.command } : {}),
+        },
+      ]),
+    ),
+    modelGateways: config.modelGateways ?? {},
+    metadataGeneration: {
+      providers: config.metadataGeneration?.providers ?? [],
+    },
+    autoArchiveAfterMerge: config.autoArchiveAfterMerge ?? false,
+    enableTerminalAgentHooks: config.enableTerminalAgentHooks ?? false,
+    appendSystemPrompt: config.appendSystemPrompt ?? "",
+    ...(config.terminalProfiles !== undefined ? { terminalProfiles: config.terminalProfiles } : {}),
+  };
+}
+
 export async function createPaseoDaemon(
   config: PaseoDaemonConfig,
   rootLogger: Logger,
@@ -305,28 +405,7 @@ export async function createPaseoDaemon(
   const daemonVersion = resolveDaemonVersion(import.meta.url);
   const daemonConfigStore = new DaemonConfigStore(
     config.paseoHome,
-    {
-      mcp: { injectIntoAgents: config.mcpInjectIntoAgents ?? true },
-      providers: Object.fromEntries(
-        Object.entries(config.providerOverrides ?? {}).map(([providerId, override]) => [
-          providerId,
-          {
-            ...(override.enabled !== undefined ? { enabled: override.enabled } : {}),
-            ...(override.additionalModels ? { additionalModels: override.additionalModels } : {}),
-            ...(override.command ? { command: override.command } : {}),
-          },
-        ]),
-      ),
-      modelGateways: config.modelGateways ?? {},
-      metadataGeneration: {
-        providers: config.metadataGeneration?.providers ?? [],
-      },
-      autoArchiveAfterMerge: config.autoArchiveAfterMerge ?? false,
-      appendSystemPrompt: config.appendSystemPrompt ?? "",
-      ...(config.terminalProfiles !== undefined
-        ? { terminalProfiles: config.terminalProfiles }
-        : {}),
-    },
+    buildDaemonConfigStoreSettings(config),
     logger,
   );
 
@@ -355,6 +434,10 @@ export async function createPaseoDaemon(
   const app = express();
   let boundListenTarget: ListenTarget | null = null;
   let workspaceRegistry: FileBackedWorkspaceRegistry | null = null;
+  const terminalManager = createConfiguredTerminalManager({
+    getTerminalActivityUrl: () => createTerminalActivityUrl(boundListenTarget),
+  });
+  applyTerminalAgentHookSetting({ store: daemonConfigStore, logger });
 
   const serviceProxyPublicBaseUrl = config.serviceProxy?.publicBaseUrl
     ? config.serviceProxy.publicBaseUrl
@@ -439,17 +522,23 @@ export async function createPaseoDaemon(
     next();
   });
 
+  // Local, harmless, and token-gated; deliberately skips daemon auth.
+  app.post(
+    "/api/terminal-activity",
+    express.json(),
+    createTerminalActivityRouteHandler(terminalManager),
+  );
+
   app.use(
     createRequireBearerMiddleware(config.auth, (context) => {
       logger.warn(context, "Rejected HTTP request with invalid daemon password");
     }),
   );
 
+  app.use(express.json());
+
   // Serve static files from public directory
   app.use("/public", express.static(staticDir));
-
-  // Middleware
-  app.use(express.json());
 
   // Health check endpoint
   app.get("/api/health", (_req, res) => {
@@ -547,7 +636,6 @@ export async function createPaseoDaemon(
     paseoHome: config.paseoHome,
     logger,
   });
-  const terminalManager = createConfiguredTerminalManager();
   const github = createGitHubService();
   const workspaceGitService = new WorkspaceGitServiceImpl({
     logger,
@@ -672,6 +760,9 @@ export async function createPaseoDaemon(
       projectRegistry,
     });
   };
+  const resolveWorkspaceIdForCwdExternal = async (cwd: string): Promise<string | null> => {
+    return resolveRegisteredWorkspaceIdForCwd(cwd, await workspaceRegistry.list());
+  };
   const markWorkspaceArchivingExternal = (workspaceIds: Iterable<string>, archivingAt: string) => {
     const workspaceIdList = Array.from(workspaceIds);
     for (const session of wsServer?.listActiveSessions() ?? []) {
@@ -706,6 +797,7 @@ export async function createPaseoDaemon(
     agentStorage,
     terminalManager,
     logger,
+    resolveWorkspaceIdForCwd: resolveWorkspaceIdForCwdExternal,
     archiveWorkspaceRecord: archiveWorkspaceRecordExternal,
     markWorkspaceArchiving: markWorkspaceArchivingExternal,
     clearWorkspaceArchiving: clearWorkspaceArchivingExternal,
@@ -728,6 +820,7 @@ export async function createPaseoDaemon(
         providerSnapshotManager,
         github,
         workspaceGitService,
+        resolveWorkspaceIdForCwd: resolveWorkspaceIdForCwdExternal,
         archiveWorkspaceRecord: archiveWorkspaceRecordExternal,
         emitWorkspaceUpdatesForWorkspaceIds: emitWorkspaceUpdatesExternal,
         markWorkspaceArchiving: markWorkspaceArchivingExternal,
@@ -1043,6 +1136,7 @@ export async function createPaseoDaemon(
               {
                 listen: formatListenTarget(boundListenTarget ?? listenTarget),
                 worktreesRoot: config.worktreesRoot,
+                appBaseUrl: config.appBaseUrl,
                 relay: {
                   enabled: relayEnabled,
                   endpoint: relayEndpoint,

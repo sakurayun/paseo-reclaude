@@ -249,6 +249,7 @@ export function TerminalPane({
   const supportsTerminalRestoreModes = useSessionStore(
     (state) => state.sessions[serverId]?.serverInfo?.features?.["terminal-restore-modes"] === true,
   );
+  const setFocusedTerminalId = useSessionStore((state) => state.setFocusedTerminalId);
 
   const scopeKey = useMemo(() => terminalScopeKey({ serverId, cwd }), [serverId, cwd]);
   const terminalStreamKey = useMemo(() => `${scopeKey}:${terminalId}`, [scopeKey, terminalId]);
@@ -410,9 +411,19 @@ export function TerminalPane({
   }, [isPaneFocused, isWorkspaceFocused, requestTerminalReflow, scopeKey, terminalId]);
 
   const handleTerminalFocus = useCallback(() => {
+    if (isWorkspaceFocused && isPaneFocused) {
+      setFocusedTerminalId(serverId, terminalId);
+    }
     lastSentTerminalSizeRef.current = null;
     requestTerminalReflow();
-  }, [requestTerminalReflow]);
+  }, [
+    isPaneFocused,
+    isWorkspaceFocused,
+    requestTerminalReflow,
+    serverId,
+    setFocusedTerminalId,
+    terminalId,
+  ]);
 
   const clearKeyboardRefitTimeouts = useCallback(() => {
     if (keyboardRefitTimeoutsRef.current.length === 0) {

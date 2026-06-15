@@ -21,7 +21,7 @@ import {
 } from "@/stores/workspace-layout-store";
 import { buildDraftStoreKey, generateDraftId } from "@/stores/draft-keys";
 import { useDraftStore } from "@/stores/draft-store";
-import { resolveWorkspaceIdByExecutionDirectory } from "@/utils/workspace-execution";
+import { selectResolveWorkspaceIdByCwd } from "@/stores/session-store-hooks/selectors";
 import { sendComposerInsert } from "@/composer/draft/composer-insert-bus";
 import { useCommitMessagePresetsStore } from "./commit-message-presets-store";
 
@@ -122,11 +122,11 @@ function resolveWorkspacePersistenceKeys(input: {
   cwd: string;
   workspaceId?: string | null;
 }): string[] {
-  const workspaces = useSessionStore.getState().sessions[input.serverId]?.workspaces;
-  const resolvedByDirectory = resolveWorkspaceIdByExecutionDirectory({
-    workspaces: workspaces?.values(),
-    workspaceDirectory: input.cwd,
-  });
+  const resolvedByDirectory = selectResolveWorkspaceIdByCwd(
+    useSessionStore.getState(),
+    input.serverId,
+    input.cwd,
+  );
   const workspaceIds = [
     ...new Set(
       [input.workspaceId, resolvedByDirectory, input.cwd].filter(
