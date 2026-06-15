@@ -58,6 +58,21 @@ export async function invalidateCheckoutGitQueriesForClient(
     queryClient.invalidateQueries({
       queryKey: checkoutStatusQueryKey(identity.serverId, identity.cwd),
     }),
+    invalidateSourceControlDataQueries(queryClient, identity),
+  ]);
+}
+
+/**
+ * Invalidate the source-control data queries (history, diffs, file lists)
+ * without touching the checkout status query itself. Used when a pushed
+ * checkout_status_update already carries the fresh status: re-fetching it
+ * would be redundant, but the dependent views must converge.
+ */
+export async function invalidateSourceControlDataQueries(
+  queryClient: QueryClient,
+  identity: CheckoutQueryIdentity,
+) {
+  await Promise.all([
     queryClient.invalidateQueries({
       predicate: checkoutQueryPredicate("checkoutDiff", identity),
     }),

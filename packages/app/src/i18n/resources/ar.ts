@@ -652,6 +652,8 @@ export const ar: TranslationResources = {
         popFailed: "فشل تطبيق المخبأ",
       },
       updateHost: "قم بتحديث المضيف لاستخدام إدارة المصدر",
+      hostVersion: "المضيف المتصل: {{host}} (daemon {{version}})",
+      hostVersionUnknown: "غير معروف",
       repo: {
         title: "المستودع",
         detached: "HEAD منفصل",

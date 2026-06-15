@@ -658,6 +658,8 @@ export const es: TranslationResources = {
         popFailed: "No se pudo aplicar el stash",
       },
       updateHost: "Actualiza el host para usar el control de código",
+      hostVersion: "Host conectado: {{host}} (daemon {{version}})",
+      hostVersionUnknown: "desconocida",
       repo: {
         title: "Repositorio",
         detached: "HEAD separado",

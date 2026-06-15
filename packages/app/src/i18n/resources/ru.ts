@@ -663,6 +663,8 @@ export const ru: TranslationResources = {
         popFailed: "Не удалось применить тайник",
       },
       updateHost: "Обновите хост, чтобы использовать управление кодом",
+      hostVersion: "Подключённый хост: {{host}} (daemon {{version}})",
+      hostVersionUnknown: "неизвестно",
       repo: {
         title: "Репозиторий",
         detached: "Отсоединённый HEAD",

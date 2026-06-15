@@ -91,11 +91,25 @@ export function SourceControlPane({
   const supported = useSessionStore(
     (state) => state.sessions[serverId]?.serverInfo?.features?.checkoutGitLog === true,
   );
+  const hostVersion = useSessionStore(
+    (state) => state.sessions[serverId]?.serverInfo?.version ?? null,
+  );
+  const hostName = useSessionStore(
+    (state) => state.sessions[serverId]?.serverInfo?.hostname ?? null,
+  );
 
   if (!supported) {
+    // Surface which daemon the client actually reached — over a relay this is
+    // the fastest way to spot a stale daemon process still holding the tunnel.
     return (
       <View style={styles.centered}>
         <Text style={styles.mutedText}>{t("workspace.sourceControl.updateHost")}</Text>
+        <Text style={styles.mutedText}>
+          {t("workspace.sourceControl.hostVersion", {
+            host: hostName ?? serverId,
+            version: hostVersion ?? t("workspace.sourceControl.hostVersionUnknown"),
+          })}
+        </Text>
       </View>
     );
   }

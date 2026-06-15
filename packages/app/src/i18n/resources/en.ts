@@ -650,6 +650,8 @@ export const en = {
         popFailed: "Failed to apply stash",
       },
       updateHost: "Update the host to use source control",
+      hostVersion: "Connected host: {{host}} (daemon {{version}})",
+      hostVersionUnknown: "unknown",
       repo: {
         title: "Repository",
         detached: "Detached HEAD",

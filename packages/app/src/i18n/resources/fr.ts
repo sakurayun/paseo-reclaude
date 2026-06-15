@@ -664,6 +664,8 @@ export const fr: TranslationResources = {
         popFailed: "Échec de l'application du remisage",
       },
       updateHost: "Mettez à jour l'hôte pour utiliser la gestion de sources",
+      hostVersion: "Hôte connecté : {{host}} (daemon {{version}})",
+      hostVersionUnknown: "inconnue",
       repo: {
         title: "Dépôt",
         detached: "HEAD détaché",

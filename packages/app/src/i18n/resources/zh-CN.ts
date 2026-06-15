@@ -649,6 +649,8 @@ export const zhCN: TranslationResources = {
         popFailed: "应用贮藏失败",
       },
       updateHost: "请升级主机以使用源码管理",
+      hostVersion: "当前连接的主机：{{host}}（daemon 版本 {{version}}）",
+      hostVersionUnknown: "未知",
       repo: {
         title: "仓库",
         detached: "分离 HEAD",
