@@ -43,6 +43,12 @@ export const ProviderProfileModelSchema = z.object({
   thinkingOptions: z.array(ProviderProfileThinkingOptionSchema).optional(),
 });
 
+// COMPAT(claudeAcpTransport): added in v0.1.99, remove gate after 2026-12-15.
+// Selects the Claude transport: "sdk" (Claude Agent SDK, the default) or "acp"
+// (claude-agent-acp shim over the Agent Client Protocol). Absent => "sdk".
+export const ClaudeTransportSchema = z.enum(["sdk", "acp"]);
+export type ClaudeTransport = z.infer<typeof ClaudeTransportSchema>;
+
 export const ProviderOverrideSchema = z.object({
   extends: z.string().optional(),
   label: z.string().optional(),
@@ -55,6 +61,8 @@ export const ProviderOverrideSchema = z.object({
   disallowedTools: z.array(z.string()).optional(),
   enabled: z.boolean().optional(),
   order: z.number().optional(),
+  // COMPAT(claudeAcpTransport): added in v0.1.99, remove gate after 2026-12-15.
+  transport: ClaudeTransportSchema.optional(),
 });
 
 const BUILTIN_PROVIDER_IDS = ["claude", "codex", "copilot", "opencode", "pi", "omp"] as const;

@@ -104,6 +104,9 @@ const MutableDaemonProviderConfigSchema = z
     // `null` explicitly clears the override (deepMerge can't delete keys); the daemon
     // drops the command on merge so the provider falls back to its default binary.
     command: z.array(z.string().min(1)).min(1).nullable().optional(),
+    // COMPAT(claudeAcpTransport): added in v0.1.99, remove gate after 2026-12-15.
+    // Claude transport selector; only meaningful for the "claude" provider.
+    transport: z.enum(["sdk", "acp"]).optional(),
   })
   .passthrough();
 
@@ -2386,6 +2389,8 @@ export const ServerInfoStatusPayloadSchema = z
         checkoutGitLog: z.boolean().optional(),
         // COMPAT(checkoutGitOps): added in v0.1.98, remove gate after 2026-12-12.
         checkoutGitOps: z.boolean().optional(),
+        // COMPAT(claudeAcpTransport): added in v0.1.99, remove gate after 2026-12-15.
+        claudeAcpTransport: z.boolean().optional(),
       })
       .optional(),
   })
@@ -4823,7 +4828,13 @@ export const WSSessionInboundSchema = z.object({
   message: SessionInboundMessageSchema,
 });
 
-export const WSSessionOutboundSchema = z.object({
+// Explicit annotations keep tsc from inline-serializing the entire outbound
+// message union into the .d.ts (TS7056). `typeof` references the named schema
+// instead of expanding it, which is what pushed the declaration over the limit.
+export const WSSessionOutboundSchema: z.ZodObject<{
+  type: z.ZodLiteral<"session">;
+  message: typeof SessionOutboundMessageSchema;
+}> = z.object({
   type: z.literal("session"),
   message: SessionOutboundMessageSchema,
 });
@@ -4836,10 +4847,10 @@ export const WSInboundMessageSchema = z.discriminatedUnion("type", [
   WSSessionInboundSchema,
 ]);
 
-export const WSOutboundMessageSchema = z.discriminatedUnion("type", [
-  WSPongMessageSchema,
-  WSSessionOutboundSchema,
-]);
+export const WSOutboundMessageSchema: z.ZodDiscriminatedUnion<
+  "type",
+  [typeof WSPongMessageSchema, typeof WSSessionOutboundSchema]
+> = z.discriminatedUnion("type", [WSPongMessageSchema, WSSessionOutboundSchema]);
 
 export type WSInboundMessage = z.infer<typeof WSInboundMessageSchema>;
 export type WSOutboundMessage = z.infer<typeof WSOutboundMessageSchema>;

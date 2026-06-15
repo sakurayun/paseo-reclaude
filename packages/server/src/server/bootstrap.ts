@@ -381,6 +381,7 @@ function buildDaemonConfigStoreSettings(
           ...(override.enabled !== undefined ? { enabled: override.enabled } : {}),
           ...(override.additionalModels ? { additionalModels: override.additionalModels } : {}),
           ...(override.command ? { command: override.command } : {}),
+          ...(override.transport ? { transport: override.transport } : {}),
         },
       ]),
     ),

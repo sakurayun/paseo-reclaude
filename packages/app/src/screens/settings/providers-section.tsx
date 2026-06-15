@@ -15,9 +15,11 @@ import {
 import { ProviderCatalogList } from "@/components/provider-catalog-list";
 import { getProviderIcon } from "@/components/provider-icons";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
+import { SegmentedControl, type SegmentedControlOption } from "@/components/ui/segmented-control";
 import { Switch } from "@/components/ui/switch";
 import { SettingsSection } from "@/screens/settings/settings-section";
 import { useProviderSettingsStore } from "@/stores/provider-settings-store";
+import { useSessionStore } from "@/stores/session-store";
 import { ChevronRight } from "lucide-react-native";
 
 type ProviderDefinition = ReturnType<typeof buildProviderDefinitions>[number];
@@ -153,12 +155,112 @@ function ProviderRow({
           </>
         )}
       </Pressable>
-      {def.id === "claude" ? <ClaudeReclaudeRow serverId={serverId} /> : null}
+      {def.id === "claude" ? (
+        <>
+          <ClaudeTransportRow serverId={serverId} />
+          <ClaudeReclaudeRow serverId={serverId} />
+        </>
+      ) : null}
     </>
   );
 }
 
+type ClaudeTransportValue = "sdk" | "acp";
+
 const RECLAUDE_COMMAND = ["reclaude"];
+
+function ClaudeTransportRow({ serverId }: { serverId: string }) {
+  const { t } = useTranslation();
+  const { config, patchConfig } = useDaemonConfig(serverId);
+  const client = useHostRuntimeClient(serverId);
+  const [pending, setPending] = useState(false);
+  // COMPAT(claudeAcpTransport): added in v0.1.99, drop the gate when floor >= v0.1.99.
+  const acpSupported = useSessionStore(
+    (state) => state.sessions[serverId]?.serverInfo?.features?.claudeAcpTransport === true,
+  );
+  const transport: ClaudeTransportValue =
+    config?.providers?.claude?.transport === "acp" ? "acp" : "sdk";
+  const rowStyle = useMemo(() => [settingsStyles.row, settingsStyles.rowBorder], []);
+
+  const applyTransport = useCallback(
+    (value: ClaudeTransportValue) => {
+      setPending(true);
+      // Persist the transport, then restart so the daemon rebuilds the Claude client.
+      void patchConfig({ providers: { claude: { transport: value } } })
+        .then(() => client?.restartServer("provider_transport_claude"))
+        .catch((error) => {
+          Alert.alert(
+            t("settings.providers.claudeTransport.errorTitle"),
+            error instanceof Error ? error.message : String(error),
+          );
+        })
+        .finally(() => setPending(false));
+    },
+    [client, patchConfig, t],
+  );
+
+  const handleChange = useCallback(
+    (value: ClaudeTransportValue) => {
+      if (value === transport) {
+        return;
+      }
+      // Switching transport orphans sessions created under the other mode and, for
+      // ACP, drops SDK-only features (rewind / fast / ultracode). Confirm first.
+      const title =
+        value === "acp"
+          ? t("settings.providers.claudeTransport.switchToAcpConfirmTitle")
+          : t("settings.providers.claudeTransport.switchToSdkConfirmTitle");
+      const body =
+        value === "acp"
+          ? t("settings.providers.claudeTransport.switchToAcpConfirmBody")
+          : t("settings.providers.claudeTransport.switchToSdkConfirmBody");
+      Alert.alert(title, body, [
+        { text: t("common.actions.cancel"), style: "cancel" },
+        {
+          text: t("settings.providers.claudeTransport.confirm"),
+          onPress: () => applyTransport(value),
+        },
+      ]);
+    },
+    [applyTransport, t, transport],
+  );
+
+  const options = useMemo<SegmentedControlOption<ClaudeTransportValue>[]>(
+    () => [
+      {
+        value: "sdk",
+        label: t("settings.providers.claudeTransport.sdk"),
+        disabled: pending || !client,
+      },
+      {
+        value: "acp",
+        label: t("settings.providers.claudeTransport.acp"),
+        disabled: pending || !client,
+      },
+    ],
+    [client, pending, t],
+  );
+
+  if (!acpSupported) {
+    return null;
+  }
+
+  return (
+    <View style={rowStyle}>
+      <View style={settingsStyles.rowContent}>
+        <Text style={settingsStyles.rowTitle}>{t("settings.providers.claudeTransport.title")}</Text>
+        <Text style={settingsStyles.rowHint}>{t("settings.providers.claudeTransport.hint")}</Text>
+      </View>
+      <SegmentedControl
+        size="sm"
+        value={transport}
+        onValueChange={handleChange}
+        options={options}
+        testID="claude-transport-control"
+      />
+    </View>
+  );
+}
 
 function ClaudeReclaudeRow({ serverId }: { serverId: string }) {
   const { t } = useTranslation();
@@ -167,6 +269,9 @@ function ClaudeReclaudeRow({ serverId }: { serverId: string }) {
   const [pending, setPending] = useState(false);
   const command = config?.providers?.claude?.command ?? null;
   const enabled = command?.[0] === "reclaude";
+  // reclaude swaps the SDK's underlying Claude binary; it has no meaning when the
+  // ACP transport is active, so disable it there.
+  const transportIsAcp = config?.providers?.claude?.transport === "acp";
   const rowStyle = useMemo(() => [settingsStyles.row, settingsStyles.rowBorder], []);
 
   const handleChange = useCallback(
@@ -192,12 +297,16 @@ function ClaudeReclaudeRow({ serverId }: { serverId: string }) {
     <View style={rowStyle}>
       <View style={settingsStyles.rowContent}>
         <Text style={settingsStyles.rowTitle}>{t("settings.providers.reclaude.title")}</Text>
-        <Text style={settingsStyles.rowHint}>{t("settings.providers.reclaude.hint")}</Text>
+        <Text style={settingsStyles.rowHint}>
+          {transportIsAcp
+            ? t("settings.providers.reclaude.acpHint")
+            : t("settings.providers.reclaude.hint")}
+        </Text>
       </View>
       <Switch
         value={enabled}
         onValueChange={handleChange}
-        disabled={pending || !client}
+        disabled={pending || !client || transportIsAcp}
         accessibilityLabel={t("settings.providers.reclaude.toggleAccessibility")}
       />
     </View>

@@ -1595,6 +1595,7 @@ export const ar: TranslationResources = {
         weeklyOpus: "أسبوعيًا · Opus",
         weeklyDesign: "أسبوعيًا · Design",
         overageEnabled: "أرصدة التجاوز: مفعّلة",
+        reclaudeUnsupported: "الاستعلام عن الاستخدام غير متاح في بيئة reclaude",
       },
       codex: {
         session: "الجلسة",
@@ -2148,8 +2149,23 @@ export const ar: TranslationResources = {
       reclaude: {
         title: "استخدام أمر reclaude",
         hint: "تشغيل Claude Code عبر غلاف reclaude؛ سيُعاد تشغيل daemon للتطبيق",
+        acpHint: "متاح فقط مع ناقل Claude Agent SDK",
         toggleAccessibility: "استخدام أمر reclaude",
         errorTitle: "تعذّر تحديث أمر المزوّد",
+      },
+      claudeTransport: {
+        title: "الناقل",
+        hint: "تشغيل Claude عبر Agent SDK (الافتراضي) أو بروتوكول ACP. سيُعاد تشغيل daemon للتطبيق.",
+        sdk: "SDK",
+        acp: "ACP",
+        confirm: "تبديل",
+        switchToAcpConfirmTitle: "التبديل إلى ناقل ACP؟",
+        switchToAcpConfirmBody:
+          "يشغّل ACP كلود عبر غلاف claude-agent-acp. ميزات Rewind وFast وUltracode غير متاحة، ولا يمكن استئناف الجلسات المُنشأة بناقل SDK في وضع ACP.",
+        switchToSdkConfirmTitle: "التبديل إلى ناقل SDK؟",
+        switchToSdkConfirmBody:
+          "لا يمكن استئناف الجلسات المُنشأة بناقل ACP باستخدام Agent SDK. سيُعاد تشغيل daemon للتطبيق.",
+        errorTitle: "فشل تبديل الناقل",
       },
     },
     project: {

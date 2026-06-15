@@ -1642,6 +1642,8 @@ export const fr: TranslationResources = {
         weeklyOpus: "Hebdomadaire · Opus",
         weeklyDesign: "Hebdomadaire · Design",
         overageEnabled: "Crédits de dépassement : activés",
+        reclaudeUnsupported:
+          "La consultation de l'utilisation n'est pas disponible dans l'environnement reclaude",
       },
       codex: {
         session: "Session",
@@ -2207,8 +2209,23 @@ export const fr: TranslationResources = {
       reclaude: {
         title: "Utiliser la commande reclaude",
         hint: "Lance Claude Code via le wrapper reclaude ; redémarre le daemon pour appliquer",
+        acpHint: "Disponible uniquement avec le transport Claude Agent SDK",
         toggleAccessibility: "Utiliser la commande reclaude",
         errorTitle: "Impossible de mettre à jour la commande du fournisseur",
+      },
+      claudeTransport: {
+        title: "Transport",
+        hint: "Exécute Claude via l'Agent SDK (par défaut) ou le protocole ACP. Redémarre le daemon pour appliquer.",
+        sdk: "SDK",
+        acp: "ACP",
+        confirm: "Changer",
+        switchToAcpConfirmTitle: "Passer au transport ACP ?",
+        switchToAcpConfirmBody:
+          "ACP exécute Claude via l'adaptateur claude-agent-acp. Rewind, Fast et Ultracode sont indisponibles, et les sessions créées avec le transport SDK ne peuvent pas être reprises en mode ACP.",
+        switchToSdkConfirmTitle: "Passer au transport SDK ?",
+        switchToSdkConfirmBody:
+          "Les sessions créées avec le transport ACP ne peuvent pas être reprises avec l'Agent SDK. Le daemon redémarrera pour appliquer.",
+        errorTitle: "Échec du changement de transport",
       },
     },
     project: {

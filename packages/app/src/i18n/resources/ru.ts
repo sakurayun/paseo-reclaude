@@ -1630,6 +1630,7 @@ export const ru: TranslationResources = {
         weeklyOpus: "Еженедельно · Opus",
         weeklyDesign: "Еженедельно · Design",
         overageEnabled: "Кредиты сверх лимита: включены",
+        reclaudeUnsupported: "Просмотр использования недоступен в среде reclaude",
       },
       codex: {
         session: "Сеанс",
@@ -2192,8 +2193,23 @@ export const ru: TranslationResources = {
       reclaude: {
         title: "Использовать команду reclaude",
         hint: "Запускает Claude Code через обёртку reclaude; daemon перезапустится для применения",
+        acpHint: "Доступно только с транспортом Claude Agent SDK",
         toggleAccessibility: "Использовать команду reclaude",
         errorTitle: "Не удалось обновить команду провайдера",
+      },
+      claudeTransport: {
+        title: "Транспорт",
+        hint: "Запуск Claude через Agent SDK (по умолчанию) или протокол ACP. Daemon перезапустится для применения.",
+        sdk: "SDK",
+        acp: "ACP",
+        confirm: "Переключить",
+        switchToAcpConfirmTitle: "Переключить на транспорт ACP?",
+        switchToAcpConfirmBody:
+          "ACP запускает Claude через адаптер claude-agent-acp. Rewind, Fast и Ultracode недоступны, а сессии, созданные с транспортом SDK, нельзя возобновить в режиме ACP.",
+        switchToSdkConfirmTitle: "Переключить на транспорт SDK?",
+        switchToSdkConfirmBody:
+          "Сессии, созданные с транспортом ACP, нельзя возобновить с Agent SDK. Daemon перезапустится для применения.",
+        errorTitle: "Не удалось переключить транспорт",
       },
     },
     project: {

@@ -34,6 +34,8 @@ interface GenericACPAgentClientOptions {
   logger: Logger;
   command: [string, ...string[]];
   env?: Record<string, string>;
+  /** Provider id reported to the runtime (timeline/persistence). Defaults to "acp". */
+  provider?: string;
   providerId?: string;
   label?: string;
   providerParams?: unknown;
@@ -48,7 +50,7 @@ export class GenericACPAgentClient extends ACPAgentClient {
 
   constructor(options: GenericACPAgentClientOptions) {
     super({
-      provider: "acp",
+      provider: options.provider ?? "acp",
       logger: options.logger,
       runtimeSettings: {
         env: options.env,

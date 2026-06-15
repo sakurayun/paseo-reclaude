@@ -1211,6 +1211,8 @@ export class VoiceAssistantWebSocketServer {
         checkoutGitLog: true,
         // COMPAT(checkoutGitOps): added in v0.1.98, remove gate after 2026-12-12.
         checkoutGitOps: true,
+        // COMPAT(claudeAcpTransport): added in v0.1.99, remove gate after 2026-12-15.
+        claudeAcpTransport: true,
       },
     };
   }

@@ -1575,6 +1575,7 @@ export const zhCN: TranslationResources = {
         weeklyOpus: "每周 · Opus",
         weeklyDesign: "每周 · Design",
         overageEnabled: "超额用量：已启用",
+        reclaudeUnsupported: "暂不支持 reclaude 环境下查询用量",
       },
       codex: {
         session: "会话",
@@ -2120,8 +2121,23 @@ export const zhCN: TranslationResources = {
       reclaude: {
         title: "使用 reclaude 命令",
         hint: "通过 reclaude 包装器启动 Claude Code；切换后会重启守护进程以生效",
+        acpHint: "仅在 Claude Agent SDK 传输模式下可用",
         toggleAccessibility: "使用 reclaude 命令",
         errorTitle: "无法更新提供方命令",
+      },
+      claudeTransport: {
+        title: "传输模式",
+        hint: "选择 Claude 的运行方式：Agent SDK（默认）或 ACP 协议。切换会重启守护进程以生效。",
+        sdk: "SDK",
+        acp: "ACP",
+        confirm: "切换",
+        switchToAcpConfirmTitle: "切换到 ACP 传输？",
+        switchToAcpConfirmBody:
+          "ACP 通过 claude-agent-acp 适配器运行 Claude。Rewind、Fast、Ultracode 将不可用，且使用 SDK 传输创建的会话无法在 ACP 模式下恢复。",
+        switchToSdkConfirmTitle: "切换到 SDK 传输？",
+        switchToSdkConfirmBody:
+          "使用 ACP 传输创建的会话无法用 Agent SDK 恢复。守护进程将重启以生效。",
+        errorTitle: "切换传输模式失败",
       },
     },
     project: {

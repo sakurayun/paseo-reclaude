@@ -23,11 +23,13 @@ import { normalizeAgentModelDefinition } from "./agent-sdk-types.js";
 import type { WorkspaceGitService } from "../workspace-git-service.js";
 import type {
   AgentProviderRuntimeSettingsMap,
+  ClaudeTransport,
   ProviderOverride,
   ProviderProfileModel,
   ProviderRuntimeSettings,
 } from "./provider-launch-config.js";
 import { ClaudeAgentClient } from "./providers/claude/agent.js";
+import { ClaudeACPAgentClient } from "./providers/claude/acp-agent.js";
 import { CodexAppServerAgentClient } from "./providers/codex-app-server-agent.js";
 import { CopilotACPAgentClient } from "./providers/copilot-acp-agent.js";
 import { CursorACPAgentClient } from "./providers/cursor-acp-agent.js";
@@ -84,6 +86,8 @@ interface ProviderClientFactoryOptions extends Pick<
     label: string;
     extends: string;
   };
+  // Claude-only: selects the SDK vs ACP transport. Absent => SDK (the default).
+  transport?: ClaudeTransport;
 }
 
 type ProviderClientFactory = (
@@ -105,11 +109,13 @@ interface ResolvedProvider {
 }
 
 const PROVIDER_CLIENT_FACTORIES: Record<string, ProviderClientFactory> = {
-  claude: (logger, runtimeSettings) =>
-    new ClaudeAgentClient({
-      logger,
-      runtimeSettings,
-    }),
+  claude: (logger, runtimeSettings, options) =>
+    options?.transport === "acp"
+      ? new ClaudeACPAgentClient({ logger, runtimeSettings })
+      : new ClaudeAgentClient({
+          logger,
+          runtimeSettings,
+        }),
   codex: (logger, runtimeSettings, options) =>
     new CodexAppServerAgentClient(logger, runtimeSettings, {
       workspaceGitService: options?.workspaceGitService,
@@ -558,6 +564,7 @@ function buildResolvedBuiltinProviders(
         factory(logger, mergedRuntimeSettings, {
           workspaceGitService: options.workspaceGitService,
           providerParams: override?.params,
+          transport: override?.transport,
         }),
     });
   }

@@ -1601,6 +1601,7 @@ export const en = {
         weeklyOpus: "Weekly · Opus",
         weeklyDesign: "Weekly · Design",
         overageEnabled: "Overage credits: Enabled",
+        reclaudeUnsupported: "Usage lookup isn't available in the reclaude environment",
       },
       codex: {
         session: "Session",
@@ -2156,8 +2157,23 @@ export const en = {
       reclaude: {
         title: "Use reclaude command",
         hint: "Launch Claude Code via the reclaude wrapper; restarts the daemon to apply",
+        acpHint: "Only available with the Claude Agent SDK transport",
         toggleAccessibility: "Use reclaude command",
         errorTitle: "Unable to update provider command",
+      },
+      claudeTransport: {
+        title: "Transport",
+        hint: "Run Claude through the Agent SDK (default) or the ACP protocol. Restarts the daemon to apply.",
+        sdk: "SDK",
+        acp: "ACP",
+        confirm: "Switch",
+        switchToAcpConfirmTitle: "Switch to ACP transport?",
+        switchToAcpConfirmBody:
+          "ACP runs Claude through the claude-agent-acp shim. Rewind, Fast, and Ultracode are unavailable, and sessions created with the SDK transport can't be resumed in ACP mode.",
+        switchToSdkConfirmTitle: "Switch to SDK transport?",
+        switchToSdkConfirmBody:
+          "Sessions created with the ACP transport can't be resumed with the Agent SDK. The daemon will restart to apply.",
+        errorTitle: "Failed to switch transport",
       },
     },
     project: {

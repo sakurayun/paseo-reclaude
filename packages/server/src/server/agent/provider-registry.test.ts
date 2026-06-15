@@ -12,6 +12,7 @@ const mockState = vi.hoisted(() => {
   return {
     constructorArgs: {
       claude: [] as ConstructorEntry[],
+      claudeAcp: [] as ConstructorEntry[],
       codex: [] as ConstructorEntry[],
       copilot: [] as ConstructorEntry[],
       cursor: [] as Array<{
@@ -32,6 +33,7 @@ const mockState = vi.hoisted(() => {
     runtimeModels: new Map<string, AgentModelDefinition[]>(),
     reset() {
       this.constructorArgs.claude = [];
+      this.constructorArgs.claudeAcp = [];
       this.constructorArgs.codex = [];
       this.constructorArgs.copilot = [];
       this.constructorArgs.cursor = [];
@@ -94,6 +96,52 @@ vi.mock("./providers/claude/agent.js", () => ({
           await import("../../executable-resolution/executable-resolution.js");
         return await isCommandAvailable(command.argv?.[0] ?? "");
       }
+      return true;
+    }
+  },
+}));
+
+vi.mock("./providers/claude/acp-agent.js", () => ({
+  ClaudeACPAgentClient: class ClaudeACPAgentClient {
+    readonly capabilities = {
+      supportsStreaming: true,
+      supportsSessionPersistence: true,
+      supportsSessionListing: true,
+      supportsDynamicModes: true,
+      supportsMcpServers: true,
+      supportsReasoningStream: true,
+      supportsToolInvocations: true,
+      supportsRewindConversation: false,
+      supportsRewindFiles: false,
+      supportsRewindBoth: false,
+    };
+    readonly provider = "claude";
+    readonly runtimeSettings?: unknown;
+
+    constructor(options: { runtimeSettings?: unknown }) {
+      this.runtimeSettings = options.runtimeSettings;
+      mockState.constructorArgs.claudeAcp.push({
+        runtimeSettings: options.runtimeSettings,
+      });
+    }
+
+    async createSession(): Promise<never> {
+      throw new Error("not implemented");
+    }
+
+    async resumeSession(): Promise<never> {
+      throw new Error("not implemented");
+    }
+
+    async listModels(): Promise<AgentModelDefinition[]> {
+      return mockState.runtimeModels.get(this.provider) ?? [];
+    }
+
+    async listModes(): Promise<[]> {
+      return [];
+    }
+
+    async isAvailable(): Promise<boolean> {
       return true;
     }
   },
@@ -383,6 +431,34 @@ test("builds registry with no overrides — same as built-in count", () => {
   const registry = buildProviderRegistry(logger);
 
   expect(Object.keys(registry)).toHaveLength(AGENT_PROVIDER_DEFINITIONS.length);
+});
+
+test("claude transport defaults to the SDK client", () => {
+  buildProviderRegistry(logger).claude.createClient(logger);
+
+  expect(mockState.constructorArgs.claude.length).toBeGreaterThan(0);
+  expect(mockState.constructorArgs.claudeAcp).toHaveLength(0);
+});
+
+test("claude transport 'sdk' selects the SDK client", () => {
+  buildProviderRegistry(logger, {
+    providerOverrides: { claude: { transport: "sdk" } },
+  }).claude.createClient(logger);
+
+  expect(mockState.constructorArgs.claude.length).toBeGreaterThan(0);
+  expect(mockState.constructorArgs.claudeAcp).toHaveLength(0);
+});
+
+test("claude transport 'acp' selects the ACP client and keeps provider 'claude'", () => {
+  const client = buildProviderRegistry(logger, {
+    providerOverrides: { claude: { transport: "acp" } },
+  }).claude.createClient(logger);
+
+  // ACP transport is mutually exclusive with the SDK transport: only the ACP
+  // client is constructed, and it still reports provider "claude".
+  expect(mockState.constructorArgs.claudeAcp.length).toBeGreaterThan(0);
+  expect(mockState.constructorArgs.claude).toHaveLength(0);
+  expect(client.provider).toBe("claude");
 });
 
 test("includes mock provider only for development builds", () => {

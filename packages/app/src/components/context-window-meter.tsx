@@ -5,6 +5,7 @@ import { Pressable, Text, View, type StyleProp, type ViewStyle } from "react-nat
 import Svg, { Circle } from "react-native-svg";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { useDaemonConfig } from "@/hooks/use-daemon-config";
 import { useSessionStore } from "@/stores/session-store";
 import { formatTokenCount } from "./context-window-meter.utils";
 
@@ -435,14 +436,31 @@ const QUOTA_RENDERERS: Record<
 function PlanUsageSection({
   provider,
   providerQuota,
+  reclaudeEnabled,
 }: {
   provider: string | null | undefined;
   providerQuota: ProviderQuota | null;
+  reclaudeEnabled: boolean;
 }) {
   const { theme } = useUnistyles();
   const { t } = useTranslation();
   const p = provider?.toLowerCase();
   if (!p || !(p in QUOTA_RENDERERS)) return null;
+
+  // reclaude swaps the Claude binary for a third-party backend, so the SDK
+  // rate-limit data we derive plan usage from is never reported. Surface a
+  // clear notice instead of a perpetual "loading" state.
+  if (p === "claude" && reclaudeEnabled) {
+    return (
+      <>
+        <View style={styles.tooltipDivider} />
+        <Text style={styles.tooltipTitle}>{t("contextWindow.quota.planUsage")}</Text>
+        <Text style={styles.tooltipDetail}>
+          {t("contextWindow.quota.claude.reclaudeUnsupported")}
+        </Text>
+      </>
+    );
+  }
 
   const render = QUOTA_RENDERERS[p];
   const quotaData = providerQuota ? providerQuota[p as keyof ProviderQuota] : null;
@@ -476,6 +494,10 @@ export function ContextWindowMeter({
   const providerQuota = useSessionStore((state) =>
     serverId ? (state.sessions[serverId]?.providerQuota ?? null) : null,
   );
+  // reclaude is enabled by setting the Claude launch command to ["reclaude"]
+  // in the daemon config; under it the plan-usage quota cannot be queried.
+  const { config: daemonConfig } = useDaemonConfig(serverId ?? null);
+  const reclaudeEnabled = daemonConfig?.providers?.claude?.command?.[0] === "reclaude";
 
   if (percentage === null) {
     return null;
@@ -550,7 +572,11 @@ export function ContextWindowMeter({
               {t("contextWindow.sessionCost", { cost: formattedSessionCost })}
             </Text>
           ) : null}
-          <PlanUsageSection provider={provider} providerQuota={providerQuota} />
+          <PlanUsageSection
+            provider={provider}
+            providerQuota={providerQuota}
+            reclaudeEnabled={reclaudeEnabled}
+          />
         </View>
       </TooltipContent>
     </Tooltip>

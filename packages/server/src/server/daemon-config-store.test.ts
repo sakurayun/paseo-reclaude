@@ -52,6 +52,29 @@ describe("applyMutableProviderConfigToOverrides", () => {
       },
     });
   });
+
+  test("carries the claude transport selector onto the override", () => {
+    expect(
+      applyMutableProviderConfigToOverrides(undefined, {
+        claude: { transport: "acp" },
+      }),
+    ).toEqual({
+      claude: { transport: "acp" },
+    });
+  });
+
+  test("clearing the command keeps the transport selector", () => {
+    // `command: null` is the reclaude "clear" signal; it must drop the command
+    // without disturbing the transport selector.
+    expect(
+      applyMutableProviderConfigToOverrides(
+        { claude: { command: ["reclaude"], transport: "acp" } },
+        { claude: { command: null } },
+      ),
+    ).toEqual({
+      claude: { transport: "acp" },
+    });
+  });
 });
 
 describe("DaemonConfigStore", () => {
