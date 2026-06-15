@@ -22,7 +22,7 @@ export function WorkspaceShortcutTargetsSubscriber({
   const { projects } = useSidebarWorkspacesList({ serverId, enabled });
   // groupMode must be resolved before gating the status-mode subscriptions below.
   const groupMode = useSidebarViewStore((state) =>
-    enabled && serverId ? state.getGroupMode(serverId) : "project",
+    enabled && serverId ? state.getGroupMode(serverId) : "workspace",
   );
   // Only subscribe to agents/workspaces when the status-group view is actually active.
   // In project mode (the default), these subscriptions would fire on every agent update

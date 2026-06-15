@@ -54,6 +54,26 @@ Closing a tab on a **subagent** (any agent with `parentAgentId`) is **layout-onl
 
 The asymmetry is intentional: a subagent's home is the parent's track, not the tab. Tabs are ephemeral viewing slots; the track is the persistent record of the parent's children.
 
+## Startup tab restore
+
+Tabs are a persisted per-client layout, but on app launch a workspace only
+restores tabs for sessions that are **currently running**. The first reconcile
+after the live agent list hydrates is the startup restore pass: it prunes agent
+tabs whose session is idle, errored, or closed. Those sessions stay reachable
+from the sidebar session list instead of crowding the tab bar.
+
+- **Auto-open** is gated to running **root** sessions — `shouldAutoOpenAgentTab`
+  (root, not a subagent) plus a `status === "running"` check in
+  `deriveWorkspaceAgentVisibility` (`packages/app/src/workspace-tabs/agent-visibility.ts`).
+  Subagents never auto-open.
+- **The prune** runs in `reconcileWorkspaceTabs` only when the snapshot's
+  `isInitialRestore` flag is set. That flag is computed in the layout store's
+  `reconcileTabs` action from the non-persisted `initialRestoreDoneByWorkspace`
+  map, so the prune fires once per workspace per app launch. Sessions opened by
+  hand mid-session are never yanked away, and a fresh launch prunes again.
+- `runningAgentIds` rides along in the snapshot. If it is omitted the prune is
+  skipped (no authoritative running status to act on).
+
 ## Workspace activity
 
 Agent lifecycle status stays literal: a parent agent is `idle` when its own turn is idle, even if a child is running.

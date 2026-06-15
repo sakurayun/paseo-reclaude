@@ -16,8 +16,9 @@ export const useSidebarViewStore = create<SidebarViewStoreState>()(
       groupModeByServerId: {},
       getGroupMode: (serverId) => {
         const key = serverId.trim();
-        if (!key) return "project";
-        return get().groupModeByServerId[key] ?? "project";
+        // Default the sidebar workspace section to grouping by workspace.
+        if (!key) return "workspace";
+        return get().groupModeByServerId[key] ?? "workspace";
       },
       setGroupMode: (serverId, mode) => {
         const key = serverId.trim();

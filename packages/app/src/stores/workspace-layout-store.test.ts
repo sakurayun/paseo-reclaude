@@ -312,6 +312,7 @@ describe("workspace-layout-store actions", () => {
       pinnedAgentIdsByWorkspace: {},
       hiddenAgentIdsByWorkspace: {},
       focusRestorationByWorkspace: {},
+      initialRestoreDoneByWorkspace: {},
     });
   });
 
@@ -1494,6 +1495,97 @@ describe("workspace-layout-store actions", () => {
         .getWorkspaceTabs(workspaceKey)
         .map((tab) => tab.tabId),
     ).toEqual(["agent_parent-agent"]);
+  });
+
+  it("reconcileTabs prunes non-running session tabs on the startup restore pass", () => {
+    const workspaceKey = createWorkspaceKey();
+    const store = workspaceLayoutStore.getState();
+
+    // Both tabs were restored from the persisted layout on launch.
+    store.openTabFocused(workspaceKey, { kind: "agent", agentId: "running-agent" });
+    store.openTabFocused(workspaceKey, { kind: "agent", agentId: "idle-agent" });
+
+    store.reconcileTabs(workspaceKey, {
+      agentsHydrated: true,
+      terminalsHydrated: true,
+      activeAgentIds: ["running-agent", "idle-agent"],
+      autoOpenAgentIds: ["running-agent"],
+      knownAgentIds: ["running-agent", "idle-agent"],
+      runningAgentIds: ["running-agent"],
+      standaloneTerminalIds: [],
+      hasActivePendingDraftCreate: false,
+    });
+
+    expect(
+      workspaceLayoutStore
+        .getState()
+        .getWorkspaceTabs(workspaceKey)
+        .map((tab) => tab.tabId),
+    ).toEqual(["agent_running-agent"]);
+  });
+
+  it("reconcileTabs does not prune idle session tabs after the startup restore pass", () => {
+    const workspaceKey = createWorkspaceKey();
+    const store = workspaceLayoutStore.getState();
+
+    // First reconcile is the startup restore pass; it marks the workspace done.
+    store.reconcileTabs(workspaceKey, {
+      agentsHydrated: true,
+      terminalsHydrated: true,
+      activeAgentIds: ["running-agent"],
+      autoOpenAgentIds: ["running-agent"],
+      knownAgentIds: ["running-agent"],
+      runningAgentIds: ["running-agent"],
+      standaloneTerminalIds: [],
+      hasActivePendingDraftCreate: false,
+    });
+
+    // The user opens an idle session by hand mid-session.
+    store.openTabFocused(workspaceKey, { kind: "agent", agentId: "idle-agent" });
+
+    // A later reconcile must keep the hand-opened idle tab.
+    store.reconcileTabs(workspaceKey, {
+      agentsHydrated: true,
+      terminalsHydrated: true,
+      activeAgentIds: ["running-agent", "idle-agent"],
+      autoOpenAgentIds: ["running-agent"],
+      knownAgentIds: ["running-agent", "idle-agent"],
+      runningAgentIds: ["running-agent"],
+      standaloneTerminalIds: [],
+      hasActivePendingDraftCreate: false,
+    });
+
+    expect(
+      workspaceLayoutStore
+        .getState()
+        .getWorkspaceTabs(workspaceKey)
+        .map((tab) => tab.tabId)
+        .sort(),
+    ).toEqual(["agent_idle-agent", "agent_running-agent"]);
+  });
+
+  it("reconcileTabs skips the startup prune when runningAgentIds is omitted", () => {
+    const workspaceKey = createWorkspaceKey();
+    const store = workspaceLayoutStore.getState();
+
+    store.openTabFocused(workspaceKey, { kind: "agent", agentId: "idle-agent" });
+
+    store.reconcileTabs(workspaceKey, {
+      agentsHydrated: true,
+      terminalsHydrated: true,
+      activeAgentIds: ["idle-agent"],
+      autoOpenAgentIds: [],
+      knownAgentIds: ["idle-agent"],
+      standaloneTerminalIds: [],
+      hasActivePendingDraftCreate: false,
+    });
+
+    expect(
+      workspaceLayoutStore
+        .getState()
+        .getWorkspaceTabs(workspaceKey)
+        .map((tab) => tab.tabId),
+    ).toEqual(["agent_idle-agent"]);
   });
 
   it("openTabFocused reopens hidden subagent tabs and clears hidden intent", () => {

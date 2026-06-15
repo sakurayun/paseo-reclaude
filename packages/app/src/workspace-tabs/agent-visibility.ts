@@ -11,6 +11,9 @@ export interface WorkspaceAgentVisibility {
   activeAgentIds: Set<string>;
   autoOpenAgentIds: Set<string>;
   knownAgentIds: Set<string>;
+  // Unarchived agents whose session is currently running. Used to decide which
+  // tabs survive the startup restore pass (idle/ended/paused sessions do not).
+  runningAgentIds: Set<string>;
 }
 
 export function deriveWorkspaceAgentVisibility(input: {
@@ -25,12 +28,14 @@ export function deriveWorkspaceAgentVisibility(input: {
       activeAgentIds: new Set<string>(),
       autoOpenAgentIds: new Set<string>(),
       knownAgentIds: new Set<string>(),
+      runningAgentIds: new Set<string>(),
     };
   }
 
   const activeAgentIds = new Set<string>();
   const autoOpenAgentIds = new Set<string>();
   const knownAgentIds = new Set<string>();
+  const runningAgentIds = new Set<string>();
   for (const agent of sessionAgents?.values() ?? []) {
     if (normalizeWorkspaceDirectory(agent.cwd) !== normalizedWorkspaceDirectory) {
       continue;
@@ -38,7 +43,13 @@ export function deriveWorkspaceAgentVisibility(input: {
     knownAgentIds.add(agent.id);
     if (!agent.archivedAt) {
       activeAgentIds.add(agent.id);
-      if (shouldAutoOpenAgentTab(agent)) {
+      const isRunning = agent.status === "running";
+      if (isRunning) {
+        runningAgentIds.add(agent.id);
+      }
+      // Only auto-open running root sessions. Idle/ended sessions are surfaced
+      // by the sidebar session list, so they are not auto-restored as tabs.
+      if (isRunning && shouldAutoOpenAgentTab(agent)) {
         autoOpenAgentIds.add(agent.id);
       }
     }
@@ -50,7 +61,7 @@ export function deriveWorkspaceAgentVisibility(input: {
     knownAgentIds.add(agent.id);
   }
 
-  return { activeAgentIds, autoOpenAgentIds, knownAgentIds };
+  return { activeAgentIds, autoOpenAgentIds, knownAgentIds, runningAgentIds };
 }
 
 export function buildWorkspaceTabSnapshot(input: {
@@ -67,6 +78,7 @@ export function buildWorkspaceTabSnapshot(input: {
     activeAgentIds: input.agentVisibility.activeAgentIds,
     autoOpenAgentIds: input.agentVisibility.autoOpenAgentIds,
     knownAgentIds: input.agentVisibility.knownAgentIds,
+    runningAgentIds: input.agentVisibility.runningAgentIds,
     knownTerminalIds: input.knownTerminalIds,
     standaloneTerminalIds: input.standaloneTerminalIds,
     hasActivePendingDraftCreate: input.hasActivePendingDraftCreate,
@@ -80,7 +92,8 @@ export function workspaceAgentVisibilityEqual(
   return (
     setsEqual(a.activeAgentIds, b.activeAgentIds) &&
     setsEqual(a.autoOpenAgentIds, b.autoOpenAgentIds) &&
-    setsEqual(a.knownAgentIds, b.knownAgentIds)
+    setsEqual(a.knownAgentIds, b.knownAgentIds) &&
+    setsEqual(a.runningAgentIds, b.runningAgentIds)
   );
 }
 

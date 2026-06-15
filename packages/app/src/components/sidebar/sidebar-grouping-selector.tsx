@@ -26,7 +26,7 @@ const GROUP_MODE_ITEMS: Array<{ value: SidebarGroupMode; labelKey: string }> = [
 export function SidebarGroupingSelector({ serverId }: { serverId: string | null }) {
   const { t } = useTranslation();
   const groupMode = useSidebarViewStore((state) =>
-    serverId ? state.getGroupMode(serverId) : "project",
+    serverId ? state.getGroupMode(serverId) : "workspace",
   );
   const setGroupMode = useSidebarViewStore((state) => state.setGroupMode);
 

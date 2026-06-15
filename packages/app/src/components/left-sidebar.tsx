@@ -221,7 +221,7 @@ export const LeftSidebar = memo(function LeftSidebar({
     useSidebarShortcutModel({ projects, isInitialLoad });
 
   const groupMode = useSidebarViewStore((state) =>
-    activeServerId ? state.getGroupMode(activeServerId) : "project",
+    activeServerId ? state.getGroupMode(activeServerId) : "workspace",
   );
 
   const [isManualRefresh, setIsManualRefresh] = useState(false);

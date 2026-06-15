@@ -75,6 +75,10 @@ interface WorkspaceLayoutStore {
   pinnedAgentIdsByWorkspace: Record<string, Set<string>>;
   hiddenAgentIdsByWorkspace: Record<string, Set<string>>;
   focusRestorationByWorkspace: Record<string, WorkspaceFocusRestorationState>;
+  // Tracks which workspaces have already run the startup restore prune this app
+  // launch. Intentionally NOT persisted: a fresh launch is exactly when the
+  // non-running-session tabs should be pruned again.
+  initialRestoreDoneByWorkspace: Record<string, boolean>;
   openTabFocused: (workspaceKey: string, target: WorkspaceTabTarget) => string | null;
   openChildTabFocused: (
     workspaceKey: string,
@@ -229,6 +233,7 @@ export function createWorkspaceLayoutStore(
         pinnedAgentIdsByWorkspace: {},
         hiddenAgentIdsByWorkspace: {},
         focusRestorationByWorkspace: {},
+        initialRestoreDoneByWorkspace: {},
         openTabFocused: (workspaceKey, target) => {
           const normalizedWorkspaceKey = trimNonEmpty(workspaceKey);
           const normalizedTarget = normalizeWorkspaceTabTarget(target);
@@ -461,23 +466,43 @@ export function createWorkspaceLayoutStore(
               state.layoutByWorkspace,
               normalizedWorkspaceKey,
             );
+            // The first reconcile after the live agent list hydrates is the
+            // startup restore pass. Flag it so reconcile prunes tabs for
+            // sessions that are not currently running, then remember we did it
+            // so mid-session reconciles never prune hand-opened idle tabs.
+            const alreadyRestored =
+              state.initialRestoreDoneByWorkspace[normalizedWorkspaceKey] ?? false;
+            const isInitialRestore = !alreadyRestored && snapshot.agentsHydrated;
             const nextState = reconcileWorkspaceTabs(
               {
                 layout: currentLayout,
                 pinnedAgentIds: state.pinnedAgentIdsByWorkspace[normalizedWorkspaceKey] ?? null,
                 hiddenAgentIds: state.hiddenAgentIdsByWorkspace[normalizedWorkspaceKey] ?? null,
               },
-              snapshot,
+              isInitialRestore ? { ...snapshot, isInitialRestore: true } : snapshot,
             );
-            if (nextState.layout === currentLayout) {
+            const layoutChanged = nextState.layout !== currentLayout;
+            if (!layoutChanged && !isInitialRestore) {
               return state;
             }
 
             return {
-              layoutByWorkspace: {
-                ...state.layoutByWorkspace,
-                [normalizedWorkspaceKey]: nextState.layout,
-              },
+              ...(layoutChanged
+                ? {
+                    layoutByWorkspace: {
+                      ...state.layoutByWorkspace,
+                      [normalizedWorkspaceKey]: nextState.layout,
+                    },
+                  }
+                : {}),
+              ...(isInitialRestore
+                ? {
+                    initialRestoreDoneByWorkspace: {
+                      ...state.initialRestoreDoneByWorkspace,
+                      [normalizedWorkspaceKey]: true,
+                    },
+                  }
+                : {}),
             };
           });
         },
@@ -871,7 +896,8 @@ export function createWorkspaceLayoutStore(
               normalizedWorkspaceKey in state.splitSizesByWorkspace ||
               normalizedWorkspaceKey in state.pinnedAgentIdsByWorkspace ||
               normalizedWorkspaceKey in state.hiddenAgentIdsByWorkspace ||
-              normalizedWorkspaceKey in state.focusRestorationByWorkspace;
+              normalizedWorkspaceKey in state.focusRestorationByWorkspace ||
+              normalizedWorkspaceKey in state.initialRestoreDoneByWorkspace;
             if (!hasAny) {
               return state;
             }
@@ -885,12 +911,15 @@ export function createWorkspaceLayoutStore(
               state.hiddenAgentIdsByWorkspace;
             const { [normalizedWorkspaceKey]: _restoration, ...focusRestorationByWorkspace } =
               state.focusRestorationByWorkspace;
+            const { [normalizedWorkspaceKey]: _restored, ...initialRestoreDoneByWorkspace } =
+              state.initialRestoreDoneByWorkspace;
             return {
               layoutByWorkspace,
               splitSizesByWorkspace,
               pinnedAgentIdsByWorkspace,
               hiddenAgentIdsByWorkspace,
               focusRestorationByWorkspace,
+              initialRestoreDoneByWorkspace,
             };
           });
         },

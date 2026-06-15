@@ -203,9 +203,16 @@ export interface WorkspaceTabSnapshot {
   activeAgentIds: Iterable<string>;
   autoOpenAgentIds: Iterable<string>;
   knownAgentIds: Iterable<string>;
+  // Unarchived sessions that are currently running. When `isInitialRestore` is
+  // set, agent tabs whose session is not in this set are pruned (idle/ended
+  // sessions stay out of the tab bar after a restart). Omit to skip the prune.
+  runningAgentIds?: Iterable<string>;
   knownTerminalIds?: Iterable<string>;
   standaloneTerminalIds: Iterable<string>;
   hasActivePendingDraftCreate?: boolean;
+  // True only for the startup restore reconcile (first pass after the live
+  // agent list hydrates). Drives the non-running-tab prune.
+  isInitialRestore?: boolean;
 }
 
 const DEFAULT_PANE_ID = "main";
@@ -1678,6 +1685,33 @@ function collapseStaleEntityTabs(input: {
   return nextLayout;
 }
 
+// Startup restore prune: remove agent tabs whose session is not currently
+// running. Runs once per workspace per app launch (gated by `isInitialRestore`),
+// so sessions opened by hand mid-session are never yanked away. A missing
+// `runningAgentIds` means the caller has no authoritative running status, so the
+// prune is skipped.
+function pruneNonRunningAgentTabsOnRestore(input: {
+  layout: WorkspaceLayout;
+  snapshot: WorkspaceTabSnapshot;
+}): WorkspaceLayout {
+  const { snapshot } = input;
+  if (!snapshot.isInitialRestore || !snapshot.agentsHydrated || !snapshot.runningAgentIds) {
+    return input.layout;
+  }
+  const runningAgentIds = normalizeStringSet(snapshot.runningAgentIds);
+  let nextLayout = input.layout;
+  for (const tab of collectAllTabs(nextLayout.root)) {
+    if (isAgentTab(tab) && !runningAgentIds.has(tab.target.agentId)) {
+      nextLayout =
+        closeTabInLayout({
+          layout: nextLayout,
+          tabId: tab.tabId,
+        }) ?? nextLayout;
+    }
+  }
+  return nextLayout;
+}
+
 function addMissingEntityTabs(input: {
   layout: WorkspaceLayout;
   autoOpenAgentIds: Set<string>;
@@ -1803,6 +1837,9 @@ export function reconcileWorkspaceTabs(
     visibleAgentIds,
     knownTerminalIds,
   });
+
+  // On the startup restore pass, drop tabs for sessions that are not running.
+  nextLayout = pruneNonRunningAgentTabsOnRestore({ layout: nextLayout, snapshot });
 
   nextLayout = addMissingEntityTabs({
     layout: nextLayout,

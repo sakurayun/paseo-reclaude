@@ -14,6 +14,7 @@ function makeAgent(input: {
   archivedAt?: Date | null;
   createdAt?: Date;
   lastActivityAt?: Date;
+  status?: Agent["status"];
 }): Agent {
   const createdAt = input.createdAt ?? new Date("2026-03-04T00:00:00.000Z");
   const lastActivityAt = input.lastActivityAt ?? createdAt;
@@ -21,7 +22,7 @@ function makeAgent(input: {
     serverId: "srv",
     id: input.id,
     provider: "codex",
-    status: "idle",
+    status: input.status ?? "idle",
     createdAt,
     updatedAt: createdAt,
     lastUserMessageAt: null,
@@ -61,11 +62,13 @@ describe("workspace agent visibility", () => {
     const parent = makeAgent({
       id: "parent-agent",
       cwd: workspaceDirectory,
+      status: "running",
     });
     const child = makeAgent({
       id: "child-agent",
       cwd: workspaceDirectory,
       parentAgentId: "parent-agent",
+      status: "running",
     });
 
     const result = deriveWorkspaceAgentVisibility({
@@ -77,8 +80,32 @@ describe("workspace agent visibility", () => {
     });
 
     expect(result.activeAgentIds).toEqual(new Set(["parent-agent", "child-agent"]));
+    // The child is running, but subagents are never auto-opened.
     expect(result.autoOpenAgentIds).toEqual(new Set(["parent-agent"]));
     expect(result.knownAgentIds).toEqual(new Set(["parent-agent", "child-agent"]));
+    expect(result.runningAgentIds).toEqual(new Set(["parent-agent", "child-agent"]));
+  });
+
+  it("excludes idle and ended root sessions from auto-open while keeping them active and known", () => {
+    const workspaceDirectory = "/repo/worktree";
+    const idle = makeAgent({ id: "idle-agent", cwd: workspaceDirectory, status: "idle" });
+    const errored = makeAgent({ id: "error-agent", cwd: workspaceDirectory, status: "error" });
+    const running = makeAgent({ id: "running-agent", cwd: workspaceDirectory, status: "running" });
+
+    const result = deriveWorkspaceAgentVisibility({
+      sessionAgents: new Map<string, Agent>([
+        [idle.id, idle],
+        [errored.id, errored],
+        [running.id, running],
+      ]),
+      workspaceDirectory,
+    });
+
+    expect(result.activeAgentIds).toEqual(new Set(["idle-agent", "error-agent", "running-agent"]));
+    expect(result.knownAgentIds).toEqual(new Set(["idle-agent", "error-agent", "running-agent"]));
+    // Only the running root session auto-opens / is restored.
+    expect(result.autoOpenAgentIds).toEqual(new Set(["running-agent"]));
+    expect(result.runningAgentIds).toEqual(new Set(["running-agent"]));
   });
 
   it("keeps archived subagents known but excludes them from active and auto-open", () => {
@@ -97,6 +124,7 @@ describe("workspace agent visibility", () => {
 
     expect(result.activeAgentIds).toEqual(new Set<string>());
     expect(result.autoOpenAgentIds).toEqual(new Set<string>());
+    expect(result.runningAgentIds).toEqual(new Set<string>());
     expect(result.knownAgentIds).toEqual(new Set(["archived-child"]));
   });
 
@@ -106,10 +134,12 @@ describe("workspace agent visibility", () => {
       id: "child-agent",
       cwd: workspaceDirectory,
       parentAgentId: "parent-agent",
+      status: "running",
     });
     const parent = makeAgent({
       id: "parent-agent",
       cwd: workspaceDirectory,
+      status: "running",
     });
 
     const result = deriveWorkspaceAgentVisibility({
@@ -131,6 +161,7 @@ describe("workspace agent visibility", () => {
       id: "visible-agent",
       cwd: workspaceDirectory,
       createdAt: new Date("2026-03-04T00:00:00.000Z"),
+      status: "running",
     });
     const archived = makeAgent({
       id: "archived-agent",
@@ -231,6 +262,7 @@ describe("workspace agent visibility", () => {
         makeAgent({
           id: "slash-agent",
           cwd: "/Users/moboudra/dev/paseo/.dev/paseo-home/worktrees/1luy0po7/normal-squid/",
+          status: "running",
         }),
       ],
     ]);
@@ -253,6 +285,7 @@ describe("workspace agent visibility", () => {
         makeAgent({
           id: "recent-agent",
           cwd: "/tmp/workspace-lifecycle-main",
+          status: "running",
         }),
       ],
     ]);
@@ -272,6 +305,7 @@ describe("workspace agent visibility", () => {
       activeAgentIds: new Set(["active-agent"]),
       autoOpenAgentIds: new Set(["root-agent"]),
       knownAgentIds: new Set(["active-agent", "archived-agent"]),
+      runningAgentIds: new Set(["root-agent"]),
     };
 
     expect(
@@ -289,6 +323,7 @@ describe("workspace agent visibility", () => {
       activeAgentIds: agentVisibility.activeAgentIds,
       autoOpenAgentIds: agentVisibility.autoOpenAgentIds,
       knownAgentIds: agentVisibility.knownAgentIds,
+      runningAgentIds: agentVisibility.runningAgentIds,
       knownTerminalIds: ["terminal-1", "script-terminal"],
       standaloneTerminalIds: ["terminal-1"],
       hasActivePendingDraftCreate: false,
@@ -301,11 +336,13 @@ describe("workspace agent visibility", () => {
         activeAgentIds: new Set(["a", "b"]),
         autoOpenAgentIds: new Set(["a"]),
         knownAgentIds: new Set(["a", "b", "c"]),
+        runningAgentIds: new Set(["a"]),
       };
       const b = {
         activeAgentIds: new Set(["a", "b"]),
         autoOpenAgentIds: new Set(["a"]),
         knownAgentIds: new Set(["a", "b", "c"]),
+        runningAgentIds: new Set(["a"]),
       };
       expect(workspaceAgentVisibilityEqual(a, b)).toBe(true);
     });
@@ -315,11 +352,13 @@ describe("workspace agent visibility", () => {
         activeAgentIds: new Set(["a"]),
         autoOpenAgentIds: new Set(["a"]),
         knownAgentIds: new Set(["a"]),
+        runningAgentIds: new Set(["a"]),
       };
       const b = {
         activeAgentIds: new Set(["b"]),
         autoOpenAgentIds: new Set(["a"]),
         knownAgentIds: new Set(["a"]),
+        runningAgentIds: new Set(["a"]),
       };
       expect(workspaceAgentVisibilityEqual(a, b)).toBe(false);
     });
@@ -329,11 +368,13 @@ describe("workspace agent visibility", () => {
         activeAgentIds: new Set(["a", "b"]),
         autoOpenAgentIds: new Set(["a"]),
         knownAgentIds: new Set(["a", "b"]),
+        runningAgentIds: new Set(["a"]),
       };
       const b = {
         activeAgentIds: new Set(["a", "b"]),
         autoOpenAgentIds: new Set(["b"]),
         knownAgentIds: new Set(["a", "b"]),
+        runningAgentIds: new Set(["a"]),
       };
       expect(workspaceAgentVisibilityEqual(a, b)).toBe(false);
     });
@@ -343,11 +384,29 @@ describe("workspace agent visibility", () => {
         activeAgentIds: new Set(["a"]),
         autoOpenAgentIds: new Set(["a"]),
         knownAgentIds: new Set(["a"]),
+        runningAgentIds: new Set(["a"]),
       };
       const b = {
         activeAgentIds: new Set(["a"]),
         autoOpenAgentIds: new Set(["a"]),
         knownAgentIds: new Set(["a", "b"]),
+        runningAgentIds: new Set(["a"]),
+      };
+      expect(workspaceAgentVisibilityEqual(a, b)).toBe(false);
+    });
+
+    it("returns false when runningAgentIds differ", () => {
+      const a = {
+        activeAgentIds: new Set(["a", "b"]),
+        autoOpenAgentIds: new Set(["a"]),
+        knownAgentIds: new Set(["a", "b"]),
+        runningAgentIds: new Set(["a"]),
+      };
+      const b = {
+        activeAgentIds: new Set(["a", "b"]),
+        autoOpenAgentIds: new Set(["a"]),
+        knownAgentIds: new Set(["a", "b"]),
+        runningAgentIds: new Set(["a", "b"]),
       };
       expect(workspaceAgentVisibilityEqual(a, b)).toBe(false);
     });
@@ -357,11 +416,13 @@ describe("workspace agent visibility", () => {
         activeAgentIds: new Set<string>(),
         autoOpenAgentIds: new Set<string>(),
         knownAgentIds: new Set<string>(),
+        runningAgentIds: new Set<string>(),
       };
       const b = {
         activeAgentIds: new Set<string>(),
         autoOpenAgentIds: new Set<string>(),
         knownAgentIds: new Set<string>(),
+        runningAgentIds: new Set<string>(),
       };
       expect(workspaceAgentVisibilityEqual(a, b)).toBe(true);
     });
