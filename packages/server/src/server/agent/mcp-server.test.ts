@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { describe, expect, it, vi } from "vitest";
-import { realpathSync } from "node:fs";
+import { realpathSync, rmSync } from "node:fs";
 import { access, mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { join, resolve as resolvePath } from "node:path";
 import { tmpdir } from "node:os";
@@ -10,8 +10,9 @@ import { zodToJsonSchema } from "zod-to-json-schema";
 
 import { createTestLogger } from "../../test-utils/test-logger.js";
 import { createAgentMcpServer } from "./mcp-server.js";
-import type { AgentManager, ManagedAgent } from "./agent-manager.js";
-import type { AgentStorage, StoredAgentRecord } from "./agent-storage.js";
+import { AgentManager, type ManagedAgent } from "./agent-manager.js";
+import { AgentStorage, type StoredAgentRecord } from "./agent-storage.js";
+import { createTestAgentClients } from "../test-utils/fake-agent-client.js";
 import type { AgentMode, AgentProvider, ProviderSnapshotEntry } from "./agent-sdk-types.js";
 import { createProviderSnapshotManagerStub } from "../test-utils/session-stubs.js";
 import {
@@ -1068,12 +1069,14 @@ describe("create_agent MCP tool", () => {
       expect(broadcasts[0]).toBe(createdWorkspaceIds[0]);
       expect(setupContinuations).toEqual(["agent"]);
       expect(startedAgentSetupIds).toEqual(["agent-with-worktree"]);
+      // The agent is stamped with the freshly created worktree's workspaceId so
+      // workspaceId-scoped archive can find and tear it down later.
       expect(spies.agentManager.createAgent).toHaveBeenCalledWith(
         expect.objectContaining({
           cwd: expect.stringContaining("agent-worktree"),
         }),
         undefined,
-        undefined,
+        { workspaceId: createdWorkspaceIds[0] },
       );
     } finally {
       await rm(tempDir, { recursive: true, force: true });
@@ -1329,7 +1332,7 @@ describe("create_agent MCP tool", () => {
     expect(spies.agentManager.createAgent).toHaveBeenCalledWith(
       expect.objectContaining({ cwd: "/tmp/worktrees/pr-123" }),
       undefined,
-      undefined,
+      { workspaceId: "ws-pr-123" },
     );
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(workspaceGitService.getSnapshot).not.toHaveBeenCalled();
@@ -1445,6 +1448,7 @@ describe("create_agent MCP tool", () => {
           "getSnapshot" | "listWorktrees" | "resolveRepoRoot"
         >,
         resolveWorkspaceIdForCwd: vi.fn(async () => "ws-archive-tool-worktree"),
+        listActiveWorkspaces: vi.fn(async () => []),
         archiveWorkspaceRecord,
         emitWorkspaceUpdatesForWorkspaceIds,
         markWorkspaceArchiving,
@@ -1528,6 +1532,7 @@ describe("create_agent MCP tool", () => {
           "getSnapshot" | "listWorktrees" | "resolveRepoRoot"
         >,
         resolveWorkspaceIdForCwd: vi.fn(async () => "ws-archive-mcp"),
+        listActiveWorkspaces: vi.fn(async () => []),
         archiveWorkspaceRecord: vi.fn(async () => undefined),
         emitWorkspaceUpdatesForWorkspaceIds: vi.fn(async () => undefined),
         markWorkspaceArchiving: vi.fn(),
@@ -1869,6 +1874,45 @@ describe("create_agent MCP tool", () => {
         },
       },
     );
+  });
+
+  it("inherits the parent's workspaceId when an MCP child is created in the parent's working tree", async () => {
+    const workdir = await mkdtemp(join(tmpdir(), "mcp-workspace-inherit-"));
+    const storage = new AgentStorage(join(workdir, "agents"), logger);
+    const agentManager = new AgentManager({
+      clients: createTestAgentClients(),
+      registry: storage,
+      logger,
+    });
+
+    try {
+      const parent = await agentManager.createAgent(
+        { provider: "codex", cwd: existingCwd },
+        undefined,
+        { workspaceId: "wks_parent" },
+      );
+
+      const server = await createAgentMcpServer({
+        agentManager,
+        agentStorage: storage,
+        callerAgentId: parent.id,
+        providerSnapshotManager: createOpenCodeManager().manager,
+        logger,
+      });
+      const tool = registeredTool(server, "create_agent");
+      const result = await tool.handler({
+        title: "Child",
+        provider: "codex/gpt-5.4",
+        initialPrompt: "Do work",
+      });
+
+      const childId = z.object({ agentId: z.string() }).parse(result.structuredContent).agentId;
+      const storedChild = await storage.get(childId);
+      expect(storedChild?.workspaceId).toBe("wks_parent");
+      expect(storedChild?.labels[PARENT_AGENT_ID_LABEL]).toBe(parent.id);
+    } finally {
+      rmSync(workdir, { recursive: true, force: true });
+    }
   });
 
   it("delegates MCP injection to AgentManager and passes through an undefined agent ID", async () => {

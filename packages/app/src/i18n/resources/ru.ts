@@ -264,7 +264,7 @@ export const ru: TranslationResources = {
       currentBadge: "Текущая",
       untitled: "Сессия без названия",
     },
-    title: "Сессии",
+    title: "История агентов",
     empty: "Сеансов пока нет",
     actions: {
       loadMore: "Загрузить больше",
@@ -417,9 +417,12 @@ export const ru: TranslationResources = {
         retry: "Повторить попытку",
         refresh: "Обновить файлы",
         refreshing: "Обновление файлов",
+        hideHiddenFiles: "Скрыть скрытые файлы",
+        showHiddenFiles: "Показать скрытые файлы",
       },
       empty: {
         noFiles: "Нет файлов",
+        noVisibleFiles: "Нет видимых файлов",
       },
       states: {
         unavailable: "Workspace недоступен",
@@ -989,6 +992,7 @@ export const ru: TranslationResources = {
     },
     actions: {
       addProject: "Добавить проект",
+      newWorkspace: "Новое рабочее пространство",
       home: "Дом",
       settings: "Настройки",
       closeSidebar: "Закрыть боковую панель",
@@ -996,7 +1000,7 @@ export const ru: TranslationResources = {
       displayPreferences: "Настройки отображения",
     },
     sections: {
-      sessions: "Сессии",
+      sessions: "История",
       workspaces: "Workspaces",
     },
     worktreeSetup: {
@@ -1064,6 +1068,12 @@ export const ru: TranslationResources = {
         hideConfirm: "Скрывать",
         cancel: "Отмена",
       },
+      deleteWorktreePrompt: {
+        title: "Архивировать рабочее пространство",
+        message: "Также удалить рабочее дерево с диска?",
+        keep: "Оставить на диске",
+        delete: "Удалить",
+      },
       rename: {
         title: "Переименовать рабочую область",
         submit: "Переименовать",
@@ -1082,6 +1092,17 @@ export const ru: TranslationResources = {
   newWorkspace: {
     title: "Новое рабочее пространство",
     create: "Создавать",
+    backing: {
+      local: "Локально",
+      worktree: "Новый worktree",
+      label: "Изоляция",
+    },
+    fields: {
+      project: "Проект",
+      base: "База",
+      baseNotApplicable: "Неприменимо",
+    },
+    titlePlaceholder: "Название (необязательно)",
     errors: {
       hostDisconnected: "Host не подключен",
       createWorktreeFailed: "Не удалось создать рабочее дерево.",

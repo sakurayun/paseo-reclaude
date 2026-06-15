@@ -265,7 +265,7 @@ export const fr: TranslationResources = {
       currentBadge: "Actuelle",
       untitled: "Session sans titre",
     },
-    title: "Séances",
+    title: "Historique des agents",
     empty: "Aucune séance pour l'instant",
     actions: {
       loadMore: "Charger plus",
@@ -418,9 +418,12 @@ export const fr: TranslationResources = {
         retry: "Réessayer",
         refresh: "Actualiser les fichiers",
         refreshing: "Actualisation des fichiers",
+        hideHiddenFiles: "Masquer les fichiers cachés",
+        showHiddenFiles: "Afficher les fichiers cachés",
       },
       empty: {
         noFiles: "Aucun fichier",
+        noVisibleFiles: "Aucun fichier visible",
       },
       states: {
         unavailable: "Workspacen'est pas disponible",
@@ -997,6 +1000,7 @@ export const fr: TranslationResources = {
     },
     actions: {
       addProject: "Ajouter un projet",
+      newWorkspace: "Nouvel espace de travail",
       home: "Maison",
       settings: "Paramètres",
       closeSidebar: "Fermer la barre latérale",
@@ -1004,7 +1008,7 @@ export const fr: TranslationResources = {
       displayPreferences: "Préférences d'affichage",
     },
     sections: {
-      sessions: "Séances",
+      sessions: "Historique",
       workspaces: "Espaces de travail",
     },
     worktreeSetup: {
@@ -1072,6 +1076,12 @@ export const fr: TranslationResources = {
         hideConfirm: "Cacher",
         cancel: "Annuler",
       },
+      deleteWorktreePrompt: {
+        title: "Archiver l'espace de travail",
+        message: "Supprimer aussi le worktree du disque?",
+        keep: "Conserver sur le disque",
+        delete: "Supprimer",
+      },
       rename: {
         title: "Renommer l'espace de travail",
         submit: "Rebaptiser",
@@ -1090,6 +1100,17 @@ export const fr: TranslationResources = {
   newWorkspace: {
     title: "Nouvel espace de travail",
     create: "Créer",
+    backing: {
+      local: "Local",
+      worktree: "Nouveau worktree",
+      label: "Isolation",
+    },
+    fields: {
+      project: "Projet",
+      base: "Base",
+      baseNotApplicable: "Non applicable",
+    },
+    titlePlaceholder: "Titre (facultatif)",
     errors: {
       hostDisconnected: "Hostn'est pas connecté",
       createWorktreeFailed: "Échec de la création de l'arbre de travail",

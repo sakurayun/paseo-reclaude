@@ -13,6 +13,7 @@ type NewWorkspaceDaemonClient = Pick<
   | "connect"
   | "createPaseoWorktree"
   | "fetchWorkspaces"
+  | "getPaseoWorktreeList"
   | "openProject"
 >;
 
@@ -152,7 +153,7 @@ export async function openNewWorkspaceComposer(
 }
 
 export async function openGlobalNewWorkspaceComposer(page: Page): Promise<void> {
-  await page.getByTestId("sidebar-new-workspace").click();
+  await page.getByTestId("sidebar-global-new-workspace").click();
 
   await expect(page).toHaveURL(/\/h\/[^/]+\/new(?:\?.*)?$/, {
     timeout: 30_000,
@@ -188,6 +189,45 @@ export async function clickNewWorkspaceButton(
 ): Promise<void> {
   await openNewWorkspaceComposer(page, input);
   await submitNewWorkspacePrompt(page, input.prompt);
+}
+
+export async function selectNewWorkspaceProject(
+  page: Page,
+  input: { projectKey: string; projectDisplayName: string },
+): Promise<void> {
+  const trigger = page.getByTestId("new-workspace-project-picker-trigger");
+  await expect(trigger).toBeVisible({ timeout: 30_000 });
+  await trigger.click();
+
+  const option = page.getByTestId(`new-workspace-project-picker-option-${input.projectKey}`);
+  await expect(option).toBeVisible({ timeout: 30_000 });
+  await option.click();
+
+  await expectNewWorkspaceProjectSelected(page, input.projectDisplayName);
+}
+
+export async function selectWorkspaceBacking(
+  page: Page,
+  backing: "local" | "worktree",
+): Promise<void> {
+  const trigger = page.getByTestId("workspace-create-backing-trigger");
+  await expect(trigger).toBeVisible({ timeout: 30_000 });
+  await trigger.click();
+
+  // "New worktree" is only listed once the checkout status query confirms the
+  // selected project is a git repo, so wait for the option to appear before
+  // clicking it.
+  const option = page.getByTestId(`workspace-create-backing-${backing}`);
+  await expect(option).toBeVisible({ timeout: 30_000 });
+  await option.click();
+}
+
+export async function submitNewWorkspaceEmpty(page: Page): Promise<void> {
+  const createButton = page
+    .getByTestId("message-input-root")
+    .getByRole("button", { name: "Create" });
+  await expect(createButton).toBeVisible({ timeout: 30_000 });
+  await createButton.click();
 }
 
 export async function openStartingRefPicker(page: Page): Promise<void> {

@@ -1,7 +1,7 @@
 import type { Agent } from "@/stores/session-store";
 import type { WorkspaceTabSnapshot } from "@/stores/workspace-layout-actions";
 import { shouldAutoOpenAgentTab } from "@/subagents/policies";
-import { normalizeWorkspacePath } from "@/utils/workspace-identity";
+import { normalizeWorkspaceOpaqueId, normalizeWorkspacePath } from "@/utils/workspace-identity";
 
 function normalizeWorkspaceDirectory(value: string | null | undefined): string {
   return normalizeWorkspacePath(value) ?? "";
@@ -16,14 +16,31 @@ export interface WorkspaceAgentVisibility {
   runningAgentIds: Set<string>;
 }
 
+function agentBelongsToWorkspace(input: {
+  agent: Agent;
+  workspaceId: string | null;
+  normalizedWorkspaceDirectory: string;
+}): boolean {
+  const agentWorkspaceId = normalizeWorkspaceOpaqueId(input.agent.workspaceId);
+  if (agentWorkspaceId) {
+    return input.workspaceId !== null && agentWorkspaceId === input.workspaceId;
+  }
+  // COMPAT(workspaceOwnership): legacy agents predate workspaceId stamping. Fall
+  // back to the single approved cwd→id inference by comparing the agent's cwd to
+  // this workspace's directory. Drop when the daemon floor always stamps workspaceId.
+  return normalizeWorkspaceDirectory(input.agent.cwd) === input.normalizedWorkspaceDirectory;
+}
+
 export function deriveWorkspaceAgentVisibility(input: {
   sessionAgents: Map<string, Agent> | undefined;
   agentDetails?: Map<string, Agent> | undefined;
+  workspaceId?: string | null | undefined;
   workspaceDirectory: string | null | undefined;
 }): WorkspaceAgentVisibility {
   const { sessionAgents, agentDetails, workspaceDirectory } = input;
+  const workspaceId = normalizeWorkspaceOpaqueId(input.workspaceId);
   const normalizedWorkspaceDirectory = normalizeWorkspaceDirectory(workspaceDirectory);
-  if ((!sessionAgents && !agentDetails) || !normalizedWorkspaceDirectory) {
+  if ((!sessionAgents && !agentDetails) || (!workspaceId && !normalizedWorkspaceDirectory)) {
     return {
       activeAgentIds: new Set<string>(),
       autoOpenAgentIds: new Set<string>(),
@@ -37,7 +54,7 @@ export function deriveWorkspaceAgentVisibility(input: {
   const knownAgentIds = new Set<string>();
   const runningAgentIds = new Set<string>();
   for (const agent of sessionAgents?.values() ?? []) {
-    if (normalizeWorkspaceDirectory(agent.cwd) !== normalizedWorkspaceDirectory) {
+    if (!agentBelongsToWorkspace({ agent, workspaceId, normalizedWorkspaceDirectory })) {
       continue;
     }
     knownAgentIds.add(agent.id);
@@ -55,7 +72,7 @@ export function deriveWorkspaceAgentVisibility(input: {
     }
   }
   for (const agent of agentDetails?.values() ?? []) {
-    if (normalizeWorkspaceDirectory(agent.cwd) !== normalizedWorkspaceDirectory) {
+    if (!agentBelongsToWorkspace({ agent, workspaceId, normalizedWorkspaceDirectory })) {
       continue;
     }
     knownAgentIds.add(agent.id);

@@ -35,6 +35,9 @@ import {
 export interface CreateAgentSessionWorktreeResult {
   sessionConfig: AgentSessionConfig;
   setupContinuation?: AgentWorktreeSetupContinuation;
+  // Set when this build created a fresh worktree workspace. The agent must be
+  // stamped with it so workspaceId-scoped archive can find the agent later.
+  createdWorkspaceId?: string;
 }
 
 interface CreateAgentCommandDependencies {
@@ -132,6 +135,7 @@ interface AgentCreateOptions {
   initialPrompt?: string;
   env?: Record<string, string>;
   initialTitle?: string | null;
+  workspaceId?: string;
 }
 
 export async function createAgentCommand(
@@ -184,7 +188,7 @@ async function resolveSessionCreateAgent(
   input: CreateAgentFromSessionInput,
 ): Promise<ResolvedCreateAgent> {
   const trimmedPrompt = input.initialPrompt?.trim();
-  const { sessionConfig, setupContinuation } = await input.buildSessionConfig(
+  const { sessionConfig, setupContinuation, createdWorkspaceId } = await input.buildSessionConfig(
     input.config,
     input.git,
     input.worktreeName,
@@ -208,6 +212,10 @@ async function resolveSessionCreateAgent(
       initialPrompt: trimmedPrompt,
       env: input.env,
       initialTitle: input.provisionalTitle,
+      // A legacy git/worktreeName worktree creates a fresh workspace, so the
+      // agent belongs to that workspace, not the source one (mirrors the MCP
+      // path). createdWorkspaceId is the freshly created worktree's workspace.
+      workspaceId: setupContinuation ? createdWorkspaceId : input.workspaceId,
     },
     metadataInitialPrompt: trimmedPrompt,
     prompt: hasPromptContent ? prompt : undefined,
@@ -239,12 +247,19 @@ async function resolveMcpCreateAgent(
         allowCustomCwd: input.callerContext?.allowCustomCwd ?? true,
       })
     : expandUserPath(input.cwd ?? process.cwd());
-  const { resolvedCwd, setupContinuation } = await resolveMcpCwd({
+  const { resolvedCwd, setupContinuation, createdWorkspaceId } = await resolveMcpCwd({
     dependencies,
     cwd,
     worktree: input.worktree,
     initialPrompt: input.initialPrompt,
   });
+
+  // A child agent created in its parent's working tree belongs to the parent's
+  // workspace. When a new worktree is created the child lives in that fresh
+  // workspace, so it is stamped with the new worktree's workspaceId instead
+  // (mirrors the session path) — keeping the agent discoverable by
+  // workspaceId-scoped archive.
+  const workspaceId = setupContinuation ? createdWorkspaceId : parentAgent?.workspaceId;
 
   const {
     modeId: resolvedMode,
@@ -282,7 +297,13 @@ async function resolveMcpCreateAgent(
           : (resolvedThinkingOptionId ?? undefined),
       ...(resolvedFeatures ? { featureValues: resolvedFeatures } : {}),
     },
-    createOptions: labels ? { labels } : undefined,
+    createOptions:
+      labels || workspaceId
+        ? {
+            ...(labels ? { labels } : {}),
+            ...(workspaceId ? { workspaceId } : {}),
+          }
+        : undefined,
     metadataInitialPrompt: trimmedPrompt,
     prompt: trimmedPrompt,
     explicitTitle: input.title.trim(),
@@ -395,7 +416,11 @@ async function resolveMcpCwd(params: {
   cwd: string;
   initialPrompt: string;
   worktree: CreateAgentFromMcpInput["worktree"];
-}): Promise<{ resolvedCwd: string; setupContinuation?: AgentWorktreeSetupContinuation }> {
+}): Promise<{
+  resolvedCwd: string;
+  setupContinuation?: AgentWorktreeSetupContinuation;
+  createdWorkspaceId?: string;
+}> {
   const { dependencies, worktree } = params;
   if (!worktree) {
     return { resolvedCwd: params.cwd };
@@ -451,6 +476,7 @@ async function resolveMcpCwd(params: {
   return {
     resolvedCwd: createdWorktree.worktree.worktreePath,
     setupContinuation: createdWorktree.setupContinuation,
+    createdWorkspaceId: createdWorktree.workspace.workspaceId,
   };
 }
 
