@@ -8,7 +8,6 @@ import { useTranslation } from "react-i18next";
 import type { GitLogCommit } from "@getpaseo/protocol/messages";
 import type { Theme } from "@/styles/theme";
 import { MarkdownRenderer } from "@/components/markdown/renderer";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useToast } from "@/contexts/toast-context";
 import { formatTimeAgo } from "@/utils/time";
 import { isNative } from "@/constants/platform";
@@ -240,30 +239,18 @@ function CommitGraphRowInner({
       onPointerEnter={handlePointerEnter}
       onPointerLeave={handlePointerLeave}
     >
-      <Tooltip delayDuration={500} enabledOnDesktop enabledOnMobile={false}>
-        <TooltipTrigger asChild>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={commit.subject}
-            accessibilityHint={shortHash}
-            accessibilityState={EXPANDABLE_STATE[expanded ? "expanded" : "collapsed"]}
-            onPress={handlePress}
-            style={rowStyle}
-            testID={`commit-row-${shortHash}`}
-          >
-            <ThemedCommitGraphSvg layout={layout} width={graphWidth} uniProps={laneColorsMapping} />
-            <CommitRowSummary
-              commit={commit}
-              badges={badges}
-              timeAgo={timeAgo}
-              shortHash={shortHash}
-            />
-          </Pressable>
-        </TooltipTrigger>
-        <TooltipContent side="left" align="start" offset={8}>
-          <CommitTooltipBody commit={commit} />
-        </TooltipContent>
-      </Tooltip>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={commit.subject}
+        accessibilityHint={shortHash}
+        accessibilityState={EXPANDABLE_STATE[expanded ? "expanded" : "collapsed"]}
+        onPress={handlePress}
+        style={rowStyle}
+        testID={`commit-row-${shortHash}`}
+      >
+        <ThemedCommitGraphSvg layout={layout} width={graphWidth} uniProps={laneColorsMapping} />
+        <CommitRowSummary commit={commit} badges={badges} timeAgo={timeAgo} shortHash={shortHash} />
+      </Pressable>
       {expanded ? (
         <Animated.View
           style={EXPANDED_ROW_STYLE}
@@ -326,27 +313,6 @@ const EXPANDABLE_STATE = {
   expanded: { expanded: true },
   collapsed: { expanded: false },
 } as const;
-
-/** Hover card with the full commit identity: hash, author, date, body. */
-function CommitTooltipBody({ commit }: { commit: GitLogCommit }) {
-  const fullDate = useMemo(() => new Date(commit.authorDate).toLocaleString(), [commit.authorDate]);
-  return (
-    <View style={styles.tooltipBody}>
-      <Text style={styles.tooltipSubject}>{commit.subject}</Text>
-      {commit.body ? (
-        <View style={styles.tooltipMarkdown}>
-          <MarkdownRenderer text={commit.body} compact />
-        </View>
-      ) : null}
-      <Text style={styles.tooltipMeta}>
-        {commit.authorName}
-        {commit.authorEmail ? ` <${commit.authorEmail}>` : ""}
-      </Text>
-      <Text style={styles.tooltipMeta}>{fullDate}</Text>
-      <Text style={styles.tooltipHash}>{commit.hash.slice(0, 12)}</Text>
-    </View>
-  );
-}
 
 /** Expanded body under a commit row: full metadata plus the changed files. */
 function CommitExpandedDetails({
@@ -478,7 +444,7 @@ const gutterStaticStyles = RNStyleSheet.create({
   },
 });
 
-const styles = StyleSheet.create((theme, rt) => ({
+const styles = StyleSheet.create((theme) => ({
   rowContainer: {
     position: "relative",
   },
@@ -495,29 +461,6 @@ const styles = StyleSheet.create((theme, rt) => ({
     gap: theme.spacing[1],
     flexShrink: 1,
     minWidth: 0,
-  },
-  tooltipBody: {
-    maxWidth: 320,
-    gap: 2,
-    padding: theme.spacing[1],
-  },
-  tooltipSubject: {
-    fontSize: theme.fontSize.sm,
-    fontWeight: theme.fontWeight.medium,
-    color: theme.colors.foreground,
-  },
-  tooltipText: {
-    fontSize: theme.fontSize.xs,
-    color: theme.colors.foregroundMuted,
-  },
-  tooltipMeta: {
-    fontSize: theme.fontSize.xs,
-    color: theme.colors.foregroundMuted,
-  },
-  tooltipHash: {
-    fontSize: theme.fontSize.xs,
-    color: theme.colors.foregroundMuted,
-    fontVariant: ["tabular-nums"],
   },
   expandedContainer: {
     // Matches the row summary's marginLeft so expanded text lines up with it.
@@ -538,12 +481,6 @@ const styles = StyleSheet.create((theme, rt) => ({
   bodyToggleText: {
     fontSize: theme.fontSize.xs,
     color: theme.colors.accent,
-  },
-  tooltipMarkdown: {
-    // Cap to the viewport rather than a fixed pixel height so long commit
-    // bodies stay readable; the tooltip itself cannot scroll.
-    maxHeight: Math.round(rt.screen.height * 0.6),
-    overflow: "hidden",
   },
   expandedHashRow: {
     alignSelf: "flex-start",

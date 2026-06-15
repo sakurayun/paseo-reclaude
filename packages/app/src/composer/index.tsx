@@ -42,7 +42,7 @@ import {
 import { ContextWindowMeter } from "@/components/context-window-meter";
 import { useImageAttachmentPicker } from "@/hooks/use-image-attachment-picker";
 import { useSessionStore } from "@/stores/session-store";
-import { useFilePicker } from "@/hooks/use-file-picker";
+import { useFilePicker, type PickedFile } from "@/hooks/use-file-picker";
 import { MessageInput, type MessageInputRef, type AttachmentMenuItem } from "./input/input";
 import type { ImageAttachment, MessagePayload } from "./types";
 import { ICON_SIZE, type Theme } from "@/styles/theme";
@@ -84,6 +84,7 @@ import {
 import {
   deleteAttachments,
   persistAttachmentFromBlob,
+  persistAttachmentFromBytes,
   persistAttachmentFromFileUri,
 } from "@/attachments/service";
 import { resolveAgentControlsMode } from "@/composer/agent-controls/mode";
@@ -102,7 +103,11 @@ import type {
   WorkspaceComposerAttachment,
 } from "@/attachments/types";
 import { composerWorkspaceAttachment } from "@/composer/attachments/workspace";
-import { getFileTypeLabel } from "@/attachments/file-types";
+import {
+  getFileTypeLabel,
+  isRasterImageMimeType,
+  isRasterImagePath,
+} from "@/attachments/file-types";
 import { Combobox, ComboboxItem, type ComboboxOption } from "@/components/ui/combobox";
 import { AttachmentLabel, AttachmentPill, AttachmentThumbnail } from "@/components/attachment-pill";
 import { AttachmentLightbox } from "@/components/attachment-lightbox";
@@ -1383,15 +1388,40 @@ export function Composer({
   }, [addImages, pickImages]);
 
   const handlePickFile = useCallback(async () => {
-    if (!client) {
-      toastErrorRef.current(t("composer.errors.daemonClientDisconnected"));
-      return;
-    }
     try {
       const files = await pickFiles();
       if (!files || files.length === 0) return;
 
-      const oversized = files.find((f) => f.bytes.byteLength > MAX_FILE_SIZE_BYTES);
+      // Image files take the local image-attachment path so they render with an
+      // inline thumbnail that opens the lightbox — both here in the composer and
+      // in the sent message — and are sent inline as base64 (no daemon upload).
+      // Every other file type still uploads to the daemon as before.
+      const isImage = (file: PickedFile) =>
+        isRasterImageMimeType(file.mimeType) || isRasterImagePath(file.fileName);
+      const imageFiles = files.filter(isImage);
+      const otherFiles = files.filter((file) => !isImage(file));
+
+      if (imageFiles.length > 0) {
+        const imageAttachments = await Promise.all(
+          imageFiles.map((file) =>
+            persistAttachmentFromBytes({
+              bytes: file.bytes,
+              mimeType: file.mimeType,
+              fileName: file.fileName,
+            }),
+          ),
+        );
+        addImages(imageAttachments);
+      }
+
+      if (otherFiles.length === 0) return;
+
+      if (!client) {
+        toastErrorRef.current(t("composer.errors.daemonClientDisconnected"));
+        return;
+      }
+
+      const oversized = otherFiles.find((f) => f.bytes.byteLength > MAX_FILE_SIZE_BYTES);
       if (oversized) {
         toastErrorRef.current(
           t("composer.errors.fileTooLarge", { size: "50MB", fileName: oversized.fileName }),
@@ -1400,17 +1430,17 @@ export function Composer({
       }
 
       setIsUploadingFile(true);
-      const uploaded = await uploadFileAttachments({ client, files });
+      const uploaded = await uploadFileAttachments({ client, files: otherFiles });
       addFiles(uploaded);
     } catch (error) {
-      console.error("[Composer] Failed to upload file:", error);
+      console.error("[Composer] Failed to add file:", error);
       toastErrorRef.current(
         error instanceof Error ? error.message : t("composer.errors.uploadFailed"),
       );
     } finally {
       setIsUploadingFile(false);
     }
-  }, [client, pickFiles, addFiles, t]);
+  }, [client, pickFiles, addFiles, addImages, t]);
 
   const handleRemoveAttachment = useCallback(
     (index: number) => {

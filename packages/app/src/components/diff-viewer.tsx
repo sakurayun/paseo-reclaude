@@ -8,7 +8,6 @@ import { diffLineCode, diffLinePrefix } from "@/utils/diff-highlight";
 import { syntaxTokenStyleFor } from "@/styles/syntax-token-styles";
 import { useWebScrollbarStyle } from "@/hooks/use-web-scrollbar-style";
 import { inlineUnistylesStyle } from "@/styles/unistyles-inline-style";
-import { getCodeInsets } from "./code-insets";
 import { CODE_SURFACE_DATASET } from "@/styles/code-surface";
 import { isWeb } from "@/constants/platform";
 
@@ -202,8 +201,6 @@ export function DiffViewer({
 }
 
 const styles = StyleSheet.create((theme) => {
-  const insets = getCodeInsets(theme);
-
   return {
     verticalScroll: {},
     fillHeight: {
@@ -212,16 +209,16 @@ const styles = StyleSheet.create((theme) => {
     },
     verticalContent: {
       flexGrow: 1,
-      paddingBottom: insets.extraBottom,
     },
     horizontalContent: {
       flexDirection: "column" as const,
     },
     // No horizontal padding: the marker gutter and line backgrounds run flush
-    // to the panel edges.
+    // to the panel edges. Keep the vertical inset tight and symmetric so the
+    // diff doesn't float with a large band above/below it inside the card.
     linesContainer: {
       alignSelf: "flex-start",
-      paddingVertical: insets.padding,
+      paddingVertical: theme.spacing[1],
     },
     line: {
       minWidth: "100%",
