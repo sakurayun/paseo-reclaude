@@ -526,7 +526,21 @@ function ProjectRowTrailingActions({
           showShortcutHint={isProjectActive}
           testID={`sidebar-project-new-worktree-${project.projectKey}`}
         />
-      ) : null}
+      ) : (
+        // Non-git projects can't host a worktree, but they can still get a new
+        // local-checkout workspace. Reuse the same button (its label/icon are
+        // generic — FolderPlus + "create workspace for …"), so every project has
+        // an inline new-workspace entry. onBeginWorkspaceSetup lands on /new with
+        // this project preselected (the form defaults Isolation to Local for
+        // non-git). A distinct testID keeps the "non-git has no worktree" checks
+        // intact.
+        <NewWorktreeButton
+          displayName={displayName}
+          onPress={onBeginWorkspaceSetup}
+          visible={actionsVisible}
+          testID={`sidebar-project-new-workspace-${project.projectKey}`}
+        />
+      )}
       {onRemoveProject ? (
         <View
           style={!actionsVisible && styles.projectKebabButtonHidden}

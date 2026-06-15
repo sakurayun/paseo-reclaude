@@ -24,6 +24,10 @@ function projectNewWorktreeIcon(page: Page, projectKey: string) {
   return page.getByTestId(`sidebar-project-new-worktree-${projectKey}`);
 }
 
+function projectNewWorkspaceIcon(page: Page, projectKey: string) {
+  return page.getByTestId(`sidebar-project-new-workspace-${projectKey}`);
+}
+
 async function seedSecondWorkspace(seeded: SeededWorkspace, title: string): Promise<string> {
   const created = await seeded.client.createWorkspace({
     backing: "local",
@@ -40,7 +44,7 @@ async function seedSecondWorkspace(seeded: SeededWorkspace, title: string): Prom
 test.describe("Model B sidebar shape", () => {
   test.describe.configure({ timeout: 180_000 });
 
-  test("git and non-git projects both render as expandable parents; git keeps a per-row new-worktree icon, the global button covers both", async ({
+  test("git and non-git projects both render as expandable parents; git keeps a per-row new-worktree icon, non-git keeps a per-row new-workspace icon", async ({
     page,
   }) => {
     const gitProject = await seedWorkspace({ repoPrefix: "model-b-git-" });
@@ -64,14 +68,21 @@ test.describe("Model B sidebar shape", () => {
       await expect(workspaceRow(page, nonGitProject.workspaceId)).toBeVisible({ timeout: 30_000 });
       await expect(workspaceRow(page, nonGitSecondId)).toBeVisible({ timeout: 30_000 });
 
-      // The per-project "+ New workspace" row is gone. The git project keeps a
-      // per-row new-worktree icon (revealed on hover); the non-git project has
-      // none, since worktree creation needs a git checkout.
+      // Every project keeps a per-row inline creation entry (revealed on hover).
+      // The git project's is a new-worktree icon; the non-git project — which
+      // can't host a worktree — gets a new-workspace icon instead (local
+      // checkout). Neither kind exposes the other's testID.
       await projectRow(page, gitProject.projectId).hover();
       await expect(projectNewWorktreeIcon(page, gitProject.projectId)).toBeVisible({
         timeout: 30_000,
       });
+      await expect(projectNewWorkspaceIcon(page, gitProject.projectId)).toHaveCount(0);
       await expect(projectNewWorktreeIcon(page, nonGitProject.projectId)).toHaveCount(0);
+
+      await projectRow(page, nonGitProject.projectId).hover();
+      await expect(projectNewWorkspaceIcon(page, nonGitProject.projectId)).toBeVisible({
+        timeout: 30_000,
+      });
 
       // The fork's top sidebar entry is "open project" (it replaced Model B's
       // global new-workspace button); it is present regardless of project kind.
