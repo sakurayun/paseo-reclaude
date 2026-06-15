@@ -1,8 +1,9 @@
 import { expect, type Page } from "@playwright/test";
 import type { DaemonClient as InternalDaemonClient } from "@getpaseo/client/internal/daemon-client";
-import { decodeWorkspaceIdFromPathSegment } from "@/utils/host-routes";
+import { buildHostNewWorkspaceRoute, decodeWorkspaceIdFromPathSegment } from "@/utils/host-routes";
 import { connectDaemonClient } from "./daemon-client-loader";
 import { daemonWsRoutePattern } from "./daemon-port";
+import { getServerId } from "./server-id";
 import { expectWorkspaceHeader } from "./workspace-ui";
 
 type NewWorkspaceDaemonClient = Pick<
@@ -153,7 +154,11 @@ export async function openNewWorkspaceComposer(
 }
 
 export async function openGlobalNewWorkspaceComposer(page: Page): Promise<void> {
-  await page.getByTestId("sidebar-global-new-workspace").click();
+  // The fork replaced the sidebar's global "new workspace" entry with "open
+  // project". The new-workspace route still exists, so navigate to it directly
+  // here — equivalent to where Model B's global button landed (the /new form's
+  // project picker can still target any git or non-git project).
+  await page.goto(buildHostNewWorkspaceRoute(getServerId()));
 
   await expect(page).toHaveURL(/\/h\/[^/]+\/new(?:\?.*)?$/, {
     timeout: 30_000,

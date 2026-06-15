@@ -42,7 +42,7 @@ test.describe("Empty project persists", () => {
       const projectNewWorktreeIcon = page.getByTestId(
         `sidebar-project-new-worktree-${workspace.projectId}`,
       );
-      const globalNewWorkspace = page.getByTestId("sidebar-global-new-workspace");
+      const globalOpenProject = page.getByTestId("sidebar-global-open-project");
 
       await gotoAppShell(page);
       await waitForSidebarHydration(page);
@@ -54,13 +54,13 @@ test.describe("Empty project persists", () => {
       await hideWorkspaceFromSidebar(page, workspace.workspaceId);
 
       // The workspace row goes away, but its project parent stays as an empty
-      // project row. Creation is still reachable: the project row keeps its own
-      // new-worktree icon (revealed on hover) and the global button persists.
+      // project row. The project row keeps its own new-worktree icon (revealed on
+      // hover) and the fork's top "open project" entry persists.
       await expect(page.getByTestId(workspaceRowTestId(workspace.workspaceId))).toHaveCount(0, {
         timeout: 30_000,
       });
       await expect(projectRow).toBeVisible({ timeout: 30_000 });
-      await expect(globalNewWorkspace).toBeVisible({ timeout: 30_000 });
+      await expect(globalOpenProject).toBeVisible({ timeout: 30_000 });
       await projectRow.hover();
       await expect(projectNewWorktreeIcon).toBeVisible({ timeout: 30_000 });
 

@@ -10,12 +10,13 @@ import { seedWorkspace, type SeededWorkspace } from "./helpers/seed-client";
 import { getServerId } from "./helpers/server-id";
 import { waitForSidebarHydration } from "./helpers/workspace-ui";
 
-// Model B entry points into the New Workspace screen. The per-project
-// "+ New workspace" sidebar row is gone; the surviving entries are the global
-// button (universal) and each git project's own new-worktree icon (preselects
-// that project). These specs prove the global entry opens the screen, the
-// project icon preselects the right project across the reused 'new' screen, and
-// non-git projects never offer the worktree Isolation control.
+// Entry points into the New Workspace screen. The fork replaced the sidebar's
+// global "new workspace" button with "open project", so the screen is reached
+// via the new-workspace route (openGlobalNewWorkspaceComposer) or each git
+// project's own new-worktree icon (which preselects that project). These specs
+// prove the screen is reachable, the project icon preselects the right project
+// across the reused 'new' screen, and non-git projects never offer the worktree
+// Isolation control.
 
 function projectRow(page: import("@playwright/test").Page, projectKey: string) {
   return page.getByTestId(`sidebar-project-row-${projectKey}`);
@@ -34,7 +35,7 @@ test.describe("New workspace entry points", () => {
     await client?.close().catch(() => undefined);
   });
 
-  test("the global new-workspace button opens the New Workspace screen", async ({ page }) => {
+  test("the New Workspace screen is reachable from the sidebar", async ({ page }) => {
     const seeded: SeededWorkspace = await seedWorkspace({ repoPrefix: "entry-global-button-" });
 
     try {
@@ -44,8 +45,11 @@ test.describe("New workspace entry points", () => {
         page.getByTestId(`sidebar-workspace-row-${getServerId()}:${seeded.workspaceId}`),
       ).toBeVisible({ timeout: 30_000 });
 
-      const globalButton = page.getByTestId("sidebar-global-new-workspace");
-      await expect(globalButton).toBeVisible({ timeout: 30_000 });
+      // The fork's top sidebar entry is "open project"; the New Workspace screen
+      // is reached via the new-workspace route (see openGlobalNewWorkspaceComposer).
+      await expect(page.getByTestId("sidebar-global-open-project")).toBeVisible({
+        timeout: 30_000,
+      });
 
       await openGlobalNewWorkspaceComposer(page);
 

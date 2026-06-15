@@ -119,6 +119,7 @@ interface SidebarSharedProps {
 
 interface SidebarLabels {
   addProject: string;
+  openProject: string;
   newWorkspace: string;
   home: string;
   settings: string;
@@ -311,6 +312,7 @@ export const LeftSidebar = memo(function LeftSidebar({
   const labels = useMemo(
     (): SidebarLabels => ({
       addProject: t("sidebar.actions.addProject"),
+      openProject: t("sidebar.actions.openProject"),
       newWorkspace: t("sidebar.actions.newWorkspace"),
       home: t("sidebar.actions.home"),
       settings: t("sidebar.actions.settings"),
@@ -848,10 +850,10 @@ function MobileSidebar({
           <View style={styles.sidebarContent} pointerEvents="auto">
             <View style={styles.sidebarHeaderGroup}>
               <SidebarHeaderRow
-                icon={Plus}
-                label={labels.newWorkspace}
-                onPress={handleNewWorkspace}
-                testID="sidebar-global-new-workspace"
+                icon={FolderPlus}
+                label={labels.openProject}
+                onPress={handleOpenProject}
+                testID="sidebar-global-open-project"
                 variant="compact"
               />
               <SidebarHeaderRow
@@ -1029,10 +1031,10 @@ function DesktopSidebar({
           {padding.top > 0 ? <View style={paddingTopSpacerStyle} /> : null}
           <View style={styles.sidebarHeaderGroup}>
             <SidebarHeaderRow
-              icon={Plus}
-              label={labels.newWorkspace}
-              onPress={handleNewWorkspaceNavigate}
-              testID="sidebar-global-new-workspace"
+              icon={FolderPlus}
+              label={labels.openProject}
+              onPress={handleOpenProject}
+              testID="sidebar-global-open-project"
               variant="compact"
             />
             <SidebarHeaderRow

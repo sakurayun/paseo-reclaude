@@ -73,9 +73,9 @@ test.describe("Model B sidebar shape", () => {
       });
       await expect(projectNewWorktreeIcon(page, nonGitProject.projectId)).toHaveCount(0);
 
-      // The global new-workspace button is the universal entry — present for both
-      // kinds regardless of their per-row affordance.
-      await expect(page.getByTestId("sidebar-global-new-workspace")).toBeVisible({
+      // The fork's top sidebar entry is "open project" (it replaced Model B's
+      // global new-workspace button); it is present regardless of project kind.
+      await expect(page.getByTestId("sidebar-global-open-project")).toBeVisible({
         timeout: 30_000,
       });
     } finally {
