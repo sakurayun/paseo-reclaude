@@ -11,6 +11,11 @@ import {
   shouldFallbackHostAgentReadyRoute,
 } from "./agent-ready-route-state";
 
+// Catch render-time crashes in the full-screen agent subtree (e.g. opening a
+// history session) so they surface as a recoverable error screen instead of a
+// white screen / launch crash. See components/route-error-boundary.tsx.
+export { RouteErrorBoundary as ErrorBoundary } from "@/components/route-error-boundary";
+
 export default function HostAgentReadyRoute() {
   return (
     <HostRouteBootstrapBoundary>

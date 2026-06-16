@@ -27,6 +27,11 @@ import {
 import { prepareWorkspaceTab } from "@/utils/workspace-navigation";
 import { isWeb } from "@/constants/platform";
 
+// Catch render-time crashes in the workspace subtree (e.g. opening a history
+// session) so they surface as a recoverable error screen instead of a white
+// screen / launch crash. See components/route-error-boundary.tsx.
+export { RouteErrorBoundary as ErrorBoundary } from "@/components/route-error-boundary";
+
 function getParamValue(value: string | string[] | undefined): string {
   if (typeof value === "string") {
     return value.trim();
