@@ -86,6 +86,17 @@ export const ru: TranslationResources = {
   composer: {
     promptHistory: {
       title: "История ввода",
+      switchHint: "К шаблонам",
+    },
+    promptPresets: {
+      title: "Шаблоны сообщений",
+      switchHint: "К истории",
+    },
+    selection: {
+      ask: "Спросить",
+      askInNewWindow: "Спросить в новом окне",
+      savePreset: "Сохранить как шаблон",
+      savedPreset: "Сохранено как шаблон",
     },
     placeholders: {
       desktop: "Напишите агенту сообщение, отметьте @files или используйте /commands и /skills.",
@@ -771,8 +782,6 @@ export const ru: TranslationResources = {
         addTitle: "Добавить шаблон",
         placeholder: "Текст шаблона",
         delete: "Удалить шаблон...",
-        noAgentTab: "Сначала откройте вкладку агента",
-        inserted: "Вставлено в поле ввода агента",
       },
       history: {
         title: "Коммиты",
@@ -1905,6 +1914,8 @@ export const ru: TranslationResources = {
         ligaturesHint:
           "Отображать программистские лигатуры (напр. ->, =>), если шрифт кода их поддерживает",
         ligaturesAccessibility: "Лигатуры шрифта терминала",
+        letterSpacing: "Межбуквенный интервал",
+        letterSpacingAccessibility: "Межбуквенный интервал терминала",
         paddingTop: "Отступ сверху",
         paddingTopAccessibility: "Отступ терминала сверху",
         paddingBottom: "Отступ снизу",
@@ -1913,6 +1924,18 @@ export const ru: TranslationResources = {
         paddingLeftAccessibility: "Отступ терминала слева",
         paddingRight: "Отступ справа",
         paddingRightAccessibility: "Отступ терминала справа",
+      },
+      windowsTerminal: {
+        title: "Терминал Windows",
+        hint: "Применяется только когда подключённый хост работает на Windows; на macOS и Linux игнорируется",
+        preferPowerShell7: "Предпочитать PowerShell 7",
+        preferPowerShell7Hint:
+          "Запускать новые терминалы через pwsh, с откатом к Windows PowerShell, затем к cmd.exe",
+        preferPowerShell7Accessibility: "Предпочитать PowerShell 7 в Windows",
+        launchAsAdmin: "Запуск от имени администратора",
+        launchAsAdminHint:
+          "Запускать терминалы с повышением прав через gsudo (установите gsudo для включения; иначе запуск без повышения)",
+        launchAsAdminAccessibility: "Запускать терминалы Windows от имени администратора",
       },
     },
     shortcuts: {

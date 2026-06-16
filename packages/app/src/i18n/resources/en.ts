@@ -84,6 +84,17 @@ export const en = {
   composer: {
     promptHistory: {
       title: "Prompt history",
+      switchHint: "Switch to presets",
+    },
+    promptPresets: {
+      title: "Prompt presets",
+      switchHint: "Switch to history",
+    },
+    selection: {
+      ask: "Ask",
+      askInNewWindow: "Ask in new window",
+      savePreset: "Save as preset",
+      savedPreset: "Saved as preset",
     },
     placeholders: {
       desktop: "Message the agent, tag @files, or use /commands and /skills",
@@ -757,8 +768,6 @@ export const en = {
         addTitle: "Add preset",
         placeholder: "Preset text",
         delete: "Delete preset...",
-        noAgentTab: "Open an agent tab first",
-        inserted: "Inserted into the agent composer",
       },
       history: {
         title: "Commits",
@@ -1870,6 +1879,8 @@ export const en = {
         ligaturesHint:
           "Render programming ligatures (e.g. ->, =>) when the code font supports them",
         ligaturesAccessibility: "Terminal font ligatures",
+        letterSpacing: "Letter spacing",
+        letterSpacingAccessibility: "Terminal letter spacing",
         paddingTop: "Padding top",
         paddingTopAccessibility: "Terminal padding top",
         paddingBottom: "Padding bottom",
@@ -1878,6 +1889,18 @@ export const en = {
         paddingLeftAccessibility: "Terminal padding left",
         paddingRight: "Padding right",
         paddingRightAccessibility: "Terminal padding right",
+      },
+      windowsTerminal: {
+        title: "Windows terminal",
+        hint: "Applies only when the connected host runs Windows; ignored on macOS and Linux",
+        preferPowerShell7: "Prefer PowerShell 7",
+        preferPowerShell7Hint:
+          "Launch new terminals with pwsh, falling back to Windows PowerShell, then cmd.exe",
+        preferPowerShell7Accessibility: "Prefer PowerShell 7 on Windows",
+        launchAsAdmin: "Launch as administrator",
+        launchAsAdminHint:
+          "Start terminals elevated via gsudo (install gsudo to enable; otherwise runs unelevated)",
+        launchAsAdminAccessibility: "Launch Windows terminals as administrator",
       },
     },
     shortcuts: {

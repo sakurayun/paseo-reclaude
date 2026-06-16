@@ -12,7 +12,7 @@ import { BottomSheetFlatList } from "@gorhom/bottom-sheet";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { isNative, isWeb as platformIsWeb } from "@/constants/platform";
-import { AlertTriangle, ChevronRight, Search, Settings, Star } from "lucide-react-native";
+import { AlertTriangle, Check, ChevronRight, Search, Settings, Star } from "lucide-react-native";
 import { ComboboxTrigger } from "@/components/ui/combobox-trigger";
 import type { AgentProvider } from "@getpaseo/protocol/agent-types";
 import type { SheetHeader } from "@/components/adaptive-modal-sheet";
@@ -20,7 +20,7 @@ import { useProviderSettingsStore } from "@/stores/provider-settings-store";
 import { Button } from "@/components/ui/button";
 const IS_WEB = platformIsWeb;
 
-import { Combobox, ComboboxItem, type ComboboxOption } from "@/components/ui/combobox";
+import { Combobox, type ComboboxOption } from "@/components/ui/combobox";
 
 const EMPTY_COMBOBOX_OPTIONS: ComboboxOption[] = [];
 
@@ -141,6 +141,14 @@ function ModelRow({
   const { theme } = useUnistyles();
   const { t } = useTranslation();
   const ProviderIcon = getProviderIcon(row.provider);
+  const rowStyle = useCallback(
+    ({ hovered, pressed }: PressableStateCallbackType & { hovered?: boolean }) => [
+      styles.modelRow,
+      Boolean(hovered) && (elevated ? styles.modelRowHoveredElevated : styles.modelRowHovered),
+      pressed && (elevated ? styles.modelRowPressedElevated : styles.modelRowPressed),
+    ],
+    [elevated],
+  );
 
   const handleToggleFavorite = useCallback(
     (event: GestureResponderEvent) => {
@@ -150,13 +158,25 @@ function ModelRow({
     [onToggleFavorite, row.modelId, row.provider],
   );
 
-  const leadingSlot = useMemo(
-    () => <ProviderIcon size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />,
-    [ProviderIcon, theme.iconSize.sm, theme.colors.foregroundMuted],
-  );
-  const trailingSlot = useMemo(
-    () =>
-      onToggleFavorite ? (
+  return (
+    <Pressable onPress={onPress} style={rowStyle}>
+      <View style={styles.modelRowLeadingSlot}>
+        <ProviderIcon size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
+      </View>
+      <View style={styles.modelRowContent}>
+        <Text style={styles.modelRowLabel}>{row.modelLabel}</Text>
+        {row.description ? (
+          <Text style={styles.modelRowDescription} numberOfLines={1} ellipsizeMode="tail">
+            {row.description}
+          </Text>
+        ) : null}
+      </View>
+      {isSelected ? (
+        <View style={styles.modelRowCheckSlot}>
+          <Check size={16} color={theme.colors.foregroundMuted} />
+        </View>
+      ) : null}
+      {onToggleFavorite ? (
         <Pressable
           onPress={handleToggleFavorite}
           hitSlop={8}
@@ -181,30 +201,8 @@ function ModelRow({
             );
           }}
         </Pressable>
-      ) : null,
-    [
-      onToggleFavorite,
-      handleToggleFavorite,
-      isFavorite,
-      row.provider,
-      row.modelId,
-      theme.colors.palette.amber,
-      theme.colors.foregroundMuted,
-      theme.colors.border,
-      t,
-    ],
-  );
-
-  return (
-    <ComboboxItem
-      label={row.modelLabel}
-      description={row.description}
-      selected={isSelected}
-      elevated={elevated}
-      onPress={onPress}
-      leadingSlot={leadingSlot}
-      trailingSlot={trailingSlot}
-    />
+      ) : null}
+    </Pressable>
   );
 }
 
@@ -982,6 +980,62 @@ const styles = StyleSheet.create((theme) => ({
     paddingHorizontal: theme.spacing[2],
     paddingTop: theme.spacing[1],
     paddingBottom: theme.spacing[8],
+  },
+  modelRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    minHeight: 36,
+    gap: theme.spacing[2],
+    paddingHorizontal: theme.spacing[3],
+    paddingVertical: theme.spacing[2],
+    borderRadius: 0,
+    ...(IS_WEB
+      ? {}
+      : {
+          marginHorizontal: theme.spacing[1],
+          marginBottom: theme.spacing[1],
+        }),
+  },
+  modelRowHovered: {
+    backgroundColor: theme.colors.surface1,
+  },
+  modelRowHoveredElevated: {
+    backgroundColor: theme.colors.surface2,
+  },
+  modelRowPressed: {
+    backgroundColor: theme.colors.surface1,
+  },
+  modelRowPressedElevated: {
+    backgroundColor: theme.colors.surface2,
+  },
+  modelRowLeadingSlot: {
+    width: 16,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  modelRowContent: {
+    flex: 1,
+    flexShrink: 1,
+    minWidth: 0,
+    gap: theme.spacing[1],
+  },
+  modelRowLabel: {
+    fontSize: theme.fontSize.sm,
+    color: theme.colors.foreground,
+    flexShrink: 1,
+    flexWrap: "wrap",
+    ...(IS_WEB ? ({ overflowWrap: "anywhere" } as object) : {}),
+  },
+  modelRowDescription: {
+    fontSize: theme.fontSize.xs,
+    color: theme.colors.foregroundMuted,
+    flexShrink: 1,
+    minWidth: 0,
+  },
+  modelRowCheckSlot: {
+    width: 16,
+    alignItems: "center",
+    justifyContent: "center",
   },
   favoriteButton: {
     width: 24,

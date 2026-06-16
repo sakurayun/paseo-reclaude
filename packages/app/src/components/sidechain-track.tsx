@@ -6,14 +6,16 @@ import {
   Text,
   View,
   type PressableStateCallbackType,
+  type StyleProp,
+  type ViewStyle,
 } from "react-native";
 import { useTranslation } from "react-i18next";
 import equal from "fast-deep-equal";
 import { useStoreWithEqualityFn } from "zustand/traditional";
 import { Bot, Check, ChevronDown, ChevronRight, X } from "lucide-react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
+import { GlassSurface } from "@/components/ui/glass-surface";
 import { MAX_CONTENT_WIDTH } from "@/constants/layout";
-import { isWeb } from "@/constants/platform";
 import { useSessionStore } from "@/stores/session-store";
 import type { Theme } from "@/styles/theme";
 import { resolveToolCallColor, type ToolCallSchemeColor } from "@/utils/tool-call-colors";
@@ -178,6 +180,7 @@ function closeButtonStyle({
 
 export interface SidechainTrackProps {
   calls: ReadonlyArray<SidechainCall>;
+  embedded?: boolean;
 }
 
 /**
@@ -185,7 +188,10 @@ export interface SidechainTrackProps {
  * composer so their status stays visible while the agent works — the same
  * collapsible-track pattern as the subagents track and the todo track.
  */
-export function SidechainTrack({ calls }: SidechainTrackProps): ReactElement | null {
+export function SidechainTrack({
+  calls,
+  embedded = false,
+}: SidechainTrackProps): ReactElement | null {
   const [dismissedIds, setDismissedIds] = useState<ReadonlySet<string>>(() => new Set());
   const [panelDismissed, setPanelDismissed] = useState(false);
   const knownIdsRef = useRef<Set<string>>(new Set());
@@ -231,6 +237,7 @@ export function SidechainTrack({ calls }: SidechainTrackProps): ReactElement | n
     <ToolCallSheetProvider>
       <SidechainTrackInner
         calls={visibleCalls}
+        embedded={embedded}
         onDismissPanel={handleDismissPanel}
         onDismissCall={handleDismissCall}
       />
@@ -240,6 +247,7 @@ export function SidechainTrack({ calls }: SidechainTrackProps): ReactElement | n
 
 function SidechainTrackInner({
   calls,
+  embedded = false,
   onDismissPanel,
   onDismissCall,
 }: SidechainTrackProps & {
@@ -254,17 +262,18 @@ function SidechainTrackInner({
   }, []);
 
   const surfaceStyle = useMemo(
-    () => [styles.surface, expanded && styles.surfaceExpanded],
-    [expanded],
+    () => [styles.surface, embedded && styles.surfaceEmbedded, expanded && styles.surfaceExpanded],
+    [embedded, expanded],
   );
 
   const headerStyle = useCallback(
     ({ hovered, pressed }: PressableStateCallbackType & { hovered?: boolean }) => [
       styles.header,
-      !expanded && styles.headerCollapsed,
+      !embedded && !expanded && styles.headerCollapsed,
+      embedded && styles.headerEmbedded,
       (Boolean(hovered) || pressed) && styles.headerActive,
     ],
-    [expanded],
+    [embedded, expanded],
   );
 
   if (calls.length === 0) {
@@ -283,68 +292,121 @@ function SidechainTrackInner({
     : t("sidechainTrack.allDone");
 
   return (
-    <View style={styles.outer} testID="sidechain-track">
-      <View style={styles.track}>
-        <View style={surfaceStyle}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={progressLabel}
-            testID="sidechain-track-header"
-            onPress={toggleExpanded}
-            style={headerStyle}
-          >
-            {expanded ? (
-              <ThemedChevronDown size={12} uniProps={foregroundMutedColorMapping} />
-            ) : (
-              <ThemedChevronRight size={12} uniProps={foregroundMutedColorMapping} />
-            )}
-            {runningCount > 0 ? (
-              <ThemedActivityIndicator size={12} uniProps={foregroundMutedColorMapping} />
-            ) : (
-              <ThemedBot size={12} uniProps={foregroundMutedColorMapping} />
-            )}
-            <Text style={styles.headerProgress}>{progressLabel}</Text>
-            <Text style={styles.headerLabel} numberOfLines={1}>
-              {headerDetail}
-            </Text>
-            {runningCount === 0 ? (
-              <Pressable
-                onPressIn={stopPressPropagation}
-                onPress={onDismissPanel}
-                style={closeButtonStyle}
-                hitSlop={6}
-                accessibilityRole="button"
-                accessibilityLabel={t("sidechainTrack.closePanel")}
-                testID="sidechain-track-close"
-              >
-                {({ hovered, pressed }) => (
-                  <ThemedX
-                    size={12}
-                    uniProps={
-                      Boolean(hovered) || pressed
-                        ? foregroundColorMapping
-                        : foregroundMutedColorMapping
-                    }
-                  />
-                )}
-              </Pressable>
-            ) : null}
-          </Pressable>
-          {expanded ? (
-            <ScrollView
-              style={styles.scroll}
-              contentContainerStyle={styles.scrollContent}
-              showsVerticalScrollIndicator={false}
-              nestedScrollEnabled
-            >
-              {calls.map((call) => (
-                <SidechainTrackRow key={call.id} call={call} onDismiss={onDismissCall} />
-              ))}
-            </ScrollView>
-          ) : null}
-        </View>
+    <View style={embedded ? styles.outerEmbedded : styles.outer} testID="sidechain-track">
+      <View style={embedded ? styles.trackEmbedded : styles.track}>
+        {embedded ? (
+          <View style={surfaceStyle}>
+            <SidechainTrackContent
+              calls={calls}
+              expanded={expanded}
+              headerStyle={headerStyle}
+              headerDetail={headerDetail}
+              progressLabel={progressLabel}
+              runningCount={runningCount}
+              onDismissCall={onDismissCall}
+              onDismissPanel={onDismissPanel}
+              toggleExpanded={toggleExpanded}
+            />
+          </View>
+        ) : (
+          <GlassSurface style={surfaceStyle}>
+            <SidechainTrackContent
+              calls={calls}
+              expanded={expanded}
+              headerStyle={headerStyle}
+              headerDetail={headerDetail}
+              progressLabel={progressLabel}
+              runningCount={runningCount}
+              onDismissCall={onDismissCall}
+              onDismissPanel={onDismissPanel}
+              toggleExpanded={toggleExpanded}
+            />
+          </GlassSurface>
+        )}
       </View>
     </View>
+  );
+}
+
+function SidechainTrackContent({
+  calls,
+  expanded,
+  headerStyle,
+  headerDetail,
+  progressLabel,
+  runningCount,
+  onDismissCall,
+  onDismissPanel,
+  toggleExpanded,
+}: {
+  calls: ReadonlyArray<SidechainCall>;
+  expanded: boolean;
+  headerStyle: (state: PressableStateCallbackType & { hovered?: boolean }) => StyleProp<ViewStyle>;
+  headerDetail: string;
+  progressLabel: string;
+  runningCount: number;
+  onDismissCall: (id: string) => void;
+  onDismissPanel: () => void;
+  toggleExpanded: () => void;
+}): ReactElement {
+  const { t } = useTranslation();
+  return (
+    <>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={progressLabel}
+        testID="sidechain-track-header"
+        onPress={toggleExpanded}
+        style={headerStyle}
+      >
+        {expanded ? (
+          <ThemedChevronDown size={12} uniProps={foregroundMutedColorMapping} />
+        ) : (
+          <ThemedChevronRight size={12} uniProps={foregroundMutedColorMapping} />
+        )}
+        {runningCount > 0 ? (
+          <ThemedActivityIndicator size={12} uniProps={foregroundMutedColorMapping} />
+        ) : (
+          <ThemedBot size={12} uniProps={foregroundMutedColorMapping} />
+        )}
+        <Text style={styles.headerProgress}>{progressLabel}</Text>
+        <Text style={styles.headerLabel} numberOfLines={1}>
+          {headerDetail}
+        </Text>
+        {runningCount === 0 ? (
+          <Pressable
+            onPressIn={stopPressPropagation}
+            onPress={onDismissPanel}
+            style={closeButtonStyle}
+            hitSlop={6}
+            accessibilityRole="button"
+            accessibilityLabel={t("sidechainTrack.closePanel")}
+            testID="sidechain-track-close"
+          >
+            {({ hovered, pressed }) => (
+              <ThemedX
+                size={12}
+                uniProps={
+                  Boolean(hovered) || pressed ? foregroundColorMapping : foregroundMutedColorMapping
+                }
+              />
+            )}
+          </Pressable>
+        ) : null}
+      </Pressable>
+      {expanded ? (
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+          nestedScrollEnabled
+        >
+          {calls.map((call) => (
+            <SidechainTrackRow key={call.id} call={call} onDismiss={onDismissCall} />
+          ))}
+        </ScrollView>
+      ) : null}
+    </>
   );
 }
 
@@ -354,28 +416,31 @@ const styles = StyleSheet.create((theme, rt) => ({
     alignItems: "center",
     paddingHorizontal: theme.spacing[4],
   },
+  outerEmbedded: {
+    width: "100%",
+  },
   track: {
     width: "100%",
     maxWidth: MAX_CONTENT_WIDTH,
     marginBottom: -theme.spacing[4],
   },
+  trackEmbedded: {
+    width: "100%",
+  },
   surface: {
     alignSelf: "stretch",
-    // Frosted glass like the composer on web; native has no backdrop blur,
-    // so it keeps the opaque surface.
-    backgroundColor: isWeb ? theme.colors.surfaceGlass : theme.colors.surface1,
     borderWidth: theme.borderWidth[1],
     borderColor: theme.colors.borderAccent,
     borderBottomWidth: 0,
     borderTopLeftRadius: theme.borderRadius["2xl"],
     borderTopRightRadius: theme.borderRadius["2xl"],
     overflow: "hidden",
-    ...(isWeb
-      ? ({
-          backdropFilter: "blur(20px) saturate(1.5)",
-          WebkitBackdropFilter: "blur(20px) saturate(1.5)",
-        } as object)
-      : {}),
+  },
+  surfaceEmbedded: {
+    borderWidth: 0,
+    borderTopWidth: theme.borderWidth[1],
+    borderColor: theme.colors.borderAccent,
+    borderRadius: 0,
   },
   surfaceExpanded: {
     paddingBottom: theme.spacing[4],
@@ -386,6 +451,10 @@ const styles = StyleSheet.create((theme, rt) => ({
     gap: theme.spacing[2],
     paddingHorizontal: theme.spacing[3],
     paddingVertical: theme.spacing[2],
+  },
+  headerEmbedded: {
+    paddingHorizontal: 0,
+    paddingVertical: theme.spacing[1],
   },
   headerCollapsed: {
     paddingBottom: theme.spacing[6],

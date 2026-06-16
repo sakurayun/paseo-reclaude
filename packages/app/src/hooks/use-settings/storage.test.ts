@@ -274,6 +274,60 @@ describe("appearance settings", () => {
     expect(result.uiFontSize).toBe(DEFAULT_UI_FONT_SIZE);
     expect(result.codeFontSize).toBe(DEFAULT_CODE_FONT_SIZE);
     expect(result.syntaxTheme).toBe("one");
+    expect(result.terminalLetterSpacing).toBe(0);
+    expect(result.windowsPreferPowerShell7).toBe(true);
+    expect(result.windowsLaunchAsAdmin).toBe(true);
+  });
+
+  it("clamps the terminal letter spacing and keeps negatives", async () => {
+    const negative = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({ terminalLetterSpacing: -2 }),
+      }),
+    });
+    expect((await loadAppSettingsFromStorage(negative)).terminalLetterSpacing).toBe(-2);
+
+    const tooLow = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({ terminalLetterSpacing: -999 }),
+      }),
+    });
+    expect((await loadAppSettingsFromStorage(tooLow)).terminalLetterSpacing).toBe(-5);
+
+    const tooHigh = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({ terminalLetterSpacing: 999 }),
+      }),
+    });
+    expect((await loadAppSettingsFromStorage(tooHigh)).terminalLetterSpacing).toBe(10);
+
+    const bogus = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({ terminalLetterSpacing: "abc" }),
+      }),
+    });
+    expect((await loadAppSettingsFromStorage(bogus)).terminalLetterSpacing).toBe(0);
+  });
+
+  it("reads the Windows shell toggles and ignores non-booleans", async () => {
+    const off = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({
+          windowsPreferPowerShell7: false,
+          windowsLaunchAsAdmin: false,
+        }),
+      }),
+    });
+    const offResult = await loadAppSettingsFromStorage(off);
+    expect(offResult.windowsPreferPowerShell7).toBe(false);
+    expect(offResult.windowsLaunchAsAdmin).toBe(false);
+
+    const bogus = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({ windowsLaunchAsAdmin: "yes" }),
+      }),
+    });
+    expect((await loadAppSettingsFromStorage(bogus)).windowsLaunchAsAdmin).toBe(true);
   });
 
   it("clamps the UI font size into range and rejects non-numeric values", async () => {

@@ -128,6 +128,9 @@ export interface CreateTerminalOptions {
   title?: string;
   command?: string;
   args?: string[];
+  // Windows-only default-shell preferences (pwsh7 / gsudo elevation). Ignored on
+  // other platforms and when an explicit `command` is provided.
+  windowsShell?: WindowsShellPreference;
 }
 
 function toTerminalActivity(snapshot: {
@@ -297,6 +300,85 @@ export async function resolveTerminalSpawnCommand(
   }
 
   return { command: resolved, args };
+}
+
+/**
+ * Per-terminal Windows shell preferences, sent by the client from its settings.
+ * Only consulted on win32; ignored on every other platform.
+ */
+export interface WindowsShellPreference {
+  // Prefer PowerShell 7 (`pwsh`) over Windows PowerShell 5.1 and cmd.exe.
+  preferPowerShell7?: boolean;
+  // Launch the shell elevated via gsudo (https://github.com/gerardog/gsudo).
+  // conpty cannot elevate a child in place across the UAC boundary, so gsudo is
+  // the only way to keep an elevated shell wired into the same embedded pipe.
+  runAsAdmin?: boolean;
+}
+
+export interface ResolveDefaultShellSpawnOptions {
+  platform?: NodeJS.Platform;
+  env?: Record<string, string | undefined>;
+  // Explicit shell override (internal callers, tests). When set, pwsh preference
+  // is skipped — the caller picked the shell on purpose.
+  shell?: string;
+  windowsShell?: WindowsShellPreference;
+  resolveExecutable?: (name: string) => Promise<string | null>;
+  onWarn?: (message: string) => void;
+}
+
+function resolveWindowsComSpec(env: Record<string, string | undefined>): string {
+  return env.ComSpec || env.COMSPEC || "C:\\Windows\\System32\\cmd.exe";
+}
+
+/**
+ * Resolve the command used for a *default* (no explicit command) terminal.
+ *
+ * On non-Windows this is unchanged: the explicit shell or the login shell.
+ *
+ * On Windows it honours the per-terminal preferences:
+ *  - `preferPowerShell7` walks `pwsh` → `powershell` → cmd.exe so a missing
+ *    PowerShell 7 still degrades to something sensible instead of failing.
+ *  - `runAsAdmin` wraps the resolved shell in `gsudo` when gsudo is installed,
+ *    which keeps the elevated shell attached to the same conpty pipe. When gsudo
+ *    is absent we cannot elevate, so we launch unelevated and warn once.
+ */
+export async function resolveDefaultShellSpawn(
+  options: ResolveDefaultShellSpawnOptions = {},
+): Promise<ResolvedTerminalCommand> {
+  const platform = options.platform ?? process.platform;
+  const env = options.env ?? process.env;
+
+  if (platform !== "win32") {
+    return { command: options.shell ?? resolveDefaultTerminalShell({ platform, env }), args: [] };
+  }
+
+  const resolveExecutable = options.resolveExecutable ?? findExecutable;
+  const preference = options.windowsShell;
+
+  let shellPath = options.shell ?? resolveWindowsComSpec(env);
+  let shellArgs: string[] = [];
+
+  if (!options.shell && preference?.preferPowerShell7) {
+    const powerShell = (await resolveExecutable("pwsh")) ?? (await resolveExecutable("powershell"));
+    if (powerShell) {
+      shellPath = powerShell;
+      // Skip the startup banner; the shell stays interactive by default.
+      shellArgs = ["-NoLogo"];
+    }
+  }
+
+  if (preference?.runAsAdmin) {
+    const gsudo = await resolveExecutable("gsudo");
+    if (gsudo) {
+      return { command: gsudo, args: [shellPath, ...shellArgs] };
+    }
+    options.onWarn?.(
+      "Admin terminal requested but 'gsudo' was not found on PATH; launching without elevation. " +
+        "Install gsudo (https://github.com/gerardog/gsudo) to enable elevated terminals.",
+    );
+  }
+
+  return { command: shellPath, args: shellArgs };
 }
 
 export function resolveZshShellIntegrationDir(): string {
@@ -810,7 +892,6 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
     command,
     args = [],
   } = options;
-  const resolvedShell = shell ?? resolveDefaultTerminalShell();
 
   const id = options.id ?? randomUUID();
   const listeners = new Set<(msg: ServerMessage) => void>();
@@ -854,7 +935,11 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
   // Create PTY
   const { command: spawnCommand, args: spawnArgs } = command
     ? await resolveTerminalSpawnCommand(command, args)
-    : { command: resolvedShell, args: [] as string[] };
+    : await resolveDefaultShellSpawn({
+        shell,
+        windowsShell: options.windowsShell,
+        onWarn: (message) => console.warn(`[paseo-terminal] ${message}`),
+      });
   const ptyProcess = pty.spawn(spawnCommand, spawnArgs, {
     name: "xterm-256color",
     cols,

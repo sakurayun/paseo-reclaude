@@ -538,6 +538,7 @@ export class TerminalSessionController {
         name: msg.name,
         command: msg.command,
         args: msg.args,
+        ...(msg.windowsShell ? { windowsShell: msg.windowsShell } : {}),
       });
       this.ensureExitSubscription(session);
       this.emit({

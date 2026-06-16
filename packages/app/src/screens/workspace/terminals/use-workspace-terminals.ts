@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
 import type { WorkspaceDescriptor } from "@/stores/session-store";
 import { useTranslation } from "react-i18next";
+import { useAppSettings } from "@/hooks/use-settings";
 import {
   buildTerminalsQueryKey,
   canCreateWorkspaceTerminal,
@@ -65,6 +66,16 @@ export function useWorkspaceTerminals(input: UseWorkspaceTerminalsInput) {
   } = input;
   const { t } = useTranslation();
   const queryClient = useQueryClient();
+  const { settings } = useAppSettings();
+  // Per-terminal Windows shell preferences. Harmless on non-Windows hosts — the
+  // daemon only consults them on win32 — so we always send the user's choice.
+  const windowsShell = useMemo(
+    () => ({
+      preferPowerShell7: settings.windowsPreferPowerShell7,
+      runAsAdmin: settings.windowsLaunchAsAdmin,
+    }),
+    [settings.windowsPreferPowerShell7, settings.windowsLaunchAsAdmin],
+  );
   const [pendingCreateInput, setPendingCreateInput] = useState<PendingTerminalCreateInput | null>(
     null,
   );
@@ -129,9 +140,11 @@ export function useWorkspaceTerminals(input: UseWorkspaceTerminalsInput) {
             command: _input.profile.command,
             args: _input.profile.args,
             workspaceId: normalizedWorkspaceId || undefined,
+            windowsShell,
           })
         : await client.createTerminal(workspaceDirectory, undefined, undefined, {
             workspaceId: normalizedWorkspaceId || undefined,
+            windowsShell,
           });
       // The daemon reports a failed spawn (e.g. a profile command that isn't
       // installed) via payload.error with a null terminal. Surface it instead

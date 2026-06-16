@@ -86,6 +86,17 @@ export const es: TranslationResources = {
   composer: {
     promptHistory: {
       title: "Historial de mensajes",
+      switchHint: "Cambiar a predefinidos",
+    },
+    promptPresets: {
+      title: "Mensajes predefinidos",
+      switchHint: "Cambiar al historial",
+    },
+    selection: {
+      ask: "Preguntar",
+      askInNewWindow: "Preguntar en ventana nueva",
+      savePreset: "Guardar como predefinido",
+      savedPreset: "Guardado como predefinido",
     },
     placeholders: {
       desktop: "Envíe un mensaje al agente, etiquete@fileso use/commandsy/skills",
@@ -765,8 +776,6 @@ export const es: TranslationResources = {
         addTitle: "Añadir predefinido",
         placeholder: "Texto del predefinido",
         delete: "Eliminar predefinido...",
-        noAgentTab: "Abre primero una pestaña de agente",
-        inserted: "Insertado en el cuadro del agente",
       },
       history: {
         title: "Commits",
@@ -1906,6 +1915,8 @@ export const es: TranslationResources = {
         ligaturesHint:
           "Renderiza ligaduras de programación (p. ej. ->, =>) cuando la fuente de código las admite",
         ligaturesAccessibility: "Ligaduras de la fuente del terminal",
+        letterSpacing: "Espaciado entre letras",
+        letterSpacingAccessibility: "Espaciado entre letras del terminal",
         paddingTop: "Relleno superior",
         paddingTopAccessibility: "Relleno superior del terminal",
         paddingBottom: "Relleno inferior",
@@ -1914,6 +1925,18 @@ export const es: TranslationResources = {
         paddingLeftAccessibility: "Relleno izquierdo del terminal",
         paddingRight: "Relleno derecho",
         paddingRightAccessibility: "Relleno derecho del terminal",
+      },
+      windowsTerminal: {
+        title: "Terminal de Windows",
+        hint: "Solo se aplica cuando el host conectado ejecuta Windows; se ignora en macOS y Linux",
+        preferPowerShell7: "Preferir PowerShell 7",
+        preferPowerShell7Hint:
+          "Inicia nuevas terminales con pwsh, recurriendo a Windows PowerShell y luego a cmd.exe",
+        preferPowerShell7Accessibility: "Preferir PowerShell 7 en Windows",
+        launchAsAdmin: "Iniciar como administrador",
+        launchAsAdminHint:
+          "Inicia terminales con privilegios elevados mediante gsudo (instala gsudo para habilitarlo; de lo contrario se ejecuta sin elevación)",
+        launchAsAdminAccessibility: "Iniciar terminales de Windows como administrador",
       },
     },
     shortcuts: {

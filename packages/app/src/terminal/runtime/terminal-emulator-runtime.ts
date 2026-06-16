@@ -40,6 +40,7 @@ export interface TerminalEmulatorRuntimeMountInput {
   theme: ITheme;
   fontFamily?: string;
   fontSize?: number;
+  letterSpacing?: number;
   ligaturesEnabled?: boolean;
 }
 
@@ -181,6 +182,13 @@ function resolveTerminalFontSize(fontSize: number | undefined): number {
     : DEFAULT_TERMINAL_FONT_SIZE;
 }
 
+// Extra inter-character spacing (px). 0 keeps the font's native metrics; small
+// negatives tighten cramped Windows fonts. Anything non-finite falls back to 0
+// so an unset/garbage value never collapses the grid.
+function resolveTerminalLetterSpacing(letterSpacing: number | undefined): number {
+  return typeof letterSpacing === "number" && Number.isFinite(letterSpacing) ? letterSpacing : 0;
+}
+
 function withOverviewRulerBorderHidden(theme: ITheme): ITheme {
   return {
     ...theme,
@@ -257,6 +265,7 @@ export class TerminalEmulatorRuntime {
       cursorStyle: "bar",
       fontFamily: resolveTerminalFontFamily(input.fontFamily),
       fontSize: resolveTerminalFontSize(input.fontSize),
+      letterSpacing: resolveTerminalLetterSpacing(input.letterSpacing),
       lineHeight: 1.0,
       macOptionIsMeta: true,
       minimumContrastRatio: 1,
@@ -727,6 +736,24 @@ export class TerminalEmulatorRuntime {
       return;
     }
 
+    this.fitAndEmitResize?.({ force: true });
+    this.refreshVisibleRows();
+  }
+
+  setLetterSpacing(input: { letterSpacing?: number }): void {
+    const terminal = this.terminal;
+    if (!terminal) {
+      return;
+    }
+
+    try {
+      terminal.options.letterSpacing = resolveTerminalLetterSpacing(input.letterSpacing);
+    } catch {
+      // ignore
+      return;
+    }
+
+    // Cell width changed, so the column count the grid can hold changes too.
     this.fitAndEmitResize?.({ force: true });
     this.refreshVisibleRows();
   }

@@ -24,6 +24,7 @@ import {
   MIN_CODE_FONT_SIZE,
   MIN_UI_FONT_SIZE,
   parseClampedFontSize,
+  parseTerminalLetterSpacing,
   parseTerminalPadding,
   sanitizeFontFamily,
   useAppSettings,
@@ -352,6 +353,68 @@ function TerminalPaddingRow({
 }
 
 // ---------------------------------------------------------------------------
+// Terminal letter spacing — unlike padding it accepts negatives, so it needs a
+// sign-permitting input rather than the digits-only FontSizeRow sanitizer.
+// ---------------------------------------------------------------------------
+
+interface TerminalLetterSpacingRowProps {
+  title: string;
+  accessibilityLabel: string;
+  value: number;
+  onCommit: (value: number) => void;
+}
+
+function TerminalLetterSpacingRow({
+  title,
+  accessibilityLabel,
+  value,
+  onCommit,
+}: TerminalLetterSpacingRowProps) {
+  const [draft, setDraft] = useState(String(value));
+
+  // Resync from the committed value when it changes elsewhere.
+  useEffect(() => {
+    setDraft(String(value));
+  }, [value]);
+
+  const handleChangeDraft = useCallback((next: string) => {
+    // Keep digits plus a single leading minus sign.
+    const cleaned = next.replace(/[^\d-]/g, "").replace(/(?!^)-/g, "");
+    setDraft(cleaned);
+  }, []);
+
+  const handleCommit = useCallback(() => {
+    const parsed = parseTerminalLetterSpacing(draft);
+    const next = parsed ?? value;
+    setDraft(String(next));
+    if (next !== value) {
+      onCommit(next);
+    }
+  }, [draft, onCommit, value]);
+
+  return (
+    <View style={styles.rowWithBorder}>
+      <View style={settingsStyles.rowContent}>
+        <Text style={settingsStyles.rowTitle}>{title}</Text>
+      </View>
+      <View style={styles.sizeField}>
+        <TextInput
+          value={draft}
+          onChangeText={handleChangeDraft}
+          onBlur={handleCommit}
+          onSubmitEditing={handleCommit}
+          keyboardType="numbers-and-punctuation"
+          selectTextOnFocus
+          style={styles.sizeInput}
+          accessibilityLabel={accessibilityLabel}
+        />
+        <Text style={styles.unit}>px</Text>
+      </View>
+    </View>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Syntax highlight theme picker (commits immediately)
 // ---------------------------------------------------------------------------
 
@@ -522,6 +585,27 @@ export function AppearanceSection() {
     [updateSettings],
   );
 
+  const handleTerminalLetterSpacingCommit = useCallback(
+    (terminalLetterSpacing: number) => {
+      void updateSettings({ terminalLetterSpacing });
+    },
+    [updateSettings],
+  );
+
+  const handleWindowsPreferPowerShell7Change = useCallback(
+    (windowsPreferPowerShell7: boolean) => {
+      void updateSettings({ windowsPreferPowerShell7 });
+    },
+    [updateSettings],
+  );
+
+  const handleWindowsLaunchAsAdminChange = useCallback(
+    (windowsLaunchAsAdmin: boolean) => {
+      void updateSettings({ windowsLaunchAsAdmin });
+    },
+    [updateSettings],
+  );
+
   const commitCodeSize = useCallback(() => {
     const parsed = parseClampedFontSize(codeSizeDraft, {
       min: MIN_CODE_FONT_SIZE,
@@ -614,6 +698,12 @@ export function AppearanceSection() {
               accessibilityLabel={t("settings.appearance.terminal.ligaturesAccessibility")}
             />
           </View>
+          <TerminalLetterSpacingRow
+            title={t("settings.appearance.terminal.letterSpacing")}
+            accessibilityLabel={t("settings.appearance.terminal.letterSpacingAccessibility")}
+            value={settings.terminalLetterSpacing}
+            onCommit={handleTerminalLetterSpacingCommit}
+          />
           <TerminalPaddingRow
             field="terminalPaddingTop"
             title={t("settings.appearance.terminal.paddingTop")}
@@ -642,6 +732,51 @@ export function AppearanceSection() {
             value={settings.terminalPaddingRight}
             onCommit={handleTerminalPaddingCommit}
           />
+        </View>
+      </SettingsSection>
+      <SettingsSection title={t("settings.appearance.windowsTerminal.title")}>
+        <View style={settingsStyles.card}>
+          <View style={settingsStyles.row}>
+            <View style={settingsStyles.rowContent}>
+              <Text style={settingsStyles.rowHint}>
+                {t("settings.appearance.windowsTerminal.hint")}
+              </Text>
+            </View>
+          </View>
+          <View style={styles.rowWithBorder}>
+            <View style={settingsStyles.rowContent}>
+              <Text style={settingsStyles.rowTitle}>
+                {t("settings.appearance.windowsTerminal.preferPowerShell7")}
+              </Text>
+              <Text style={settingsStyles.rowHint}>
+                {t("settings.appearance.windowsTerminal.preferPowerShell7Hint")}
+              </Text>
+            </View>
+            <Switch
+              value={settings.windowsPreferPowerShell7}
+              onValueChange={handleWindowsPreferPowerShell7Change}
+              accessibilityLabel={t(
+                "settings.appearance.windowsTerminal.preferPowerShell7Accessibility",
+              )}
+            />
+          </View>
+          <View style={styles.rowWithBorder}>
+            <View style={settingsStyles.rowContent}>
+              <Text style={settingsStyles.rowTitle}>
+                {t("settings.appearance.windowsTerminal.launchAsAdmin")}
+              </Text>
+              <Text style={settingsStyles.rowHint}>
+                {t("settings.appearance.windowsTerminal.launchAsAdminHint")}
+              </Text>
+            </View>
+            <Switch
+              value={settings.windowsLaunchAsAdmin}
+              onValueChange={handleWindowsLaunchAsAdminChange}
+              accessibilityLabel={t(
+                "settings.appearance.windowsTerminal.launchAsAdminAccessibility",
+              )}
+            />
+          </View>
         </View>
       </SettingsSection>
       <SettingsSection title={t("settings.appearance.syntax.title")}>

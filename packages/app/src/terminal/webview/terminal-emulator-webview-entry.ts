@@ -20,6 +20,7 @@ interface MountMessage {
   theme: ITheme;
   fontFamily?: string;
   fontSize?: number;
+  letterSpacing?: number;
   ligaturesEnabled?: boolean;
   pendingModifiers: PendingTerminalModifiers;
   swipeGesturesEnabled: boolean;
@@ -36,7 +37,13 @@ type InboundMessage =
   | { type: "resize"; streamKey: string; shouldClaim?: boolean }
   | { type: "setTheme"; streamKey: string; theme: ITheme }
   | { type: "setScrollback"; streamKey: string; lines: number }
-  | { type: "setFont"; streamKey: string; fontFamily?: string; fontSize?: number }
+  | {
+      type: "setFont";
+      streamKey: string;
+      fontFamily?: string;
+      fontSize?: number;
+      letterSpacing?: number;
+    }
   | { type: "setLigatures"; streamKey: string; enabled: boolean }
   | { type: "setPendingModifiers"; streamKey: string; pendingModifiers: PendingTerminalModifiers }
   | { type: "setSwipeGesturesEnabled"; streamKey: string; enabled: boolean }
@@ -280,6 +287,7 @@ class TerminalWebViewBridge {
         return true;
       case "setFont":
         this.runtime?.setFont({ fontFamily: message.fontFamily, fontSize: message.fontSize });
+        this.runtime?.setLetterSpacing({ letterSpacing: message.letterSpacing });
         return true;
       case "setLigatures":
         this.runtime?.setLigatures({ enabled: message.enabled });
@@ -335,6 +343,7 @@ class TerminalWebViewBridge {
       theme: message.theme,
       fontFamily: message.fontFamily,
       fontSize: message.fontSize,
+      letterSpacing: message.letterSpacing,
       ligaturesEnabled: message.ligaturesEnabled,
     });
     sendToNative({ type: "rendererReady", streamKey: message.streamKey, isReady: true });

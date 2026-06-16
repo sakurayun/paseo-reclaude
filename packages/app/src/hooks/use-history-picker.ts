@@ -7,6 +7,7 @@ import type { StreamItem } from "@/types/stream";
 import { isCursorOnFirstLine } from "@/utils/cursor-line-position";
 
 const EMPTY_STREAM: readonly StreamItem[] = [];
+const EMPTY_PRESETS: readonly string[] = [];
 
 export interface UseHistoryPickerArgs {
   /** Current value of the input. */
@@ -17,14 +18,31 @@ export interface UseHistoryPickerArgs {
   agentId: string;
   /** Active server — drives per-agent history priority. */
   serverId: string;
-  /** Called to replace the input with a chosen history entry. */
+  /** Called to replace the input with a chosen history (or preset) entry. */
   onApply: (text: string) => void;
+  /**
+   * Preset messages reachable by pressing `ArrowRight` while the history list
+   * is open (and left again with `ArrowLeft`). Oldest-first, newest at the
+   * bottom, matching the history ordering.
+   */
+  presets?: readonly string[];
 }
+
+/** Which list the open picker is currently showing. */
+export type HistoryPickerMode = "history" | "presets";
 
 export interface UseHistoryPickerResult {
   /** Whether the picker overlay should be shown. */
   isVisible: boolean;
-  /** History entries as options, oldest-first (newest at the bottom). */
+  /** Which list is currently shown (only meaningful while `isVisible`). */
+  mode: HistoryPickerMode;
+  /**
+   * Whether the other list is reachable right now — ArrowRight has presets to
+   * jump to (history mode), or ArrowLeft has history to return to (presets
+   * mode). Drives the "switch" hint in the track header.
+   */
+  canSwitch: boolean;
+  /** Active list entries as options, oldest-first (newest at the bottom). */
   options: readonly AutocompleteOption[];
   /** Highlighted option index, or -1 when closed. */
   selectedIndex: number;
@@ -33,12 +51,15 @@ export interface UseHistoryPickerResult {
    * event was consumed (caller must NOT run default behavior), `false` to let
    * default behavior happen.
    *
-   * Closed: `ArrowUp` opens the picker when the cursor is on the first line and
-   * history is non-empty, highlighting the newest entry. Open: `ArrowUp`/
-   * `ArrowDown` move the highlight (ArrowUp stops at the oldest); `Enter`/`Tab`
-   * apply the highlighted entry; `Escape` closes; pressing `ArrowDown` while on
-   * the newest entry closes the picker; any other key closes it and passes
-   * through (so the user can keep typing).
+   * Closed: `ArrowUp` opens the history list when the cursor is on the first
+   * line and history is non-empty, highlighting the newest entry. Open:
+   * `ArrowUp`/`ArrowDown` move the highlight (ArrowUp stops at the oldest);
+   * `ArrowRight` from the history list switches to the presets list (when any),
+   * restarting from the bottom; `ArrowLeft` from the presets list switches back
+   * to the history list, restarting from the bottom; `Enter`/`Tab` apply the
+   * highlighted entry; `Escape` closes; pressing `ArrowDown` while on the newest
+   * entry closes the picker; any other key closes it and passes through (so the
+   * user can keep typing).
    */
   onKeyPress: (event: { key: string; preventDefault: () => void }) => boolean;
   /** Apply an entry — used by mouse clicks on a row. */
@@ -48,14 +69,16 @@ export interface UseHistoryPickerResult {
 }
 
 interface HistoryPickerRefState {
-  entries: string[];
+  historyEntries: string[];
+  presetEntries: readonly string[];
   value: string;
   cursorIndex: number;
   onApply: (text: string) => void;
 }
 
 export function useHistoryPicker(args: UseHistoryPickerArgs): UseHistoryPickerResult {
-  const { value, cursorIndex, agentId, serverId, onApply } = args;
+  const { value, cursorIndex, agentId, serverId, onApply, presets } = args;
+  const presetEntries = presets ?? EMPTY_PRESETS;
 
   const localTail = useSessionStore(
     (state) => state.sessions[serverId]?.agentStreamTail.get(agentId) ?? EMPTY_STREAM,
@@ -72,29 +95,43 @@ export function useHistoryPicker(args: UseHistoryPickerArgs): UseHistoryPickerRe
     [localTail, localHead, globalEntries],
   );
 
-  const options = useMemo<AutocompleteOption[]>(
+  const historyOptions = useMemo<AutocompleteOption[]>(
     () => entries.map((text, index) => ({ id: `history-${index}`, label: text })),
     [entries],
   );
+  const presetOptions = useMemo<AutocompleteOption[]>(
+    () => presetEntries.map((text, index) => ({ id: `preset-${index}`, label: text })),
+    [presetEntries],
+  );
 
-  const [open, setOpen] = useState(false);
+  // "closed" hides the picker; otherwise the value names the active list.
+  const [mode, setMode] = useState<HistoryPickerMode | "closed">("closed");
   const [selectedIndex, setSelectedIndex] = useState(-1);
+
+  const activeEntries = mode === "presets" ? presetEntries : entries;
+  const activeOptions = mode === "presets" ? presetOptions : historyOptions;
 
   // Render-time ref sync (same pattern usePromptHistory uses) so the values the
   // key handler reads stay fresh without re-subscribing the handler each keystroke.
-  const stateRef = useRef<HistoryPickerRefState>({ entries, value, cursorIndex, onApply });
-  stateRef.current = { entries, value, cursorIndex, onApply };
+  const stateRef = useRef<HistoryPickerRefState>({
+    historyEntries: entries,
+    presetEntries,
+    value,
+    cursorIndex,
+    onApply,
+  });
+  stateRef.current = { historyEntries: entries, presetEntries, value, cursorIndex, onApply };
 
-  // If the history list shrinks while open, keep the highlight in range.
+  // If the active list shrinks while open, keep the highlight in range.
   useEffect(() => {
-    if (!open) return;
-    if (selectedIndex > entries.length - 1) {
-      setSelectedIndex(Math.max(0, entries.length - 1));
+    if (mode === "closed") return;
+    if (selectedIndex > activeEntries.length - 1) {
+      setSelectedIndex(Math.max(0, activeEntries.length - 1));
     }
-  }, [open, entries.length, selectedIndex]);
+  }, [mode, activeEntries.length, selectedIndex]);
 
   const close = useCallback(() => {
-    setOpen(false);
+    setMode("closed");
     setSelectedIndex(-1);
   }, []);
 
@@ -109,22 +146,25 @@ export function useHistoryPicker(args: UseHistoryPickerArgs): UseHistoryPickerRe
   const onKeyPress = useCallback(
     (event: { key: string; preventDefault: () => void }): boolean => {
       const {
-        entries: live,
+        historyEntries,
+        presetEntries: livePresets,
         value: liveValue,
         cursorIndex: liveCursor,
         onApply: liveApply,
       } = stateRef.current;
 
-      if (!open) {
+      if (mode === "closed") {
         // Open only on ArrowUp, cursor on the first line, with history available.
         if (event.key !== "ArrowUp") return false;
         if (!isCursorOnFirstLine(liveValue, liveCursor)) return false;
-        if (live.length === 0) return false;
+        if (historyEntries.length === 0) return false;
         event.preventDefault();
-        setOpen(true);
-        setSelectedIndex(live.length - 1); // newest (last) entry
+        setMode("history");
+        setSelectedIndex(historyEntries.length - 1); // newest (last) entry
         return true;
       }
+
+      const live = mode === "presets" ? livePresets : historyEntries;
 
       switch (event.key) {
         case "ArrowUp":
@@ -141,6 +181,27 @@ export function useHistoryPicker(args: UseHistoryPickerArgs): UseHistoryPickerRe
           }
           setSelectedIndex(selectedIndex + 1);
           return true;
+        case "ArrowRight":
+          // From history, hop into the presets list and restart from the bottom
+          // (newest, closest to the input). No presets → dismiss + pass through.
+          if (mode === "history" && livePresets.length > 0) {
+            event.preventDefault();
+            setMode("presets");
+            setSelectedIndex(livePresets.length - 1);
+            return true;
+          }
+          close();
+          return false;
+        case "ArrowLeft":
+          // From presets, hop back to the history list, restarting from the bottom.
+          if (mode === "presets" && historyEntries.length > 0) {
+            event.preventDefault();
+            setMode("history");
+            setSelectedIndex(historyEntries.length - 1);
+            return true;
+          }
+          close();
+          return false;
         case "Enter":
         case "Tab": {
           event.preventDefault();
@@ -159,12 +220,14 @@ export function useHistoryPicker(args: UseHistoryPickerArgs): UseHistoryPickerRe
           return false;
       }
     },
-    [open, selectedIndex, close],
+    [mode, selectedIndex, close],
   );
 
   return {
-    isVisible: open && options.length > 0,
-    options,
+    isVisible: mode !== "closed" && activeOptions.length > 0,
+    mode: mode === "presets" ? "presets" : "history",
+    canSwitch: mode === "presets" ? entries.length > 0 : presetEntries.length > 0,
+    options: activeOptions,
     selectedIndex,
     onKeyPress,
     onSelectOption,

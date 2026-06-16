@@ -44,7 +44,7 @@ interface HostState {
   cursorIndex: number;
 }
 
-function renderHistoryPicker(initial: HostState) {
+function renderHistoryPicker(initial: HostState, presets?: string[]) {
   const onApply = vi.fn();
   const state = { ...initial };
   const hook = renderHook<
@@ -52,7 +52,14 @@ function renderHistoryPicker(initial: HostState) {
     Pick<UseHistoryPickerArgs, "value" | "cursorIndex">
   >(
     ({ value, cursorIndex }) =>
-      useHistoryPicker({ value, cursorIndex, agentId: AGENT_ID, serverId: SERVER_ID, onApply }),
+      useHistoryPicker({
+        value,
+        cursorIndex,
+        agentId: AGENT_ID,
+        serverId: SERVER_ID,
+        onApply,
+        presets,
+      }),
     { initialProps: state },
   );
   return { onApply, result: hook.result };
@@ -211,6 +218,90 @@ describe("useHistoryPicker", () => {
     expect(result.current.isVisible).toBe(true);
 
     act(() => result.current.reset());
+    expect(result.current.isVisible).toBe(false);
+  });
+
+  it("ArrowRight switches from history to the presets list, starting at the bottom", () => {
+    seedGlobalHistory(["old", "new"]);
+    const { result } = renderHistoryPicker({ value: "", cursorIndex: 0 }, ["p1", "p2", "p3"]);
+
+    act(() => result.current.onKeyPress(makeEvent("ArrowUp"))); // open history, index 1
+    expect(result.current.mode).toBe("history");
+
+    let handled = false;
+    act(() => {
+      handled = result.current.onKeyPress(makeEvent("ArrowRight"));
+    });
+
+    expect(handled).toBe(true);
+    expect(result.current.mode).toBe("presets");
+    expect(result.current.selectedIndex).toBe(2); // bottom (newest) preset
+    expect(result.current.options.map((o) => o.label)).toEqual(["p1", "p2", "p3"]);
+  });
+
+  it("ArrowLeft returns from presets to the history list, starting at the bottom", () => {
+    seedGlobalHistory(["old", "mid", "new"]);
+    const { result } = renderHistoryPicker({ value: "", cursorIndex: 0 }, ["p1", "p2"]);
+
+    act(() => result.current.onKeyPress(makeEvent("ArrowUp"))); // history
+    act(() => result.current.onKeyPress(makeEvent("ArrowRight"))); // presets, index 1
+    act(() => result.current.onKeyPress(makeEvent("ArrowUp"))); // presets, index 0
+    expect(result.current.mode).toBe("presets");
+
+    let handled = false;
+    act(() => {
+      handled = result.current.onKeyPress(makeEvent("ArrowLeft"));
+    });
+
+    expect(handled).toBe(true);
+    expect(result.current.mode).toBe("history");
+    expect(result.current.selectedIndex).toBe(2); // bottom (newest) history entry
+  });
+
+  it("Enter in the presets list applies the highlighted preset", () => {
+    seedGlobalHistory(["h1"]);
+    const { result, onApply } = renderHistoryPicker({ value: "", cursorIndex: 0 }, ["p1", "p2"]);
+
+    act(() => result.current.onKeyPress(makeEvent("ArrowUp"))); // history
+    act(() => result.current.onKeyPress(makeEvent("ArrowRight"))); // presets, index 1 (p2)
+    act(() => result.current.onKeyPress(makeEvent("ArrowUp"))); // index 0 (p1)
+
+    let handled = false;
+    act(() => {
+      handled = result.current.onKeyPress(makeEvent("Enter"));
+    });
+
+    expect(handled).toBe(true);
+    expect(onApply).toHaveBeenCalledWith("p1");
+    expect(result.current.isVisible).toBe(false);
+  });
+
+  it("canSwitch reflects whether the other list is reachable", () => {
+    seedGlobalHistory(["h1"]);
+    const withPresets = renderHistoryPicker({ value: "", cursorIndex: 0 }, ["p1", "p2"]);
+    act(() => withPresets.result.current.onKeyPress(makeEvent("ArrowUp"))); // history
+    expect(withPresets.result.current.canSwitch).toBe(true); // presets reachable
+    act(() => withPresets.result.current.onKeyPress(makeEvent("ArrowRight"))); // presets
+    expect(withPresets.result.current.canSwitch).toBe(true); // history reachable
+
+    const noPresets = renderHistoryPicker({ value: "", cursorIndex: 0 });
+    act(() => noPresets.result.current.onKeyPress(makeEvent("ArrowUp")));
+    expect(noPresets.result.current.canSwitch).toBe(false);
+  });
+
+  it("ArrowRight with no presets dismisses the picker and passes through", () => {
+    seedGlobalHistory(["a", "b"]);
+    const { result } = renderHistoryPicker({ value: "", cursorIndex: 0 });
+
+    act(() => result.current.onKeyPress(makeEvent("ArrowUp")));
+    expect(result.current.isVisible).toBe(true);
+
+    let handled = true;
+    act(() => {
+      handled = result.current.onKeyPress(makeEvent("ArrowRight"));
+    });
+
+    expect(handled).toBe(false);
     expect(result.current.isVisible).toBe(false);
   });
 });

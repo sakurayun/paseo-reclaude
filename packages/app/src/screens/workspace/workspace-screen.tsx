@@ -382,6 +382,40 @@ function getFallbackTabOptionDescription(
   return tab.target.path;
 }
 
+function getAgentTabActivityMs(
+  tab: WorkspaceTabDescriptor,
+  agentActivityById: Map<string, number>,
+): number | null {
+  if (tab.target.kind !== "agent") {
+    return null;
+  }
+  return agentActivityById.get(tab.target.agentId) ?? null;
+}
+
+function sortTabsByAgentActivity(
+  tabs: WorkspaceTabDescriptor[],
+  agentActivityById: Map<string, number>,
+): WorkspaceTabDescriptor[] {
+  const originalIndexByKey = new Map<string, number>();
+  tabs.forEach((tab, index) => {
+    originalIndexByKey.set(tab.key, index);
+  });
+  return [...tabs].sort((left, right) => {
+    const leftActivity = getAgentTabActivityMs(left, agentActivityById);
+    const rightActivity = getAgentTabActivityMs(right, agentActivityById);
+    if (leftActivity !== null && rightActivity !== null && leftActivity !== rightActivity) {
+      return rightActivity - leftActivity;
+    }
+    if (leftActivity !== null && rightActivity === null) {
+      return -1;
+    }
+    if (leftActivity === null && rightActivity !== null) {
+      return 1;
+    }
+    return (originalIndexByKey.get(left.key) ?? 0) - (originalIndexByKey.get(right.key) ?? 0);
+  });
+}
+
 interface MobileWorkspaceTabSwitcherProps {
   tabs: WorkspaceTabDescriptor[];
   activeTabKey: string;
@@ -2537,6 +2571,23 @@ function WorkspaceScreenContent({
     : t("workspace.tabs.explorer.open");
 
   const activeTabKey = useMemo(() => activeTabId ?? "", [activeTabId]);
+  const agentsForTabOrdering = useSessionStore(
+    (state) => state.sessions[normalizedServerId]?.agents,
+  );
+  const agentActivityById = useMemo(() => {
+    const map = new Map<string, number>();
+    if (!agentsForTabOrdering) {
+      return map;
+    }
+    for (const agent of agentsForTabOrdering.values()) {
+      map.set(agent.id, agent.lastActivityAt.getTime());
+    }
+    return map;
+  }, [agentsForTabOrdering]);
+  const mobileSwitcherTabs = useMemo(
+    () => sortTabsByAgentActivity(tabs, agentActivityById),
+    [agentActivityById, tabs],
+  );
   const tabFallbackLabels = useMemo(
     () => ({
       newAgent: t("workspace.tabs.fallback.newAgent"),
@@ -2552,12 +2603,12 @@ function WorkspaceScreenContent({
 
   const tabSwitcherOptions = useMemo(
     () =>
-      tabs.map((tab) => ({
+      mobileSwitcherTabs.map((tab) => ({
         id: tab.key,
         label: getFallbackTabOptionLabel(tab, tabFallbackLabels),
         description: getFallbackTabOptionDescription(tab, tabFallbackLabels),
       })),
-    [tabFallbackLabels, tabs],
+    [mobileSwitcherTabs, tabFallbackLabels],
   );
 
   const handleCreateDraftTab = useCallback(

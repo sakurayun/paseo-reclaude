@@ -42,6 +42,7 @@ import type { ComposerAttachment } from "@/attachments/types";
 import type { ImageAttachment, MessagePayload } from "@/composer/types";
 import { focusWithRetries } from "@/utils/web-focus";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { GlassSurfaceBackdrop } from "@/components/ui/glass-surface";
 import { Shortcut } from "@/components/ui/shortcut";
 import {
   DropdownMenu,
@@ -110,6 +111,8 @@ export interface MessageInputProps {
   isPaneFocused?: boolean;
   /** Content to render on the left side of the composer toolbar (e.g., AgentControls) */
   leftContent?: React.ReactNode;
+  /** Compact context/status content rendered inside the glass surface below the text input. */
+  secondaryContent?: React.ReactNode;
   /** Content to render on the right side before the voice button (e.g., context window meter) */
   beforeVoiceContent?: React.ReactNode;
   /** Content to render on the right side after voice button (e.g., realtime button, cancel button) */
@@ -395,6 +398,11 @@ function VoiceButtonIcon({
     return <ThemedMicOff size={buttonIconSize} uniProps={colorMapping} />;
   }
   return <ThemedMic size={buttonIconSize} uniProps={colorMapping} />;
+}
+
+function MessageInputSecondaryContent({ children }: { children: React.ReactNode }) {
+  if (!children) return null;
+  return <View style={styles.secondaryContent}>{children}</View>;
 }
 
 type ShortcutChord = NonNullable<React.ComponentProps<typeof Shortcut>["chord"]>;
@@ -1156,6 +1164,7 @@ interface ResolvedMessageInputProps {
   disabled: boolean;
   isPaneFocused: boolean;
   leftContent: React.ReactNode;
+  secondaryContent: React.ReactNode;
   beforeVoiceContent: React.ReactNode;
   rightContent: React.ReactNode;
   voiceServerId: string | undefined;
@@ -1198,6 +1207,7 @@ function resolveMessageInputProps(props: MessageInputProps): ResolvedMessageInpu
     disabled: props.disabled ?? false,
     isPaneFocused: props.isPaneFocused ?? true,
     leftContent: props.leftContent,
+    secondaryContent: props.secondaryContent,
     beforeVoiceContent: props.beforeVoiceContent,
     rightContent: props.rightContent,
     voiceServerId: props.voiceServerId,
@@ -1272,6 +1282,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       disabled,
       isPaneFocused,
       leftContent,
+      secondaryContent,
       beforeVoiceContent,
       rightContent,
       voiceServerId,
@@ -1843,6 +1854,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
           style={inputWrapperChrome.style}
           dataSet={inputWrapperChrome.dataSet}
         >
+          <GlassSurfaceBackdrop />
           {attachmentSlot}
           {/* Text input */}
           <View style={styles.textInputScrollWrapper}>
@@ -1873,6 +1885,8 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
               })}
             />
           </View>
+
+          <MessageInputSecondaryContent>{secondaryContent}</MessageInputSecondaryContent>
 
           {/* Button row */}
           <View style={styles.buttonRow}>
@@ -2019,13 +2033,12 @@ const styles = StyleSheet.create((theme: Theme) => ({
   container: {
     position: "relative",
   },
-  // Frosted glass: a translucent theme-tinted layer over the stream that
-  // scrolls underneath. Web gets a real backdrop blur; native approximates
-  // with a denser translucent tint (no backdrop-filter support).
+  // Frosted glass: web uses CSS backdrop-filter; native gets a real BlurView
+  // child so the stream behind the composer stays visibly blurred.
   inputWrapper: {
     flexDirection: "column",
     gap: theme.spacing[3],
-    backgroundColor: isWeb ? theme.colors.surfaceGlass : theme.colors.surfaceGlassStrong,
+    backgroundColor: isWeb ? theme.colors.surfaceGlass : "transparent",
     borderWidth: theme.borderWidth[1],
     borderColor: theme.colors.borderAccent,
     borderRadius: theme.borderRadius["2xl"],
@@ -2093,6 +2106,13 @@ const styles = StyleSheet.create((theme: Theme) => ({
           outlineColor: "transparent",
         } as object)
       : {}),
+  },
+  secondaryContent: {
+    borderTopWidth: theme.borderWidth[1],
+    borderTopColor: theme.colors.borderAccent,
+    marginHorizontal: -theme.spacing[3],
+    paddingHorizontal: theme.spacing[3],
+    paddingTop: theme.spacing[1],
   },
   buttonRow: {
     flexDirection: "row",

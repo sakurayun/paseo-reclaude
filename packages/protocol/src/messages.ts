@@ -2060,6 +2060,15 @@ export const UnsubscribeTerminalsRequestSchema = z.object({
   workspaceId: z.string().optional(),
 });
 
+// Windows-only default-shell preferences for a newly opened terminal. The
+// daemon consults these only on win32; every field is optional so older daemons
+// simply ignore them and older clients omit the object entirely.
+export const WindowsShellPreferenceSchema = z.object({
+  preferPowerShell7: z.boolean().optional(),
+  runAsAdmin: z.boolean().optional(),
+});
+export type WindowsShellPreference = z.infer<typeof WindowsShellPreferenceSchema>;
+
 export const CreateTerminalRequestSchema = z.object({
   type: z.literal("create_terminal_request"),
   cwd: z.string(),
@@ -2068,6 +2077,10 @@ export const CreateTerminalRequestSchema = z.object({
   agentId: z.string().optional(),
   command: z.string().optional(),
   args: z.array(z.string()).optional(),
+  // COMPAT(windowsShellPreference): added 2026-06; drop the optionality guard
+  // only once both the floor client and daemon ship it (they never break parse,
+  // so this can also just stay optional forever).
+  windowsShell: WindowsShellPreferenceSchema.optional(),
   requestId: z.string(),
 });
 

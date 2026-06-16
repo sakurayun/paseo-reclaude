@@ -86,6 +86,17 @@ export const zhCN: TranslationResources = {
   composer: {
     promptHistory: {
       title: "历史发言",
+      switchHint: "切换到预设",
+    },
+    promptPresets: {
+      title: "提示词预设",
+      switchHint: "切换到历史",
+    },
+    selection: {
+      ask: "提问",
+      askInNewWindow: "新窗口提问",
+      savePreset: "保存为预设",
+      savedPreset: "已保存为预设",
     },
     placeholders: {
       desktop: "给 Agent 发消息，标记 @files，或使用 /commands 和 /skills",
@@ -755,8 +766,6 @@ export const zhCN: TranslationResources = {
         addTitle: "添加预设",
         placeholder: "预设内容",
         delete: "删除预设...",
-        noAgentTab: "请先打开一个 Agent 标签页",
-        inserted: "已填入 Agent 输入框",
       },
       history: {
         title: "提交",
@@ -1840,6 +1849,8 @@ export const zhCN: TranslationResources = {
         ligatures: "字体连字",
         ligaturesHint: "代码字体支持时渲染编程连字（如 ->、=>）",
         ligaturesAccessibility: "终端字体连字",
+        letterSpacing: "字间距",
+        letterSpacingAccessibility: "终端字间距",
         paddingTop: "上内边距",
         paddingTopAccessibility: "终端上内边距",
         paddingBottom: "下内边距",
@@ -1848,6 +1859,17 @@ export const zhCN: TranslationResources = {
         paddingLeftAccessibility: "终端左内边距",
         paddingRight: "右内边距",
         paddingRightAccessibility: "终端右内边距",
+      },
+      windowsTerminal: {
+        title: "Windows 终端",
+        hint: "仅在所连接的主机运行 Windows 时生效；在 macOS 和 Linux 上会被忽略",
+        preferPowerShell7: "优先使用 PowerShell 7",
+        preferPowerShell7Hint:
+          "新终端优先用 pwsh 启动，缺失时回退到 Windows PowerShell，再回退到 cmd.exe",
+        preferPowerShell7Accessibility: "在 Windows 上优先使用 PowerShell 7",
+        launchAsAdmin: "以管理员身份启动",
+        launchAsAdminHint: "通过 gsudo 提权启动终端（需安装 gsudo，否则以普通权限运行）",
+        launchAsAdminAccessibility: "以管理员身份启动 Windows 终端",
       },
     },
     shortcuts: {

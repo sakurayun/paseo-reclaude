@@ -10,14 +10,20 @@ import {
   View,
 } from "react-native";
 import { useTranslation } from "react-i18next";
-import { Clock } from "lucide-react-native";
+import { Clock, MessageSquareQuote } from "lucide-react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import type { AutocompleteOption } from "@/components/ui/autocomplete";
 import { getAutocompleteScrollOffset } from "@/components/ui/autocomplete-utils";
+import { GlassSurface } from "@/components/ui/glass-surface";
+import { Shortcut } from "@/components/ui/shortcut";
 import { isWeb } from "@/constants/platform";
 import type { Theme } from "@/styles/theme";
 
 const ThemedClock = withUnistyles(Clock);
+const ThemedMessageSquareQuote = withUnistyles(MessageSquareQuote);
+
+/** Which list the track renders — drives the header icon, title, and testID. */
+export type HistoryTrackVariant = "history" | "presets";
 
 const foregroundMutedColorMapping = (theme: Theme) => ({
   color: theme.colors.foregroundMuted,
@@ -25,10 +31,22 @@ const foregroundMutedColorMapping = (theme: Theme) => ({
 
 const HISTORY_LIST_MAX_HEIGHT = 220;
 
+// Stable arrow-key chords for the header switch hint (hoisted so the Shortcut
+// prop isn't a new array each render).
+const SWITCH_TO_PRESETS_KEYS = ["Right"];
+const SWITCH_TO_HISTORY_KEYS = ["Left"];
+
 export interface HistoryTrackProps {
   options: readonly AutocompleteOption[];
   selectedIndex: number;
   onSelect: (option: AutocompleteOption) => void;
+  /** Header/icon/testID flavor. Defaults to the prompt-history list. */
+  variant?: HistoryTrackVariant;
+  /**
+   * When true, the header shows a hint for the arrow key that switches to the
+   * other list (→ to presets from history, ← back to history from presets).
+   */
+  canSwitch?: boolean;
 }
 
 interface HistoryTrackRowProps {
@@ -81,8 +99,13 @@ export function HistoryTrack({
   options,
   selectedIndex,
   onSelect,
+  variant = "history",
+  canSwitch = false,
 }: HistoryTrackProps): ReactElement | null {
   const { t } = useTranslation();
+  const isPresets = variant === "presets";
+  // The switch hint is keyboard-only, so it only makes sense on web.
+  const showSwitchHint = isWeb && canSwitch;
   const scrollRef = useRef<ScrollView>(null);
   const rowLayoutsRef = useRef<Map<number, { top: number; height: number }>>(new Map());
   const viewportHeightRef = useRef(0);
@@ -141,15 +164,34 @@ export function HistoryTrack({
   }
 
   return (
-    <View style={styles.surface} testID="composer-history-track">
+    <GlassSurface
+      style={styles.surface}
+      testID={isPresets ? "composer-presets-track" : "composer-history-track"}
+    >
       <View style={styles.header}>
-        <ThemedClock size={12} uniProps={foregroundMutedColorMapping} />
+        {isPresets ? (
+          <ThemedMessageSquareQuote size={12} uniProps={foregroundMutedColorMapping} />
+        ) : (
+          <ThemedClock size={12} uniProps={foregroundMutedColorMapping} />
+        )}
         <Text style={styles.headerLabel} numberOfLines={1}>
-          {t("composer.promptHistory.title")}
+          {t(isPresets ? "composer.promptPresets.title" : "composer.promptHistory.title")}
         </Text>
         <View style={styles.countBadge}>
           <Text style={styles.countBadgeText}>{options.length}</Text>
         </View>
+        {showSwitchHint ? (
+          <View style={styles.switchHint}>
+            <Shortcut keys={isPresets ? SWITCH_TO_HISTORY_KEYS : SWITCH_TO_PRESETS_KEYS} />
+            <Text style={styles.switchHintText} numberOfLines={1}>
+              {t(
+                isPresets
+                  ? "composer.promptPresets.switchHint"
+                  : "composer.promptHistory.switchHint",
+              )}
+            </Text>
+          </View>
+        ) : null}
       </View>
       <ScrollView
         ref={scrollRef}
@@ -173,7 +215,7 @@ export function HistoryTrack({
           />
         ))}
       </ScrollView>
-    </View>
+    </GlassSurface>
   );
 }
 
@@ -182,7 +224,6 @@ const styles = StyleSheet.create((theme: Theme) => ({
   // pulled down to sit flush against the input below.
   surface: {
     alignSelf: "stretch",
-    backgroundColor: isWeb ? theme.colors.surfaceGlass : theme.colors.surface1,
     borderWidth: theme.borderWidth[1],
     borderColor: theme.colors.borderAccent,
     borderBottomWidth: 0,
@@ -197,12 +238,6 @@ const styles = StyleSheet.create((theme: Theme) => ({
     // so the card's flat bottom edge covers the rounded corners and sits flush,
     // exactly like the todo track sits on the composer.
     marginBottom: -(theme.spacing[3] + theme.spacing[4]),
-    ...(isWeb
-      ? ({
-          backdropFilter: "blur(20px) saturate(1.5)",
-          WebkitBackdropFilter: "blur(20px) saturate(1.5)",
-        } as object)
-      : {}),
   },
   header: {
     flexDirection: "row",
@@ -232,6 +267,17 @@ const styles = StyleSheet.create((theme: Theme) => ({
     fontSize: theme.fontSize.xs,
     fontWeight: theme.fontWeight.bold,
     color: theme.colors.foreground,
+  },
+  // Keyboard hint at the header's right edge: "→ switch to presets" / "← back".
+  switchHint: {
+    flexShrink: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[1],
+  },
+  switchHintText: {
+    fontSize: theme.fontSize.xs,
+    color: theme.colors.foregroundMuted,
   },
   scroll: {
     maxHeight: HISTORY_LIST_MAX_HEIGHT,

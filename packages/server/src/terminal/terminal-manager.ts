@@ -4,6 +4,7 @@ import {
   type TerminalSession,
   type TerminalStateSnapshot,
   type TerminalStateSnapshotOptions,
+  type WindowsShellPreference,
 } from "./terminal.js";
 import { captureTerminalLines, type CaptureTerminalLinesResult } from "./terminal-capture.js";
 import { randomBytes, randomUUID } from "node:crypto";
@@ -62,6 +63,7 @@ export interface TerminalManager {
     args?: string[];
     activityToken?: string;
     activityUrl?: string | null;
+    windowsShell?: WindowsShellPreference;
   }): Promise<TerminalSession>;
   registerCwdEnv(options: { cwd: string; env: Record<string, string> }): void;
   validateTerminalActivityToken(terminalId: string, token: string): "valid" | "unknown" | "invalid";
@@ -317,6 +319,7 @@ export function createTerminalManager(
       args?: string[];
       activityToken?: string;
       activityUrl?: string | null;
+      windowsShell?: WindowsShellPreference;
     }): Promise<TerminalSession> {
       assertAbsolutePath(options.cwd);
 
@@ -348,6 +351,7 @@ export function createTerminalManager(
             ...(options.title ? { title: options.title } : {}),
             ...(options.command ? { command: options.command } : {}),
             ...(options.args ? { args: options.args } : {}),
+            ...(options.windowsShell ? { windowsShell: options.windowsShell } : {}),
             ...(mergedEnv ? { env: mergedEnv } : {}),
             activityEnv,
           }),

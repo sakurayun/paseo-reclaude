@@ -30,6 +30,7 @@ import { Keyframe, runOnJS } from "react-native-reanimated";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { Check, CheckCircle } from "lucide-react-native";
 import { FloatingScrollView, FloatingSurface } from "@/components/ui/floating";
+import { GlassSurfaceBackdrop } from "@/components/ui/glass-surface";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useWebScrollbarStyle } from "@/hooks/use-web-scrollbar-style";
 import { isWeb } from "@/constants/platform";
@@ -224,6 +225,7 @@ function renderDropdownSurface(input: {
         }
       })}
     >
+      <GlassSurfaceBackdrop />
       {body}
     </FloatingSurface>
   );
@@ -885,10 +887,8 @@ const styles = StyleSheet.create((theme) => ({
     bottom: 0,
     left: 0,
   },
-  // Frosted glass, matching the composer input: web gets a real backdrop blur;
-  // native approximates with a denser translucent tint (no backdrop-filter).
   content: {
-    backgroundColor: isWeb ? theme.colors.surfaceGlass : theme.colors.surfaceGlassStrong,
+    backgroundColor: isWeb ? theme.colors.surfaceGlass : "transparent",
     borderWidth: 1,
     borderColor: theme.colors.borderAccent,
     borderRadius: theme.borderRadius.lg,

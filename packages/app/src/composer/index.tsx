@@ -119,6 +119,7 @@ import { useCheckoutStatusQuery } from "@/git/use-status-query";
 import { useComposerGithubAutoAttach } from "./github/auto-attach";
 import { resolveClientSlashCommand, type ClientSlashCommand } from "@/client-slash-commands";
 import { ComposerPresetsMenu } from "@/composer/prompt-presets-menu";
+import { useCommitMessagePresetsStore } from "@/git/commit-message-presets-store";
 
 type QueuedMessage = QueuedComposerMessage;
 
@@ -288,18 +289,18 @@ interface RenderAttachmentTrayArgs {
   };
 }
 
-function renderComposerFooter(
+function renderComposerSecondaryContent(
   footer: ReactNode,
   footerInlineContent: ReactNode,
+  contextContent: ReactNode,
 ): ReactElement | null {
-  if (!footer && !footerInlineContent) return null;
+  if (!footer && !footerInlineContent && !contextContent) return null;
   return (
-    <View style={styles.footer}>
-      <View style={styles.footerContent}>
-        <View style={styles.footerLeft}>
-          {footer}
-          {footerInlineContent}
-        </View>
+    <View style={styles.secondaryContent}>
+      {contextContent}
+      <View style={styles.secondaryControls}>
+        {footer}
+        {footerInlineContent}
       </View>
     </View>
   );
@@ -786,6 +787,8 @@ interface ComposerProps {
   onAttentionPromptSend?: () => void;
   /** Controlled agent controls rendered in input area (draft flows). */
   agentControls?: DraftAgentControlsProps;
+  /** Context/status rows rendered inside the message input surface. */
+  contextContent?: ReactNode;
   /** Extra styles merged onto the message input wrapper (e.g. elevated background). */
   inputWrapperStyle?: import("react-native").ViewStyle;
   /** Rendered below the input, inside the keyboard-shifted container. */
@@ -997,6 +1000,7 @@ export function Composer({
   onAttentionInputFocus,
   onAttentionPromptSend,
   agentControls,
+  contextContent,
   inputWrapperStyle,
   footer,
   externalKeyboardShift,
@@ -1132,12 +1136,16 @@ export function Composer({
   const autocompleteOnKeyPressRef = useRef(autocomplete.onKeyPress);
   autocompleteOnKeyPressRef.current = autocomplete.onKeyPress;
 
+  // Reachable from the history list via ArrowRight, but only in chat composers
+  // that also surface the presets menu (keeps both affordances in lockstep).
+  const promptPresets = useCommitMessagePresetsStore((s) => s.presets);
   const historyPicker = useHistoryPicker({
     value: userInput,
     cursorIndex,
     agentId,
     serverId,
     onApply: setUserInput,
+    presets: enablePromptPresets ? promptPresets : undefined,
   });
   const historyPickerOnKeyPressRef = useRef(historyPicker.onKeyPress);
   historyPickerOnKeyPressRef.current = historyPicker.onKeyPress;
@@ -1937,6 +1945,10 @@ export function Composer({
     () => (sendError ? <Text style={styles.sendErrorText}>{sendError}</Text> : null),
     [sendError],
   );
+  const secondaryContent = useMemo(
+    () => renderComposerSecondaryContent(footer, footerInlineContent, contextContent),
+    [contextContent, footer, footerInlineContent],
+  );
   const githubEmptyText = githubSearchResultsQuery.isFetching
     ? t("composer.github.searching")
     : t("composer.github.noResults");
@@ -1954,12 +1966,15 @@ export function Composer({
 
           {/* History picker: ArrowUp opens an inline list of past prompts (styled
               like the todo track); highlight with Up/Down, Enter fills the input,
-              ArrowDown past the newest closes it. */}
+              ArrowDown past the newest closes it. ArrowRight hops into the prompt
+              presets list (restarting from the bottom); ArrowLeft hops back. */}
           {historyPickerVisible ? (
             <HistoryTrack
               options={historyPicker.options}
               selectedIndex={historyPicker.selectedIndex}
               onSelect={historyPicker.onSelectOption}
+              variant={historyPicker.mode}
+              canSwitch={historyPicker.canSwitch}
             />
           ) : null}
 
@@ -2002,6 +2017,7 @@ export function Composer({
               disabled={isSubmitLoading}
               isPaneFocused={isPaneFocused}
               leftContent={leftContent}
+              secondaryContent={secondaryContent}
               beforeVoiceContent={beforeVoiceContent}
               rightContent={rightContent}
               voiceServerId={serverId}
@@ -2037,7 +2053,6 @@ export function Composer({
           </View>
         </View>
       </View>
-      {renderComposerFooter(footer, footerInlineContent)}
     </Animated.View>
   );
 }
@@ -2069,48 +2084,16 @@ const styles = StyleSheet.create((theme: Theme) => ({
     maxWidth: MAX_CONTENT_WIDTH,
     gap: theme.spacing[3],
   },
-  footer: {
-    width: "100%",
-    paddingHorizontal: theme.spacing[4],
-    // Negative margin pulls the footer up against the input area's paddingBottom.
-    // On mobile, leave a 3px gap (no token sits below spacing[1]); desktop keeps more.
-    marginTop: {
-      xs: -(theme.spacing[4] - 3),
-      md: -theme.spacing[3],
-    },
-    alignItems: "center",
-    paddingBottom: {
-      xs: 0,
-      md: theme.spacing[2],
-    },
+  secondaryContent: {
+    gap: theme.spacing[1],
   },
-  footerContent: {
-    width: "100%",
-    maxWidth: MAX_CONTENT_WIDTH,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    // On mobile, the negative margins below cancel each glyph's internal padding
-    // to reach the composer border; this inset adds a small visual gap from it.
-    paddingLeft: {
-      xs: 5,
-      md: 10,
-    },
-    paddingRight: {
-      xs: 5,
-      md: 10,
-    },
-  },
-  footerLeft: {
-    flexShrink: 1,
+  secondaryControls: {
     flexDirection: "row",
     alignItems: "center",
     gap: theme.spacing[1],
-    // On mobile, cancel the leading glyph's internal padding (chip paddingHorizontal)
-    // so its icon aligns to the composer border before the footer inset is applied.
-    marginLeft: {
-      xs: -theme.spacing[2],
-      md: 0,
+    paddingHorizontal: {
+      xs: 0,
+      md: theme.spacing[1],
     },
   },
   messageInputContainer: {

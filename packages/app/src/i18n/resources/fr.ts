@@ -87,6 +87,17 @@ export const fr: TranslationResources = {
   composer: {
     promptHistory: {
       title: "Historique des saisies",
+      switchHint: "Basculer vers les préréglages",
+    },
+    promptPresets: {
+      title: "Messages prédéfinis",
+      switchHint: "Basculer vers l'historique",
+    },
+    selection: {
+      ask: "Demander",
+      askInNewWindow: "Demander dans une nouvelle fenêtre",
+      savePreset: "Enregistrer comme préréglage",
+      savedPreset: "Enregistré comme préréglage",
     },
     placeholders: {
       desktop: "Envoyez un message à l'agent, marquez@filesou utilisez/commandset/skills",
@@ -773,8 +784,6 @@ export const fr: TranslationResources = {
         addTitle: "Ajouter un préréglage",
         placeholder: "Texte du préréglage",
         delete: "Supprimer un préréglage...",
-        noAgentTab: "Ouvrez d'abord un onglet d'agent",
-        inserted: "Inséré dans le champ de l'agent",
       },
       history: {
         title: "Commits",
@@ -1919,6 +1928,8 @@ export const fr: TranslationResources = {
         ligaturesHint:
           "Affiche les ligatures de programmation (p. ex. ->, =>) lorsque la police de code les prend en charge",
         ligaturesAccessibility: "Ligatures de la police du terminal",
+        letterSpacing: "Espacement des lettres",
+        letterSpacingAccessibility: "Espacement des lettres du terminal",
         paddingTop: "Marge intérieure supérieure",
         paddingTopAccessibility: "Marge intérieure supérieure du terminal",
         paddingBottom: "Marge intérieure inférieure",
@@ -1927,6 +1938,18 @@ export const fr: TranslationResources = {
         paddingLeftAccessibility: "Marge intérieure gauche du terminal",
         paddingRight: "Marge intérieure droite",
         paddingRightAccessibility: "Marge intérieure droite du terminal",
+      },
+      windowsTerminal: {
+        title: "Terminal Windows",
+        hint: "S'applique uniquement lorsque l'hôte connecté exécute Windows ; ignoré sur macOS et Linux",
+        preferPowerShell7: "Préférer PowerShell 7",
+        preferPowerShell7Hint:
+          "Lance les nouveaux terminaux avec pwsh, en repli vers Windows PowerShell puis cmd.exe",
+        preferPowerShell7Accessibility: "Préférer PowerShell 7 sous Windows",
+        launchAsAdmin: "Lancer en tant qu'administrateur",
+        launchAsAdminHint:
+          "Démarre les terminaux avec élévation via gsudo (installez gsudo pour l'activer ; sinon exécution sans élévation)",
+        launchAsAdminAccessibility: "Lancer les terminaux Windows en tant qu'administrateur",
       },
     },
     shortcuts: {

@@ -12,7 +12,7 @@ import {
 import { useTranslation } from "react-i18next";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { File, Folder } from "lucide-react-native";
-import { isWeb } from "@/constants/platform";
+import { GlassSurface } from "@/components/ui/glass-surface";
 import type { Theme } from "@/styles/theme";
 import { getAutocompleteScrollOffset } from "./autocomplete-utils";
 
@@ -226,30 +226,30 @@ export function Autocomplete({
 
   if (errorMessage) {
     return (
-      <View style={containerStyle}>
+      <GlassSurface style={containerStyle}>
         <View style={styles.emptyItem}>
           <Text style={styles.emptyText}>
             {t("common.errors.withMessage", { message: errorMessage })}
           </Text>
         </View>
-      </View>
+      </GlassSurface>
     );
   }
 
   if (options.length === 0) {
     return (
-      <View style={containerStyle}>
+      <GlassSurface style={containerStyle}>
         <View style={styles.emptyItem}>
           <Text style={styles.emptyText}>{resolvedEmptyText}</Text>
         </View>
-      </View>
+      </GlassSurface>
     );
   }
 
   return (
     <View style={styles.outerWrapper}>
       {selectedOption?.kind === "command" && selectedOption.description ? (
-        <View style={styles.detailCard}>
+        <GlassSurface style={styles.detailCard}>
           <Text style={styles.detailLabel}>
             {removeBoltGlyphs(selectedOption.label) ?? selectedOption.label}
           </Text>
@@ -259,9 +259,9 @@ export function Autocomplete({
           {selectedOption.detail ? (
             <Text style={styles.detailHint}>{removeBoltGlyphs(selectedOption.detail)}</Text>
           ) : null}
-        </View>
+        </GlassSurface>
       ) : null}
-      <View style={containerStyle}>
+      <GlassSurface style={containerStyle}>
         <ScrollView
           ref={scrollRef}
           onLayout={handleScrollViewLayout}
@@ -284,7 +284,7 @@ export function Autocomplete({
             />
           ))}
         </ScrollView>
-      </View>
+      </GlassSurface>
     </View>
   );
 }
@@ -294,19 +294,12 @@ const styles = StyleSheet.create((theme: Theme) => ({
     gap: theme.spacing[1],
   },
   detailCard: {
-    backgroundColor: isWeb ? theme.colors.surfaceGlass : theme.colors.surfaceGlassStrong,
     borderWidth: theme.borderWidth[1],
     borderColor: theme.colors.borderAccent,
     borderRadius: theme.borderRadius.lg,
     paddingHorizontal: theme.spacing[3],
     paddingVertical: theme.spacing[3],
     ...theme.shadow.md,
-    ...(isWeb
-      ? ({
-          backdropFilter: "blur(20px) saturate(1.5)",
-          WebkitBackdropFilter: "blur(20px) saturate(1.5)",
-        } as object)
-      : {}),
   },
   detailLabel: {
     color: theme.colors.foreground,
@@ -323,21 +316,12 @@ const styles = StyleSheet.create((theme: Theme) => ({
     fontSize: theme.fontSize.xs,
     marginTop: theme.spacing[1],
   },
-  // Frosted glass, matching the composer input: web gets a real backdrop blur;
-  // native approximates with a denser translucent tint (no backdrop-filter).
   container: {
-    backgroundColor: isWeb ? theme.colors.surfaceGlass : theme.colors.surfaceGlassStrong,
     borderWidth: theme.borderWidth[1],
     borderColor: theme.colors.borderAccent,
     borderRadius: theme.borderRadius.lg,
     overflow: "hidden",
     ...theme.shadow.md,
-    ...(isWeb
-      ? ({
-          backdropFilter: "blur(20px) saturate(1.5)",
-          WebkitBackdropFilter: "blur(20px) saturate(1.5)",
-        } as object)
-      : {}),
   },
   scrollView: {
     flexGrow: 0,

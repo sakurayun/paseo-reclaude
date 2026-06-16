@@ -77,6 +77,10 @@ import { usePanelStore } from "@/stores/panel-store";
 import { type Agent, useSessionStore } from "@/stores/session-store";
 import { useWorkspaceLayoutStore } from "@/stores/workspace-layout-store";
 import { buildWorkspaceTabPersistenceKey } from "@/stores/workspace-tabs-store";
+import { useCommitMessagePresetsStore } from "@/git/commit-message-presets-store";
+import { ChatSelectionBubble } from "@/agent-stream/selection/chat-selection-bubble";
+import { openSeededDraftWindow } from "@/agent-stream/selection/open-seeded-draft-window";
+import { useChatTextSelection } from "@/agent-stream/selection/use-chat-text-selection";
 import type { Theme } from "@/styles/theme";
 import { useArchiveSubagent, useSubagentsForParent } from "@/subagents";
 import { SubagentsTrack } from "@/subagents/track";
@@ -1198,12 +1202,49 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
     }),
     [text, setText, attachments, setAttachments, clear, isHydrated, composerState],
   );
-  // On compact form factors the composer sits in normal flow below the
-  // stream and takes its own height. On desktop it floats over the stream
-  // (frosted glass, content scrolls underneath) instead of reserving layout
-  // height. Either way the stream reserves 1.1x the measured composer height
-  // as extra bottom inset so the last message keeps its breathing room.
+  // The composer floats over the stream on every form factor. The stream keeps
+  // enough bottom inset to scroll the final message clear of the glass surface,
+  // but the viewport itself still reaches the bottom behind it.
   const isCompactFormFactor = useIsCompactFormFactor();
+
+  // Web-only selection bubble over the message stream: select text in any
+  // message, then ask / ask-in-new-window / save-as-preset from a floating
+  // bubble. Only the focused pane reacts to a selection.
+  const { workspaceId: selectionWorkspaceId } = usePaneContext();
+  const addPromptPreset = useCommitMessagePresetsStore((state) => state.addPreset);
+  const { selection: chatSelection, clear: clearChatSelection } =
+    useChatTextSelection(isPaneFocused);
+  const composerTextRef = useRef(text);
+  composerTextRef.current = text;
+  const handleSelectionAsk = useCallback(
+    (selected: string) => {
+      const current = composerTextRef.current;
+      setText(current.trim() ? `${current}\n${selected}` : selected);
+      clearChatSelection();
+    },
+    [setText, clearChatSelection],
+  );
+  const handleSelectionAskInNewWindow = useCallback(
+    (selected: string) => {
+      openSeededDraftWindow({
+        serverId,
+        workspaceId: selectionWorkspaceId,
+        text: selected,
+        splitRight: !isCompactFormFactor,
+      });
+      clearChatSelection();
+    },
+    [serverId, selectionWorkspaceId, isCompactFormFactor, clearChatSelection],
+  );
+  const handleSelectionSavePreset = useCallback(
+    (selected: string) => {
+      addPromptPreset(selected);
+      toastApi.show(t("composer.selection.savedPreset"), { variant: "success" });
+      clearChatSelection();
+    },
+    [addPromptPreset, toastApi, t, clearChatSelection],
+  );
+
   const [composerOverlayHeight, setComposerOverlayHeight] = useState(0);
   const handleComposerOverlayLayout = useCallback((event: LayoutChangeEvent) => {
     const height = event.nativeEvent.layout.height;
@@ -1211,11 +1252,8 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
   }, []);
   const streamBottomInset = composerOverlayHeight > 0 ? Math.round(composerOverlayHeight * 1.1) : 0;
   const composerOverlayStyle = useMemo(
-    () =>
-      isCompactFormFactor
-        ? styles.composerOverlay
-        : [styles.composerOverlay, styles.composerOverlayFloating],
-    [isCompactFormFactor],
+    () => [styles.composerOverlay, styles.composerOverlayFloating],
+    [],
   );
   const streamSection = (
     <RenderProfile id={`AgentStreamSection:${agentId}`}>
@@ -1281,6 +1319,13 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
                 <ThemedActivityIndicator size="large" uniProps={foregroundMutedColorMapping} />
               </View>
             ) : null}
+
+            <ChatSelectionBubble
+              selection={chatSelection}
+              onAsk={handleSelectionAsk}
+              onAskInNewWindow={handleSelectionAskInNewWindow}
+              onSavePreset={handleSelectionSavePreset}
+            />
 
             <ToastViewport toast={toast} onDismiss={dismiss} placement="panel" />
           </View>
@@ -1567,6 +1612,10 @@ function ActiveAgentComposer({
       ) : undefined,
     [isCompactComposerLayout, serverId, agentId],
   );
+  const composerContextContent = useMemo(() => {
+    if (sidechainCalls.length === 0) return null;
+    return <SidechainTrack calls={sidechainCalls} embedded />;
+  }, [sidechainCalls]);
 
   return (
     <ReanimatedAnimated.View style={inputAreaStyle} onLayout={onInputAreaLayout}>
@@ -1575,7 +1624,6 @@ function ActiveAgentComposer({
         onOpenSubagent={handleOpenSubagent}
         onArchiveSubagent={handleArchiveSubagent}
       />
-      <SidechainTrack calls={sidechainCalls} />
       <TodoTrack items={latestTodos} />
       <Composer
         agentId={agentId}
@@ -1600,6 +1648,7 @@ function ActiveAgentComposer({
         onMessageSent={onMessageSent}
         onClientSlashCommand={handleClientSlashCommand}
         footer={composerFooter}
+        contextContent={composerContextContent}
         isCompactLayout={isCompactComposerLayout}
         enablePromptPresets
       />

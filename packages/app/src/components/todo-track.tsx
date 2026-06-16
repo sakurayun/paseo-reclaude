@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 import { Check, ChevronDown, ChevronRight, ListTodo } from "lucide-react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { MAX_CONTENT_WIDTH } from "@/constants/layout";
-import { isWeb } from "@/constants/platform";
+import { GlassSurface } from "@/components/ui/glass-surface";
 import { useSessionStore } from "@/stores/session-store";
 import type { Theme } from "@/styles/theme";
 import type { TodoEntry } from "@/types/stream";
@@ -82,7 +82,7 @@ export function TodoTrack({ items }: TodoTrackProps): ReactElement | null {
   return (
     <View style={styles.outer} testID="todo-track">
       <View style={styles.track}>
-        <View style={surfaceStyle}>
+        <GlassSurface style={surfaceStyle}>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={progressLabel}
@@ -113,7 +113,7 @@ export function TodoTrack({ items }: TodoTrackProps): ReactElement | null {
               ))}
             </ScrollView>
           ) : null}
-        </View>
+        </GlassSurface>
       </View>
     </View>
   );
@@ -153,21 +153,12 @@ const styles = StyleSheet.create((theme) => ({
   },
   surface: {
     alignSelf: "stretch",
-    // Frosted glass like the composer on web; native has no backdrop blur,
-    // so it keeps the opaque surface.
-    backgroundColor: isWeb ? theme.colors.surfaceGlass : theme.colors.surface1,
     borderWidth: theme.borderWidth[1],
     borderColor: theme.colors.borderAccent,
     borderBottomWidth: 0,
     borderTopLeftRadius: theme.borderRadius["2xl"],
     borderTopRightRadius: theme.borderRadius["2xl"],
     overflow: "hidden",
-    ...(isWeb
-      ? ({
-          backdropFilter: "blur(20px) saturate(1.5)",
-          WebkitBackdropFilter: "blur(20px) saturate(1.5)",
-        } as object)
-      : {}),
   },
   surfaceExpanded: {
     paddingBottom: theme.spacing[4],

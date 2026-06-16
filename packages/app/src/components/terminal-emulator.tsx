@@ -142,6 +142,7 @@ interface TerminalEmulatorProps {
   scrollbackLines: number;
   fontFamily?: string;
   fontSize?: number;
+  letterSpacing?: number;
   ligaturesEnabled?: boolean;
   swipeGesturesEnabled?: boolean;
   onSwipeLeft?: () => void;
@@ -226,6 +227,7 @@ export default function TerminalEmulator({
   scrollbackLines,
   fontFamily,
   fontSize,
+  letterSpacing,
   ligaturesEnabled = true,
   swipeGesturesEnabled = false,
   onSwipeLeft,
@@ -250,11 +252,13 @@ export default function TerminalEmulator({
   const mountedThemeRef = useRef<ITheme>(xtermTheme);
   const fontFamilyRef = useRef(fontFamily);
   const fontSizeRef = useRef(fontSize);
+  const letterSpacingRef = useRef(letterSpacing);
   const ligaturesEnabledRef = useRef(ligaturesEnabled);
   const scrollbackLinesRef = useRef(scrollbackLines);
   scrollbackLinesRef.current = scrollbackLines;
   fontFamilyRef.current = fontFamily;
   fontSizeRef.current = fontSize;
+  letterSpacingRef.current = letterSpacing;
   ligaturesEnabledRef.current = ligaturesEnabled;
   const viewportRef = useRef<HTMLElement | null>(null);
   const dragStartOffsetRef = useRef(0);
@@ -530,6 +534,7 @@ export default function TerminalEmulator({
       theme: mountedThemeRef.current,
       fontFamily: fontFamilyRef.current,
       fontSize: fontSizeRef.current,
+      letterSpacing: letterSpacingRef.current,
       ligaturesEnabled: ligaturesEnabledRef.current,
     });
     onRendererReadyChangeRef.current?.({ streamKey, isReady: true });
@@ -573,6 +578,10 @@ export default function TerminalEmulator({
   useEffect(() => {
     runtimeRef.current?.setFont({ fontFamily, fontSize });
   }, [fontFamily, fontSize]);
+
+  useEffect(() => {
+    runtimeRef.current?.setLetterSpacing({ letterSpacing });
+  }, [letterSpacing]);
 
   useEffect(() => {
     runtimeRef.current?.setLigatures({ enabled: ligaturesEnabled });

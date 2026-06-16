@@ -169,7 +169,7 @@ const lightSemanticColors = {
   surfaceSidebarHover: "#e9e9ec", // Sidebar hover (darker in light mode)
   surfaceWorkspace: "#ffffff", // Workspace main background
   surfaceGlass: withAlpha("#fafafa", 0.62), // Frosted composer (web, behind backdrop blur)
-  surfaceGlassStrong: withAlpha("#fafafa", 0.94), // Frosted composer (native, no blur)
+  surfaceGlassStrong: withAlpha("#fafafa", 0.94), // Dense glass fallback for non-blurred surfaces
 
   // Text
   foreground: "#1a1a1e",
@@ -258,7 +258,7 @@ const claudeLightSemanticColors = {
   surfaceSidebarHover: "#e6e3d8", // Sidebar hover
   surfaceWorkspace: "#faf9f5", // Workspace main background
   surfaceGlass: withAlpha("#f5f4ee", 0.62), // Frosted composer (web, behind backdrop blur)
-  surfaceGlassStrong: withAlpha("#f5f4ee", 0.94), // Frosted composer (native, no blur)
+  surfaceGlassStrong: withAlpha("#f5f4ee", 0.94), // Dense glass fallback for non-blurred surfaces
 
   // Text — warm near-black
   foreground: "#1f1e1d",

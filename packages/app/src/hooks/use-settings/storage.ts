@@ -29,6 +29,17 @@ export const DEFAULT_TERMINAL_LIGATURES_ENABLED = true;
 export const DEFAULT_TERMINAL_PADDING = 5;
 export const MIN_TERMINAL_PADDING = 0;
 export const MAX_TERMINAL_PADDING = 64;
+// Extra inter-character spacing (px) applied to terminal glyphs. 0 keeps the
+// font's natural metrics; negative tightens cramped Windows fonts, positive
+// loosens. Bounds are small on purpose — large values break grid alignment.
+export const DEFAULT_TERMINAL_LETTER_SPACING = 0;
+export const MIN_TERMINAL_LETTER_SPACING = -5;
+export const MAX_TERMINAL_LETTER_SPACING = 10;
+// Windows-only default-shell preferences. Both default on per the product ask:
+// prefer PowerShell 7 and launch terminals elevated. They are ignored by the
+// daemon on every non-Windows host.
+export const DEFAULT_WINDOWS_PREFER_POWERSHELL7 = true;
+export const DEFAULT_WINDOWS_LAUNCH_AS_ADMIN = true;
 
 export interface AppSettings {
   theme: ThemeName | "auto";
@@ -46,6 +57,9 @@ export interface AppSettings {
   terminalPaddingBottom: number;
   terminalPaddingLeft: number;
   terminalPaddingRight: number;
+  terminalLetterSpacing: number; // extra inter-character spacing (px), default 0
+  windowsPreferPowerShell7: boolean; // Windows: prefer pwsh7 for default terminals
+  windowsLaunchAsAdmin: boolean; // Windows: launch default terminals elevated via gsudo
 }
 
 export interface Settings extends AppSettings {
@@ -69,6 +83,9 @@ export const DEFAULT_CLIENT_SETTINGS: AppSettings = {
   terminalPaddingBottom: DEFAULT_TERMINAL_PADDING,
   terminalPaddingLeft: DEFAULT_TERMINAL_PADDING,
   terminalPaddingRight: DEFAULT_TERMINAL_PADDING,
+  terminalLetterSpacing: DEFAULT_TERMINAL_LETTER_SPACING,
+  windowsPreferPowerShell7: DEFAULT_WINDOWS_PREFER_POWERSHELL7,
+  windowsLaunchAsAdmin: DEFAULT_WINDOWS_LAUNCH_AS_ADMIN,
 };
 
 export const DEFAULT_APP_SETTINGS: Settings = {
@@ -162,6 +179,23 @@ export async function loadSettingsFromStorage(deps: SettingsDeps): Promise<Setti
   };
 }
 
+// Letter spacing + Windows shell toggles, factored out of pickAppSettings to
+// keep its cyclomatic complexity under the lint ceiling.
+function pickTerminalShellSettings(stored: Partial<AppSettings>): Partial<AppSettings> {
+  const result: Partial<AppSettings> = {};
+  const terminalLetterSpacing = parseTerminalLetterSpacing(stored.terminalLetterSpacing);
+  if (terminalLetterSpacing !== null) {
+    result.terminalLetterSpacing = terminalLetterSpacing;
+  }
+  if (typeof stored.windowsPreferPowerShell7 === "boolean") {
+    result.windowsPreferPowerShell7 = stored.windowsPreferPowerShell7;
+  }
+  if (typeof stored.windowsLaunchAsAdmin === "boolean") {
+    result.windowsLaunchAsAdmin = stored.windowsLaunchAsAdmin;
+  }
+  return result;
+}
+
 function pickAppSettings(stored: Partial<AppSettings>): Partial<AppSettings> {
   const result: Partial<AppSettings> = {};
   if (typeof stored.theme === "string" && VALID_THEMES.has(stored.theme)) {
@@ -213,6 +247,7 @@ function pickAppSettings(stored: Partial<AppSettings>): Partial<AppSettings> {
   if (typeof stored.terminalLigaturesEnabled === "boolean") {
     result.terminalLigaturesEnabled = stored.terminalLigaturesEnabled;
   }
+  Object.assign(result, pickTerminalShellSettings(stored));
   const paddingFields = [
     "terminalPaddingTop",
     "terminalPaddingBottom",
@@ -270,6 +305,16 @@ export function parseTerminalPadding(value: unknown): number | null {
   return parseClampedFontSize(value, {
     min: MIN_TERMINAL_PADDING,
     max: MAX_TERMINAL_PADDING,
+  });
+}
+
+// Letter spacing accepts negatives (to tighten cramped fonts), so it can't reuse
+// the digits-only padding parser. parseClampedFontSize already floors + clamps
+// and tolerates a negative `min`, which is exactly what's needed here.
+export function parseTerminalLetterSpacing(value: unknown): number | null {
+  return parseClampedFontSize(value, {
+    min: MIN_TERMINAL_LETTER_SPACING,
+    max: MAX_TERMINAL_LETTER_SPACING,
   });
 }
 

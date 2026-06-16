@@ -86,6 +86,17 @@ export const ar: TranslationResources = {
   composer: {
     promptHistory: {
       title: "سجل الإدخالات",
+      switchHint: "التبديل إلى المعدة مسبقًا",
+    },
+    promptPresets: {
+      title: "الرسائل المعدة مسبقًا",
+      switchHint: "التبديل إلى السجل",
+    },
+    selection: {
+      ask: "اسأل",
+      askInNewWindow: "اسأل في نافذة جديدة",
+      savePreset: "حفظ كإعداد مسبق",
+      savedPreset: "تم الحفظ كإعداد مسبق",
     },
     placeholders: {
       desktop: "أرسل رسالة إلى الوكيل أو ضع علامة على @files أو استخدم /commands و /skills",
@@ -759,8 +770,6 @@ export const ar: TranslationResources = {
         addTitle: "إضافة قالب",
         placeholder: "نص القالب",
         delete: "حذف قالب...",
-        noAgentTab: "افتح علامة تبويب وكيل أولاً",
-        inserted: "تم الإدراج في حقل إدخال الوكيل",
       },
       history: {
         title: "الإيداعات",
@@ -1864,6 +1873,8 @@ export const ar: TranslationResources = {
         ligatures: "وصلات الخط",
         ligaturesHint: "عرض وصلات البرمجة (مثل -> و=>) عندما يدعمها خط الكود",
         ligaturesAccessibility: "وصلات خط الطرفية",
+        letterSpacing: "تباعد الأحرف",
+        letterSpacingAccessibility: "تباعد أحرف الطرفية",
         paddingTop: "الحشو العلوي",
         paddingTopAccessibility: "الحشو العلوي للطرفية",
         paddingBottom: "الحشو السفلي",
@@ -1872,6 +1883,18 @@ export const ar: TranslationResources = {
         paddingLeftAccessibility: "الحشو الأيسر للطرفية",
         paddingRight: "الحشو الأيمن",
         paddingRightAccessibility: "الحشو الأيمن للطرفية",
+      },
+      windowsTerminal: {
+        title: "طرفية Windows",
+        hint: "يسري فقط عندما يعمل المضيف المتصل بنظام Windows؛ ويُتجاهل على macOS وLinux",
+        preferPowerShell7: "تفضيل PowerShell 7",
+        preferPowerShell7Hint:
+          "تشغيل الطرفيات الجديدة باستخدام pwsh، مع الرجوع إلى Windows PowerShell ثم cmd.exe",
+        preferPowerShell7Accessibility: "تفضيل PowerShell 7 على Windows",
+        launchAsAdmin: "التشغيل كمسؤول",
+        launchAsAdminHint:
+          "بدء الطرفيات بصلاحيات مرتفعة عبر gsudo (ثبّت gsudo للتفعيل؛ وإلا فستعمل بصلاحيات عادية)",
+        launchAsAdminAccessibility: "تشغيل طرفيات Windows كمسؤول",
       },
     },
     shortcuts: {

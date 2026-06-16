@@ -901,6 +901,7 @@ export function TerminalPane({
               scrollbackLines={settings.terminalScrollbackLines}
               fontFamily={terminalFontFamily}
               fontSize={settings.codeFontSize}
+              letterSpacing={settings.terminalLetterSpacing}
               ligaturesEnabled={settings.terminalLigaturesEnabled}
               swipeGesturesEnabled={swipeGesturesEnabled}
               initialSnapshot={initialSnapshot}

@@ -92,6 +92,7 @@ import {
   usePaneFind,
 } from "@/panels/pane-find";
 import { isWeb } from "@/constants/platform";
+import { GlassSurfaceBackdrop } from "@/components/ui/glass-surface";
 import { inlineUnistylesStyle } from "@/styles/unistyles-inline-style";
 import type { Theme } from "@/styles/theme";
 import { recordRenderProfileReasons } from "@/utils/render-profiler";
@@ -919,18 +920,14 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       () => [stylesheet.forwardListContentContainer, bottomInsetStyle],
       [bottomInsetStyle],
     );
-    // On compact form factors the composer sits below the stream in normal
-    // flow, so the stream's bottom edge already clears it — the base 16px
-    // offset is enough. On desktop the composer floats over the stream and
-    // the button has to clear the reserved inset.
+    // The composer floats over the stream on every form factor, so the button
+    // clears the measured glass surface whenever an inset is reserved.
     const scrollToBottomContainerStyle = useMemo(
       () => [
         stylesheet.scrollToBottomContainer,
-        !isMobile && bottomContentInset > 0
-          ? inlineUnistylesStyle({ bottom: 16 + bottomContentInset })
-          : null,
+        bottomContentInset > 0 ? inlineUnistylesStyle({ bottom: 16 + bottomContentInset }) : null,
       ],
-      [bottomContentInset, isMobile],
+      [bottomContentInset],
     );
 
     const { boundary, auxiliary } = renderModel;
@@ -1046,6 +1043,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
                   accessibilityLabel={t("agentStream.scrollToBottom")}
                   testID="scroll-to-bottom-button"
                 >
+                  <GlassSurfaceBackdrop />
                   <ChevronDown size={24} color={stylesheet.scrollToBottomIcon.color} />
                 </Pressable>
               </View>
@@ -1496,14 +1494,13 @@ const stylesheet = StyleSheet.create((theme) => ({
     alignSelf: "center",
     alignItems: "center",
   },
-  // Frosted glass, matching the composer input: web gets a real backdrop blur
-  // over the stream scrolling underneath; native approximates with a denser
-  // translucent tint (no backdrop-filter support).
+  // Frosted glass, matching the composer input: web gets CSS backdrop-filter;
+  // native gets a BlurView child so the stream underneath is actually blurred.
   scrollToBottomButton: {
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: isWeb ? theme.colors.surfaceGlass : theme.colors.surfaceGlassStrong,
+    backgroundColor: isWeb ? theme.colors.surfaceGlass : "transparent",
     borderWidth: theme.borderWidth[1],
     borderColor: theme.colors.borderAccent,
     alignItems: "center",

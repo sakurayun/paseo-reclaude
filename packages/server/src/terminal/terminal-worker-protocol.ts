@@ -4,6 +4,7 @@ import type {
   ClientMessage,
   TerminalStateSnapshot,
   TerminalStateSnapshotOptions,
+  WindowsShellPreference,
 } from "./terminal.js";
 import type { TerminalState } from "@getpaseo/protocol/messages";
 import type { TerminalActivity, TerminalActivityState } from "@getpaseo/protocol/terminal-activity";
@@ -29,6 +30,7 @@ export interface WorkerCreateTerminalOptions {
   args?: string[];
   activityToken?: string;
   activityUrl?: string | null;
+  windowsShell?: WindowsShellPreference;
 }
 
 export interface WorkerKillAndWaitOptions {
