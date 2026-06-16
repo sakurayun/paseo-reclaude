@@ -2085,7 +2085,11 @@ const styles = StyleSheet.create((theme: Theme) => ({
         elevation: 5,
       },
   inputBackdrop: {
-    borderRadius: theme.borderRadius["2xl"],
+    top: theme.borderWidth[1],
+    right: theme.borderWidth[1],
+    bottom: theme.borderWidth[1],
+    left: theme.borderWidth[1],
+    borderRadius: theme.borderRadius["2xl"] - theme.borderWidth[1],
     overflow: "hidden",
   },
   textInputScrollWrapper: {

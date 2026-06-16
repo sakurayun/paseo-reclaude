@@ -1520,7 +1520,11 @@ const stylesheet = StyleSheet.create((theme) => ({
       : {}),
   },
   scrollToBottomBackdrop: {
-    borderRadius: theme.borderRadius.full,
+    top: theme.borderWidth[1],
+    right: theme.borderWidth[1],
+    bottom: theme.borderWidth[1],
+    left: theme.borderWidth[1],
+    borderRadius: 23,
     overflow: "hidden",
   },
   scrollToBottomIcon: {

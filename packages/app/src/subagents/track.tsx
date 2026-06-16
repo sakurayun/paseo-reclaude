@@ -74,7 +74,7 @@ export function SubagentsTrack({
   return (
     <View style={styles.outer} testID="subagents-track">
       <View style={styles.track}>
-        <GlassSurface style={surfaceStyle}>
+        <GlassSurface backdropStyle={styles.surfaceBackdrop} style={surfaceStyle}>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={headerLabel}
@@ -233,6 +233,15 @@ const styles = StyleSheet.create((theme) => ({
     borderBottomWidth: 0,
     borderTopLeftRadius: theme.borderRadius["2xl"],
     borderTopRightRadius: theme.borderRadius["2xl"],
+    overflow: "hidden",
+  },
+  surfaceBackdrop: {
+    top: theme.borderWidth[1],
+    right: theme.borderWidth[1],
+    bottom: 0,
+    left: theme.borderWidth[1],
+    borderTopLeftRadius: theme.borderRadius["2xl"] - theme.borderWidth[1],
+    borderTopRightRadius: theme.borderRadius["2xl"] - theme.borderWidth[1],
     overflow: "hidden",
   },
   surfaceExpanded: {

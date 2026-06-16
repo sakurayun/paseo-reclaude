@@ -11,11 +11,12 @@ import { StyleSheet } from "react-native-unistyles";
 import { isWeb } from "@/constants/platform";
 
 export interface GlassSurfaceProps extends ViewProps {
+  backdropStyle?: StyleProp<ViewStyle>;
   children?: ReactNode;
   style?: StyleProp<ViewStyle>;
 }
 
-export function GlassSurface({ children, style, ...props }: GlassSurfaceProps) {
+export function GlassSurface({ backdropStyle, children, style, ...props }: GlassSurfaceProps) {
   const webStyle = useMemo(() => [styles.webSurface, style], [style]);
   const nativeStyle = useMemo(() => [styles.nativeSurface, style], [style]);
 
@@ -29,7 +30,7 @@ export function GlassSurface({ children, style, ...props }: GlassSurfaceProps) {
 
   return (
     <View {...props} style={nativeStyle}>
-      <GlassSurfaceBackdrop />
+      <GlassSurfaceBackdrop style={backdropStyle} />
       {children}
     </View>
   );

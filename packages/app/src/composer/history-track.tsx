@@ -165,6 +165,7 @@ export function HistoryTrack({
 
   return (
     <GlassSurface
+      backdropStyle={styles.surfaceBackdrop}
       style={styles.surface}
       testID={isPresets ? "composer-presets-track" : "composer-history-track"}
     >
@@ -238,6 +239,15 @@ const styles = StyleSheet.create((theme: Theme) => ({
     // so the card's flat bottom edge covers the rounded corners and sits flush,
     // exactly like the todo track sits on the composer.
     marginBottom: -(theme.spacing[3] + theme.spacing[4]),
+  },
+  surfaceBackdrop: {
+    top: theme.borderWidth[1],
+    right: theme.borderWidth[1],
+    bottom: 0,
+    left: theme.borderWidth[1],
+    borderTopLeftRadius: theme.borderRadius["2xl"] - theme.borderWidth[1],
+    borderTopRightRadius: theme.borderRadius["2xl"] - theme.borderWidth[1],
+    overflow: "hidden",
   },
   header: {
     flexDirection: "row",

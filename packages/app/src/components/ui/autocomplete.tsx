@@ -226,7 +226,7 @@ export function Autocomplete({
 
   if (errorMessage) {
     return (
-      <GlassSurface style={containerStyle}>
+      <GlassSurface backdropStyle={styles.containerBackdrop} style={containerStyle}>
         <View style={styles.emptyItem}>
           <Text style={styles.emptyText}>
             {t("common.errors.withMessage", { message: errorMessage })}
@@ -238,7 +238,7 @@ export function Autocomplete({
 
   if (options.length === 0) {
     return (
-      <GlassSurface style={containerStyle}>
+      <GlassSurface backdropStyle={styles.containerBackdrop} style={containerStyle}>
         <View style={styles.emptyItem}>
           <Text style={styles.emptyText}>{resolvedEmptyText}</Text>
         </View>
@@ -249,7 +249,7 @@ export function Autocomplete({
   return (
     <View style={styles.outerWrapper}>
       {selectedOption?.kind === "command" && selectedOption.description ? (
-        <GlassSurface style={styles.detailCard}>
+        <GlassSurface backdropStyle={styles.containerBackdrop} style={styles.detailCard}>
           <Text style={styles.detailLabel}>
             {removeBoltGlyphs(selectedOption.label) ?? selectedOption.label}
           </Text>
@@ -261,7 +261,7 @@ export function Autocomplete({
           ) : null}
         </GlassSurface>
       ) : null}
-      <GlassSurface style={containerStyle}>
+      <GlassSurface backdropStyle={styles.containerBackdrop} style={containerStyle}>
         <ScrollView
           ref={scrollRef}
           onLayout={handleScrollViewLayout}
@@ -300,6 +300,14 @@ const styles = StyleSheet.create((theme: Theme) => ({
     paddingHorizontal: theme.spacing[3],
     paddingVertical: theme.spacing[3],
     ...theme.shadow.md,
+  },
+  containerBackdrop: {
+    top: theme.borderWidth[1],
+    right: theme.borderWidth[1],
+    bottom: theme.borderWidth[1],
+    left: theme.borderWidth[1],
+    borderRadius: theme.borderRadius.lg - theme.borderWidth[1],
+    overflow: "hidden",
   },
   detailLabel: {
     color: theme.colors.foreground,

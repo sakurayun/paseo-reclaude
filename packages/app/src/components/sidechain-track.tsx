@@ -309,7 +309,7 @@ function SidechainTrackInner({
             />
           </View>
         ) : (
-          <GlassSurface style={surfaceStyle}>
+          <GlassSurface backdropStyle={styles.surfaceBackdrop} style={surfaceStyle}>
             <SidechainTrackContent
               calls={calls}
               expanded={expanded}
@@ -434,6 +434,15 @@ const styles = StyleSheet.create((theme, rt) => ({
     borderBottomWidth: 0,
     borderTopLeftRadius: theme.borderRadius["2xl"],
     borderTopRightRadius: theme.borderRadius["2xl"],
+    overflow: "hidden",
+  },
+  surfaceBackdrop: {
+    top: theme.borderWidth[1],
+    right: theme.borderWidth[1],
+    bottom: 0,
+    left: theme.borderWidth[1],
+    borderTopLeftRadius: theme.borderRadius["2xl"] - theme.borderWidth[1],
+    borderTopRightRadius: theme.borderRadius["2xl"] - theme.borderWidth[1],
     overflow: "hidden",
   },
   surfaceEmbedded: {

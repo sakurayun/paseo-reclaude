@@ -225,7 +225,7 @@ function renderDropdownSurface(input: {
         }
       })}
     >
-      <GlassSurfaceBackdrop />
+      <GlassSurfaceBackdrop style={styles.contentBackdrop} />
       {body}
     </FloatingSurface>
   );
@@ -900,6 +900,14 @@ const styles = StyleSheet.create((theme) => ({
           WebkitBackdropFilter: "blur(20px) saturate(1.5)",
         } as object)
       : {}),
+  },
+  contentBackdrop: {
+    top: theme.borderWidth[1],
+    right: theme.borderWidth[1],
+    bottom: theme.borderWidth[1],
+    left: theme.borderWidth[1],
+    borderRadius: theme.borderRadius.lg - theme.borderWidth[1],
+    overflow: "hidden",
   },
   labelContainer: {
     paddingHorizontal: theme.spacing[3],
