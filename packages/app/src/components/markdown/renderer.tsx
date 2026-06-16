@@ -670,6 +670,7 @@ export function createSharedMarkdownRules(): RenderRules {
       <MarkdownParagraphView
         key={node.key}
         paragraphStyle={styles.paragraph}
+        paragraphTextStyle={styles.body}
         containsImage={markdownNodeContainsType(node, "image")}
       >
         {children}

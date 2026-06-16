@@ -34,21 +34,43 @@ export function MarkdownTextSpan({
 }
 
 interface MarkdownParagraphViewProps {
-  paragraphStyle: ViewStyle;
+  paragraphStyle: TextStyle & ViewStyle;
+  paragraphTextStyle?: StyleProp<TextStyle>;
   containsImage?: boolean;
   children: ReactNode;
 }
 
 const MARKDOWN_PARAGRAPH_RESET: ViewStyle = {};
+const MARKDOWN_TEXT_PARAGRAPH_RESET: TextStyle = {};
+const MARKDOWN_TEXT_PARAGRAPH_RENDER_SLACK: TextStyle = { paddingRight: 2, paddingBottom: 1 };
 
-// Paragraph stays a <View>, not a <Text>, for layout fidelity. RN Android's
-// text engine *does* accept inline View children (TextInlineViewPlaceholderSpan
-// in ReactBaseTextShadowNode), so this isn't a crash-avoidance choice — but
-// inline-placeholder spans collapse block-level children (e.g. paragraph
-// images) into one-character placeholders, which destroys image row layout.
-// <View> preserves the original block layout; the trade-off is no cross-span
-// selection on Android (a UITextView-style trick has no Android equivalent).
-export function MarkdownParagraphView({ paragraphStyle, children }: MarkdownParagraphViewProps) {
-  const style = useMemo(() => [paragraphStyle, MARKDOWN_PARAGRAPH_RESET], [paragraphStyle]);
-  return <View style={style}>{children}</View>;
+// Text-only paragraphs must be one native Text layout on Android. Rendering
+// inline marks as sibling Text nodes inside a wrapping View lets the last glyph
+// wrap independently from the paragraph measurement, which can leave it clipped.
+export function MarkdownParagraphView({
+  paragraphStyle,
+  paragraphTextStyle,
+  containsImage = false,
+  children,
+}: MarkdownParagraphViewProps) {
+  const viewStyle = useMemo(() => [paragraphStyle, MARKDOWN_PARAGRAPH_RESET], [paragraphStyle]);
+  const textStyle = useMemo(
+    () => [
+      paragraphTextStyle,
+      paragraphStyle,
+      MARKDOWN_TEXT_PARAGRAPH_RESET,
+      MARKDOWN_TEXT_PARAGRAPH_RENDER_SLACK,
+    ],
+    [paragraphStyle, paragraphTextStyle],
+  );
+
+  if (containsImage) {
+    return <View style={viewStyle}>{children}</View>;
+  }
+
+  return (
+    <Text selectable style={textStyle}>
+      {children}
+    </Text>
+  );
 }

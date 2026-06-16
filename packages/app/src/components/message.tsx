@@ -467,14 +467,15 @@ const userMessageStylesheet = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.base,
     lineHeight: Math.round(theme.fontSize.base * 1.4),
     overflowWrap: "anywhere",
-    // Native TextKit re-wraps the text inside the frame Yoga assigns, while
+    // Native text engines re-wrap text inside the frame Yoga assigns, while
     // the bubble's height was measured at the (possibly fractionally wider)
     // pre-rounding content width. When a line ends flush with that measured
     // width, the rounded-down frame pushes the last character onto an extra
     // line that falls outside the measured height and gets clipped. Reserving
-    // 1pt of right padding keeps the measure width <= the native render
+    // right/bottom slack keeps the measure width <= the native render
     // width, so the re-wrap can never produce more lines than were measured.
-    paddingRight: 1,
+    paddingRight: 2,
+    paddingBottom: 1,
   },
   findMatchText: {
     backgroundColor:
@@ -2108,6 +2109,7 @@ export const AssistantMessage = memo(function AssistantMessage({
         <MarkdownParagraphView
           key={node.key}
           paragraphStyle={styles.paragraph}
+          paragraphTextStyle={styles.body}
           containsImage={markdownNodeContainsType(node, "image")}
         >
           {children}
