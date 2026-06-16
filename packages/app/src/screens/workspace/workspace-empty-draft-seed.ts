@@ -20,5 +20,10 @@ export function shouldSeedEmptyWorkspaceDraft(input: {
     return false;
   }
 
-  return input.activeAgentCount === 0 && input.terminalCount === 0 && input.tabCount === 0;
+  // A focused, fully-hydrated workspace must never render an empty pane. The startup
+  // "restore only running sessions" prune can close every tab while idle/ended agents
+  // still exist (so activeAgentCount > 0), which previously left a blank pane (white
+  // screen on switch, and the same empty state when restored on relaunch). Seed a fresh
+  // draft whenever there are no tabs to show.
+  return input.tabCount === 0;
 }

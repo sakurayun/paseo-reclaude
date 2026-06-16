@@ -77,6 +77,7 @@ import {
   buildWorkspaceTabPersistenceKey,
   collectAllTabs,
   getFocusedBrowserId,
+  normalizeLayout,
   type WorkspaceLayout,
   useWorkspaceLayoutStore,
   useWorkspaceLayoutStoreHydrated,
@@ -2002,8 +2003,14 @@ function WorkspaceScreenContent({
     return () => handler.remove();
   }, [isExplorerOpen, isRouteFocused, showMobileAgent]);
 
-  const workspaceLayout = useWorkspaceLayoutStore((state) =>
+  const rawWorkspaceLayout = useWorkspaceLayoutStore((state) =>
     persistenceKey ? (state.layoutByWorkspace[persistenceKey] ?? null) : null,
+  );
+  // Persisted layouts can be malformed across versions; normalize on read so a bad tree
+  // can never throw during render (mirrors the store-side normalize in getWorkspaceLayout).
+  const workspaceLayout = useMemo(
+    () => (rawWorkspaceLayout ? normalizeLayout(rawWorkspaceLayout) : null),
+    [rawWorkspaceLayout],
   );
   const hasHydratedWorkspaceLayoutStore = useWorkspaceLayoutStoreHydrated();
   const workspaceSetupSnapshot = useWorkspaceSetupStore((state) =>
