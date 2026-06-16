@@ -85,6 +85,9 @@ export const fr: TranslationResources = {
     },
   },
   composer: {
+    promptHistory: {
+      title: "Historique des saisies",
+    },
     placeholders: {
       desktop: "Envoyez un message à l'agent, marquez@filesou utilisez/commandset/skills",
       mobile: "Message,@files,/commands",

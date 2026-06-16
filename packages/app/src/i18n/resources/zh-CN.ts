@@ -84,6 +84,9 @@ export const zhCN: TranslationResources = {
     },
   },
   composer: {
+    promptHistory: {
+      title: "历史发言",
+    },
     placeholders: {
       desktop: "给 Agent 发消息，标记 @files，或使用 /commands 和 /skills",
       mobile: "发消息，@files，/commands",

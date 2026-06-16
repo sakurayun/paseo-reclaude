@@ -82,6 +82,9 @@ export const en = {
     },
   },
   composer: {
+    promptHistory: {
+      title: "Prompt history",
+    },
     placeholders: {
       desktop: "Message the agent, tag @files, or use /commands and /skills",
       mobile: "Message, @files, /commands",

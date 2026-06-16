@@ -84,6 +84,9 @@ export const ru: TranslationResources = {
     },
   },
   composer: {
+    promptHistory: {
+      title: "История ввода",
+    },
     placeholders: {
       desktop: "Напишите агенту сообщение, отметьте @files или используйте /commands и /skills.",
       mobile: "Сообщение,@files,/commands",

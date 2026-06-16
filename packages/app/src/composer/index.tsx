@@ -74,7 +74,8 @@ import { Shortcut } from "@/components/ui/shortcut";
 import { useShortcutKeys } from "@/hooks/use-shortcut-keys";
 import { AutocompletePopover } from "@/components/ui/autocomplete-popover";
 import { useAgentAutocomplete } from "@/hooks/use-agent-autocomplete";
-import { usePromptHistory } from "@/hooks/use-prompt-history";
+import { useHistoryPicker } from "@/hooks/use-history-picker";
+import { HistoryTrack } from "@/composer/history-track";
 import { useGlobalPromptHistoryStore } from "@/stores/prompt-history-store";
 import {
   useHostRuntimeAgentDirectoryStatus,
@@ -1127,17 +1128,17 @@ export function Composer({
   const autocompleteOnKeyPressRef = useRef(autocomplete.onKeyPress);
   autocompleteOnKeyPressRef.current = autocomplete.onKeyPress;
 
-  const promptHistory = usePromptHistory({
+  const historyPicker = useHistoryPicker({
     value: userInput,
     cursorIndex,
     agentId,
     serverId,
     onApply: setUserInput,
   });
-  const promptHistoryOnKeyPressRef = useRef(promptHistory.onKeyPress);
-  promptHistoryOnKeyPressRef.current = promptHistory.onKeyPress;
-  const promptHistoryResetRef = useRef(promptHistory.reset);
-  promptHistoryResetRef.current = promptHistory.reset;
+  const historyPickerOnKeyPressRef = useRef(historyPicker.onKeyPress);
+  historyPickerOnKeyPressRef.current = historyPicker.onKeyPress;
+  const historyPickerResetRef = useRef(historyPicker.reset);
+  historyPickerResetRef.current = historyPicker.reset;
 
   // Clear send error when user edits the input
   useEffect(() => {
@@ -1329,7 +1330,7 @@ export function Composer({
       });
       if (result === "submitted" || result === "queued") {
         useGlobalPromptHistoryStore.getState().pushPrompt(outgoingMessage);
-        promptHistoryResetRef.current();
+        historyPickerResetRef.current();
       }
       completeSubmit({
         result,
@@ -1611,7 +1612,7 @@ export function Composer({
   const handleCommandKeyPress = useCallback(
     (event: { key: string; preventDefault: () => void }) => {
       if (autocompleteOnKeyPressRef.current(event)) return true;
-      return promptHistoryOnKeyPressRef.current(event);
+      return historyPickerOnKeyPressRef.current(event);
     },
     [],
   );
@@ -1815,6 +1816,9 @@ export function Composer({
       setIsMessageInputFocused(focused);
       if (focused) {
         onAttentionInputFocus?.();
+      } else {
+        // Dismiss the history picker when the input loses focus.
+        historyPickerResetRef.current();
       }
     },
     [onAttentionInputFocus],
@@ -1910,6 +1914,7 @@ export function Composer({
     ? t("composer.github.searching")
     : t("composer.github.noResults");
   const autocompleteVisible = autocomplete.isVisible && isPaneFocused;
+  const historyPickerVisible = historyPicker.isVisible && isPaneFocused;
 
   return (
     <Animated.View style={composerContainerStyle}>
@@ -1919,6 +1924,17 @@ export function Composer({
         <View style={styles.inputAreaContent}>
           {queueList}
           {sendErrorNode}
+
+          {/* History picker: ArrowUp opens an inline list of past prompts (styled
+              like the todo track); highlight with Up/Down, Enter fills the input,
+              ArrowDown past the newest closes it. */}
+          {historyPickerVisible ? (
+            <HistoryTrack
+              options={historyPicker.options}
+              selectedIndex={historyPicker.selectedIndex}
+              onSelect={historyPicker.onSelectOption}
+            />
+          ) : null}
 
           <View ref={messageInputContainerRef} style={styles.messageInputContainer}>
             <AutocompletePopover

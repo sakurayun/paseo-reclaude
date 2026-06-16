@@ -84,6 +84,9 @@ export const es: TranslationResources = {
     },
   },
   composer: {
+    promptHistory: {
+      title: "Historial de mensajes",
+    },
     placeholders: {
       desktop: "Envíe un mensaje al agente, etiquete@fileso use/commandsy/skills",
       mobile: "Mensaje,@files,/commands",
