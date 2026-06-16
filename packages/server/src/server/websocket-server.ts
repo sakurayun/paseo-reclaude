@@ -27,6 +27,7 @@ import {
   wrapSessionMessage,
 } from "./messages.js";
 import { asUint8Array, decodeBinaryFrame } from "@getpaseo/protocol/binary-frames/index";
+import type { TerminalActivity } from "@getpaseo/protocol/terminal-activity";
 import type { HostnamesConfig } from "./hostnames.js";
 import { isHostnameAllowed } from "./hostnames.js";
 import { Session, type SessionLifecycleIntent, type SessionRuntimeMetrics } from "./session.js";
@@ -89,9 +90,12 @@ type WebSocketRuntimeMetrics = SessionRuntimeMetrics & CheckoutDiffMetrics;
 type TerminalAttentionReason = "finished" | "needs_input";
 
 function resolveTerminalAttentionReason(input: {
+  attentionReason?: TerminalActivity["attentionReason"];
   previousState: "working" | "idle" | "attention" | null;
   state: "working" | "idle" | "attention" | null;
 }): TerminalAttentionReason | null {
+  if (input.attentionReason === "finished") return "finished";
+  if (input.attentionReason === "needs_input") return "needs_input";
   if (input.state === "attention") return "needs_input";
   if (input.previousState === "working" && input.state === "idle") return "finished";
   return null;
@@ -595,6 +599,7 @@ export class VoiceAssistantWebSocketServer {
     if (this.terminalManager) {
       this.unsubscribeTerminalActivity = this.terminalManager.subscribeTerminalActivity((event) => {
         const reason = resolveTerminalAttentionReason({
+          attentionReason: event.activity?.attentionReason,
           previousState: event.previous?.state ?? null,
           state: event.activity?.state ?? null,
         });

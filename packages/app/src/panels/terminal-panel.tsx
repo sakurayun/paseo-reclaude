@@ -5,6 +5,7 @@ import { Terminal } from "lucide-react-native";
 import { Text, View } from "react-native";
 import invariant from "tiny-invariant";
 import type { ListTerminalsResponse } from "@getpaseo/protocol/messages";
+import { deriveTerminalActivityStatusBucket } from "@getpaseo/protocol/terminal-activity";
 import { TerminalPane } from "@/components/terminal-pane";
 import { usePaneContext, usePaneFocus } from "@/panels/pane-context";
 import type { PanelDescriptor, PanelRegistration } from "@/panels/panel-registry";
@@ -13,7 +14,6 @@ import { buildTerminalsQueryKey } from "@/screens/workspace/terminals/state";
 import { usePanelStore } from "@/stores/panel-store";
 import { useSessionStore } from "@/stores/session-store";
 import { useWorkspaceDirectory, useWorkspaceFields } from "@/stores/session-store-hooks";
-import { terminalActivityToStatusBucket } from "@/utils/terminal-activity-bucket";
 
 type ListTerminalsPayload = ListTerminalsResponse["payload"];
 
@@ -70,7 +70,7 @@ function useTerminalPanelDescriptor(
     subtitle: t("workspace.tabs.fallback.terminal"),
     titleState: "ready",
     icon: Terminal,
-    statusBucket: terminalActivityToStatusBucket(terminal?.activity?.state),
+    statusBucket: deriveTerminalActivityStatusBucket(terminal?.activity),
   };
 }
 

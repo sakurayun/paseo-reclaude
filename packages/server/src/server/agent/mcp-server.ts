@@ -1261,7 +1261,7 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
 
       const structuredSnapshot = buildStoredAgentPayload(
         record,
-        providerSnapshotManager.listRegisteredProviderIds(),
+        new Set(providerSnapshotManager.listRegisteredProviderIds()),
       );
       return {
         content: [],
@@ -1308,7 +1308,7 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
       );
       const liveIds = new Set(liveSnapshots.map((snapshot) => snapshot.id));
       const storedRecords = await agentStorage.list();
-      const registeredProviderIds = providerSnapshotManager.listRegisteredProviderIds();
+      const registeredProviderIds = new Set(providerSnapshotManager.listRegisteredProviderIds());
       const storedAgents = storedRecords
         .filter((record) => !record.internal && !liveIds.has(record.id))
         .filter((record) => includeArchived || !record.archivedAt)

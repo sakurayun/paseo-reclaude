@@ -888,10 +888,12 @@ function createWorkspaceGitSnapshot(
 function createTerminalManagerStub(options?: { setTerminalTitle?: ReturnType<typeof vi.fn> }): {
   setTerminalTitle: ReturnType<typeof vi.fn>;
   subscribeTerminalsChanged: ReturnType<typeof vi.fn>;
+  subscribeTerminalWorkspaceContributionChanged: ReturnType<typeof vi.fn>;
 } {
   return {
     setTerminalTitle: options?.setTerminalTitle ?? vi.fn(),
     subscribeTerminalsChanged: vi.fn(() => () => {}),
+    subscribeTerminalWorkspaceContributionChanged: vi.fn(() => () => {}),
   };
 }
 
@@ -3548,7 +3550,10 @@ describe("session workspace script handling", () => {
     const session = createSessionForTest({
       workspaceGitService,
       workspaceRegistry,
-      terminalManager: { subscribeTerminalsChanged: vi.fn(() => () => {}) },
+      terminalManager: {
+        subscribeTerminalsChanged: vi.fn(() => () => {}),
+        subscribeTerminalWorkspaceContributionChanged: vi.fn(() => () => {}),
+      },
       serviceProxy: { listRoutesForWorkspace: vi.fn(() => []) },
       scriptRuntimeStore: { listForWorkspace: vi.fn(() => []) },
       getDaemonTcpPort: () => 6767,

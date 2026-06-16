@@ -235,6 +235,7 @@ function createTerminalManagerStub(options?: {
       killAll: vi.fn(),
       subscribeTerminalsChanged: vi.fn(() => () => {}),
       subscribeTerminalActivity: vi.fn(() => () => {}),
+      subscribeTerminalWorkspaceContributionChanged: vi.fn(() => () => {}),
     } satisfies TerminalManager,
   };
 }

@@ -521,6 +521,8 @@ export const ar: TranslationResources = {
         splitDown: "تقسيم الجزء لأسفل",
         terminalProfilesMenu: "ملفات تعريف الطرفية",
         editTerminalProfiles: "تعديل الملفات…",
+        pinTarget: "تثبيت",
+        unpinTarget: "إلغاء التثبيت",
       },
       explorer: {
         open: "افتح المستكشف",

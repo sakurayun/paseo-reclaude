@@ -98,6 +98,7 @@ describe("terminal-session-controller restore", () => {
       killAll: vi.fn(),
       subscribeTerminalsChanged: vi.fn(() => vi.fn()),
       subscribeTerminalActivity: vi.fn(() => vi.fn()),
+      subscribeTerminalWorkspaceContributionChanged: vi.fn(() => vi.fn()),
     };
     const controller = new TerminalSessionController({
       terminalManager,
@@ -232,6 +233,7 @@ describe("terminal-session-controller wrap-flag gating", () => {
       killAll: vi.fn(),
       subscribeTerminalsChanged: vi.fn(() => vi.fn()),
       subscribeTerminalActivity: vi.fn(() => vi.fn()),
+      subscribeTerminalWorkspaceContributionChanged: vi.fn(() => vi.fn()),
     } as unknown as TerminalManager;
     const controller = new TerminalSessionController({
       terminalManager,
@@ -307,6 +309,7 @@ describe("terminal-session-controller subdirectory aggregation", () => {
         return vi.fn();
       }),
       subscribeTerminalActivity: vi.fn(() => vi.fn()),
+      subscribeTerminalWorkspaceContributionChanged: vi.fn(() => vi.fn()),
     };
 
     const outboundMessages: SessionOutboundMessage[] = [];
@@ -371,6 +374,7 @@ describe("terminal-session-controller subdirectory aggregation", () => {
       killAll: vi.fn(),
       subscribeTerminalsChanged: vi.fn(() => vi.fn()),
       subscribeTerminalActivity: vi.fn(() => vi.fn()),
+      subscribeTerminalWorkspaceContributionChanged: vi.fn(() => vi.fn()),
     };
     const outboundMessages: SessionOutboundMessage[] = [];
     const controller = new TerminalSessionController({
@@ -449,6 +453,7 @@ describe("terminal-session-controller workspace-scoped subscriptions", () => {
         return vi.fn();
       }),
       subscribeTerminalActivity: vi.fn(() => vi.fn()),
+      subscribeTerminalWorkspaceContributionChanged: vi.fn(() => vi.fn()),
     };
 
     const outboundMessages: SessionOutboundMessage[] = [];

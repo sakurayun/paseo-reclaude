@@ -696,6 +696,7 @@ function WorkspaceRowRightGroup({
   const showKebab = Boolean(onArchive && (isHovered || isTouchPlatform));
   const showKebabInSlot = showKebab && !showShortcut;
   const shouldRenderActionSlot = Boolean(onArchive || workspace.diffStat);
+
   return (
     <>
       {isCreating ? (

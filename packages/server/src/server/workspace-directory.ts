@@ -20,7 +20,10 @@ import {
   resolveActiveWorkspaceRecordForCwd,
   resolveWorkspaceIdForRecord,
 } from "./workspace-registry-model.js";
-import type { TerminalActivity } from "@getpaseo/protocol/terminal-activity";
+import {
+  deriveTerminalActivityStatusBucket,
+  type TerminalActivity,
+} from "@getpaseo/protocol/terminal-activity";
 
 type WorkspaceIdResolver = (cwd: string) => string | undefined;
 
@@ -359,14 +362,8 @@ export class WorkspaceDirectory {
       if (!activity) {
         continue;
       }
-      let bucket: WorkspaceStateBucket;
-      if (activity.state === "working") {
-        bucket = "running";
-      } else if (activity.state === "attention") {
-        bucket = "needs_input";
-      } else {
-        continue;
-      }
+      const bucket = deriveTerminalActivityStatusBucket(activity);
+      if (!bucket) continue;
       const workspaceId =
         resolveWorkspaceIdForRecord({ workspaceId: contributedWorkspaceId, cwd }, activeRecords) ??
         resolveWorkspaceIdForCwd(cwd);

@@ -212,6 +212,7 @@ function createTerminalManagerStub(overrides: Partial<TerminalManager> = {}): Te
     listDirectories: vi.fn().mockReturnValue([]),
     killAll: vi.fn(),
     subscribeTerminalsChanged: vi.fn().mockReturnValue(() => {}),
+    subscribeTerminalWorkspaceContributionChanged: vi.fn().mockReturnValue(() => {}),
     ...overrides,
   } as unknown as TerminalManager;
 }

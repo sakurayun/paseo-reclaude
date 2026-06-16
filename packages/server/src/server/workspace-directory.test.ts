@@ -177,6 +177,13 @@ class WorkspaceStatus {
     });
   }
 
+  hasFinishedTerminal(changedAt: number): void {
+    this.terminals.push({
+      cwd: this.workspace.cwd,
+      activity: { state: "idle", attentionReason: "finished", changedAt },
+    });
+  }
+
   hasUnknownTerminal(): void {
     this.terminals.push({
       cwd: this.workspace.cwd,
@@ -340,6 +347,15 @@ describe("WorkspaceDirectory", () => {
     workspace.hasWorkingTerminalInSubdirectory(changedAt);
 
     await expect(workspace.workspaceStatus()).resolves.toBe("running");
+  });
+
+  test("finished terminal contributes attention to workspace status", async () => {
+    const workspace = new WorkspaceStatus();
+    const changedAt = new Date(NOW).getTime();
+
+    workspace.hasFinishedTerminal(changedAt);
+
+    await expect(workspace.workspaceStatus()).resolves.toBe("attention");
   });
 
   test("idle terminal contributes nothing to workspace status", async () => {

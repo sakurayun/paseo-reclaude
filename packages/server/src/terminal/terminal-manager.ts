@@ -7,9 +7,10 @@ import {
 } from "./terminal.js";
 import { captureTerminalLines, type CaptureTerminalLinesResult } from "./terminal-capture.js";
 import { randomBytes, randomUUID } from "node:crypto";
-import { resolve, sep, win32, posix } from "node:path";
-import { isSameOrDescendantPath } from "../server/path-utils.js";
+import { resolve, sep } from "node:path";
+import { assertAbsolutePath, isSameOrDescendantPath } from "../server/path-utils.js";
 import type { TerminalActivity, TerminalActivityState } from "@getpaseo/protocol/terminal-activity";
+import { deriveTerminalActivityStatusBucket } from "@getpaseo/protocol/terminal-activity";
 
 export interface TerminalListItem {
   id: string;
@@ -36,6 +37,16 @@ export interface TerminalActivityTransitionEvent {
 }
 
 export type TerminalActivityListener = (event: TerminalActivityTransitionEvent) => void;
+
+export interface TerminalWorkspaceContributionChangedEvent {
+  terminalId: string;
+  cwd: string;
+  workspaceId?: string;
+}
+
+export type TerminalWorkspaceContributionChangedListener = (
+  event: TerminalWorkspaceContributionChangedEvent,
+) => void;
 
 export interface TerminalManager {
   getTerminals(cwd: string, options?: { workspaceId?: string }): Promise<TerminalSession[]>;
@@ -74,6 +85,9 @@ export interface TerminalManager {
   killAll(): void;
   subscribeTerminalsChanged(listener: TerminalsChangedListener): () => void;
   subscribeTerminalActivity(listener: TerminalActivityListener): () => void;
+  subscribeTerminalWorkspaceContributionChanged(
+    listener: TerminalWorkspaceContributionChangedListener,
+  ): () => void;
 }
 
 export interface TerminalManagerOptions {
@@ -95,13 +109,9 @@ export function createTerminalManager(
   const terminalActivityTokenById = new Map<string, string>();
   const terminalsChangedListeners = new Set<TerminalsChangedListener>();
   const terminalActivityListeners = new Set<TerminalActivityListener>();
+  const terminalWorkspaceContributionChangedListeners =
+    new Set<TerminalWorkspaceContributionChangedListener>();
   const defaultEnvByRootCwd = new Map<string, Record<string, string>>();
-
-  function assertAbsolutePath(cwd: string): void {
-    if (!posix.isAbsolute(cwd) && !win32.isAbsolute(cwd)) {
-      throw new Error("cwd must be absolute path");
-    }
-  }
 
   function removeSessionById(id: string, options: { kill: boolean }): void {
     const session = terminalsById.get(id);
@@ -143,6 +153,16 @@ export function createTerminalManager(
       session.kill();
     }
 
+    const previousActivity = session.getActivity();
+    const previousBucket = deriveTerminalActivityStatusBucket(previousActivity);
+    if (previousBucket !== null) {
+      emitTerminalWorkspaceContributionChanged({
+        terminalId: session.id,
+        cwd: session.cwd,
+        ...(session.workspaceId ? { workspaceId: session.workspaceId } : {}),
+      });
+    }
+
     emitTerminalsChanged({ cwd: session.cwd });
   }
 
@@ -174,6 +194,15 @@ export function createTerminalManager(
     const unsubscribeActivity = session.onActivityChange((transition) => {
       emitTerminalActivityTransition({ session, transition });
       emitTerminalsChanged({ cwd: session.cwd });
+      const previousBucket = deriveTerminalActivityStatusBucket(transition.previous);
+      const nextBucket = deriveTerminalActivityStatusBucket(transition.activity);
+      if (previousBucket !== nextBucket) {
+        emitTerminalWorkspaceContributionChanged({
+          terminalId: session.id,
+          cwd: session.cwd,
+          ...(session.workspaceId ? { workspaceId: session.workspaceId } : {}),
+        });
+      }
     });
     terminalExitUnsubscribeById.set(session.id, unsubscribeExit);
     terminalTitleUnsubscribeById.set(session.id, unsubscribeTitle);
@@ -229,6 +258,18 @@ export function createTerminalManager(
       previous: input.transition.previous,
     };
     for (const listener of terminalActivityListeners) {
+      try {
+        listener(event);
+      } catch {
+        // no-op
+      }
+    }
+  }
+
+  function emitTerminalWorkspaceContributionChanged(
+    event: TerminalWorkspaceContributionChangedEvent,
+  ): void {
+    for (const listener of terminalWorkspaceContributionChangedListeners) {
       try {
         listener(event);
       } catch {
@@ -435,6 +476,15 @@ export function createTerminalManager(
       terminalActivityListeners.add(listener);
       return () => {
         terminalActivityListeners.delete(listener);
+      };
+    },
+
+    subscribeTerminalWorkspaceContributionChanged(
+      listener: TerminalWorkspaceContributionChangedListener,
+    ): () => void {
+      terminalWorkspaceContributionChangedListeners.add(listener);
+      return () => {
+        terminalWorkspaceContributionChangedListeners.delete(listener);
       };
     },
   };

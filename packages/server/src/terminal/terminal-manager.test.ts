@@ -1,6 +1,7 @@
 import { it, expect, afterEach } from "vitest";
 import { isPlatform } from "../test-utils/platform.js";
 import { createTerminalManager, type TerminalManager } from "./terminal-manager.js";
+import type { TerminalWorkspaceContributionChangedEvent } from "./terminal-manager.js";
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -527,4 +528,82 @@ it("clearTerminalAttention leaves non-attention terminals unchanged", async () =
   await expect(manager.clearTerminalAttention(session.id)).resolves.toBe(false);
 
   expect(session.getActivity()?.state).toBe("working");
+});
+
+it("emits workspace contribution event when activity bucket changes", async () => {
+  manager = createTerminalManager();
+  const cwd = realpathSync(tmpdir());
+  const events: TerminalWorkspaceContributionChangedEvent[] = [];
+  const unsubscribe = manager.subscribeTerminalWorkspaceContributionChanged((event) => {
+    events.push(event);
+  });
+
+  const session = await manager.createTerminal({ cwd, workspaceId: "ws-test" });
+  await manager.setTerminalActivity(session.id, "working");
+
+  expect(events).toEqual([
+    {
+      terminalId: session.id,
+      cwd,
+      workspaceId: "ws-test",
+    },
+  ]);
+
+  unsubscribe();
+});
+
+it("does not emit workspace contribution event for title-only changes", async () => {
+  manager = createTerminalManager();
+  const cwd = realpathSync(tmpdir());
+  const events: TerminalWorkspaceContributionChangedEvent[] = [];
+  const unsubscribe = manager.subscribeTerminalWorkspaceContributionChanged((event) => {
+    events.push(event);
+  });
+
+  const session = await manager.createTerminal({ cwd });
+  manager.setTerminalTitle(session.id, "New title");
+
+  expect(events).toEqual([]);
+
+  unsubscribe();
+});
+
+it("emits workspace contribution event when a contributing terminal is removed", async () => {
+  manager = createTerminalManager();
+  const cwd = realpathSync(tmpdir());
+  const events: TerminalWorkspaceContributionChangedEvent[] = [];
+  const unsubscribe = manager.subscribeTerminalWorkspaceContributionChanged((event) => {
+    events.push(event);
+  });
+
+  const session = await manager.createTerminal({ cwd, workspaceId: "ws-test" });
+  await manager.setTerminalActivity(session.id, "working");
+  events.length = 0;
+  manager.killTerminal(session.id);
+
+  expect(events).toEqual([
+    {
+      terminalId: session.id,
+      cwd,
+      workspaceId: "ws-test",
+    },
+  ]);
+
+  unsubscribe();
+});
+
+it("does not emit workspace contribution event when an idle terminal is removed", async () => {
+  manager = createTerminalManager();
+  const cwd = realpathSync(tmpdir());
+  const events: TerminalWorkspaceContributionChangedEvent[] = [];
+  const unsubscribe = manager.subscribeTerminalWorkspaceContributionChanged((event) => {
+    events.push(event);
+  });
+
+  const session = await manager.createTerminal({ cwd });
+  manager.killTerminal(session.id);
+
+  expect(events).toEqual([]);
+
+  unsubscribe();
 });

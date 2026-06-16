@@ -1,5 +1,5 @@
 import type { Page } from "@playwright/test";
-import type { TerminalActivityState } from "@getpaseo/protocol/terminal-activity";
+import type { TerminalActivity, TerminalActivityState } from "@getpaseo/protocol/terminal-activity";
 import { createTempGitRepo } from "./workspace";
 import { navigateToTerminal, setupDeterministicPrompt } from "./terminal-perf";
 import { connectSeedClient, type SeedDaemonClient } from "./seed-client";
@@ -84,6 +84,7 @@ export class TerminalE2EHarness {
   async waitForTerminalActivity(input: {
     terminalId: string;
     state: TerminalActivityState | null;
+    attentionReason?: TerminalActivity["attentionReason"] | null;
     timeoutMs?: number;
   }): Promise<void> {
     const timeoutMs = input.timeoutMs ?? 10_000;
@@ -91,13 +92,21 @@ export class TerminalE2EHarness {
     while (Date.now() < deadline) {
       const result = await this.client.listTerminals(this.tempRepo.path);
       const terminal = result.terminals.find((entry) => entry.id === input.terminalId);
-      if ((terminal?.activity?.state ?? null) === input.state) {
+      const activity = terminal?.activity ?? null;
+      const attentionMatches =
+        input.attentionReason === undefined ||
+        (activity?.attentionReason ?? null) === input.attentionReason;
+      if ((activity?.state ?? null) === input.state && attentionMatches) {
         return;
       }
       await sleep(50);
     }
+    const attentionSuffix =
+      input.attentionReason === undefined
+        ? ""
+        : ` with attention ${input.attentionReason ?? "none"}`;
     throw new Error(
-      `Timed out waiting for terminal ${input.terminalId} activity state ${input.state ?? "unknown"}`,
+      `Timed out waiting for terminal ${input.terminalId} activity state ${input.state ?? "unknown"}${attentionSuffix}`,
     );
   }
 

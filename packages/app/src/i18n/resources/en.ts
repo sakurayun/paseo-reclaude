@@ -520,6 +520,8 @@ export const en = {
         splitDown: "Split pane down",
         terminalProfilesMenu: "Terminal profiles",
         editTerminalProfiles: "Edit profiles…",
+        pinTarget: "Pin",
+        unpinTarget: "Unpin",
       },
       explorer: {
         open: "Open explorer",

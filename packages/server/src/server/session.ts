@@ -34,7 +34,10 @@ import {
   type WorkspaceSetupSnapshot,
   type WorkspaceDescriptorPayload,
 } from "./messages.js";
-import type { TerminalManager } from "../terminal/terminal-manager.js";
+import type {
+  TerminalManager,
+  TerminalWorkspaceContributionChangedEvent,
+} from "../terminal/terminal-manager.js";
 import { TerminalSessionController } from "../terminal/terminal-session-controller.js";
 import type { TerminalActivity } from "@getpaseo/protocol/terminal-activity";
 import {
@@ -165,6 +168,7 @@ import {
   deriveProjectGroupingName,
   deriveWorkspaceDisplayName,
   generateWorkspaceId,
+  resolveWorkspaceIdForRecord,
 } from "./workspace-registry-model.js";
 import {
   createPersistedProjectRecord,
@@ -841,7 +845,7 @@ export class Session {
   private readonly downloadTokenStore: DownloadTokenStore;
   private readonly pushTokenStore: PushTokenStore;
   private unsubscribeAgentEvents: (() => void) | null = null;
-  private unsubscribeTerminalActivityEvents: (() => void) | null = null;
+  private unsubscribeTerminalWorkspaceContributionEvents: (() => void) | null = null;
   private agentUpdatesSubscription: AgentUpdatesSubscriptionState | null = null;
   private workspaceUpdatesSubscription: WorkspaceUpdatesSubscriptionState | null = null;
   private clientActivity: {
@@ -1319,11 +1323,15 @@ export class Session {
   private subscribeToOptionalManagers(): void {
     this.terminalController.start();
     if (this.terminalManager) {
-      this.unsubscribeTerminalActivityEvents = this.terminalManager.subscribeTerminalsChanged(
-        (event) => {
-          void this.emitWorkspaceUpdateForCwd(event.cwd);
-        },
-      );
+      this.unsubscribeTerminalWorkspaceContributionEvents =
+        this.terminalManager.subscribeTerminalWorkspaceContributionChanged((event) => {
+          void this.emitWorkspaceUpdateForTerminalContribution(event).catch((error) => {
+            this.sessionLogger.warn(
+              { err: error, terminalId: event.terminalId },
+              "Failed to emit workspace update after terminal contribution changed",
+            );
+          });
+        });
     }
     const handleProviderSnapshotChange = (entries: ProviderSnapshotEntry[], cwd: string) => {
       // COMPAT(providersSnapshot): keep provider visibility gating for older clients.
@@ -1503,7 +1511,7 @@ export class Session {
 
   private buildStoredAgentPayload(
     record: StoredAgentRecord,
-    registeredProviderIds = this.providerSnapshotManager.listRegisteredProviderIds(),
+    registeredProviderIds = new Set(this.providerSnapshotManager.listRegisteredProviderIds()),
   ): AgentSnapshotPayload {
     return buildStoredAgentPayload(record, registeredProviderIds);
   }
@@ -5369,7 +5377,12 @@ export class Session {
       { cwd: normalizedCwd },
       (snapshot) => {
         this.handleWorkspaceGitBranchSnapshot(normalizedCwd, snapshot.git.currentBranch ?? null);
-        void this.emitWorkspaceUpdateForCwd(normalizedCwd);
+        void this.emitWorkspaceUpdateForCwd(normalizedCwd).catch((error) => {
+          this.sessionLogger.warn(
+            { err: error, cwd: normalizedCwd },
+            "Failed to emit workspace update after git branch snapshot",
+          );
+        });
         this.emitCheckoutStatusUpdate(normalizedCwd, snapshot);
       },
     );
@@ -6673,8 +6686,12 @@ export class Session {
    */
   private async listAgentPayloads(filter?: {
     labels?: Record<string, string>;
+    includeArchived?: boolean;
     includeUnavailablePersisted?: boolean;
   }): Promise<AgentSnapshotPayload[]> {
+    const includeArchived = filter?.includeArchived === true;
+    const labelEntries = filter?.labels ? Object.entries(filter.labels) : [];
+
     // Get live agents with session modes
     const agentSnapshots = this.agentManager.listAgents();
     const liveAgents = await Promise.all(
@@ -6685,9 +6702,12 @@ export class Session {
     // (excluding internal agents which are for ephemeral system tasks)
     const registryRecords = await this.agentStorage.list();
     const liveIds = new Set(agentSnapshots.map((a) => a.id));
-    const registeredProviderIds = this.providerSnapshotManager.listRegisteredProviderIds();
+    const registeredProviderIds = new Set(this.providerSnapshotManager.listRegisteredProviderIds());
     const persistedAgents = registryRecords
       .filter((record) => !liveIds.has(record.id) && !record.internal)
+      // Keep raw-record filters ahead of projection; seeded homes can carry thousands of archived agents.
+      .filter((record) => includeArchived || !record.archivedAt)
+      .filter((record) => labelEntries.every(([key, value]) => record.labels?.[key] === value))
       .filter(
         (record) =>
           filter?.includeUnavailablePersisted === true ||
@@ -6698,14 +6718,14 @@ export class Session {
     let agents = [...liveAgents, ...persistedAgents];
 
     agents = agents.filter((agent) => this.isProviderVisibleToClient(agent.provider));
+    if (!includeArchived) {
+      agents = agents.filter((agent) => !agent.archivedAt);
+    }
 
     // Filter by labels if filter provided
-    if (filter?.labels) {
-      const filterLabels = filter.labels;
+    if (labelEntries.length > 0) {
       agents = agents.filter((agent) =>
-        Object.entries(filterLabels).every(
-          ([key, _value]) => agent.labels[key] === filterLabels[key],
-        ),
+        labelEntries.every(([key, value]) => agent.labels[key] === value),
       );
     }
 
@@ -6869,6 +6889,7 @@ export class Session {
 
     let agents = await this.listAgentPayloads({
       labels: filter?.labels,
+      includeArchived: filter?.includeArchived,
       includeUnavailablePersisted: request.type === "fetch_agent_history_request",
     });
     const activePlacementsByCwd =
@@ -7632,6 +7653,25 @@ export class Session {
       (project) => project.projectId === archivedWorkspace.projectId,
     );
     return emptyProject ? { emptyProject } : null;
+  }
+
+  private async emitWorkspaceUpdateForTerminalContribution(
+    event: TerminalWorkspaceContributionChangedEvent,
+  ): Promise<void> {
+    if (event.workspaceId) {
+      const workspaces = await this.workspaceRegistry.list();
+      const workspaceId = resolveWorkspaceIdForRecord(
+        { workspaceId: event.workspaceId, cwd: event.cwd },
+        workspaces,
+      );
+      if (workspaceId) {
+        await this.emitWorkspaceUpdatesForWorkspaceIds([workspaceId], {
+          skipReconcile: true,
+        });
+        return;
+      }
+    }
+    await this.emitWorkspaceUpdateForCwd(event.cwd, { skipReconcile: true });
   }
 
   private async emitWorkspaceUpdateForCwd(
@@ -9642,9 +9682,9 @@ export class Session {
       this.unsubscribeAgentEvents();
       this.unsubscribeAgentEvents = null;
     }
-    if (this.unsubscribeTerminalActivityEvents) {
-      this.unsubscribeTerminalActivityEvents();
-      this.unsubscribeTerminalActivityEvents = null;
+    if (this.unsubscribeTerminalWorkspaceContributionEvents) {
+      this.unsubscribeTerminalWorkspaceContributionEvents();
+      this.unsubscribeTerminalWorkspaceContributionEvents = null;
     }
     if (this.unsubscribeProviderSnapshotEvents) {
       this.unsubscribeProviderSnapshotEvents();

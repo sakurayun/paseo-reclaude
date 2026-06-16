@@ -132,12 +132,17 @@ export interface CreateTerminalOptions {
 
 function toTerminalActivity(snapshot: {
   state: TerminalActivityState | null;
+  attentionReason?: TerminalActivity["attentionReason"];
   changedAt: number;
 }): TerminalActivity | null {
   if (!snapshot.state) {
     return null;
   }
-  return { state: snapshot.state, changedAt: snapshot.changedAt };
+  return {
+    state: snapshot.state,
+    ...(snapshot.attentionReason ? { attentionReason: snapshot.attentionReason } : {}),
+    changedAt: snapshot.changedAt,
+  };
 }
 
 function resolveInitialTitleMode(presetTitle: string | undefined): "auto" | "manual" {

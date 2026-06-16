@@ -38,12 +38,6 @@ export interface WorkerKillAndWaitOptions {
 
 export type TerminalWorkerRequest =
   | {
-      type: "getTerminals";
-      requestId: string;
-      cwd: string;
-      workspaceId?: string;
-    }
-  | {
       type: "createTerminal";
       requestId: string;
       options: WorkerCreateTerminalOptions;
@@ -59,6 +53,11 @@ export type TerminalWorkerRequest =
       requestId: string;
       terminalId: string;
       state: TerminalActivityState;
+    }
+  | {
+      type: "clearAttention";
+      requestId: string;
+      terminalId: string;
     }
   | {
       type: "killTerminal";
@@ -117,11 +116,6 @@ export type TerminalWorkerEvent =
       state: TerminalState;
     }
   | {
-      type: "terminalRemoved";
-      terminalId: string;
-      cwd: string;
-    }
-  | {
       type: "terminalMessage";
       terminalId: string;
       message: ServerMessage;
@@ -142,11 +136,6 @@ export type TerminalWorkerEvent =
       info: {
         exitCode: number | null;
       };
-    }
-  | {
-      type: "terminalsChanged";
-      cwd: string;
-      terminals: WorkerTerminalInfo[];
     }
   | {
       type: "terminalActivityChange";

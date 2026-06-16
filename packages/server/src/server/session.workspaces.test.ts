@@ -5,7 +5,10 @@ import path from "node:path";
 import { expect, test, vi } from "vitest";
 import { z } from "zod";
 import { Session } from "./session.js";
+import type { SessionOptions } from "./session.js";
 import type { AgentSnapshotPayload, SessionOutboundMessage } from "@getpaseo/protocol/messages";
+import type { TerminalManager } from "../terminal/terminal-manager.js";
+import { createTerminalManager } from "../terminal/terminal-manager.js";
 import { AgentManager } from "./agent/agent-manager.js";
 import { AgentStorage, type StoredAgentRecord } from "./agent/agent-storage.js";
 import type {
@@ -47,6 +50,18 @@ import {
 
 const REPO_CWD = path.resolve("/tmp/repo");
 const UNREGISTERED_CWD = path.resolve("/tmp/unregistered");
+
+const terminalManagers: TerminalManager[] = [];
+
+afterEach(async () => {
+  while (terminalManagers.length > 0) {
+    const manager = terminalManagers.pop();
+    if (manager) {
+      manager.killAll();
+    }
+  }
+  await flushTerminalContributionWork();
+});
 
 interface SessionTestAccess {
   projectRegistry: {
@@ -461,7 +476,9 @@ function createSessionForWorkspaceTests(
     appVersion?: string | null;
     onMessage?: (message: SessionOutboundMessage) => void;
     workspaceGitService?: ReturnType<typeof createNoopWorkspaceGitService>;
-    terminalManager?: ReturnType<typeof asTerminalManager> | null;
+    terminalManager?: TerminalManager | null;
+    projectRegistry?: SessionOptions["projectRegistry"];
+    workspaceRegistry?: SessionOptions["workspaceRegistry"];
   } = {},
 ): TestSession {
   const logger = {
@@ -517,7 +534,7 @@ function createSessionForWorkspaceTests(
             : null,
         upsert: async () => {},
       }),
-      projectRegistry: {
+      projectRegistry: options.projectRegistry ?? {
         initialize: async () => {},
         existsOnDisk: async () => true,
         list: async () => [],
@@ -526,7 +543,7 @@ function createSessionForWorkspaceTests(
         archive: async () => {},
         remove: async () => {},
       },
-      workspaceRegistry: {
+      workspaceRegistry: options.workspaceRegistry ?? {
         initialize: async () => {},
         existsOnDisk: async () => true,
         list: async () => [
@@ -788,7 +805,13 @@ test("unsupported persisted agents are excluded from active lists but preserved 
 
   await expect(session.listAgentPayloads()).resolves.toEqual([]);
 
-  await expect(session.listAgentPayloads({ includeUnavailablePersisted: true })).resolves.toEqual([
+  await expect(session.listAgentPayloads({ includeUnavailablePersisted: true })).resolves.toEqual(
+    [],
+  );
+
+  await expect(
+    session.listAgentPayloads({ includeArchived: true, includeUnavailablePersisted: true }),
+  ).resolves.toEqual([
     expect.objectContaining({
       id: "agent-unsupported",
       provider: "gemini",
@@ -5371,4 +5394,392 @@ test("resolveRegisteredWorkspaceIdForCwd does not match home directory as a pref
 
   expect(session.resolveRegisteredWorkspaceIdForCwd(childCwd, [homeWorkspace])).toBeNull();
   expect(session.resolveRegisteredWorkspaceIdForCwd(home, [homeWorkspace])).toBe("ws-home");
+});
+
+function createSessionWithTerminalManager(options: {
+  workspaces: PersistedWorkspaceRecord[];
+  projects: PersistedProjectRecord[];
+  onMessage?: (message: SessionOutboundMessage) => void;
+}): { session: TestSession; terminalManager: TerminalManager } {
+  const terminalManager = createTerminalManager();
+  terminalManagers.push(terminalManager);
+
+  const projectRegistry: SessionOptions["projectRegistry"] = {
+    initialize: async () => {},
+    existsOnDisk: async () => true,
+    list: async () => options.projects,
+    get: async (projectId: string) =>
+      options.projects.find((project) => project.projectId === projectId) ?? null,
+    upsert: async () => {},
+    archive: async () => {},
+    remove: async () => {},
+  };
+
+  const workspaceRegistry: SessionOptions["workspaceRegistry"] = {
+    initialize: async () => {},
+    existsOnDisk: async () => true,
+    list: async () => options.workspaces,
+    get: async (workspaceId: string) =>
+      options.workspaces.find((workspace) => workspace.workspaceId === workspaceId) ?? null,
+    upsert: async () => {},
+    archive: async () => {},
+    remove: async () => {},
+  };
+
+  const session = createSessionForWorkspaceTests({
+    onMessage: options.onMessage,
+    terminalManager,
+    projectRegistry,
+    workspaceRegistry,
+  });
+
+  session.workspaceUpdatesSubscription = {
+    subscriptionId: "sub-workspaces",
+    filter: undefined,
+    isBootstrapping: false,
+    lastEmittedByWorkspaceId: new Map(),
+    pendingUpdatesByWorkspaceId: new Map(),
+  };
+
+  return { session, terminalManager };
+}
+
+async function flushTerminalContributionWork(): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+async function waitForWorkspaceUpdate(
+  emitted: SessionOutboundMessage[],
+  predicate: (message: Extract<SessionOutboundMessage, { type: "workspace_update" }>) => boolean,
+  description: string,
+): Promise<Extract<SessionOutboundMessage, { type: "workspace_update" }>> {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < 1000) {
+    const match = filterByType(emitted, "workspace_update").find(predicate);
+    if (match) {
+      return match;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+  throw new Error(`Timed out waiting for workspace_update: ${description}`);
+}
+
+test("title-only terminal change does not build workspace descriptors or emit workspace_update", async () => {
+  const emitted: SessionOutboundMessage[] = [];
+  const cwd = mkdtempSync(path.join(tmpdir(), "paseo-session-title-"));
+  const workspace = createPersistedWorkspaceRecord({
+    workspaceId: "ws-title",
+    projectId: "proj-title",
+    cwd,
+    kind: "directory",
+    displayName: "title-workspace",
+    createdAt: "2026-03-01T12:00:00.000Z",
+    updatedAt: "2026-03-01T12:00:00.000Z",
+  });
+  const project = createPersistedProjectRecord({
+    projectId: "proj-title",
+    rootPath: cwd,
+    kind: "non_git",
+    displayName: "title-project",
+    createdAt: "2026-03-01T12:00:00.000Z",
+    updatedAt: "2026-03-01T12:00:00.000Z",
+  });
+  const { session, terminalManager } = createSessionWithTerminalManager({
+    workspaces: [workspace],
+    projects: [project],
+    onMessage: (message) => emitted.push(message),
+  });
+  const buildDescriptorMapSpy = vi.fn(
+    async () => new Map([[workspace.workspaceId, expect.any(Object)]]),
+  );
+  session.buildWorkspaceDescriptorMap = buildDescriptorMapSpy;
+  const listAgentPayloadsSpy = vi.fn(async () => []);
+  session.listAgentPayloads = listAgentPayloadsSpy;
+
+  const terminal = await terminalManager.createTerminal({
+    cwd,
+    workspaceId: workspace.workspaceId,
+  });
+  terminalManager.setTerminalTitle(terminal.id, "New title");
+  await flushTerminalContributionWork();
+
+  expect(buildDescriptorMapSpy).not.toHaveBeenCalled();
+  expect(listAgentPayloadsSpy).not.toHaveBeenCalled();
+  expect(filterByType(emitted, "workspace_update")).toHaveLength(0);
+});
+
+test("terminal activity contribution change updates the correct workspace", async () => {
+  const emitted: SessionOutboundMessage[] = [];
+  const cwd = mkdtempSync(path.join(tmpdir(), "paseo-session-activity-"));
+  const workspace = createPersistedWorkspaceRecord({
+    workspaceId: "ws-activity",
+    projectId: "proj-activity",
+    cwd,
+    kind: "directory",
+    displayName: "activity-workspace",
+    createdAt: "2026-03-01T12:00:00.000Z",
+    updatedAt: "2026-03-01T12:00:00.000Z",
+  });
+  const project = createPersistedProjectRecord({
+    projectId: "proj-activity",
+    rootPath: cwd,
+    kind: "non_git",
+    displayName: "activity-project",
+    createdAt: "2026-03-01T12:00:00.000Z",
+    updatedAt: "2026-03-01T12:00:00.000Z",
+  });
+  const { terminalManager } = createSessionWithTerminalManager({
+    workspaces: [workspace],
+    projects: [project],
+    onMessage: (message) => emitted.push(message),
+  });
+
+  const terminal = await terminalManager.createTerminal({
+    cwd,
+    workspaceId: workspace.workspaceId,
+  });
+  await terminalManager.setTerminalActivity(terminal.id, "working");
+
+  const update = await waitForWorkspaceUpdate(
+    emitted,
+    (message) =>
+      message.payload.kind === "upsert" &&
+      message.payload.workspace.id === workspace.workspaceId &&
+      message.payload.workspace.status === "running",
+    "terminal activity marks the owning workspace running",
+  );
+  expect(update.payload).toMatchObject({
+    kind: "upsert",
+    workspace: {
+      id: workspace.workspaceId,
+      status: "running",
+    },
+  });
+});
+
+test("same-cwd workspace attribution targets the terminal's workspace", async () => {
+  const emitted: SessionOutboundMessage[] = [];
+  const cwd = mkdtempSync(path.join(tmpdir(), "paseo-session-same-cwd-"));
+  const workspaceA = createPersistedWorkspaceRecord({
+    workspaceId: "ws-same-a",
+    projectId: "proj-same",
+    cwd,
+    kind: "directory",
+    displayName: "workspace-a",
+    createdAt: "2026-03-01T12:00:00.000Z",
+    updatedAt: "2026-03-01T12:00:00.000Z",
+  });
+  const workspaceB = createPersistedWorkspaceRecord({
+    workspaceId: "ws-same-b",
+    projectId: "proj-same",
+    cwd,
+    kind: "directory",
+    displayName: "workspace-b",
+    createdAt: "2026-03-01T12:00:01.000Z",
+    updatedAt: "2026-03-01T12:00:01.000Z",
+  });
+  const project = createPersistedProjectRecord({
+    projectId: "proj-same",
+    rootPath: cwd,
+    kind: "non_git",
+    displayName: "same-project",
+    createdAt: "2026-03-01T12:00:00.000Z",
+    updatedAt: "2026-03-01T12:00:00.000Z",
+  });
+  const { terminalManager } = createSessionWithTerminalManager({
+    workspaces: [workspaceA, workspaceB],
+    projects: [project],
+    onMessage: (message) => emitted.push(message),
+  });
+
+  const terminal = await terminalManager.createTerminal({
+    cwd,
+    workspaceId: workspaceB.workspaceId,
+  });
+  await terminalManager.setTerminalActivity(terminal.id, "working");
+  await waitForWorkspaceUpdate(
+    emitted,
+    (message) =>
+      message.payload.kind === "upsert" &&
+      message.payload.workspace.id === workspaceB.workspaceId &&
+      message.payload.workspace.status === "running",
+    "same-cwd terminal activity targets the stamped workspace",
+  );
+
+  const updates = filterByType(emitted, "workspace_update");
+  const upserts = updates.filter((update) => update.payload.kind === "upsert");
+  const targetIds = new Set(upserts.map((update) => update.payload.workspace.id));
+  expect(targetIds.has(workspaceB.workspaceId)).toBe(true);
+  expect(targetIds.has(workspaceA.workspaceId)).toBe(false);
+  expect(upserts[upserts.length - 1]?.payload).toMatchObject({
+    kind: "upsert",
+    workspace: {
+      id: workspaceB.workspaceId,
+      status: "running",
+    },
+  });
+});
+
+test("nested worktree attribution targets the deepest active workspace", async () => {
+  const emitted: SessionOutboundMessage[] = [];
+  const rootCwd = mkdtempSync(path.join(tmpdir(), "paseo-session-nested-"));
+  const worktreeCwd = path.join(rootCwd, "worktree");
+  const terminalCwd = path.join(worktreeCwd, "subdir");
+  mkdirSync(terminalCwd, { recursive: true });
+  const workspaceRoot = createPersistedWorkspaceRecord({
+    workspaceId: "ws-root",
+    projectId: "proj-nested",
+    cwd: rootCwd,
+    kind: "local_checkout",
+    displayName: "root",
+    createdAt: "2026-03-01T12:00:00.000Z",
+    updatedAt: "2026-03-01T12:00:00.000Z",
+  });
+  const workspaceWorktree = createPersistedWorkspaceRecord({
+    workspaceId: "ws-worktree",
+    projectId: "proj-nested",
+    cwd: worktreeCwd,
+    kind: "worktree",
+    displayName: "worktree",
+    createdAt: "2026-03-01T12:00:00.000Z",
+    updatedAt: "2026-03-01T12:00:00.000Z",
+  });
+  const project = createPersistedProjectRecord({
+    projectId: "proj-nested",
+    rootPath: rootCwd,
+    kind: "git",
+    displayName: "nested-project",
+    createdAt: "2026-03-01T12:00:00.000Z",
+    updatedAt: "2026-03-01T12:00:00.000Z",
+  });
+  const { terminalManager } = createSessionWithTerminalManager({
+    workspaces: [workspaceRoot, workspaceWorktree],
+    projects: [project],
+    onMessage: (message) => emitted.push(message),
+  });
+
+  const terminal = await terminalManager.createTerminal({ cwd: terminalCwd });
+  await terminalManager.setTerminalActivity(terminal.id, "working");
+  await waitForWorkspaceUpdate(
+    emitted,
+    (message) =>
+      message.payload.kind === "upsert" &&
+      message.payload.workspace.id === workspaceWorktree.workspaceId &&
+      message.payload.workspace.status === "running",
+    "nested terminal activity targets the deepest workspace",
+  );
+
+  const updates = filterByType(emitted, "workspace_update");
+  const upserts = updates.filter((update) => update.payload.kind === "upsert");
+  const targetIds = new Set(upserts.map((update) => update.payload.workspace.id));
+  // The terminal has no workspaceId, so it falls back to cwd attribution.
+  // The deepest active workspace covering `terminalCwd` should win.
+  expect(targetIds.has(workspaceWorktree.workspaceId)).toBe(true);
+  expect(targetIds.has(workspaceRoot.workspaceId)).toBe(false);
+  expect(upserts[upserts.length - 1]?.payload).toMatchObject({
+    kind: "upsert",
+    workspace: {
+      id: workspaceWorktree.workspaceId,
+      status: "running",
+    },
+  });
+});
+
+test("removing an idle terminal does not update workspace status", async () => {
+  const emitted: SessionOutboundMessage[] = [];
+  const cwd = mkdtempSync(path.join(tmpdir(), "paseo-session-remove-idle-"));
+  const workspace = createPersistedWorkspaceRecord({
+    workspaceId: "ws-remove-idle",
+    projectId: "proj-remove-idle",
+    cwd,
+    kind: "directory",
+    displayName: "remove-idle-workspace",
+    createdAt: "2026-03-01T12:00:00.000Z",
+    updatedAt: "2026-03-01T12:00:00.000Z",
+  });
+  const project = createPersistedProjectRecord({
+    projectId: "proj-remove-idle",
+    rootPath: cwd,
+    kind: "non_git",
+    displayName: "remove-idle-project",
+    createdAt: "2026-03-01T12:00:00.000Z",
+    updatedAt: "2026-03-01T12:00:00.000Z",
+  });
+  const { session, terminalManager } = createSessionWithTerminalManager({
+    workspaces: [workspace],
+    projects: [project],
+    onMessage: (message) => emitted.push(message),
+  });
+  const buildDescriptorMapSpy = vi.fn(async () => new Map());
+  session.buildWorkspaceDescriptorMap = buildDescriptorMapSpy;
+
+  const terminal = await terminalManager.createTerminal({
+    cwd,
+    workspaceId: workspace.workspaceId,
+  });
+  terminalManager.killTerminal(terminal.id);
+  await flushTerminalContributionWork();
+
+  expect(buildDescriptorMapSpy).not.toHaveBeenCalled();
+  expect(filterByType(emitted, "workspace_update")).toHaveLength(0);
+});
+
+test("removing a contributing terminal clears workspace status", async () => {
+  const emitted: SessionOutboundMessage[] = [];
+  const cwd = mkdtempSync(path.join(tmpdir(), "paseo-session-remove-contrib-"));
+  const workspace = createPersistedWorkspaceRecord({
+    workspaceId: "ws-remove-contrib",
+    projectId: "proj-remove-contrib",
+    cwd,
+    kind: "directory",
+    displayName: "remove-contrib-workspace",
+    createdAt: "2026-03-01T12:00:00.000Z",
+    updatedAt: "2026-03-01T12:00:00.000Z",
+  });
+  const project = createPersistedProjectRecord({
+    projectId: "proj-remove-contrib",
+    rootPath: cwd,
+    kind: "non_git",
+    displayName: "remove-contrib-project",
+    createdAt: "2026-03-01T12:00:00.000Z",
+    updatedAt: "2026-03-01T12:00:00.000Z",
+  });
+  const { terminalManager } = createSessionWithTerminalManager({
+    workspaces: [workspace],
+    projects: [project],
+    onMessage: (message) => emitted.push(message),
+  });
+
+  const terminal = await terminalManager.createTerminal({
+    cwd,
+    workspaceId: workspace.workspaceId,
+  });
+  await terminalManager.setTerminalActivity(terminal.id, "working");
+  await waitForWorkspaceUpdate(
+    emitted,
+    (message) =>
+      message.payload.kind === "upsert" &&
+      message.payload.workspace.id === workspace.workspaceId &&
+      message.payload.workspace.status === "running",
+    "contributing terminal enters running state",
+  );
+  emitted.length = 0;
+
+  terminalManager.killTerminal(terminal.id);
+
+  const update = await waitForWorkspaceUpdate(
+    emitted,
+    (message) =>
+      message.payload.kind === "upsert" &&
+      message.payload.workspace.id === workspace.workspaceId &&
+      message.payload.workspace.status === "done",
+    "removing a contributing terminal clears workspace status",
+  );
+  expect(update.payload).toMatchObject({
+    kind: "upsert",
+    workspace: {
+      id: workspace.workspaceId,
+      status: "done",
+    },
+  });
 });

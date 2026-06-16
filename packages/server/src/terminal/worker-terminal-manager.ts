@@ -1,8 +1,10 @@
 import { fileURLToPath } from "node:url";
 import { fork } from "node:child_process";
 import { randomBytes, randomUUID } from "node:crypto";
+import { assertAbsolutePath, isSameOrDescendantPath } from "../server/path-utils.js";
 import type { TerminalState } from "@getpaseo/protocol/messages";
 import type { TerminalActivity, TerminalActivityState } from "@getpaseo/protocol/terminal-activity";
+import { deriveTerminalActivityStatusBucket } from "@getpaseo/protocol/terminal-activity";
 import type {
   ClientMessage,
   ServerMessage,
@@ -18,6 +20,8 @@ import type {
   TerminalActivityTransitionEvent,
   TerminalListItem,
   TerminalManager,
+  TerminalWorkspaceContributionChangedEvent,
+  TerminalWorkspaceContributionChangedListener,
   TerminalsChangedEvent,
   TerminalsChangedListener,
 } from "./terminal-manager.js";
@@ -140,11 +144,25 @@ export function createWorkerTerminalManager(
   const terminalActivityTokenById = new Map<string, string>();
   const terminalsChangedListeners = new Set<TerminalsChangedListener>();
   const terminalActivityListeners = new Set<TerminalActivityListener>();
+  const terminalWorkspaceContributionChangedListeners =
+    new Set<TerminalWorkspaceContributionChangedListener>();
   let workerExited = false;
   let workerShutdownTimer: ReturnType<typeof setTimeout> | null = null;
 
   function emitTerminalsChanged(event: TerminalsChangedEvent): void {
     for (const listener of Array.from(terminalsChangedListeners)) {
+      try {
+        listener(event);
+      } catch {
+        // no-op
+      }
+    }
+  }
+
+  function emitTerminalWorkspaceContributionChanged(
+    event: TerminalWorkspaceContributionChangedEvent,
+  ): void {
+    for (const listener of Array.from(terminalWorkspaceContributionChangedListeners)) {
       try {
         listener(event);
       } catch {
@@ -293,11 +311,11 @@ export function createWorkerTerminalManager(
         sendBestEffortRequest({ type: "setActivity", terminalId: record.info.id, state });
       },
       clearActivityAttention(): boolean {
-        if (record.activity?.state !== "attention") {
+        if (record.activity?.attentionReason == null) {
           return false;
         }
-        record.activity = { state: "idle", changedAt: Date.now() };
-        sendBestEffortRequest({ type: "setActivity", terminalId: record.info.id, state: "idle" });
+        record.activity = { state: record.activity.state, changedAt: Date.now() };
+        sendBestEffortRequest({ type: "clearAttention", terminalId: record.info.id });
         return true;
       },
       getSize(): { rows: number; cols: number } {
@@ -414,7 +432,15 @@ export function createWorkerTerminalManager(
       listener(message.info);
     }
     record.exitListeners.clear();
-    removeRecord(message.terminalId);
+    const previousBucket = deriveTerminalActivityStatusBucket(record.activity);
+    const removedRecord = removeRecord(message.terminalId);
+    if (previousBucket !== null && removedRecord) {
+      emitTerminalWorkspaceContributionChanged({
+        terminalId: removedRecord.info.id,
+        cwd: removedRecord.info.cwd,
+        ...(removedRecord.info.workspaceId ? { workspaceId: removedRecord.info.workspaceId } : {}),
+      });
+    }
     emitTerminalsChanged({
       cwd: record.info.cwd,
       terminals: listTerminalItemsForCwd(record.info.cwd),
@@ -467,6 +493,7 @@ export function createWorkerTerminalManager(
     if (!record) {
       return;
     }
+    const previousActivity = record.activity;
     record.activity = message.activity;
     const transition: TerminalActivityTransition = {
       activity: message.activity,
@@ -482,31 +509,18 @@ export function createWorkerTerminalManager(
       activity: message.activity,
       previous: message.previous,
     });
+    const previousBucket = deriveTerminalActivityStatusBucket(previousActivity);
+    const nextBucket = deriveTerminalActivityStatusBucket(message.activity);
+    if (previousBucket !== nextBucket) {
+      emitTerminalWorkspaceContributionChanged({
+        terminalId: record.info.id,
+        cwd: record.info.cwd,
+        ...(record.info.workspaceId ? { workspaceId: record.info.workspaceId } : {}),
+      });
+    }
     emitTerminalsChanged({
       cwd: record.info.cwd,
       terminals: listTerminalItemsForCwd(record.info.cwd),
-    });
-  }
-
-  function handleTerminalsChangedEvent(
-    message: Extract<TerminalWorkerToParentMessage, { type: "terminalsChanged" }>,
-  ): void {
-    for (const terminal of message.terminals) {
-      const record = recordsById.get(terminal.id);
-      if (record) {
-        record.activity = terminal.activity;
-      }
-    }
-    emitTerminalsChanged({
-      cwd: message.cwd,
-      terminals: message.terminals.map((terminal) => ({
-        id: terminal.id,
-        name: terminal.name,
-        cwd: terminal.cwd,
-        ...(terminal.workspaceId ? { workspaceId: terminal.workspaceId } : {}),
-        ...(terminal.title ? { title: terminal.title } : {}),
-        activity: terminal.activity,
-      })),
     });
   }
 
@@ -514,14 +528,9 @@ export function createWorkerTerminalManager(
     switch (message.type) {
       case "terminalCreated": {
         registerRecord({ info: message.terminal, state: message.state });
-        return;
-      }
-
-      case "terminalRemoved": {
-        removeRecord(message.terminalId);
         emitTerminalsChanged({
-          cwd: message.cwd,
-          terminals: listTerminalItemsForCwd(message.cwd),
+          cwd: message.terminal.cwd,
+          terminals: listTerminalItemsForCwd(message.terminal.cwd),
         });
         return;
       }
@@ -543,11 +552,6 @@ export function createWorkerTerminalManager(
 
       case "terminalCommandFinished": {
         handleTerminalCommandFinishedEvent(message);
-        return;
-      }
-
-      case "terminalsChanged": {
-        handleTerminalsChangedEvent(message);
         return;
       }
 
@@ -624,23 +628,41 @@ export function createWorkerTerminalManager(
     });
   }
 
-  function toSessions(terminals: WorkerTerminalInfo[]): TerminalSession[] {
-    return terminals
-      .map((terminal) => recordsById.get(terminal.id)?.session)
-      .filter((session): session is TerminalSession => Boolean(session));
-  }
-
   return {
     async getTerminals(
       cwd: string,
       options?: { workspaceId?: string },
     ): Promise<TerminalSession[]> {
-      const result = (await sendRequest({
-        type: "getTerminals",
-        cwd,
-        ...(options?.workspaceId !== undefined ? { workspaceId: options.workspaceId } : {}),
-      })) as WorkerTerminalInfo[];
-      return toSessions(result);
+      assertAbsolutePath(cwd);
+
+      // Served from the local mirror, exactly like every other parent read.
+      // Terminals are bucketed by exact cwd, but an agent can open a terminal in
+      // a subdirectory of the workspace. A query for the workspace root must
+      // surface those too, so aggregate every bucket at or below `cwd`.
+      const sessions: TerminalSession[] = [];
+      for (const [bucketCwd, terminalIds] of terminalIdsByCwd) {
+        if (!isSameOrDescendantPath(cwd, bucketCwd)) {
+          continue;
+        }
+        for (const terminalId of terminalIds) {
+          const session = recordsById.get(terminalId)?.session;
+          if (session) {
+            sessions.push(session);
+          }
+        }
+      }
+
+      // When the query carries a workspaceId, two workspaces sharing a cwd must
+      // not see each other's terminals. Exclude sessions owned by a different
+      // workspace; keep sessions without an owner (COMPAT: created by clients
+      // that predate terminal workspace ownership).
+      if (options?.workspaceId !== undefined) {
+        return sessions.filter(
+          (session) =>
+            session.workspaceId === undefined || session.workspaceId === options.workspaceId,
+        );
+      }
+      return sessions;
     },
 
     async createTerminal(options: WorkerCreateTerminalOptions): Promise<TerminalSession> {
@@ -734,10 +756,10 @@ export function createWorkerTerminalManager(
 
     async clearTerminalAttention(id: string): Promise<boolean> {
       const record = recordsById.get(id);
-      if (!record || record.activity?.state !== "attention") {
+      if (!record || record.activity?.attentionReason == null) {
         return false;
       }
-      await sendRequest({ type: "setActivity", terminalId: id, state: "idle" });
+      await sendRequest({ type: "clearAttention", terminalId: id });
       return true;
     },
 
@@ -806,6 +828,15 @@ export function createWorkerTerminalManager(
       terminalActivityListeners.add(listener);
       return () => {
         terminalActivityListeners.delete(listener);
+      };
+    },
+
+    subscribeTerminalWorkspaceContributionChanged(
+      listener: TerminalWorkspaceContributionChangedListener,
+    ): () => void {
+      terminalWorkspaceContributionChangedListeners.add(listener);
+      return () => {
+        terminalWorkspaceContributionChangedListeners.delete(listener);
       };
     },
   };
