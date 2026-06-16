@@ -3,6 +3,16 @@ function getFenceDelimiter(line: string) {
   return match?.[2] ?? null;
 }
 
+function isThematicBreakBlock(block: string) {
+  const lines = block.split("\n");
+  if (lines.length !== 1) {
+    return false;
+  }
+
+  const line = lines[0] ?? "";
+  return /^( {0,3})((-\s*){3,}|(_\s*){3,}|(\*\s*){3,})$/.test(line);
+}
+
 export function splitMarkdownBlocks(text: string): string[] {
   if (text.length === 0) {
     return [];
@@ -53,5 +63,5 @@ export function splitMarkdownBlocks(text: string): string[] {
     blocks.push(currentLines.join("\n"));
   }
 
-  return blocks.filter((block) => block.length > 0);
+  return blocks.filter((block) => block.length > 0 && !isThematicBreakBlock(block));
 }

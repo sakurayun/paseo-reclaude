@@ -73,4 +73,14 @@ describe("splitMarkdownBlocks", () => {
       "Second paragraph",
     ]);
   });
+
+  it("filters standalone thematic breaks from streamed assistant blocks", () => {
+    expect(splitMarkdownBlocks("Working\n\n---\n\nDone")).toEqual(["Working", "Done"]);
+    expect(splitMarkdownBlocks("***\n\nNext")).toEqual(["Next"]);
+    expect(splitMarkdownBlocks("Before\n\n_ _ _")).toEqual(["Before"]);
+  });
+
+  it("keeps thematic break text inside fenced code blocks", () => {
+    expect(splitMarkdownBlocks("```md\n---\n```\n\nDone")).toEqual(["```md\n---\n```", "Done"]);
+  });
 });
