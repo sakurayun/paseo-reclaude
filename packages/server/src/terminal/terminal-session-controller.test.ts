@@ -497,6 +497,59 @@ describe("terminal-session-controller workspace-scoped subscriptions", () => {
   });
 });
 
+describe("terminal-session-controller create_terminal_request", () => {
+  test("derives a standalone workspace id when the caller omits workspaceId", async () => {
+    const cwd = "/work/cli-cwd";
+    const createTerminal = vi.fn(async (options: { cwd: string; workspaceId: string }) => ({
+      ...listSession({ id: "t1", name: "Terminal 1", cwd: options.cwd }),
+      workspaceId: options.workspaceId,
+    }));
+    const terminalManager: TerminalManager = {
+      getTerminals: vi.fn(async () => []),
+      createTerminal,
+      registerCwdEnv: vi.fn(),
+      validateTerminalActivityToken: vi.fn(() => "unknown"),
+      getTerminal: vi.fn(),
+      getTerminalState: vi.fn(),
+      setTerminalTitle: vi.fn(),
+      setTerminalActivity: vi.fn(),
+      killTerminal: vi.fn(),
+      killTerminalAndWait: vi.fn(),
+      captureTerminal: vi.fn(),
+      listDirectories: vi.fn(() => []),
+      killAll: vi.fn(),
+      subscribeTerminalsChanged: vi.fn(() => vi.fn()),
+      subscribeTerminalActivity: vi.fn(() => vi.fn()),
+      subscribeTerminalWorkspaceContributionChanged: vi.fn(() => vi.fn()),
+    };
+
+    const outboundMessages: SessionOutboundMessage[] = [];
+    const controller = new TerminalSessionController({
+      terminalManager,
+      emit: (message) => outboundMessages.push(message),
+      emitBinary: vi.fn(),
+      hasBinaryChannel: () => true,
+      isPathWithinRoot: isSameOrDescendantPath,
+      sessionLogger: createLogger(),
+    });
+    controller.start();
+
+    controller.dispatch({ type: "create_terminal_request", cwd, requestId: "r1" });
+    await flushMicrotasks();
+
+    expect(createTerminal).toHaveBeenCalledWith(
+      expect.objectContaining({ cwd, workspaceId: "standalone:/work/cli-cwd" }),
+    );
+    const response = outboundMessages.find(
+      (message) => message.type === "create_terminal_response",
+    );
+    expect(response).toMatchObject({
+      type: "create_terminal_response",
+      payload: { error: null, terminal: { id: "t1" } },
+    });
+  });
+});
+
 describe("terminal-session-controller backpressure snapshot fallback", () => {
   async function setup(getClientBufferedAmount: () => number | null): Promise<{
     pushOutput: (data: string) => void;

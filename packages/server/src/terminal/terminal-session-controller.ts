@@ -1,3 +1,4 @@
+import { resolve } from "node:path";
 import type pino from "pino";
 import type {
   CaptureTerminalRequest,
@@ -112,6 +113,19 @@ const TERMINAL_MESSAGE_TYPES: ReadonlySet<TerminalDispatchableMessage["type"]> =
   "capture_terminal_request",
   "terminal.rename.request",
 ]);
+
+const STANDALONE_WORKSPACE_ID_PREFIX = "standalone:";
+
+// Old clients and the CLI (`paseo terminal create`) open terminals from a bare
+// cwd with no workspace context — the protocol keeps `workspaceId` optional, so
+// the daemon must still accept them (Model B made it required at runtime, which
+// broke `paseo terminal create` and the packaged-desktop smoke test). Group such
+// standalone terminals under a stable per-cwd id instead of rejecting. The app
+// always sends a real workspace id, and real ids never carry this prefix, so a
+// standalone id can never collide with an app-supplied one.
+export function resolveStandaloneWorkspaceId(cwd: string): string {
+  return `${STANDALONE_WORKSPACE_ID_PREFIX}${resolve(cwd)}`;
+}
 
 export class TerminalSessionController {
   private readonly terminalManager: TerminalManager | null;
@@ -520,21 +534,14 @@ export class TerminalSessionController {
         return;
       }
 
-      if (!msg.workspaceId) {
-        this.emit({
-          type: "create_terminal_response",
-          payload: {
-            terminal: null,
-            error: "workspaceId is required",
-            requestId: msg.requestId,
-          },
-        });
-        return;
-      }
+      // workspaceId is optional in the protocol; id-less callers (CLI / old
+      // clients) get a stable standalone id derived from the cwd instead of a
+      // rejection. See resolveStandaloneWorkspaceId.
+      const workspaceId = msg.workspaceId ?? resolveStandaloneWorkspaceId(msg.cwd);
 
       const session = await this.terminalManager.createTerminal({
         cwd: msg.cwd,
-        workspaceId: msg.workspaceId,
+        workspaceId,
         name: msg.name,
         command: msg.command,
         args: msg.args,
