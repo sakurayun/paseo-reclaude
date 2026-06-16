@@ -47,9 +47,10 @@ const aliasPlugin = {
 };
 
 // @xterm/addon-ligatures pulls in lru-cache, which imports `node:diagnostics_channel`
-// (and calls `channel()` at module load). This bundle targets the browser, where that
-// Node built-in doesn't exist, so esbuild can't resolve it. Diagnostics are a no-op in
-// the WebView, so stub the module with an inert channel instead of failing the build.
+// (and calls `channel()`/`tracingChannel()` at module load). This bundle targets the
+// browser, where that Node built-in doesn't exist, so esbuild can't resolve it.
+// Diagnostics are a no-op in the WebView, so stub the module with inert channels
+// instead of failing the build.
 const nodeBuiltinStubPlugin = {
   name: "paseo-node-builtin-stub",
   setup(build) {
@@ -70,9 +71,30 @@ const nodeBuiltinStubPlugin = {
         export function channel() {
           return noopChannel;
         }
+        export function tracingChannel() {
+          return {
+            start: noopChannel,
+            end: noopChannel,
+            asyncStart: noopChannel,
+            asyncEnd: noopChannel,
+            error: noopChannel,
+            get hasSubscribers() {
+              return false;
+            },
+            traceSync(fn, thisArg, ...args) {
+              return fn.apply(thisArg, args);
+            },
+            tracePromise(fn, thisArg, ...args) {
+              return fn.apply(thisArg, args);
+            },
+            traceCallback(fn, _position, thisArg, ...args) {
+              return fn.apply(thisArg, args);
+            },
+          };
+        }
         export function subscribe() {}
         export function unsubscribe() {}
-        export default { channel, subscribe, unsubscribe };
+        export default { channel, tracingChannel, subscribe, unsubscribe };
       `,
       loader: "js",
     }));
