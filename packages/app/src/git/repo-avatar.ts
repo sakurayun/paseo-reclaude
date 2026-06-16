@@ -13,9 +13,14 @@ import { md5Hex } from "@/utils/md5";
  * `<Image>` can load directly, so no fetch is needed for them.
  */
 
-export type RepoAvatarHostKind = "github" | "gitlab";
+export type RepoAvatarHostKind = "github" | "gitlab" | "unknown";
 
 export interface RepoAvatarHost {
+  /**
+   * The forge we believe is behind the remote. `"unknown"` is a reachable but
+   * unrecognized self-hosted host — we probe both GitHub and GitLab once before
+   * Gravatar rather than skipping straight to it.
+   */
   kind: RepoAvatarHostKind;
   /** Normalized lowercase hostname, e.g. "github.com" or "gitlab.example.com". */
   host: string;
@@ -36,7 +41,9 @@ function canonicalHost(host: string): string {
  * prefer. Public github.com / gitlab.com are matched exactly; self-hosted
  * instances are identified by the product name appearing in the hostname
  * (e.g. `gitlab.acme.com`, `github.acme.com`) — the only signal we have
- * client-side. Anything else returns null and we fall back to Gravatar.
+ * client-side. A reachable host whose forge we can't name is returned as
+ * `"unknown"` so the caller can probe both forges before Gravatar. Only an
+ * absent or unparseable remote returns null.
  */
 export function detectRepoAvatarHost(remoteUrl: string | null | undefined): RepoAvatarHost | null {
   const trimmed = remoteUrl?.trim();
@@ -58,7 +65,8 @@ export function detectRepoAvatarHost(remoteUrl: string | null | undefined): Repo
   if (hostContainsLabel(host, "gitlab")) {
     return { kind: "gitlab", host, isPublic: false };
   }
-  return null;
+  // Unrecognized but valid host: let the caller try GitHub and GitLab once each.
+  return { kind: "unknown", host, isPublic: false };
 }
 
 /** Match the product name as a dot-delimited label, not an arbitrary substring. */

@@ -35,22 +35,20 @@ describe("detectRepoAvatarHost", () => {
   });
 
   it.each([
-    ["https://bitbucket.org/owner/repo.git"],
-    ["git@git.acme.example:owner/repo.git"],
-    [""],
-    ["   "],
-    ["not a url"],
-    [null],
-    [undefined],
-  ])("returns null for unrecognized remote %s", (remote) => {
-    expect(detectRepoAvatarHost(remote)).toBeNull();
+    ["https://bitbucket.org/owner/repo.git", "bitbucket.org"],
+    ["git@git.acme.example:owner/repo.git", "git.acme.example"],
+    // A label name elsewhere in the URL (here the path) must not classify it.
+    ["https://example.com/gitlab/repo.git", "example.com"],
+  ])("returns 'unknown' for a reachable but unrecognized host %s", (remote, host) => {
+    expect(detectRepoAvatarHost(remote)).toEqual({ kind: "unknown", host, isPublic: false });
   });
 
-  it("does not match a bare substring outside a host label", () => {
-    // "mygithubmirror.example" contains "github" within a label, so it is a
-    // reasonable github guess; an unrelated host must not match.
-    expect(detectRepoAvatarHost("https://example.com/gitlab/repo.git")).toBeNull();
-  });
+  it.each([[""], ["   "], ["not a url"], [null], [undefined]])(
+    "returns null only for an absent or unparseable remote %s",
+    (remote) => {
+      expect(detectRepoAvatarHost(remote)).toBeNull();
+    },
+  );
 });
 
 const GITHUB_PUBLIC: RepoAvatarHost = { kind: "github", host: "github.com", isPublic: true };
@@ -59,6 +57,7 @@ const GITHUB_ENTERPRISE: RepoAvatarHost = {
   host: "github.acme.example",
   isPublic: false,
 };
+const UNKNOWN_HOST: RepoAvatarHost = { kind: "unknown", host: "git.acme.example", isPublic: false };
 
 describe("buildGitHubAvatarCandidates", () => {
   it("uses the numeric id CDN then the username png for an id+username no-reply email", () => {
@@ -111,6 +110,21 @@ describe("buildGitHubAvatarCandidates", () => {
         email: "-bad-@users.noreply.github.com",
         size: 16,
       }),
+    ).toEqual([]);
+  });
+
+  it("probes an unknown host's GitHub avatar only via a matching no-reply email", () => {
+    expect(
+      buildGitHubAvatarCandidates({
+        host: UNKNOWN_HOST,
+        email: "octocat@users.noreply.git.acme.example",
+        size: 16,
+      }),
+    ).toEqual(["https://git.acme.example/octocat.png?size=32"]);
+    // A real personal email on an unknown host has no GitHub lookup; only the
+    // GitLab probe (handled by the avatar hook) can resolve it.
+    expect(
+      buildGitHubAvatarCandidates({ host: UNKNOWN_HOST, email: "dev@corp.example", size: 16 }),
     ).toEqual([]);
   });
 });

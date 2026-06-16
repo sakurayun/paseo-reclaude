@@ -37,21 +37,9 @@ function initialsFor(name: string): string {
   return trimmed.slice(0, 1).toUpperCase();
 }
 
-/** Forge-specific avatar sources (GitHub direct images / a resolved GitLab avatar). */
-function forgeCandidates(params: {
-  repoHost: RepoAvatarHost | null;
-  email: string;
-  size: number;
-  gitlabUrl: string | null;
-}): string[] {
-  const { repoHost, email, size, gitlabUrl } = params;
-  if (repoHost?.kind === "github") {
-    return buildGitHubAvatarCandidates({ host: repoHost, email, size });
-  }
-  if (repoHost?.kind === "gitlab" && gitlabUrl) {
-    return [gitlabUrl];
-  }
-  return [];
+/** True when the GitHub direct-image sources apply to this forge. */
+function usesGitHubAvatars(repoHost: RepoAvatarHost | null): boolean {
+  return repoHost?.kind === "github" || repoHost?.kind === "unknown";
 }
 
 interface CommitAvatarProps {
@@ -84,20 +72,24 @@ export function CommitAvatar({
 
   const gitlabAvatar = useGitLabAvatarUrl({ host: repoHost, email: trimmedEmail, size });
 
-  // Ordered remote sources: forge-specific first, Gravatar last. While a GitLab
-  // lookup is still in flight we hold off on the whole chain so the forge avatar
-  // wins instead of flashing Gravatar first; the initials circle shows meanwhile.
+  // GitHub direct-image sources are available synchronously (github.com,
+  // enterprise, or an unknown self-hosted host whose no-reply email matches it).
+  const githubCandidates = useMemo<string[]>(() => {
+    if (!trimmedEmail || !usesGitHubAvatars(repoHost) || !repoHost) return [];
+    return buildGitHubAvatarCandidates({ host: repoHost, email: trimmedEmail, size });
+  }, [trimmedEmail, repoHost, size]);
+
+  // Ordered remote sources: forge-specific first (GitHub direct, then the GitLab
+  // probe), Gravatar last. For an unknown host both forges are tried before
+  // Gravatar. We only hold the chain (showing initials) while a GitLab probe is
+  // the *sole* possible forge source, so it wins instead of flashing Gravatar.
   const candidates = useMemo<string[]>(() => {
     if (!trimmedEmail) return [];
-    if (gitlabAvatar.isResolving) return [];
-    const forge = forgeCandidates({
-      repoHost,
-      email: trimmedEmail,
-      size,
-      gitlabUrl: gitlabAvatar.url,
-    });
+    if (gitlabAvatar.isResolving && githubCandidates.length === 0) return [];
+    const forge = [...githubCandidates];
+    if (gitlabAvatar.url) forge.push(gitlabAvatar.url);
     return [...forge, buildGravatarUrl({ email: trimmedEmail, size })];
-  }, [trimmedEmail, repoHost, size, gitlabAvatar.isResolving, gitlabAvatar.url]);
+  }, [trimmedEmail, githubCandidates, gitlabAvatar.isResolving, gitlabAvatar.url, size]);
 
   // Walk the chain on each load error; reset whenever the source list changes.
   const candidatesKey = candidates.join("|");

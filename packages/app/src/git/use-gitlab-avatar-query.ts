@@ -18,13 +18,16 @@ interface GitLabAvatarResult {
 
 /**
  * Resolve a GitLab user's custom avatar from their commit email via GitLab's
- * public `/api/v4/avatar` endpoint. Works for gitlab.com and any self-hosted
+ * public `/api/v4/avatar` endpoint. Runs for known GitLab hosts and for
+ * `"unknown"` self-hosted hosts (probed once — if the host isn't GitLab the
+ * request 404s/errors and resolves to null). Works for gitlab.com and any
  * instance the client can reach (the daemon-co-located desktop/web client
  * reaches private instances; a remote phone gracefully gets null on failure).
  *
  * Gravatar answers are discarded so the caller's own Gravatar→initials fallback
- * stays authoritative. Any failure (unreachable host, 403 on a restricted
- * instance, CORS on web, timeout) resolves to null — never throwing into the UI.
+ * stays authoritative. Any failure (unreachable host, 404 on a non-GitLab host,
+ * 403 on a restricted instance, CORS on web, timeout) resolves to null — never
+ * throwing into the UI.
  */
 export function useGitLabAvatarUrl({
   host,
@@ -32,7 +35,8 @@ export function useGitLabAvatarUrl({
   size,
 }: UseGitLabAvatarUrlOptions): GitLabAvatarResult {
   const normalizedEmail = email?.trim().toLowerCase() ?? "";
-  const enabled = host?.kind === "gitlab" && normalizedEmail.length > 0;
+  const enabled =
+    (host?.kind === "gitlab" || host?.kind === "unknown") && normalizedEmail.length > 0;
 
   const query = useQuery({
     queryKey: ["gitlabAvatar", host?.host ?? "", normalizedEmail, size] as const,
