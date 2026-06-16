@@ -1854,7 +1854,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
           style={inputWrapperChrome.style}
           dataSet={inputWrapperChrome.dataSet}
         >
-          <GlassSurfaceBackdrop />
+          <GlassSurfaceBackdrop style={styles.inputBackdrop} />
           {attachmentSlot}
           {/* Text input */}
           <View style={styles.textInputScrollWrapper}>
@@ -1886,8 +1886,6 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
             />
           </View>
 
-          <MessageInputSecondaryContent>{secondaryContent}</MessageInputSecondaryContent>
-
           {/* Button row */}
           <View style={styles.buttonRow}>
             {/* Toolbar left: attachment button + agent controls */}
@@ -1900,7 +1898,6 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
                 attachmentMenuItems={attachmentMenuItems}
                 addAttachmentLabel={t("composer.input.addAttachment")}
               />
-              {leftContent}
             </View>
 
             {/* Right: voice button, contextual button (realtime/send/cancel) */}
@@ -1935,6 +1932,11 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
               />
             </View>
           </View>
+
+          <MessageInputSecondaryContent>
+            {leftContent}
+            {secondaryContent}
+          </MessageInputSecondaryContent>
         </Animated.View>
 
         <Animated.View style={overlayContainerStyle}>
@@ -2082,6 +2084,10 @@ const styles = StyleSheet.create((theme: Theme) => ({
         shadowRadius: 14,
         elevation: 5,
       },
+  inputBackdrop: {
+    borderRadius: theme.borderRadius["2xl"],
+    overflow: "hidden",
+  },
   textInputScrollWrapper: {
     position: "relative",
   },

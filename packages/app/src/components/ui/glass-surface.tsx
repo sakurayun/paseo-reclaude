@@ -35,7 +35,10 @@ export function GlassSurface({ children, style, ...props }: GlassSurfaceProps) {
   );
 }
 
-export function GlassSurfaceBackdrop() {
+export function GlassSurfaceBackdrop({ style }: { style?: StyleProp<ViewStyle> }) {
+  const blurStyle = useMemo(() => [RNStyleSheet.absoluteFill, style], [style]);
+  const tintStyle = useMemo(() => [styles.nativeTint, style], [style]);
+
   if (isWeb) {
     return null;
   }
@@ -46,9 +49,9 @@ export function GlassSurfaceBackdrop() {
         intensity={80}
         tint="systemMaterial"
         experimentalBlurMethod="dimezisBlurView"
-        style={RNStyleSheet.absoluteFill}
+        style={blurStyle}
       />
-      <View pointerEvents="none" style={styles.nativeTint} />
+      <View pointerEvents="none" style={tintStyle} />
     </>
   );
 }
@@ -61,6 +64,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   nativeSurface: {
     backgroundColor: "transparent",
+    overflow: "hidden",
   },
   nativeTint: {
     ...RNStyleSheet.absoluteFillObject,

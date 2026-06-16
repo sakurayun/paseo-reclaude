@@ -909,8 +909,14 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
 
     const bottomInsetStyle = useMemo(
       () =>
-        bottomContentInset > 0 ? inlineUnistylesStyle({ paddingBottom: bottomContentInset }) : null,
-      [bottomContentInset],
+        bottomContentInset > 0
+          ? inlineUnistylesStyle(
+              streamRenderStrategy.getFlatListInverted()
+                ? { paddingTop: bottomContentInset }
+                : { paddingBottom: bottomContentInset },
+            )
+          : null,
+      [bottomContentInset, streamRenderStrategy],
     );
     const baseListContentContainerStyle = useMemo(
       () => [stylesheet.listContentContainer, bottomInsetStyle],
@@ -1043,7 +1049,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
                   accessibilityLabel={t("agentStream.scrollToBottom")}
                   testID="scroll-to-bottom-button"
                 >
-                  <GlassSurfaceBackdrop />
+                  <GlassSurfaceBackdrop style={stylesheet.scrollToBottomBackdrop} />
                   <ChevronDown size={24} color={stylesheet.scrollToBottomIcon.color} />
                 </Pressable>
               </View>
@@ -1512,6 +1518,10 @@ const stylesheet = StyleSheet.create((theme) => ({
           WebkitBackdropFilter: "blur(20px) saturate(1.5)",
         } as object)
       : {}),
+  },
+  scrollToBottomBackdrop: {
+    borderRadius: theme.borderRadius.full,
+    overflow: "hidden",
   },
   scrollToBottomIcon: {
     color: theme.colors.foreground,

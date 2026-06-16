@@ -241,15 +241,9 @@ function renderContextWindowMeter(
 
 function resolveContextWindowPlacement(
   meter: ReactElement | null,
-  isMobile: boolean,
+  _isMobile: boolean,
 ): { beforeVoiceContent: ReactNode; footerInlineContent: ReactNode } {
-  if (isMobile) {
-    return { beforeVoiceContent: null, footerInlineContent: meter };
-  }
-  return {
-    beforeVoiceContent: <View style={styles.contextWindowMeterSlot}>{meter}</View>,
-    footerInlineContent: null,
-  };
+  return { beforeVoiceContent: null, footerInlineContent: meter };
 }
 
 interface RenderLeftContentArgs {
