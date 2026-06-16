@@ -974,6 +974,7 @@ export const en = {
     },
     actions: {
       addProject: "Add project",
+      openProject: "Open project",
       newWorkspace: "New workspace",
       home: "Home",
       settings: "Settings",

@@ -994,6 +994,7 @@ export const ru: TranslationResources = {
     },
     actions: {
       addProject: "Добавить проект",
+      openProject: "Открыть проект",
       newWorkspace: "Новое рабочее пространство",
       home: "Дом",
       settings: "Настройки",

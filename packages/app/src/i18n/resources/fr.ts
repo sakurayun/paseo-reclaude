@@ -1002,6 +1002,7 @@ export const fr: TranslationResources = {
     },
     actions: {
       addProject: "Ajouter un projet",
+      openProject: "Ouvrir un projet",
       newWorkspace: "Nouvel espace de travail",
       home: "Maison",
       settings: "Paramètres",

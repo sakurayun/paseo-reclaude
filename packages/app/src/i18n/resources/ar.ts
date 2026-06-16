@@ -968,6 +968,7 @@ export const ar: TranslationResources = {
     },
     actions: {
       addProject: "إضافة مشروع",
+      openProject: "فتح مشروع",
       newWorkspace: "مساحة عمل جديدة",
       home: "بيت",
       settings: "إعدادات",

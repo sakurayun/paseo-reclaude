@@ -960,6 +960,7 @@ export const zhCN: TranslationResources = {
     },
     actions: {
       addProject: "添加 project",
+      openProject: "打开项目",
       newWorkspace: "新建工作区",
       home: "首页",
       settings: "设置",
