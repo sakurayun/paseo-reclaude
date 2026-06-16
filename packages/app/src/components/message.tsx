@@ -521,6 +521,10 @@ const userMessageStylesheet = StyleSheet.create((theme) => ({
   timestampText: {
     color: theme.colors.foregroundMuted,
     fontSize: STREAM_METADATA_FONT_SIZE,
+    lineHeight: Math.round(STREAM_METADATA_FONT_SIZE * 1.35),
+    fontVariant: ["tabular-nums"],
+    flexShrink: 0,
+    paddingRight: 1,
   },
 }));
 
@@ -751,7 +755,9 @@ export const UserMessage = memo(function UserMessage({
         </View>
         {hasText ? (
           <View style={trailingRowStyle} pointerEvents={showTrailingRow ? "auto" : "none"}>
-            <Text style={userMessageStylesheet.timestampText}>{formattedTimestamp}</Text>
+            <Text style={userMessageStylesheet.timestampText} numberOfLines={1}>
+              {formattedTimestamp}
+            </Text>
             {capabilities ? (
               <RewindMenu
                 capabilities={capabilities}
