@@ -158,7 +158,7 @@ export const zhCN: TranslationResources = {
   },
   agentControls: {
     provider: {
-      fallback: "Provider",
+      fallback: "提供方",
       select: "选择 Agent Provider",
     },
     thinking: {
@@ -498,7 +498,7 @@ export const zhCN: TranslationResources = {
         openFor: "打开 {{label}} 的菜单",
         copyResumeCommand: "复制恢复命令",
         copyAgentId: "复制 Agent ID",
-        copyFilePath: "Copy file path",
+        copyFilePath: "复制文件路径",
         rename: "重命名",
         closeAbove: "关闭上方标签",
         closeBelow: "关闭下方标签",
@@ -536,7 +536,7 @@ export const zhCN: TranslationResources = {
         copyFailed: "复制失败",
         agentIdCopiedLabel: "Agent ID",
         resumeCommandCopiedLabel: "恢复命令",
-        filePathCopiedLabel: "File path",
+        filePathCopiedLabel: "文件路径",
         resumeIdUnavailable: "恢复 ID 不可用",
         resumeCommandUnavailable: "恢复命令不可用",
         reloadingAgent: "正在重新加载 Agent...",
@@ -1111,7 +1111,7 @@ export const zhCN: TranslationResources = {
       detail: "正在停止本地 daemon。",
     },
     daemon: {
-      title: "Daemon",
+      title: "守护进程",
       status: {
         title: "状态",
         builtInOnly: "这里只显示内置桌面 daemon",
@@ -1651,7 +1651,7 @@ export const zhCN: TranslationResources = {
     groupInfo: "关于 {{title}}",
     sections: {
       general: "通用",
-      daemon: "Daemon",
+      daemon: "守护进程",
       appearance: "外观",
       shortcuts: "快捷键",
       integrations: "集成",
@@ -1962,7 +1962,7 @@ export const zhCN: TranslationResources = {
     host: {
       notFound: "Host 未找到",
       badges: {
-        relay: "Relay",
+        relay: "中继",
         local: "本地",
       },
       connections: {

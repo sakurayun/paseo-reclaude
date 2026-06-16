@@ -120,15 +120,15 @@ export const fr: TranslationResources = {
     },
     attachments: {
       addImage: "Ajouter une image",
-      addFile: "Upload file",
+      addFile: "Téléverser un fichier",
       addIssueOrPr: "Ajouter un problème ouPR",
       dropImagesHere: "Déposez des images ici",
-      dropFilesHere: "Drop files here",
+      dropFilesHere: "Déposez les fichiers ici",
       editQueuedMessage: "Modifier le message en file d'attente",
       sendQueuedMessageNow: "Envoyer le message en file d'attente maintenant",
       openImage: "Ouvrir la pièce jointe de l'image",
       removeImage: "Supprimer l'image jointe",
-      removeFile: "Remove file attachment",
+      removeFile: "Supprimer le fichier joint",
       openGithub: "Ouvrir{{kind}}#{{number}}",
       removeGithub: "Supprimer{{kind}}#{{number}}",
       element: "Élément",
@@ -143,8 +143,8 @@ export const fr: TranslationResources = {
       noHostSelected: "Aucun hôte sélectionné",
       initialPromptRequired: "Une invite initiale est requise",
       alreadyLoading: "Déjà en cours de chargement",
-      uploadFailed: "Failed to upload file",
-      fileTooLarge: "{{fileName}} is too large (max {{size}})",
+      uploadFailed: "Échec du téléversement du fichier",
+      fileTooLarge: "{{fileName}} est trop volumineux (max {{size}})",
     },
     clientCommands: {
       archiveAgent: "Archiver l'agent actuel",
@@ -296,7 +296,7 @@ export const fr: TranslationResources = {
     archiveSheet: {
       hostOffline: "Hosthors ligne",
       runningAgent: "Cet agent est toujours en cours d'exécution. L’archiver arrêtera l’agent.",
-      archive: "Archive",
+      archive: "Archiver",
     },
   },
   message: {
@@ -508,7 +508,7 @@ export const fr: TranslationResources = {
         openFor: "Ouvrir le menu pour{{label}}",
         copyResumeCommand: "Copier la commande de reprise",
         copyAgentId: "Copier l'identifiant de l'agent",
-        copyFilePath: "Copy file path",
+        copyFilePath: "Copier le chemin du fichier",
         rename: "Rebaptiser",
         closeAbove: "Fermer les onglets ci-dessus",
         closeBelow: "Fermer les onglets ci-dessous",
@@ -547,7 +547,7 @@ export const fr: TranslationResources = {
         copyFailed: "Échec de la copie",
         agentIdCopiedLabel: "AgentID",
         resumeCommandCopiedLabel: "reprendre la commande",
-        filePathCopiedLabel: "File path",
+        filePathCopiedLabel: "Chemin du fichier",
         resumeIdUnavailable: "ReprendreIDnon disponible",
         resumeCommandUnavailable: "Commande de reprise non disponible",
         reloadingAgent: "Agent de rechargement...",
@@ -557,7 +557,7 @@ export const fr: TranslationResources = {
       confirmations: {
         close: "Fermer",
         cancel: "Annuler",
-        archive: "Archive",
+        archive: "Archiver",
         closeTerminalTitle: "Fermer le terminal?",
         closeTerminalMessage:
           "Tout processus en cours d’exécution dans ce terminal sera immédiatement arrêté.",
@@ -911,7 +911,7 @@ export const fr: TranslationResources = {
         },
         archiveWarning: {
           title: "Archiver «{{worktreeName}}»?",
-          confirm: "Archive",
+          confirm: "Archiver",
           cancel: "Annuler",
           uncommittedChanges: "Modifications non validées",
           uncommittedChangesWithDiff: "Modifications non validées ({{diffStat}})",
@@ -954,7 +954,7 @@ export const fr: TranslationResources = {
         open: "Ouvrir",
         chooseEditor: "Choisir l'éditeur",
         openIn: "Espace de travail ouvert dans{{target}}",
-        openFileIn: "Open {{fileName}} in {{target}}",
+        openFileIn: "Ouvrir {{fileName}} dans {{target}}",
         failedOpen: "Échec de l'ouverture de l'espace de travail",
       },
       pr: {
@@ -1023,8 +1023,8 @@ export const fr: TranslationResources = {
       actions: {
         menu: "Actions du projet",
         openSettings: "Ouvrir les paramètres du projet",
-        openNewWindow: "Open in new window",
-        openNewWindowFailed: "Couldn't open a new window",
+        openNewWindow: "Ouvrir dans une nouvelle fenêtre",
+        openNewWindowFailed: "Impossible d'ouvrir une nouvelle fenêtre",
         remove: "Supprimer le projet",
         removing: "Suppression...",
       },
@@ -1064,7 +1064,7 @@ export const fr: TranslationResources = {
         copyPath: "Copier le chemin",
         copyBranchName: "Copier le nom de la branche",
         rename: "Renommer l'espace de travail",
-        archive: "Archive",
+        archive: "Archiver",
         archiveWorktree: "Arbre de travail d'archivage",
         hideFromSidebar: "Masquer de la barre latérale",
         archiving: "Archivage...",
@@ -1172,7 +1172,7 @@ export const fr: TranslationResources = {
           "Cela arrêtera immédiatement le démon intégré. Les agents en cours d'exécution et les terminaux connectés au démon intégré seront arrêtés.",
         pauseAndStop: "Pause et arrêt",
         registrationFailed:
-          "Built-in daemon started, but Paseo could not save the localhost connection. Toggle daemon management off and on again, or add localhost manually.",
+          "Le démon intégré a démarré, maisPaseon'a pas pu enregistrer la connexion localhost. Désactivez puis réactivez la gestion du démon, ou ajoutez localhost manuellement.",
         pausedStopFailed:
           "La gestion du démon intégré a été suspendue, maisPaseon'a ​​pas pu arrêter le démon.",
         updateFailed: "Impossible de mettre à jour la gestion des démons intégrés.",
@@ -1210,7 +1210,7 @@ export const fr: TranslationResources = {
         checking: "Vérification des mises à jour de l'application...",
         installing: "Installation de la mise à jour de l'application...",
         upToDate: "L'application est à jour.",
-        upToDateWithLastChecked: "Up to date. Last checked at {{time}}.",
+        upToDateWithLastChecked: "À jour. Dernière vérification à {{time}}.",
         pending: "Nous vous informerons lorsque la mise à jour sera prête.",
         availableWithVersion: "Mise à jour prête:{{version}}",
         available: "Une mise à jour de l'application est prête à être installée.",
@@ -2081,10 +2081,10 @@ export const fr: TranslationResources = {
         },
       },
       agents: {
-        unavailable: "Connect to this host to manage agents",
+        unavailable: "Connectez-vous à cet hôte pour gérer les agents",
       },
       workspaces: {
-        unavailable: "Connect to this host to manage workspaces",
+        unavailable: "Connectez-vous à cet hôte pour gérer les espaces de travail",
         autoArchive: {
           title: "Archiver les espaces de travail dont la PR est fusionnée",
           hint: "Archive automatiquement les espaces de travail Paseo sans modifications en attente une fois leur pull request fusionnée",
@@ -2149,16 +2149,16 @@ export const fr: TranslationResources = {
         dangerZone: "Zone dangereuse",
         remove: {
           title: "Supprimer l'hôte",
-          localTitle: "Remove localhost connection",
+          localTitle: "Supprimer la connexion localhost",
           hint: "Supprime cet hôte et ses connexions enregistrées de cet appareil",
-          localHint: "Removes localhost from this device and stops the built-in daemon",
-          localConfirmTitle: "Remove localhost connection and stop daemon?",
+          localHint: "Supprime localhost de cet appareil et arrête le démon intégré",
+          localConfirmTitle: "Supprimer la connexion localhost et arrêter le démon?",
           confirmMessage: "Supprimer{{name}}? Cela supprimera ses connexions enregistrées.",
           localConfirmMessage:
-            "This will remove the localhost connection, turn off built-in daemon management, and stop the managed daemon. Remote hosts remain connected.",
+            "Cela supprimera la connexion localhost, désactivera la gestion du démon intégré et arrêtera le démon géré. Les hôtes distants restent connectés.",
           errorTitle: "Erreur",
           errorMessage: "Impossible de supprimer l'hôte",
-          localErrorMessage: "Unable to remove localhost connection",
+          localErrorMessage: "Impossible de supprimer la connexion localhost",
         },
       },
       dictation: {
@@ -2177,7 +2177,7 @@ export const fr: TranslationResources = {
       enableProvider: "Activer{{name}}",
       unavailable: "Connectez-vous à cet hôte pour voir les fournisseurs",
       loading: "Chargement...",
-      addErrorTitle: "Unable to add provider",
+      addErrorTitle: "Impossible d'ajouter le fournisseur",
       updateErrorTitle: "Impossible de mettre à jour le fournisseur",
       statuses: {
         disabled: "Désactivé",

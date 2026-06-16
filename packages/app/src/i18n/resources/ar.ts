@@ -119,15 +119,15 @@ export const ar: TranslationResources = {
     },
     attachments: {
       addImage: "أضف صورة",
-      addFile: "Upload file",
+      addFile: "تحميل ملف",
       addIssueOrPr: "أضف مشكلة أو PR",
       dropImagesHere: "إسقاط الصور هنا",
-      dropFilesHere: "Drop files here",
+      dropFilesHere: "أسقط الملفات هنا",
       editQueuedMessage: "تحرير الرسالة في قائمة الانتظار",
       sendQueuedMessageNow: "إرسال رسالة في قائمة الانتظار الآن",
       openImage: "فتح مرفق الصورة",
       removeImage: "إزالة مرفق الصورة",
-      removeFile: "Remove file attachment",
+      removeFile: "إزالة مرفق الملف",
       openGithub: "افتح{{kind}}#{{number}}",
       removeGithub: "إزالة{{kind}}#{{number}}",
       element: "عنصر",
@@ -142,8 +142,8 @@ export const ar: TranslationResources = {
       noHostSelected: "لم يتم تحديد مضيف",
       initialPromptRequired: "مطلوب موجه الأولي",
       alreadyLoading: "جارٍ التحميل بالفعل",
-      uploadFailed: "Failed to upload file",
-      fileTooLarge: "{{fileName}} is too large (max {{size}})",
+      uploadFailed: "فشل في تحميل الملف",
+      fileTooLarge: "{{fileName}} كبير جدًا (الحد الأقصى {{size}})",
     },
     clientCommands: {
       archiveAgent: "أرشفة الوكيل الحالي",
@@ -483,10 +483,10 @@ export const ar: TranslationResources = {
         newAgent: "وكيل جديد",
         setup: "يثبت",
         workspaceSetup: "إعداد Workspace",
-        terminal: "Terminal",
+        terminal: "المحطة الطرفية",
         browser: "المتصفح",
-        agent: "Agent",
-        workspace: "Workspace",
+        agent: "الوكيل",
+        workspace: "مساحة العمل",
         sessions: "الجلسات",
       },
       switcher: {
@@ -498,7 +498,7 @@ export const ar: TranslationResources = {
         openFor: "فتح القائمة لـ{{label}}",
         copyResumeCommand: "نسخ أمر السيرة الذاتية",
         copyAgentId: "نسخ معرف الوكيل",
-        copyFilePath: "Copy file path",
+        copyFilePath: "نسخ مسار الملف",
         rename: "إعادة تسمية",
         closeAbove: "إغلاق علامات التبويب أعلاه",
         closeBelow: "إغلاق علامات التبويب أدناه",
@@ -536,7 +536,7 @@ export const ar: TranslationResources = {
         copyFailed: "فشل النسخ",
         agentIdCopiedLabel: "AgentID",
         resumeCommandCopiedLabel: "أمر الاستئناف",
-        filePathCopiedLabel: "File path",
+        filePathCopiedLabel: "مسار الملف",
         resumeIdUnavailable: "السيرة الذاتية ID غير متوفرة",
         resumeCommandUnavailable: "أمر الاستئناف غير متوفر",
         reloadingAgent: "وكيل إعادة التحميل...",
@@ -920,7 +920,7 @@ export const ar: TranslationResources = {
         open: "يفتح",
         chooseEditor: "اختر المحرر",
         openIn: "افتح مساحة العمل في{{target}}",
-        openFileIn: "Open {{fileName}} in {{target}}",
+        openFileIn: "افتح {{fileName}} في {{target}}",
         failedOpen: "فشل في فتح مساحة العمل",
       },
       pr: {
@@ -989,8 +989,8 @@ export const ar: TranslationResources = {
       actions: {
         menu: "إجراءات المشروع",
         openSettings: "افتح إعدادات المشروع",
-        openNewWindow: "Open in new window",
-        openNewWindowFailed: "Couldn't open a new window",
+        openNewWindow: "فتح في نافذة جديدة",
+        openNewWindowFailed: "تعذّر فتح نافذة جديدة",
         remove: "إزالة المشروع",
         removing: "جارٍ الإزالة...",
       },
@@ -1122,7 +1122,7 @@ export const ar: TranslationResources = {
       detail: "إيقاف البرنامج الخفي المحلي.",
     },
     daemon: {
-      title: "Daemon",
+      title: "البرنامج الخفي",
       status: {
         title: "حالة",
         builtInOnly: "يتم عرض البرنامج الخفي لسطح المكتب المدمج فقط هنا",
@@ -1138,7 +1138,7 @@ export const ar: TranslationResources = {
           "سيؤدي هذا إلى إيقاف البرنامج الخفي المدمج على الفور. سيتم إيقاف تشغيل الوكلاء والمحطات الطرفية المتصلة بالبرنامج الخفي المدمج.",
         pauseAndStop: "وقفة وتوقف",
         registrationFailed:
-          "Built-in daemon started, but Paseo could not save the localhost connection. Toggle daemon management off and on again, or add localhost manually.",
+          "تم بدء تشغيل البرنامج الخفي المدمج، لكن لم يتمكن Paseo من حفظ اتصال localhost. أوقف إدارة البرنامج الخفي ثم أعد تشغيلها، أو أضف localhost يدويًا.",
         pausedStopFailed:
           "تم إيقاف إدارة البرنامج الخفي المضمنة مؤقتًا، لكن لم يتمكن Paseo من إيقاف البرنامج الخفي.",
         updateFailed: "غير قادر على تحديث إدارة البرنامج الخفي المضمنة.",
@@ -1176,7 +1176,7 @@ export const ar: TranslationResources = {
         checking: "جارٍ التحقق من وجود تحديثات للتطبيق...",
         installing: "جارٍ تثبيت تحديث التطبيق...",
         upToDate: "التطبيق محدث.",
-        upToDateWithLastChecked: "Up to date. Last checked at {{time}}.",
+        upToDateWithLastChecked: "محدّث. آخر فحص في {{time}}.",
         pending: "سنخبرك عندما يصبح التحديث جاهزًا.",
         availableWithVersion: "التحديث جاهز:{{version}}",
         available: "تحديث التطبيق جاهز للتثبيت.",
@@ -1432,7 +1432,7 @@ export const ar: TranslationResources = {
       title: "اتصال مباشر",
       helper: "أدخل عنوان خادم Paseo.",
       fields: {
-        host: "Host",
+        host: "المضيف",
         port: "ميناء",
         password: "كلمة المرور",
         optional: "خياري",
@@ -1655,7 +1655,7 @@ export const ar: TranslationResources = {
     loading: "جارٍ تحميل الإعدادات...",
     groups: {
       app: "برنامج",
-      host: "Host",
+      host: "المضيف",
     },
     hostPicker: {
       switchHost: "تبديل المضيف",
@@ -1671,7 +1671,7 @@ export const ar: TranslationResources = {
     groupInfo: "حول{{title}}",
     sections: {
       general: "عام",
-      daemon: "Daemon",
+      daemon: "البرنامج الخفي",
       appearance: "مظهر",
       shortcuts: "الاختصارات",
       integrations: "التكامل",
@@ -1736,11 +1736,11 @@ export const ar: TranslationResources = {
     },
     hostSections: {
       connections: "اتصالات",
-      agents: "Agents",
-      workspaces: "Workspaces",
+      agents: "الوكلاء",
+      workspaces: "مساحات العمل",
       providers: "مقدمي الخدمات",
       terminals: "الطرفيات",
-      host: "Host",
+      host: "المضيف",
     },
     general: {
       title: "عام",
@@ -1801,8 +1801,8 @@ export const ar: TranslationResources = {
       releaseChannel: {
         label: "الافراج عن القناة",
         description: "قم بالتبديل إلى Beta للحصول على التحديثات عاجلاً والمساعدة في تشكيلها",
-        stable: "Stable",
-        beta: "Beta",
+        stable: "مستقر",
+        beta: "تجريبي",
       },
       updates: {
         label: "تحديثات التطبيق",
@@ -2024,10 +2024,10 @@ export const ar: TranslationResources = {
         },
       },
       agents: {
-        unavailable: "Connect to this host to manage agents",
+        unavailable: "اتصل بهذا المضيف لإدارة الوكلاء",
       },
       workspaces: {
-        unavailable: "Connect to this host to manage workspaces",
+        unavailable: "اتصل بهذا المضيف لإدارة مساحات العمل",
         autoArchive: {
           title: "أرشفة مساحات العمل بعد دمج طلب السحب",
           hint: "أرشفة مساحات عمل Paseo الخالية من التغييرات تلقائيًا بعد دمج طلب السحب الخاص بها",
@@ -2089,16 +2089,16 @@ export const ar: TranslationResources = {
         dangerZone: "منطقة الخطر",
         remove: {
           title: "إزالة المضيف",
-          localTitle: "Remove localhost connection",
+          localTitle: "إزالة اتصال localhost",
           hint: "إزالة هذا المضيف واتصالاته المحفوظة من هذا الجهاز",
-          localHint: "Removes localhost from this device and stops the built-in daemon",
-          localConfirmTitle: "Remove localhost connection and stop daemon?",
+          localHint: "إزالة localhost من هذا الجهاز وإيقاف البرنامج الخفي المدمج",
+          localConfirmTitle: "إزالة اتصال localhost وإيقاف البرنامج الخفي؟",
           confirmMessage: "إزالة{{name}}؟ سيؤدي هذا إلى حذف اتصالاته المحفوظة.",
           localConfirmMessage:
-            "This will remove the localhost connection, turn off built-in daemon management, and stop the managed daemon. Remote hosts remain connected.",
+            "سيؤدي هذا إلى إزالة اتصال localhost، وإيقاف إدارة البرنامج الخفي المدمج، وإيقاف البرنامج الخفي المُدار. تبقى المضيفات البعيدة متصلة.",
           errorTitle: "خطأ",
           errorMessage: "غير قادر على إزالة المضيف",
-          localErrorMessage: "Unable to remove localhost connection",
+          localErrorMessage: "غير قادر على إزالة اتصال localhost",
         },
       },
       dictation: {
@@ -2117,7 +2117,7 @@ export const ar: TranslationResources = {
       enableProvider: "تمكين{{name}}",
       unavailable: "اتصل بهذا المضيف لرؤية مقدمي الخدمة",
       loading: "تحميل...",
-      addErrorTitle: "Unable to add provider",
+      addErrorTitle: "غير قادر على إضافة الموفر",
       updateErrorTitle: "غير قادر على تحديث الموفر",
       statuses: {
         disabled: "عاجز",
