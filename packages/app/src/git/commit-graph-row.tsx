@@ -8,6 +8,7 @@ import { useTranslation } from "react-i18next";
 import type { GitLogCommit } from "@getpaseo/protocol/messages";
 import type { Theme } from "@/styles/theme";
 import { MarkdownRenderer } from "@/components/markdown/renderer";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useToast } from "@/contexts/toast-context";
 import { formatTimeAgo } from "@/utils/time";
 import { isNative } from "@/constants/platform";
@@ -239,18 +240,30 @@ function CommitGraphRowInner({
       onPointerEnter={handlePointerEnter}
       onPointerLeave={handlePointerLeave}
     >
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={commit.subject}
-        accessibilityHint={shortHash}
-        accessibilityState={EXPANDABLE_STATE[expanded ? "expanded" : "collapsed"]}
-        onPress={handlePress}
-        style={rowStyle}
-        testID={`commit-row-${shortHash}`}
-      >
-        <ThemedCommitGraphSvg layout={layout} width={graphWidth} uniProps={laneColorsMapping} />
-        <CommitRowSummary commit={commit} badges={badges} timeAgo={timeAgo} shortHash={shortHash} />
-      </Pressable>
+      <Tooltip delayDuration={500} enabledOnDesktop enabledOnMobile={false}>
+        <TooltipTrigger asChild>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={commit.subject}
+            accessibilityHint={shortHash}
+            accessibilityState={EXPANDABLE_STATE[expanded ? "expanded" : "collapsed"]}
+            onPress={handlePress}
+            style={rowStyle}
+            testID={`commit-row-${shortHash}`}
+          >
+            <ThemedCommitGraphSvg layout={layout} width={graphWidth} uniProps={laneColorsMapping} />
+            <CommitRowSummary
+              commit={commit}
+              badges={badges}
+              timeAgo={timeAgo}
+              shortHash={shortHash}
+            />
+          </Pressable>
+        </TooltipTrigger>
+        <TooltipContent side="left" align="start" offset={8}>
+          <CommitTooltipBody commit={commit} />
+        </TooltipContent>
+      </Tooltip>
       {expanded ? (
         <Animated.View
           style={EXPANDED_ROW_STYLE}
@@ -313,6 +326,62 @@ const EXPANDABLE_STATE = {
   expanded: { expanded: true },
   collapsed: { expanded: false },
 } as const;
+
+const COAUTHOR_PATTERN = /^[ \t]*co-authored-by:[ \t]*(.+?)[ \t]*<([^>]+)>[ \t]*$/gim;
+
+/** Extract "Co-authored-by: Name <email>" trailers from the body, deduped by email. */
+function parseCoauthors(body: string): { name: string; email: string }[] {
+  const seen = new Set<string>();
+  const result: { name: string; email: string }[] = [];
+  for (const match of body.matchAll(COAUTHOR_PATTERN)) {
+    const name = match[1]?.trim();
+    const email = match[2]?.trim();
+    if (!name || !email) continue;
+    const key = email.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push({ name, email });
+  }
+  return result;
+}
+
+function CommitTooltipPerson({ name, email }: { name: string; email?: string }) {
+  return (
+    <View style={styles.tooltipPerson}>
+      <CommitAvatar name={name} email={email} size={16} />
+      <Text style={styles.tooltipMeta} numberOfLines={1}>
+        {name}
+        {email ? ` <${email}>` : ""}
+      </Text>
+    </View>
+  );
+}
+
+/**
+ * Hover tooltip body: only the subject, the author and any co-authors (avatar +
+ * email), the short hash, and the timestamp — nothing else.
+ */
+function CommitTooltipBody({ commit }: { commit: GitLogCommit }) {
+  const fullDate = useMemo(() => new Date(commit.authorDate).toLocaleString(), [commit.authorDate]);
+  const coauthors = useMemo(() => parseCoauthors(commit.body), [commit.body]);
+  return (
+    <View style={styles.tooltipBody}>
+      <Text style={styles.tooltipSubject} numberOfLines={2}>
+        {commit.subject}
+      </Text>
+      <CommitTooltipPerson name={commit.authorName} email={commit.authorEmail} />
+      {coauthors.map((coauthor) => (
+        <CommitTooltipPerson
+          key={`${coauthor.name}-${coauthor.email}`}
+          name={coauthor.name}
+          email={coauthor.email}
+        />
+      ))}
+      <Text style={styles.tooltipHash}>{commit.hash.slice(0, 12)}</Text>
+      <Text style={styles.tooltipMeta}>{fullDate}</Text>
+    </View>
+  );
+}
 
 /** Expanded body under a commit row: full metadata plus the changed files. */
 function CommitExpandedDetails({
@@ -561,5 +630,31 @@ const styles = StyleSheet.create((theme) => ({
   },
   badgeTextHead: {
     color: theme.colors.accent,
+  },
+  tooltipBody: {
+    maxWidth: 320,
+    gap: theme.spacing[1],
+    padding: theme.spacing[1],
+  },
+  tooltipSubject: {
+    fontSize: theme.fontSize.sm,
+    fontWeight: theme.fontWeight.medium,
+    color: theme.colors.foreground,
+  },
+  tooltipPerson: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[1],
+  },
+  tooltipMeta: {
+    flexShrink: 1,
+    minWidth: 0,
+    fontSize: theme.fontSize.xs,
+    color: theme.colors.foregroundMuted,
+  },
+  tooltipHash: {
+    fontSize: theme.fontSize.xs,
+    color: theme.colors.foregroundMuted,
+    fontVariant: ["tabular-nums"],
   },
 }));
