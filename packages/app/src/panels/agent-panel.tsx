@@ -1601,6 +1601,7 @@ function ActiveAgentComposer({
         onClientSlashCommand={handleClientSlashCommand}
         footer={composerFooter}
         isCompactLayout={isCompactComposerLayout}
+        enablePromptPresets
       />
     </ReanimatedAnimated.View>
   );

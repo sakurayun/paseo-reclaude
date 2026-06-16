@@ -764,7 +764,7 @@ export const ru: TranslationResources = {
         noTags: "Нет тегов",
       },
       presets: {
-        trigger: "Шаблоны сообщений коммита",
+        trigger: "Шаблоны сообщений",
         empty: "Шаблонов пока нет",
         saveCurrent: "Сохранить текущее сообщение как шаблон",
         add: "Добавить шаблон...",
@@ -1935,6 +1935,7 @@ export const ru: TranslationResources = {
       },
       help: {
         openProject: "Открыть проект",
+        newWorkspace: "Новое рабочее пространство",
         newWorktree: "Новое рабочее дерево",
         archiveWorktree: "Архив рабочего дерева",
         newTab: "Новая вкладка",

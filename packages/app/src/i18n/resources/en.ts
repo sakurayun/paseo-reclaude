@@ -750,7 +750,7 @@ export const en = {
         noTags: "No tags",
       },
       presets: {
-        trigger: "Commit message presets",
+        trigger: "Prompt presets",
         empty: "No presets yet",
         saveCurrent: "Save current message as preset",
         add: "Add preset...",
@@ -1900,6 +1900,7 @@ export const en = {
       },
       help: {
         openProject: "Open project",
+        newWorkspace: "New workspace",
         newWorktree: "New worktree",
         archiveWorktree: "Archive worktree",
         newTab: "New tab",

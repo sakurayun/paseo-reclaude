@@ -32,8 +32,9 @@ const FETCH_WORKSPACES_SORT_KEYS = [
  * `statusEnteredAt`: when the winning bucket changes from a higher-priority
  * mask to a lower-priority bucket, the new entry time is the unmask time
  * (i.e., the moment the higher-priority bucket cleared), not when the
- * underlying agent originally entered the lower-priority bucket. Cleared when
- * the workspace has never had contributing agents.
+ * underlying agent originally entered the lower-priority bucket. A fresh
+ * workspace enters its initial `done` bucket at creation time, even before any
+ * agent or terminal contributes activity.
  */
 interface WorkspaceBucketHistoryEntry {
   bucket: WorkspaceStateBucket;
@@ -205,6 +206,9 @@ export class WorkspaceDirectory {
     const includedWorkspaces = activeRecords.filter(
       (workspace) => !workspaceIds || workspaceIds.has(workspace.workspaceId),
     );
+    const activeRecordsByWorkspaceId = new Map(
+      activeRecords.map((workspace) => [workspace.workspaceId, workspace] as const),
+    );
     const workspaceDescriptors = await Promise.all(
       includedWorkspaces.map((workspace) =>
         this.deps.buildWorkspaceDescriptor({
@@ -253,6 +257,7 @@ export class WorkspaceDirectory {
         contributingAgents,
         terminalEntries,
         previous: this.bucketHistoryByWorkspaceId.get(workspaceId) ?? null,
+        workspaceCreatedAt: activeRecordsByWorkspaceId.get(workspaceId)?.createdAt ?? null,
         nowIso,
       });
       descriptor.statusEnteredAt = result.statusEnteredAt;
@@ -360,8 +365,8 @@ export class WorkspaceDirectory {
   //   - priority unmasking: when the winning bucket transitions (e.g. a
   //     higher-priority bucket cleared), the new entry time is "now";
   //   - same-bucket emits reuse the previous entered-at;
-  //   - empty workspaces that never had contributing agents or terminals get
-  //     `statusEnteredAt: null`.
+  //   - empty workspaces that never had contributing agents or terminals use
+  //     their workspace creation time as their initial `done` entry time.
   //   - when archived agents leave a previously active workspace empty, keep
   //     the previous done timestamp or stamp the transition to done now.
   private resolveStatusEnteredAt(params: {
@@ -370,17 +375,32 @@ export class WorkspaceDirectory {
     contributingAgents: AgentSnapshotPayload[];
     terminalEntries: Array<{ bucket: WorkspaceStateBucket; changedAtIso: string }>;
     previous: WorkspaceBucketHistoryEntry | null;
+    workspaceCreatedAt: string | null;
     nowIso: string;
   }): {
     statusEnteredAt: string | null;
     recordUpdate?: WorkspaceBucketHistoryEntry;
     recordDelete?: true;
   } {
-    const { winningBucket, contributingAgents, terminalEntries, previous, nowIso } = params;
+    const {
+      winningBucket,
+      contributingAgents,
+      terminalEntries,
+      previous,
+      workspaceCreatedAt,
+      nowIso,
+    } = params;
 
     if (contributingAgents.length === 0 && terminalEntries.length === 0) {
       if (!previous) {
-        return { statusEnteredAt: null };
+        if (!workspaceCreatedAt) {
+          return { statusEnteredAt: null };
+        }
+
+        return {
+          statusEnteredAt: workspaceCreatedAt,
+          recordUpdate: { bucket: "done", enteredAt: workspaceCreatedAt },
+        };
       }
 
       const enteredAt = previous.bucket === "done" ? previous.enteredAt : nowIso;

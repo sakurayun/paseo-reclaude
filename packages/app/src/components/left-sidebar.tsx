@@ -72,6 +72,7 @@ import {
   buildSettingsSectionRoute,
   mapPathnameToServer,
 } from "@/utils/host-routes";
+import type { ShortcutKey } from "@/utils/format-shortcut";
 import { SidebarAgentListSkeleton } from "./sidebar-agent-list-skeleton";
 import { SidebarCalloutSlot } from "./sidebar-callout-slot";
 import { SidebarWorkspaceList } from "./sidebar-workspace-list";
@@ -115,6 +116,7 @@ interface SidebarSharedProps {
     active: boolean;
     onPress: () => void;
   }) => ReactElement;
+  newWorkspaceKeys: ShortcutKey[][] | null;
 }
 
 interface SidebarLabels {
@@ -309,6 +311,8 @@ export const LeftSidebar = memo(function LeftSidebar({
     [isCompactLayout, pathname, showMobileAgent],
   );
 
+  const newWorkspaceKeys = useShortcutKeys("new-workspace");
+
   const labels = useMemo(
     (): SidebarLabels => ({
       addProject: t("sidebar.actions.addProject"),
@@ -345,6 +349,7 @@ export const LeftSidebar = memo(function LeftSidebar({
     handleHostSelect,
     renderHostOption,
     labels,
+    newWorkspaceKeys,
   };
 
   if (isCompactLayout) {
@@ -644,6 +649,7 @@ function MobileSidebar({
   handleRefresh,
   handleHostSelect,
   renderHostOption,
+  newWorkspaceKeys,
   handleNewWorkspaceNavigate,
   handleOpenProject,
   handleHome,
@@ -855,6 +861,7 @@ function MobileSidebar({
                 onPress={handleOpenProject}
                 testID="sidebar-global-open-project"
                 variant="compact"
+                shortcutKeys={newWorkspaceKeys}
               />
               <SidebarHeaderRow
                 icon={Clock}
@@ -950,6 +957,7 @@ function DesktopSidebar({
   handleRefresh,
   handleHostSelect,
   renderHostOption,
+  newWorkspaceKeys,
   handleNewWorkspaceNavigate,
   handleOpenProject,
   handleHome,
@@ -1036,6 +1044,7 @@ function DesktopSidebar({
               onPress={handleOpenProject}
               testID="sidebar-global-open-project"
               variant="compact"
+              shortcutKeys={newWorkspaceKeys}
             />
             <SidebarHeaderRow
               icon={Clock}

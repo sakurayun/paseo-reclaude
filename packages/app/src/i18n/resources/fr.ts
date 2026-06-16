@@ -766,7 +766,7 @@ export const fr: TranslationResources = {
         noTags: "Aucune étiquette",
       },
       presets: {
-        trigger: "Messages de commit prédéfinis",
+        trigger: "Messages prédéfinis",
         empty: "Aucun préréglage",
         saveCurrent: "Enregistrer le message actuel comme préréglage",
         add: "Ajouter un préréglage...",
@@ -1949,6 +1949,7 @@ export const fr: TranslationResources = {
       },
       help: {
         openProject: "Projet ouvert",
+        newWorkspace: "Nouvel espace de travail",
         newWorktree: "Nouvel arbre de travail",
         archiveWorktree: "Arbre de travail d'archivage",
         newTab: "Nouvel onglet",

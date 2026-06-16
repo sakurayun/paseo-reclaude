@@ -15,6 +15,7 @@ import { isNative } from "@/constants/platform";
 import type { CommitGraphEdge, CommitGraphRowLayout } from "./commit-graph-layout";
 import { CommitAvatar } from "./commit-avatar";
 import { CommitFilesList } from "./commit-files-list";
+import type { RepoAvatarHost } from "./repo-avatar";
 
 export const COMMIT_ROW_HEIGHT = 44;
 export const GRAPH_LANE_WIDTH = 14;
@@ -194,6 +195,8 @@ interface CommitGraphRowProps {
   expanded: boolean;
   onToggleExpand: (hash: string) => void;
   onOpenFile?: (filePath: string) => void;
+  /** Forge behind the repo, so author avatars can prefer its avatar service. */
+  repoHost?: RepoAvatarHost | null;
 }
 
 function CommitGraphRowInner({
@@ -204,6 +207,7 @@ function CommitGraphRowInner({
   expanded,
   onToggleExpand,
   onOpenFile,
+  repoHost = null,
 }: CommitGraphRowProps) {
   const [isHovered, setIsHovered] = useState(false);
 
@@ -257,11 +261,12 @@ function CommitGraphRowInner({
               badges={badges}
               timeAgo={timeAgo}
               shortHash={shortHash}
+              repoHost={repoHost}
             />
           </Pressable>
         </TooltipTrigger>
         <TooltipContent side="left" align="start" offset={8}>
-          <CommitTooltipBody commit={commit} />
+          <CommitTooltipBody commit={commit} repoHost={repoHost} />
         </TooltipContent>
       </Tooltip>
       {expanded ? (
@@ -293,11 +298,13 @@ function CommitRowSummary({
   badges,
   timeAgo,
   shortHash,
+  repoHost,
 }: {
   commit: GitLogCommit;
   badges: RefBadge[];
   timeAgo: string;
   shortHash: string;
+  repoHost?: RepoAvatarHost | null;
 }) {
   return (
     <View style={styles.details}>
@@ -311,7 +318,7 @@ function CommitRowSummary({
       </View>
       <View style={styles.metaRow}>
         <View style={styles.authorGroup}>
-          <CommitAvatar name={commit.authorName} email={commit.authorEmail} />
+          <CommitAvatar name={commit.authorName} email={commit.authorEmail} repoHost={repoHost} />
           <Text style={styles.metaText} numberOfLines={1}>
             {commit.authorName} · {timeAgo}
           </Text>
@@ -345,10 +352,18 @@ function parseCoauthors(body: string): { name: string; email: string }[] {
   return result;
 }
 
-function CommitTooltipPerson({ name, email }: { name: string; email?: string }) {
+function CommitTooltipPerson({
+  name,
+  email,
+  repoHost,
+}: {
+  name: string;
+  email?: string;
+  repoHost?: RepoAvatarHost | null;
+}) {
   return (
     <View style={styles.tooltipPerson}>
-      <CommitAvatar name={name} email={email} size={16} />
+      <CommitAvatar name={name} email={email} size={16} repoHost={repoHost} />
       <Text style={styles.tooltipMeta} numberOfLines={1}>
         {name}
         {email ? ` <${email}>` : ""}
@@ -361,7 +376,13 @@ function CommitTooltipPerson({ name, email }: { name: string; email?: string }) 
  * Hover tooltip body: only the subject, the author and any co-authors (avatar +
  * email), the short hash, and the timestamp — nothing else.
  */
-function CommitTooltipBody({ commit }: { commit: GitLogCommit }) {
+function CommitTooltipBody({
+  commit,
+  repoHost,
+}: {
+  commit: GitLogCommit;
+  repoHost?: RepoAvatarHost | null;
+}) {
   const fullDate = useMemo(() => new Date(commit.authorDate).toLocaleString(), [commit.authorDate]);
   const coauthors = useMemo(() => parseCoauthors(commit.body), [commit.body]);
   return (
@@ -369,12 +390,17 @@ function CommitTooltipBody({ commit }: { commit: GitLogCommit }) {
       <Text style={styles.tooltipSubject} numberOfLines={2}>
         {commit.subject}
       </Text>
-      <CommitTooltipPerson name={commit.authorName} email={commit.authorEmail} />
+      <CommitTooltipPerson
+        name={commit.authorName}
+        email={commit.authorEmail}
+        repoHost={repoHost}
+      />
       {coauthors.map((coauthor) => (
         <CommitTooltipPerson
           key={`${coauthor.name}-${coauthor.email}`}
           name={coauthor.name}
           email={coauthor.email}
+          repoHost={repoHost}
         />
       ))}
       <Text style={styles.tooltipHash}>{commit.hash.slice(0, 12)}</Text>

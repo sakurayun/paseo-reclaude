@@ -1,7 +1,8 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Image, Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
-import { md5Hex } from "@/utils/md5";
+import { buildGitHubAvatarCandidates, buildGravatarUrl, type RepoAvatarHost } from "./repo-avatar";
+import { useGitLabAvatarUrl } from "./use-gitlab-avatar-query";
 
 export const COMMIT_AVATAR_SIZE = 16;
 
@@ -36,31 +37,77 @@ function initialsFor(name: string): string {
   return trimmed.slice(0, 1).toUpperCase();
 }
 
-/**
- * `d=404` makes Gravatar return an HTTP error for unknown emails instead of a
- * generated placeholder, so the initials fallback shows for them.
- */
-function gravatarUri(email: string, size: number): string {
-  const hash = md5Hex(email.trim().toLowerCase());
-  return `https://cn.gravatar.com/avatar/${hash}?s=${size * 2}&d=404`;
+/** Forge-specific avatar sources (GitHub direct images / a resolved GitLab avatar). */
+function forgeCandidates(params: {
+  repoHost: RepoAvatarHost | null;
+  email: string;
+  size: number;
+  gitlabUrl: string | null;
+}): string[] {
+  const { repoHost, email, size, gitlabUrl } = params;
+  if (repoHost?.kind === "github") {
+    return buildGitHubAvatarCandidates({ host: repoHost, email, size });
+  }
+  if (repoHost?.kind === "gitlab" && gitlabUrl) {
+    return [gitlabUrl];
+  }
+  return [];
 }
 
 interface CommitAvatarProps {
   name: string;
   email?: string;
   size?: number;
+  /**
+   * Detected forge for the surrounding repo. When set, the author avatar
+   * prefers that forge's avatar (GitHub/GitLab) before falling back to
+   * Gravatar. Null/undefined keeps the plain Gravatar→initials behavior.
+   */
+  repoHost?: RepoAvatarHost | null;
 }
 
 /**
- * Author avatar: Gravatar (cn mirror) when the email has one, otherwise a
- * deterministic initials circle — same author always gets the same color,
+ * Author avatar with a forge-aware source chain: the repo's own forge avatar
+ * (GitHub direct image / GitLab custom avatar) first, then Gravatar (cn mirror),
+ * then a deterministic initials circle. Each remote source that fails to load
+ * advances to the next; the same author always gets the same fallback color,
  * keyed by email so name variants still group together.
  */
-export function CommitAvatar({ name, email, size = COMMIT_AVATAR_SIZE }: CommitAvatarProps) {
+export function CommitAvatar({
+  name,
+  email,
+  size = COMMIT_AVATAR_SIZE,
+  repoHost = null,
+}: CommitAvatarProps) {
   const trimmedEmail = email?.trim() ?? "";
   const identity = trimmedEmail || name.trim();
-  const [imageFailed, setImageFailed] = useState(false);
-  const handleImageError = useCallback(() => setImageFailed(true), []);
+
+  const gitlabAvatar = useGitLabAvatarUrl({ host: repoHost, email: trimmedEmail, size });
+
+  // Ordered remote sources: forge-specific first, Gravatar last. While a GitLab
+  // lookup is still in flight we hold off on the whole chain so the forge avatar
+  // wins instead of flashing Gravatar first; the initials circle shows meanwhile.
+  const candidates = useMemo<string[]>(() => {
+    if (!trimmedEmail) return [];
+    if (gitlabAvatar.isResolving) return [];
+    const forge = forgeCandidates({
+      repoHost,
+      email: trimmedEmail,
+      size,
+      gitlabUrl: gitlabAvatar.url,
+    });
+    return [...forge, buildGravatarUrl({ email: trimmedEmail, size })];
+  }, [trimmedEmail, repoHost, size, gitlabAvatar.isResolving, gitlabAvatar.url]);
+
+  // Walk the chain on each load error; reset whenever the source list changes.
+  const candidatesKey = candidates.join("|");
+  const [failedCount, setFailedCount] = useState(0);
+  useEffect(() => {
+    setFailedCount(0);
+  }, [candidatesKey]);
+  const handleImageError = useCallback(() => setFailedCount((count) => count + 1), []);
+
+  const activeUri = candidates[failedCount] ?? null;
 
   const containerStyle = useMemo(
     () => [
@@ -75,10 +122,7 @@ export function CommitAvatar({ name, email, size = COMMIT_AVATAR_SIZE }: CommitA
     [identity, size],
   );
   const textStyle = useMemo(() => [styles.text, { fontSize: Math.round(size * 0.55) }], [size]);
-  const imageSource = useMemo(
-    () => (trimmedEmail ? { uri: gravatarUri(trimmedEmail, size) } : null),
-    [trimmedEmail, size],
-  );
+  const imageSource = useMemo(() => (activeUri ? { uri: activeUri } : null), [activeUri]);
   const imageStyle = useMemo(
     () => [styles.image, { width: size, height: size, borderRadius: size / 2 }],
     [size],
@@ -89,9 +133,9 @@ export function CommitAvatar({ name, email, size = COMMIT_AVATAR_SIZE }: CommitA
       <Text style={textStyle} numberOfLines={1}>
         {initialsFor(name)}
       </Text>
-      {imageSource && !imageFailed ? (
-        // Sits on top of the initials; unknown emails 404 and reveal them.
-        <Image source={imageSource} style={imageStyle} onError={handleImageError} />
+      {imageSource ? (
+        // Sits on top of the initials; a failed/unknown source reveals them.
+        <Image key={activeUri} source={imageSource} style={imageStyle} onError={handleImageError} />
       ) : null}
     </View>
   );

@@ -748,7 +748,7 @@ export const zhCN: TranslationResources = {
         noTags: "没有标记",
       },
       presets: {
-        trigger: "预设提交信息",
+        trigger: "提示词预设",
         empty: "暂无预设",
         saveCurrent: "将当前内容保存为预设",
         add: "添加预设...",
@@ -1870,6 +1870,7 @@ export const zhCN: TranslationResources = {
       },
       help: {
         openProject: "打开项目",
+        newWorkspace: "新建 workspace",
         newWorktree: "新建 worktree",
         archiveWorktree: "归档 worktree",
         newTab: "新建标签",

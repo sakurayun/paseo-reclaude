@@ -571,7 +571,6 @@ function SidebarContent({
           <SourceControlPane
             serverId={serverId}
             cwd={workspaceRoot}
-            workspaceId={workspaceId}
             enabled={isOpen}
             onOpenFile={onOpenFile}
             onOpenDiffFile={onOpenDiffFile}

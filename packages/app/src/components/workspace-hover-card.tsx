@@ -12,7 +12,14 @@ import { Dimensions, Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
 import { FadeIn, FadeOut } from "react-native-reanimated";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
-import { CircleCheck, CircleDot, CircleX, ExternalLink, GitBranch } from "lucide-react-native";
+import {
+  CircleCheck,
+  CircleDot,
+  CircleX,
+  ExternalLink,
+  Folder,
+  GitBranch,
+} from "lucide-react-native";
 import { GitHubIcon } from "@/components/icons/github-icon";
 import type { Theme } from "@/styles/theme";
 import { DiffStat } from "@/components/diff-stat";
@@ -22,6 +29,7 @@ import { useBottomSheetModalInternal } from "@gorhom/bottom-sheet";
 import type { SidebarWorkspaceEntry } from "@/hooks/use-sidebar-workspaces-list";
 import type { PrHint } from "@/git/use-pr-status-query";
 import { openExternalUrl } from "@/utils/open-external-url";
+import { shortenPath } from "@/utils/shorten-path";
 import { PrBadge } from "@/components/sidebar-workspace-list";
 import { useHoverSafeZone } from "@/hooks/use-hover-safe-zone";
 import { useIsCompactFormFactor } from "@/constants/layout";
@@ -113,8 +121,6 @@ function WorkspaceHoverCardDesktop({
   const graceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const triggerHoveredRef = useRef(false);
 
-  const hasContent = prHint !== null || !!workspace.diffStat;
-
   const clearGraceTimer = useCallback(() => {
     if (graceTimerRef.current) {
       clearTimeout(graceTimerRef.current);
@@ -133,10 +139,10 @@ function WorkspaceHoverCardDesktop({
   const handleTriggerEnter = useCallback(() => {
     triggerHoveredRef.current = true;
     clearGraceTimer();
-    if (!isDragging && hasContent) {
+    if (!isDragging) {
       setOpen(true);
     }
-  }, [clearGraceTimer, isDragging, hasContent]);
+  }, [clearGraceTimer, isDragging]);
 
   const handleTriggerLeave = useCallback(() => {
     triggerHoveredRef.current = false;
@@ -162,19 +168,6 @@ function WorkspaceHoverCardDesktop({
     }
   }, [isDragging, clearGraceTimer]);
 
-  // When content becomes available while trigger is already hovered, open the card.
-  useEffect(() => {
-    if (!hasContent) {
-      clearGraceTimer();
-      setOpen(false);
-      return;
-    }
-    if (isDragging) return;
-    if (triggerHoveredRef.current) {
-      setOpen(true);
-    }
-  }, [clearGraceTimer, hasContent, isDragging]);
-
   // Cleanup on unmount
   useEffect(() => {
     return () => {
@@ -190,7 +183,7 @@ function WorkspaceHoverCardDesktop({
       onPointerLeave={handleTriggerLeave}
     >
       {children}
-      {open && hasContent ? (
+      {open ? (
         <WorkspaceHoverCardContent
           workspace={workspace}
           prHint={prHint}
@@ -214,6 +207,7 @@ function WorkspaceHoverCardContent({
   contentRef: React.RefObject<View | null>;
 }): ReactElement | null {
   const { t } = useTranslation();
+  const cwdDisplay = shortenPath(workspace.workspaceDirectory);
   const bottomSheetInternal = useBottomSheetModalInternal(true);
   const [triggerRect, setTriggerRect] = useState<Rect | null>(null);
   const [contentSize, setContentSize] = useState<{ width: number; height: number } | null>(null);
@@ -286,15 +280,23 @@ function WorkspaceHoverCardContent({
               {workspace.name}
             </Text>
           </View>
-          {workspace.currentBranch && workspace.currentBranch !== workspace.name ? (
-            <View style={styles.cardBranchRow}>
+          {workspace.currentBranch ? (
+            <View style={styles.cardInfoRow}>
               <ThemedGitBranch size={12} uniProps={foregroundMutedColorMapping} />
               <Text
-                style={styles.cardBranchText}
+                style={styles.cardInfoText}
                 numberOfLines={1}
                 testID="hover-card-workspace-branch"
               >
                 {workspace.currentBranch}
+              </Text>
+            </View>
+          ) : null}
+          {cwdDisplay ? (
+            <View style={styles.cardInfoRow}>
+              <ThemedFolder size={12} uniProps={foregroundMutedColorMapping} />
+              <Text style={styles.cardInfoText} numberOfLines={1} testID="hover-card-workspace-cwd">
+                {cwdDisplay}
               </Text>
             </View>
           ) : null}
@@ -322,6 +324,7 @@ function WorkspaceHoverCardContent({
 }
 
 const ThemedGitBranch = withUnistyles(GitBranch);
+const ThemedFolder = withUnistyles(Folder);
 const ThemedExternalLink = withUnistyles(ExternalLink);
 const ThemedGitHubIcon = withUnistyles(GitHubIcon);
 const ThemedCircleCheck = withUnistyles(CircleCheck);
@@ -484,14 +487,14 @@ const styles = StyleSheet.create((theme) => ({
     paddingHorizontal: theme.spacing[3],
     paddingBottom: theme.spacing[2],
   },
-  cardBranchRow: {
+  cardInfoRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: theme.spacing[1.5],
     paddingHorizontal: theme.spacing[3],
     paddingBottom: theme.spacing[2],
   },
-  cardBranchText: {
+  cardInfoText: {
     flex: 1,
     minWidth: 0,
     color: theme.colors.foregroundMuted,

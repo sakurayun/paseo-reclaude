@@ -30,10 +30,10 @@ import { useToast } from "@/contexts/toast-context";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { shortenPath } from "@/utils/shorten-path";
 import { useCheckoutStatusQuery } from "./use-status-query";
+import { detectRepoAvatarHost } from "./repo-avatar";
 import { useCheckoutGitActionsStore } from "./actions-store";
 import { useGitLogQuery } from "./use-git-log-query";
 import { RepoActionsMenu } from "./repo-actions-menu";
-import { CommitPresetsMenu } from "./commit-presets-menu";
 import { layoutCommitGraph, type CommitGraphRowLayout } from "./commit-graph-layout";
 import { CommitGraphRow, COMMIT_ROW_HEIGHT } from "./commit-graph-row";
 import {
@@ -66,8 +66,6 @@ const placeholderColorMapping = (theme: Theme) => ({
 interface SourceControlPaneProps {
   serverId: string;
   cwd: string;
-  /** Explicit workspace identity for tab lookups (presets → composer). */
-  workspaceId?: string | null;
   enabled: boolean;
   onOpenFile?: (filePath: string) => void;
   /** Open a single-file diff preview tab for a changed file. */
@@ -82,7 +80,6 @@ interface CommitListItem {
 export function SourceControlPane({
   serverId,
   cwd,
-  workspaceId,
   enabled,
   onOpenFile,
   onOpenDiffFile,
@@ -118,7 +115,6 @@ export function SourceControlPane({
     <SourceControlPaneContent
       serverId={serverId}
       cwd={cwd}
-      workspaceId={workspaceId}
       enabled={enabled}
       onOpenFile={onOpenFile}
       onOpenDiffFile={onOpenDiffFile}
@@ -129,7 +125,6 @@ export function SourceControlPane({
 function SourceControlPaneContent({
   serverId,
   cwd,
-  workspaceId,
   enabled,
   onOpenFile,
   onOpenDiffFile,
@@ -137,6 +132,10 @@ function SourceControlPaneContent({
   const { t } = useTranslation();
   const { status } = useCheckoutStatusQuery({ serverId, cwd });
   const log = useGitLogQuery({ serverId, cwd, enabled });
+
+  // Forge behind this repo, so author avatars can prefer its avatar service
+  // (GitHub/GitLab, public or self-hosted) before falling back to Gravatar.
+  const repoHost = useMemo(() => detectRepoAvatarHost(status?.remoteUrl), [status?.remoteUrl]);
 
   const items = useMemo<CommitListItem[]>(() => {
     const layouts = layoutCommitGraph(log.commits);
@@ -176,6 +175,7 @@ function SourceControlPaneContent({
           expanded={expandedHash === item.commit.hash}
           onToggleExpand={handleToggleExpand}
           onOpenFile={onOpenFile}
+          repoHost={repoHost}
         />
       );
       if (!animateIn) {
@@ -191,7 +191,7 @@ function SourceControlPaneContent({
         </Animated.View>
       );
     },
-    [serverId, cwd, expandedHash, handleToggleExpand, onOpenFile],
+    [serverId, cwd, expandedHash, handleToggleExpand, onOpenFile, repoHost],
   );
 
   const keyExtractor = useCallback((item: CommitListItem) => item.commit.hash, []);
@@ -253,7 +253,6 @@ function SourceControlPaneContent({
           <ChangesSection
             serverId={serverId}
             cwd={cwd}
-            workspaceId={workspaceId}
             isDirty={status.isDirty}
             onOpenFile={onOpenFile}
             onOpenDiffFile={onOpenDiffFile}
@@ -398,14 +397,12 @@ function SourceControlHeader({ serverId, cwd }: SourceControlHeaderProps) {
 function ChangesSection({
   serverId,
   cwd,
-  workspaceId,
   isDirty,
   onOpenFile,
   onOpenDiffFile,
 }: {
   serverId: string;
   cwd: string;
-  workspaceId?: string | null;
   isDirty: boolean;
   onOpenFile?: (filePath: string) => void;
   onOpenDiffFile?: (filePath: string) => void;
@@ -547,14 +544,6 @@ function ChangesSection({
               {t("workspace.sourceControl.changes.clean")}
             </Text>
           ) : null}
-          <View style={styles.presetsSlot}>
-            <CommitPresetsMenu
-              serverId={serverId}
-              cwd={cwd}
-              workspaceId={workspaceId}
-              message={message}
-            />
-          </View>
         </View>
       </View>
     </View>
@@ -1204,9 +1193,6 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.xs,
     color: theme.colors.foregroundMuted,
     marginLeft: theme.spacing[1],
-  },
-  presetsSlot: {
-    marginLeft: "auto",
   },
   collapsibleHeader: {
     flexDirection: "row",

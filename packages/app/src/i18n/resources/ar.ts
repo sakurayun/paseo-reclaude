@@ -752,7 +752,7 @@ export const ar: TranslationResources = {
         noTags: "لا توجد وسوم",
       },
       presets: {
-        trigger: "قوالب رسائل الإيداع",
+        trigger: "الرسائل المعدة مسبقًا",
         empty: "لا توجد قوالب بعد",
         saveCurrent: "حفظ الرسالة الحالية كقالب",
         add: "إضافة قالب...",
@@ -1894,6 +1894,7 @@ export const ar: TranslationResources = {
       },
       help: {
         openProject: "مشروع مفتوح",
+        newWorkspace: "مساحة عمل جديدة",
         newWorktree: "شجرة عمل جديدة",
         archiveWorktree: "أرشفة شجرة العمل",
         newTab: "علامة تبويب جديدة",

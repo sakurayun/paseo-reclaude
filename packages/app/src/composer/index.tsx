@@ -118,6 +118,7 @@ import { useGithubSearchQuery } from "@/git/use-github-search-query";
 import { useCheckoutStatusQuery } from "@/git/use-status-query";
 import { useComposerGithubAutoAttach } from "./github/auto-attach";
 import { resolveClientSlashCommand, type ClientSlashCommand } from "@/client-slash-commands";
+import { ComposerPresetsMenu } from "@/composer/prompt-presets-menu";
 
 type QueuedMessage = QueuedComposerMessage;
 
@@ -793,6 +794,8 @@ interface ComposerProps {
   externalKeyboardShift?: boolean;
   /** Optional panel/container layout breakpoint. Defaults to the screen breakpoint. */
   isCompactLayout?: boolean;
+  /** Shows the prompt-presets menu at the input's bottom-right (chat composers). */
+  enablePromptPresets?: boolean;
 }
 
 const MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024;
@@ -998,6 +1001,7 @@ export function Composer({
   footer,
   externalKeyboardShift,
   isCompactLayout: isCompactLayoutOverride,
+  enablePromptPresets = false,
 }: ComposerProps) {
   const { t } = useTranslation();
   const buttonIconSize = resolveComposerButtonIconSize();
@@ -1202,6 +1206,17 @@ export function Composer({
   useEffect(() => {
     onFocusInput?.(focusInput);
   }, [focusInput, onFocusInput]);
+
+  // Fill the composer with a picked preset — appended below any existing draft
+  // text (mirrors the legacy composer-insert behavior), never sent.
+  const insertPromptPreset = useCallback(
+    (text: string) => {
+      const next = userInput.trim() ? `${userInput}\n${text}` : text;
+      setUserInput(next);
+      focusInput();
+    },
+    [focusInput, setUserInput, userInput],
+  );
 
   const submitMessage = useCallback(
     async (text: string, submitAttachments: ComposerAttachment[]) => {
@@ -1659,26 +1674,38 @@ export function Composer({
     ],
   );
 
+  const promptPresetsMenu = useMemo(
+    () =>
+      enablePromptPresets ? (
+        <ComposerPresetsMenu currentText={userInput} onPick={insertPromptPreset} />
+      ) : null,
+    [enablePromptPresets, insertPromptPreset, userInput],
+  );
+
   const rightContent = useMemo(
     () => (
-      <ComposerRightControlsSlot
-        isVoiceModeForAgent={isVoiceModeForAgent}
-        hasAgent={hasAgent}
-        isAgentRunning={isAgentRunning}
-        hasSendableContent={hasSendableContent}
-        isProcessing={isProcessing}
-        isCompact={isCompactLayout}
-        buttonIconSize={buttonIconSize}
-        handleToggleRealtimeVoice={handleToggleRealtimeVoice}
-        isConnected={isConnected}
-        isVoiceSwitching={isVoiceSwitching}
-        realtimeVoiceButtonStyle={realtimeVoiceButtonStyle}
-        voiceToggleKeys={voiceToggleKeys}
-        t={t}
-        cancelButton={cancelButton}
-      />
+      <>
+        {promptPresetsMenu}
+        <ComposerRightControlsSlot
+          isVoiceModeForAgent={isVoiceModeForAgent}
+          hasAgent={hasAgent}
+          isAgentRunning={isAgentRunning}
+          hasSendableContent={hasSendableContent}
+          isProcessing={isProcessing}
+          isCompact={isCompactLayout}
+          buttonIconSize={buttonIconSize}
+          handleToggleRealtimeVoice={handleToggleRealtimeVoice}
+          isConnected={isConnected}
+          isVoiceSwitching={isVoiceSwitching}
+          realtimeVoiceButtonStyle={realtimeVoiceButtonStyle}
+          voiceToggleKeys={voiceToggleKeys}
+          t={t}
+          cancelButton={cancelButton}
+        />
+      </>
     ),
     [
+      promptPresetsMenu,
       buttonIconSize,
       cancelButton,
       handleToggleRealtimeVoice,

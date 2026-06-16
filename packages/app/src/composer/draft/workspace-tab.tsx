@@ -927,6 +927,7 @@ export function WorkspaceDraftAgentTab({
             agentControls={composerAgentControls}
             footer={composerFooter}
             isCompactLayout={isCompactComposerLayout}
+            enablePromptPresets
           />
         </ReanimatedAnimated.View>
       </View>

@@ -758,7 +758,7 @@ export const es: TranslationResources = {
         noTags: "Sin etiquetas",
       },
       presets: {
-        trigger: "Mensajes de confirmación predefinidos",
+        trigger: "Mensajes predefinidos",
         empty: "Aún no hay predefinidos",
         saveCurrent: "Guardar el mensaje actual como predefinido",
         add: "Añadir predefinido...",
@@ -1936,6 +1936,7 @@ export const es: TranslationResources = {
       },
       help: {
         openProject: "Abrir proyecto",
+        newWorkspace: "Nuevo espacio de trabajo",
         newWorktree: "Nuevo árbol de trabajo",
         archiveWorktree: "Árbol de trabajo de archivo",
         newTab: "Nueva pestaña",

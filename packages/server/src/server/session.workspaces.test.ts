@@ -2894,6 +2894,8 @@ test("archiving the last workspace emits a remove carrying the now-empty project
 
 test("create paseo worktree request returns a registered workspace descriptor", async () => {
   const emitted: SessionOutboundMessage[] = [];
+  const createdAt = "2026-05-12T12:00:00.000Z";
+  vi.setSystemTime(new Date(createdAt));
   const tempDir = realpathSync(mkdtempSync(path.join(tmpdir(), "session-worktree-test-")));
   const repoDir = path.join(tempDir, "repo");
   const paseoHome = path.join(tempDir, "paseo-home");
@@ -2981,6 +2983,7 @@ test("create paseo worktree request returns a registered workspace descriptor", 
       requestId: "req-worktree",
     });
   } finally {
+    vi.useRealTimers();
     rmSync(tempDir, { recursive: true, force: true });
   }
 
@@ -2993,6 +2996,7 @@ test("create paseo worktree request returns a registered workspace descriptor", 
     workspaceKind: "worktree",
     name: "worktree-123",
     status: "done",
+    statusEnteredAt: createdAt,
   });
   expect(response?.payload.workspace?.id).toMatch(/^wks_[0-9a-f]{16}$/);
   expect(response?.payload.workspace?.workspaceDirectory).toContain(path.join("worktree-123"));
@@ -4365,7 +4369,7 @@ test("listWorkspaceDescriptorsSnapshot keeps git workspaces on the baseline desc
     name: "main",
     archivingAt: null,
     status: "done",
-    statusEnteredAt: null,
+    statusEnteredAt: workspace.createdAt,
     activityAt: null,
     diffStat: null,
   } as const;
@@ -4424,14 +4428,14 @@ test("buildWorkspaceDescriptorMap computes statusEnteredAt from runtime agent fi
       return descriptor!;
     });
 
-  // 1. Empty workspace — no agents contribute. statusEnteredAt must be null
-  // and the workspace status is "done".
+  // 1. Empty workspace — no agents contribute. The workspace entered its
+  // initial "done" bucket when it was created.
   {
     const { session, workspace } = setupSession();
     session.listAgentPayloads = async () => [];
     const descriptor = await buildDescriptor(session, workspace.workspaceId);
     expect(descriptor.status).toBe("done");
-    expect(descriptor.statusEnteredAt).toBeNull();
+    expect(descriptor.statusEnteredAt).toBe(workspace.createdAt);
   }
 
   // Agents own the workspace by id; cwd is incidental.

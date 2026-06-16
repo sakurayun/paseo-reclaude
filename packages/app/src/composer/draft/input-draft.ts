@@ -22,7 +22,6 @@ import {
   type ProviderSelectionState,
 } from "@/provider-selection/provider-selection";
 import { useDraftStore } from "@/stores/draft-store";
-import { subscribeComposerInsert } from "@/composer/draft/composer-insert-bus";
 
 type AttachmentUpdater =
   | UserComposerAttachment[]
@@ -191,17 +190,6 @@ export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDr
       },
     });
   }, [attachments, draftKey, text]);
-
-  // External text injection (e.g. commit message presets targeting the
-  // focused agent tab). Appends below any existing draft text.
-  useEffect(() => {
-    return subscribeComposerInsert((command) => {
-      if (command.draftKey !== draftKey) {
-        return;
-      }
-      setText((previous) => (previous.trim() ? `${previous}\n${command.text}` : command.text));
-    });
-  }, [draftKey]);
 
   const lockedWorkingDir = composerOptions?.lockedWorkingDir?.trim() ?? "";
   useEffect(() => {

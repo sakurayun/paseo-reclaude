@@ -7217,7 +7217,7 @@ export class Session {
       title: result.workspace.title,
       archivingAt: null,
       status: "done",
-      statusEnteredAt: null,
+      statusEnteredAt: result.workspace.createdAt,
       activityAt: null,
       diffStat: { additions: 0, deletions: 0 },
       scripts: [],
