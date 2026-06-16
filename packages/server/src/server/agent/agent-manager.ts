@@ -785,35 +785,37 @@ export class AgentManager {
   }
 
   async listProviderAvailability(): Promise<ProviderAvailability[]> {
-    const checks = Array.from(this.clients.keys()).map(async (provider) => {
-      const client = this.clients.get(provider);
-      if (!client) {
-        return {
-          provider,
-          available: false,
-          error: `No client registered for provider '${provider}'`,
-        } satisfies ProviderAvailability;
-      }
+    return Promise.all(
+      Array.from(this.clients.keys()).map((provider) => this.getProviderAvailability(provider)),
+    );
+  }
 
-      try {
-        const available = await client.isAvailable();
-        return {
-          provider,
-          available,
-          error: null,
-        } satisfies ProviderAvailability;
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        this.logger.warn({ err: error, provider }, "Failed to check provider availability");
-        return {
-          provider,
-          available: false,
-          error: message,
-        } satisfies ProviderAvailability;
-      }
-    });
+  async getProviderAvailability(provider: AgentProvider): Promise<ProviderAvailability> {
+    const client = this.clients.get(provider);
+    if (!client) {
+      return {
+        provider,
+        available: false,
+        error: `No client registered for provider '${provider}'`,
+      };
+    }
 
-    return Promise.all(checks);
+    try {
+      const available = await client.isAvailable();
+      return {
+        provider,
+        available,
+        error: null,
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.warn({ err: error, provider }, "Failed to check provider availability");
+      return {
+        provider,
+        available: false,
+        error: message,
+      };
+    }
   }
 
   async listDraftCommands(config: AgentSessionConfig): Promise<AgentSlashCommand[]> {
@@ -983,6 +985,7 @@ export class AgentManager {
     provider: AgentProvider;
     providerHandleId: string;
     cwd: string;
+    workspaceId: string;
     labels?: Record<string, string>;
   }): Promise<ManagedAgent> {
     const resolvedAgentId = validateAgentId(this.idFactory(), "importProviderSession");
@@ -1014,6 +1017,7 @@ export class AgentManager {
 
     return this.registerSession(imported.session, importedConfig, resolvedAgentId, {
       labels: input.labels,
+      workspaceId: input.workspaceId,
       timelineRows,
       timelineNextSeq: timelineRows.length + 1,
       persistence: imported.persistence,

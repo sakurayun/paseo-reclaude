@@ -13,7 +13,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/contexts/toast-context";
-import { useSessionStore } from "@/stores/session-store";
 import { useWorkspaceTabsStore } from "@/stores/workspace-tabs-store";
 import {
   buildWorkspaceTabPersistenceKey,
@@ -21,7 +20,6 @@ import {
 } from "@/stores/workspace-layout-store";
 import { buildDraftStoreKey, generateDraftId } from "@/stores/draft-keys";
 import { useDraftStore } from "@/stores/draft-store";
-import { selectResolveWorkspaceIdByCwd } from "@/stores/session-store-hooks/selectors";
 import { sendComposerInsert } from "@/composer/draft/composer-insert-bus";
 import { useCommitMessagePresetsStore } from "./commit-message-presets-store";
 
@@ -116,20 +114,18 @@ interface CommitPresetsMenuProps {
   message: string;
 }
 
-/** Candidate workspace persistence keys: explicit id first, then directory match, then raw cwd. */
+/** Candidate workspace persistence keys: explicit id first, then raw cwd. */
 function resolveWorkspacePersistenceKeys(input: {
   serverId: string;
   cwd: string;
   workspaceId?: string | null;
 }): string[] {
-  const resolvedByDirectory = selectResolveWorkspaceIdByCwd(
-    useSessionStore.getState(),
-    input.serverId,
-    input.cwd,
-  );
+  // Workspace ownership is keyed by id now (directory matching was removed
+  // upstream); fall back to the raw cwd only so older directory-keyed drafts
+  // still resolve.
   const workspaceIds = [
     ...new Set(
-      [input.workspaceId, resolvedByDirectory, input.cwd].filter(
+      [input.workspaceId, input.cwd].filter(
         (value): value is string => typeof value === "string" && value.trim().length > 0,
       ),
     ),

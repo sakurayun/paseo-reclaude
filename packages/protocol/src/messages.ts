@@ -1854,23 +1854,35 @@ export const ArchiveWorkspaceRequestSchema = z.object({
 });
 
 // Create a new workspace record. Unlike open_project, this never deduplicates by
-// directory: it always produces a fresh workspace. The backing directory is a
-// choice — an existing local checkout/directory, or a newly created worktree.
+// directory: it always produces a fresh workspace. The source discriminates
+// between an existing local directory and a newly created paseo worktree.
 export const WorkspaceCreateRequestSchema = z.object({
   type: z.literal("workspace.create.request"),
-  backing: z.enum(["local", "worktree"]),
-  // local: path of the existing checkout/directory to back the workspace.
-  cwd: z.string().optional(),
-  // worktree: the project whose repo the worktree is cut from. local may also
-  // pass projectId, but the directory governs placement there.
-  projectId: z.string().optional(),
-  // worktree only: branch is the new/checked-out branch (slug); baseBranch is
-  // the branch to cut from.
-  branch: z.string().optional(),
-  baseBranch: z.string().optional(),
+  requestId: z.string(),
   // Optional user-set title applied to the created workspace.
   title: z.string().optional(),
-  requestId: z.string(),
+  // Optional prompt context for workspace-level name/branch generation.
+  firstAgentContext: FirstAgentContextSchema.optional(),
+  source: z.discriminatedUnion("kind", [
+    z.object({
+      kind: z.literal("directory"),
+      // Path of the existing checkout/directory to back the workspace.
+      path: z.string(),
+      projectId: z.string().optional(),
+    }),
+    z.object({
+      kind: z.literal("worktree"),
+      // The project whose repo the worktree is cut from.
+      cwd: z.string().optional(),
+      projectId: z.string().optional(),
+      action: z.enum(["branch-off", "checkout"]).optional(),
+      // Target branch name for checkout, or new branch name for branch-off.
+      refName: z.string().min(1).optional(),
+      baseBranch: z.string().optional(),
+      githubPrNumber: z.number().int().positive().optional(),
+      worktreeSlug: z.string().optional(),
+    }),
+  ]),
 });
 
 export const WorkspaceClearAttentionRequestSchema = z.object({

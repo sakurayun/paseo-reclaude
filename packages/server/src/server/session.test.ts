@@ -2717,6 +2717,7 @@ describe("session workspace descriptors", () => {
       cwd: "/repo/app",
       kind: "local_checkout" as const,
       displayName: "app",
+      branch: "app",
       archivedAt: null,
     };
     const project = {
@@ -2787,6 +2788,7 @@ describe("session workspace descriptors", () => {
       cwd: "/repo/local",
       kind: "local_checkout" as const,
       displayName: "local",
+      branch: "local",
       archivedAt: null,
     };
     const project = {

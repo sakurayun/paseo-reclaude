@@ -62,6 +62,7 @@ export interface ListImportableProviderSessionsResult {
 
 export interface ImportProviderSessionInput {
   request: NormalizedImportAgentRequest;
+  workspaceId: string;
   agentManager: AgentManager;
   agentStorage: AgentStorage;
   workspaceGitService?: Pick<WorkspaceGitService, "resolveRepoRoot">;
@@ -163,6 +164,7 @@ export async function importProviderSession(
     provider,
     providerHandleId,
     cwd,
+    workspaceId: input.workspaceId,
     labels,
   });
   await unarchiveAgentState(input.agentStorage, input.agentManager, snapshot.id);

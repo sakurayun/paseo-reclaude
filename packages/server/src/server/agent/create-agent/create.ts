@@ -54,6 +54,10 @@ interface CreateAgentCommandDependencies {
   providerSnapshotManager: ProviderSnapshotManager;
   daemonConfig?: StructuredGenerationDaemonConfig | null;
   createPaseoWorktree?: CreatePaseoWorktreeWorkflowFn;
+  // Mints a fresh workspace for a cwd and returns its id. Used when an agent is
+  // created with no parent and no worktree: it owns a brand-new workspace rather
+  // than being attributed to an existing same-cwd workspace by path.
+  ensureWorkspaceForCreate?: (cwd: string) => Promise<string>;
 }
 
 export interface CreateAgentFromSessionInput {
@@ -258,8 +262,11 @@ async function resolveMcpCreateAgent(
   // workspace. When a new worktree is created the child lives in that fresh
   // workspace, so it is stamped with the new worktree's workspaceId instead
   // (mirrors the session path) — keeping the agent discoverable by
-  // workspaceId-scoped archive.
-  const workspaceId = setupContinuation ? createdWorkspaceId : parentAgent?.workspaceId;
+  // workspaceId-scoped archive. With neither a parent nor a worktree, the agent
+  // mints its own workspace; ownership is never resolved from cwd.
+  const workspaceId = setupContinuation
+    ? createdWorkspaceId
+    : (parentAgent?.workspaceId ?? (await ensureWorkspaceForMcpCreate(dependencies, resolvedCwd)));
 
   const {
     modeId: resolvedMode,
@@ -311,6 +318,16 @@ async function resolveMcpCreateAgent(
     background: input.background,
     promptFailure: "log",
   };
+}
+
+async function ensureWorkspaceForMcpCreate(
+  dependencies: CreateAgentCommandDependencies,
+  cwd: string,
+): Promise<string | undefined> {
+  if (!dependencies.ensureWorkspaceForCreate) {
+    return undefined;
+  }
+  return dependencies.ensureWorkspaceForCreate(cwd);
 }
 
 async function sendInitialPrompt(

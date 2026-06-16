@@ -50,7 +50,10 @@ function createGitRepo(): string {
 }
 
 async function createLocalWorkspace(cwd: string, title: string): Promise<string> {
-  const result = await ctx.client.createWorkspace({ backing: "local", cwd, title });
+  const result = await ctx.client.createWorkspace({
+    source: { kind: "directory", path: cwd },
+    title,
+  });
   if (!result.workspace) {
     throw new Error(result.error ?? "Failed to create local workspace");
   }
@@ -161,10 +164,7 @@ test("archiving the last reference to a worktree honors deleteWorktreeFromDisk",
   const repoDir = createGitRepo();
 
   const keepResult = await ctx.client.createWorkspace({
-    backing: "worktree",
-    cwd: repoDir,
-    branch: "keep-on-disk",
-    baseBranch: "main",
+    source: { kind: "worktree", cwd: repoDir, worktreeSlug: "keep-on-disk", baseBranch: "main" },
   });
   const keepWorkspace = keepResult.workspace;
   if (!keepWorkspace?.workspaceDirectory) {
@@ -185,10 +185,12 @@ test("archiving the last reference to a worktree honors deleteWorktreeFromDisk",
   expect(existsSync(keepDir)).toBe(true);
 
   const deleteResult = await ctx.client.createWorkspace({
-    backing: "worktree",
-    cwd: repoDir,
-    branch: "delete-from-disk",
-    baseBranch: "main",
+    source: {
+      kind: "worktree",
+      cwd: repoDir,
+      worktreeSlug: "delete-from-disk",
+      baseBranch: "main",
+    },
   });
   const deleteWorkspace = deleteResult.workspace;
   if (!deleteWorkspace?.workspaceDirectory) {
@@ -216,10 +218,12 @@ test("worktree archive targets the explicit workspaceId when a directory backs m
   const repoDir = createGitRepo();
 
   const worktreeResult = await ctx.client.createWorkspace({
-    backing: "worktree",
-    cwd: repoDir,
-    branch: "targeted-worktree",
-    baseBranch: "main",
+    source: {
+      kind: "worktree",
+      cwd: repoDir,
+      worktreeSlug: "targeted-worktree",
+      baseBranch: "main",
+    },
   });
   const worktreeWorkspace = worktreeResult.workspace;
   if (!worktreeWorkspace?.workspaceDirectory) {
@@ -260,10 +264,12 @@ test("deleteWorktreeFromDisk keeps the worktree when a sibling workspace still r
   const repoDir = createGitRepo();
 
   const worktreeResult = await ctx.client.createWorkspace({
-    backing: "worktree",
-    cwd: repoDir,
-    branch: "shared-worktree",
-    baseBranch: "main",
+    source: {
+      kind: "worktree",
+      cwd: repoDir,
+      worktreeSlug: "shared-worktree",
+      baseBranch: "main",
+    },
   });
   const worktreeWorkspace = worktreeResult.workspace;
   if (!worktreeWorkspace?.workspaceDirectory) {

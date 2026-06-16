@@ -66,7 +66,7 @@ function toTerminalInfo(session: TerminalSession): WorkerTerminalInfo {
     id: session.id,
     name: session.name,
     cwd: session.cwd,
-    ...(session.workspaceId ? { workspaceId: session.workspaceId } : {}),
+    workspaceId: session.workspaceId,
     ...(session.getTitle() ? { title: session.getTitle() } : {}),
     activity: session.getActivity(),
   };
@@ -201,7 +201,11 @@ async function handleCreateTerminalRequest(message: TerminalCreateRequest): Prom
   };
   inFlightTerminalCreateRequest = request;
   try {
-    const session = await manager.createTerminal(message.options);
+    const { workspaceId } = message.options;
+    if (!workspaceId) {
+      throw new Error("workspaceId is required");
+    }
+    const session = await manager.createTerminal({ ...message.options, workspaceId });
     if (request.errorReported) {
       session.kill();
       return;

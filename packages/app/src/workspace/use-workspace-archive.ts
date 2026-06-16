@@ -32,6 +32,9 @@ export function useIsLastWorktreeReference(workspace: SidebarWorkspaceEntry): bo
       if (candidate.id === workspace.workspaceId) {
         continue;
       }
+      // Git-fact: comparing directories to detect a sibling worktree reference on
+      // disk, not attributing ownership. The disk-deletion decision is about the
+      // backing directory, which same-cwd siblings genuinely share.
       if (normalizeWorkspacePath(candidate.workspaceDirectory) === directory) {
         return false;
       }

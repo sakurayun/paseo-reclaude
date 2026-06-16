@@ -92,7 +92,10 @@ function formatListenTarget(listenTarget: ListenTarget | null): string | null {
 
 import { VoiceAssistantWebSocketServer } from "./websocket-server.js";
 import { createGitHubService } from "../services/github-service.js";
-import { createPaseoWorktree as createRegisteredPaseoWorktree } from "./paseo-worktree-service.js";
+import {
+  createPaseoWorktree as createRegisteredPaseoWorktree,
+  createLocalCheckoutWorkspace,
+} from "./paseo-worktree-service.js";
 import { createPaseoWorktreeWorkflow } from "./worktree-session.js";
 import { DownloadTokenStore } from "./file-download/token-store.js";
 import type { OpenAiSpeechProviderConfig } from "./speech/providers/openai/config.js";
@@ -113,7 +116,7 @@ import { LoopService } from "./loop-service.js";
 import { ScheduleService } from "./schedule/service.js";
 import { DaemonConfigStore } from "./daemon-config-store.js";
 import { WorkspaceGitServiceImpl } from "./workspace-git-service.js";
-import { resolveRegisteredWorkspaceIdForCwd } from "./workspace-directory.js";
+import { resolveWorkspaceIdForPath } from "./resolve-workspace-id-for-path.js";
 import { archivePersistedWorkspaceRecord } from "./workspace-archive-service.js";
 import { setupAutoArchiveOnMerge } from "./auto-archive-on-merge/index.js";
 import type { ActiveWorkspaceRef } from "./paseo-worktree-archive-service.js";
@@ -761,8 +764,17 @@ export async function createPaseoDaemon(
       workspaceRegistry,
     });
   };
-  const resolveWorkspaceIdForCwdExternal = async (cwd: string): Promise<string | null> => {
-    return resolveRegisteredWorkspaceIdForCwd(cwd, await workspaceRegistry.list());
+  // external path→workspace adapter, not ownership: archive-by-path requests that
+  // arrive with a worktree path and no workspaceId (old clients / CLI).
+  const findWorkspaceIdForCwdExternal = async (cwd: string): Promise<string | null> => {
+    return resolveWorkspaceIdForPath(cwd, await workspaceRegistry.list());
+  };
+  const ensureWorkspaceForCreateExternal = async (cwd: string): Promise<string> => {
+    const workspace = await createLocalCheckoutWorkspace(
+      { cwd },
+      { projectRegistry, workspaceRegistry, workspaceGitService },
+    );
+    return workspace.workspaceId;
   };
   const listActiveWorkspacesExternal = async (): Promise<ActiveWorkspaceRef[]> => {
     const workspaces = await workspaceRegistry.list();
@@ -808,7 +820,7 @@ export async function createPaseoDaemon(
     agentStorage,
     terminalManager,
     logger,
-    resolveWorkspaceIdForCwd: resolveWorkspaceIdForCwdExternal,
+    findWorkspaceIdForCwd: findWorkspaceIdForCwdExternal,
     listActiveWorkspaces: listActiveWorkspacesExternal,
     archiveWorkspaceRecord: archiveWorkspaceRecordExternal,
     markWorkspaceArchiving: markWorkspaceArchivingExternal,
@@ -832,12 +844,13 @@ export async function createPaseoDaemon(
         providerSnapshotManager,
         github,
         workspaceGitService,
-        resolveWorkspaceIdForCwd: resolveWorkspaceIdForCwdExternal,
+        findWorkspaceIdForCwd: findWorkspaceIdForCwdExternal,
         listActiveWorkspaces: listActiveWorkspacesExternal,
         archiveWorkspaceRecord: archiveWorkspaceRecordExternal,
         emitWorkspaceUpdatesForWorkspaceIds: emitWorkspaceUpdatesExternal,
         markWorkspaceArchiving: markWorkspaceArchivingExternal,
         clearWorkspaceArchiving: clearWorkspaceArchivingExternal,
+        ensureWorkspaceForCreate: ensureWorkspaceForCreateExternal,
         createPaseoWorktree: async (input, serviceOptions) => {
           return createPaseoWorktreeWorkflow(
             {
@@ -863,13 +876,8 @@ export async function createPaseoDaemon(
                     .map((session) => session.warmWorkspaceGitDataForWorkspace(workspace)) ?? [],
                 );
               },
-              emitWorkspaceUpdateForCwd: async (cwd, emitOptions) => {
-                await Promise.all(
-                  wsServer
-                    ?.listActiveSessions()
-                    .map((session) => session.emitWorkspaceUpdatesForExternalCwds([cwd])) ?? [],
-                );
-                void emitOptions;
+              emitWorkspaceUpdateForWorkspaceId: async (workspaceId) => {
+                await emitWorkspaceUpdatesExternal([workspaceId]);
               },
               cacheWorkspaceSetupSnapshot: () => {},
               emit: emitExternalSessionMessage,

@@ -27,7 +27,10 @@ export interface ArchivePaseoWorktreeDependencies {
   workspaceGitService: Pick<WorkspaceGitService, "getSnapshot">;
   agentManager: Pick<AgentManager, "listAgents" | "archiveAgent" | "archiveSnapshot">;
   agentStorage: Pick<AgentStorage, "list">;
-  resolveWorkspaceIdForCwd: (cwd: string) => Promise<string | null>;
+  // Resolves the worktree at a path to its workspaceId for archive-by-path. The
+  // path uniquely identifies a worktree workspace; this is a directory lookup for
+  // the archive target, not status/ownership.
+  findWorkspaceIdForCwd: (cwd: string) => Promise<string | null>;
   // Active (non-archived) workspaces, used to decide whether the workspace being
   // archived is the last reference to its backing worktree directory, and to
   // break a same-cwd tie in favor of the worktree-kind record when archiving by
@@ -150,7 +153,7 @@ export async function archivePaseoWorktree(
 async function resolveTargetWorkspaceId(
   dependencies: Pick<
     ArchivePaseoWorktreeDependencies,
-    "resolveWorkspaceIdForCwd" | "listActiveWorkspaces"
+    "findWorkspaceIdForCwd" | "listActiveWorkspaces"
   >,
   targetPath: string,
 ): Promise<string | null> {
@@ -162,7 +165,7 @@ async function resolveTargetWorkspaceId(
   if (worktreeMatch) {
     return worktreeMatch.workspaceId;
   }
-  return dependencies.resolveWorkspaceIdForCwd(targetPath);
+  return dependencies.findWorkspaceIdForCwd(targetPath);
 }
 
 export type ArchiveWorkspaceContentsDependencies = Pick<

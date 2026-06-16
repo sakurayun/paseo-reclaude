@@ -2,10 +2,9 @@ import { useEffect, useRef, useState } from "react";
 import { useLocalSearchParams, usePathname, useRouter, type Href } from "expo-router";
 import { HostRouteBootstrapBoundary } from "@/components/host-route-bootstrap-boundary";
 import { useSessionStore } from "@/stores/session-store";
-import { useResolveWorkspaceIdByCwd } from "@/stores/session-store-hooks";
-import { useHostRuntimeClient, useHostRuntimeConnectionStatus } from "@/runtime/host-runtime";
+import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
 import { buildHostRootRoute } from "@/utils/host-routes";
-import { resolveWorkspaceIdByDirectory } from "@/utils/workspace-identity";
+import { normalizeWorkspaceOpaqueId } from "@/utils/workspace-identity";
 import { navigateToPreparedWorkspaceTab } from "@/utils/workspace-navigation";
 import {
   AGENT_READY_ROUTE_CONNECTION_FALLBACK_TIMEOUT_MS,
@@ -32,18 +31,17 @@ function HostAgentReadyRouteContent() {
   const serverId = typeof params.serverId === "string" ? params.serverId : "";
   const agentId = typeof params.agentId === "string" ? params.agentId : "";
   const client = useHostRuntimeClient(serverId);
-  const connectionStatus = useHostRuntimeConnectionStatus(serverId);
-  const isConnected = connectionStatus === "online";
-  const agentCwd = useSessionStore((state) => {
+  const isConnected = useHostRuntimeIsConnected(serverId);
+  const agentWorkspaceId = useSessionStore((state) => {
     if (!serverId || !agentId) {
       return null;
     }
-    return state.sessions[serverId]?.agents?.get(agentId)?.cwd ?? null;
+    return state.sessions[serverId]?.agents?.get(agentId)?.workspaceId ?? null;
   });
   const hasHydratedWorkspaces = useSessionStore((state) =>
     serverId ? (state.sessions[serverId]?.hasHydratedWorkspaces ?? false) : false,
   );
-  const resolvedWorkspaceId = useResolveWorkspaceIdByCwd(serverId, agentCwd);
+  const resolvedWorkspaceId = normalizeWorkspaceOpaqueId(agentWorkspaceId);
 
   useEffect(() => {
     setConnectionFallbackReady(false);
@@ -95,9 +93,13 @@ function HostAgentReadyRouteContent() {
     if (!serverId || !agentId) {
       return;
     }
+    // Fork-only: keep the connection grace period from the Android notification
+    // deeplink fix instead of upstream's immediate redirect, so a cold-start
+    // deeplink doesn't bounce to root before the host runtime finishes
+    // connecting. Adapted to workspace-by-ID (was cwd-based).
     if (
       shouldFallbackHostAgentReadyRoute({
-        agentCwd,
+        agentWorkspaceId,
         hasHydratedWorkspaces,
         hasClient: Boolean(client),
         isConnected,
@@ -108,7 +110,7 @@ function HostAgentReadyRouteContent() {
       router.replace(buildHostRootRoute(serverId));
     }
   }, [
-    agentCwd,
+    agentWorkspaceId,
     agentId,
     client,
     connectionFallbackReady,
@@ -133,15 +135,7 @@ function HostAgentReadyRouteContent() {
         if (cancelled || redirectedRef.current) {
           return;
         }
-        const cwd = result?.agent?.cwd?.trim();
-        const workspaces = useSessionStore.getState().sessions[serverId]?.workspaces;
-        const workspaceId = resolveWorkspaceIdByDirectory({
-          workspaces: workspaces?.values(),
-          workspaceDirectory: cwd,
-        });
-        if (!workspaceId && !hasHydratedWorkspaces) {
-          return;
-        }
+        const workspaceId = normalizeWorkspaceOpaqueId(result?.agent?.workspaceId);
         redirectedRef.current = true;
         if (workspaceId) {
           navigateToPreparedWorkspaceTab({
@@ -166,7 +160,7 @@ function HostAgentReadyRouteContent() {
     return () => {
       cancelled = true;
     };
-  }, [agentId, client, hasHydratedWorkspaces, isConnected, pathname, router, serverId]);
+  }, [agentId, client, isConnected, pathname, router, serverId]);
 
   return null;
 }

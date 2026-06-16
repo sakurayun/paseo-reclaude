@@ -15,7 +15,9 @@ type NewWorkspaceDaemonClient = Pick<
   | "createPaseoWorktree"
   | "fetchWorkspaces"
   | "getPaseoWorktreeList"
+  | "getDaemonConfig"
   | "openProject"
+  | "patchDaemonConfig"
 >;
 
 type OpenProjectPayload = Awaited<ReturnType<NewWorkspaceDaemonClient["openProject"]>>;
@@ -319,18 +321,18 @@ export async function assertNewWorkspaceSidebarAndHeader(
     assertHeader?: boolean;
   },
 ): Promise<{ workspaceId: string; workspaceName: string; workspaceDirectory: string }> {
-  // Wait for URL to redirect to the newly created workspace.
-  // Uses URL as source of truth to avoid picking up sidebar rows from concurrent tests.
-  let workspaceId: string | null = null;
-  const deadline = Date.now() + 60_000;
-  while (Date.now() < deadline) {
-    workspaceId = parseWorkspaceIdFromPageUrl(page, input.serverId);
-    if (workspaceId && workspaceId !== input.previousWorkspaceId) {
-      break;
-    }
-    await page.waitForTimeout(250);
-  }
+  // URL is the source of truth so concurrent sidebar rows cannot satisfy this.
+  await expect
+    .poll(
+      () => {
+        const workspaceId = parseWorkspaceIdFromPageUrl(page, input.serverId);
+        return workspaceId && workspaceId !== input.previousWorkspaceId ? workspaceId : null;
+      },
+      { timeout: 60_000 },
+    )
+    .not.toBeNull();
 
+  const workspaceId = parseWorkspaceIdFromPageUrl(page, input.serverId);
   if (!workspaceId || workspaceId === input.previousWorkspaceId) {
     throw new Error(`Expected URL to redirect to a new workspace.\nCurrent URL: ${page.url()}`);
   }

@@ -5,6 +5,7 @@ import { togglePinFromMenu, tabRowPin } from "./helpers/pins";
 import { expectTerminalTabOpen } from "./helpers/workspace-tabs";
 import type { PinnedTabTarget } from "../src/workspace-pins/target";
 
+const DRAFT_TARGET: PinnedTabTarget = { kind: "draft" };
 const TERMINAL_TARGET: PinnedTabTarget = { kind: "terminal" };
 
 let workspace: SeededWorkspace;
@@ -23,13 +24,13 @@ test.describe("Pinned tab targets", () => {
   }) => {
     await gotoWorkspace(page, workspace.workspaceId);
 
-    await expect(tabRowPin(page, TERMINAL_TARGET)).toHaveCount(0);
+    await expect(tabRowPin(page, DRAFT_TARGET)).toHaveCount(0);
 
-    await togglePinFromMenu(page, TERMINAL_TARGET);
-    await expect(tabRowPin(page, TERMINAL_TARGET)).toBeVisible({ timeout: 10_000 });
+    await togglePinFromMenu(page, DRAFT_TARGET);
+    await expect(tabRowPin(page, DRAFT_TARGET)).toBeVisible({ timeout: 10_000 });
 
-    await togglePinFromMenu(page, TERMINAL_TARGET);
-    await expect(tabRowPin(page, TERMINAL_TARGET)).toHaveCount(0, { timeout: 10_000 });
+    await togglePinFromMenu(page, DRAFT_TARGET);
+    await expect(tabRowPin(page, DRAFT_TARGET)).toHaveCount(0, { timeout: 10_000 });
   });
 
   test("clicking the pinned quick-launch button in the tab row opens a terminal tab", async ({
@@ -38,7 +39,7 @@ test.describe("Pinned tab targets", () => {
     test.setTimeout(45_000);
     await gotoWorkspace(page, workspace.workspaceId);
 
-    await togglePinFromMenu(page, TERMINAL_TARGET);
+    await expect(tabRowPin(page, TERMINAL_TARGET)).toBeVisible({ timeout: 10_000 });
     await tabRowPin(page, TERMINAL_TARGET).click();
 
     await expectTerminalTabOpen(page);

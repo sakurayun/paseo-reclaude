@@ -36,6 +36,20 @@ import type {
 
 const REQUEST_TIMEOUT_MS = 10000;
 
+type RequiredWorkerTerminalInfo = WorkerTerminalInfo & { workspaceId: string };
+
+function requiredWorkspaceId(workspaceId: string | undefined): string {
+  if (workspaceId === undefined) {
+    throw new Error("workspaceId is required");
+  }
+  return workspaceId;
+}
+
+function asRequiredWorkerTerminalInfo(info: WorkerTerminalInfo): RequiredWorkerTerminalInfo {
+  requiredWorkspaceId(info.workspaceId);
+  return info as RequiredWorkerTerminalInfo;
+}
+
 type TerminalWorkerRequestInput = TerminalWorkerRequest extends infer Request
   ? Request extends TerminalWorkerRequest
     ? Omit<Request, "requestId">
@@ -49,7 +63,7 @@ interface PendingRequest {
 }
 
 interface WorkerTerminalRecord {
-  info: WorkerTerminalInfo;
+  info: RequiredWorkerTerminalInfo;
   state: TerminalState;
   activity: TerminalActivity | null;
   // Cached input-mode preamble from the worker (the authoritative tracker lives
@@ -114,12 +128,12 @@ function isResponse(message: TerminalWorkerToParentMessage): message is Terminal
   return message.type === "response";
 }
 
-function cloneTerminalInfo(info: WorkerTerminalInfo): WorkerTerminalInfo {
+function cloneTerminalInfo(info: RequiredWorkerTerminalInfo): RequiredWorkerTerminalInfo {
   return {
     id: info.id,
     name: info.name,
     cwd: info.cwd,
-    ...(info.workspaceId ? { workspaceId: info.workspaceId } : {}),
+    workspaceId: info.workspaceId,
     ...(info.title ? { title: info.title } : {}),
     activity: info.activity,
   };
@@ -196,7 +210,7 @@ export function createWorkerTerminalManager(
         id: record.info.id,
         name: record.info.name,
         cwd: record.info.cwd,
-        ...(record.info.workspaceId ? { workspaceId: record.info.workspaceId } : {}),
+        workspaceId: record.info.workspaceId,
         ...(record.info.title ? { title: record.info.title } : {}),
         activity: record.activity,
       });
@@ -205,7 +219,7 @@ export function createWorkerTerminalManager(
   }
 
   function registerRecord(input: {
-    info: WorkerTerminalInfo;
+    info: RequiredWorkerTerminalInfo;
     state: TerminalState;
   }): TerminalSession {
     const existing = recordsById.get(input.info.id);
@@ -438,7 +452,7 @@ export function createWorkerTerminalManager(
       emitTerminalWorkspaceContributionChanged({
         terminalId: removedRecord.info.id,
         cwd: removedRecord.info.cwd,
-        ...(removedRecord.info.workspaceId ? { workspaceId: removedRecord.info.workspaceId } : {}),
+        workspaceId: removedRecord.info.workspaceId,
       });
     }
     emitTerminalsChanged({
@@ -506,6 +520,7 @@ export function createWorkerTerminalManager(
       terminalId: record.info.id,
       name: record.info.name,
       cwd: record.info.cwd,
+      workspaceId: record.info.workspaceId,
       activity: message.activity,
       previous: message.previous,
     });
@@ -515,7 +530,7 @@ export function createWorkerTerminalManager(
       emitTerminalWorkspaceContributionChanged({
         terminalId: record.info.id,
         cwd: record.info.cwd,
-        ...(record.info.workspaceId ? { workspaceId: record.info.workspaceId } : {}),
+        workspaceId: record.info.workspaceId,
       });
     }
     emitTerminalsChanged({
@@ -527,7 +542,10 @@ export function createWorkerTerminalManager(
   function handleWorkerEvent(message: TerminalWorkerToParentMessage): void {
     switch (message.type) {
       case "terminalCreated": {
-        registerRecord({ info: message.terminal, state: message.state });
+        registerRecord({
+          info: asRequiredWorkerTerminalInfo(message.terminal),
+          state: message.state,
+        });
         emitTerminalsChanged({
           cwd: message.terminal.cwd,
           terminals: listTerminalItemsForCwd(message.terminal.cwd),
@@ -653,25 +671,23 @@ export function createWorkerTerminalManager(
       }
 
       // When the query carries a workspaceId, two workspaces sharing a cwd must
-      // not see each other's terminals. Exclude sessions owned by a different
-      // workspace; keep sessions without an owner (COMPAT: created by clients
-      // that predate terminal workspace ownership).
+      // not see each other's terminals. A missing owner is not workspace
+      // membership; unscoped callers can still list those legacy terminals.
       if (options?.workspaceId !== undefined) {
-        return sessions.filter(
-          (session) =>
-            session.workspaceId === undefined || session.workspaceId === options.workspaceId,
-        );
+        return sessions.filter((session) => session.workspaceId === options.workspaceId);
       }
       return sessions;
     },
 
-    async createTerminal(options: WorkerCreateTerminalOptions): Promise<TerminalSession> {
+    async createTerminal(
+      options: WorkerCreateTerminalOptions & { workspaceId: string },
+    ): Promise<TerminalSession> {
       const terminalId = options.id ?? randomUUID();
       const activityToken = createActivityToken();
       const terminalActivityUrl = managerOptions.getTerminalActivityUrl?.() ?? null;
       terminalActivityTokenById.set(terminalId, activityToken);
       let result: {
-        terminal: WorkerTerminalInfo;
+        terminal: RequiredWorkerTerminalInfo;
         state: TerminalState;
       };
       try {
@@ -684,7 +700,7 @@ export function createWorkerTerminalManager(
             activityUrl: terminalActivityUrl,
           },
         })) as {
-          terminal: WorkerTerminalInfo;
+          terminal: RequiredWorkerTerminalInfo;
           state: TerminalState;
         };
       } catch (error) {

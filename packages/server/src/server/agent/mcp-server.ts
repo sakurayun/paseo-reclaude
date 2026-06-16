@@ -93,13 +93,16 @@ export interface AgentMcpServerOptions {
     WorkspaceGitService,
     "getSnapshot" | "listWorktrees" | "resolveRepoRoot"
   >;
-  resolveWorkspaceIdForCwd?: ArchivePaseoWorktreeDependencies["resolveWorkspaceIdForCwd"];
+  findWorkspaceIdForCwd?: ArchivePaseoWorktreeDependencies["findWorkspaceIdForCwd"];
   listActiveWorkspaces?: ArchivePaseoWorktreeDependencies["listActiveWorkspaces"];
   archiveWorkspaceRecord?: ArchivePaseoWorktreeDependencies["archiveWorkspaceRecord"];
   emitWorkspaceUpdatesForWorkspaceIds?: ArchivePaseoWorktreeDependencies["emitWorkspaceUpdatesForWorkspaceIds"];
   markWorkspaceArchiving?: ArchivePaseoWorktreeDependencies["markWorkspaceArchiving"];
   clearWorkspaceArchiving?: ArchivePaseoWorktreeDependencies["clearWorkspaceArchiving"];
   createPaseoWorktree?: CreatePaseoWorktreeWorkflowFn;
+  // Mints a fresh workspace for a cwd and returns its id, used when an agent is
+  // created with no parent and no worktree.
+  ensureWorkspaceForCreate?: (cwd: string) => Promise<string>;
   paseoHome?: string;
   worktreesRoot?: string;
   /**
@@ -572,6 +575,25 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
     return expandUserPath(trimmedCwd);
   };
 
+  async function resolveTerminalWorkspaceId(resolvedCwd: string): Promise<string> {
+    // An MCP-spawned terminal belongs to the caller agent's workspace. Only if
+    // the caller has no workspace do we mint one for the cwd.
+    const callerAgent = callerAgentId ? agentManager.getAgent(callerAgentId) : null;
+    if (callerAgent?.workspaceId) {
+      return callerAgent.workspaceId;
+    }
+
+    if (!options.ensureWorkspaceForCreate) {
+      throw new Error(
+        callerAgentId
+          ? `Caller agent ${callerAgentId} has no workspace and workspace minting is not configured`
+          : "workspaceId is required outside an agent-scoped session",
+      );
+    }
+
+    return options.ensureWorkspaceForCreate(resolvedCwd);
+  }
+
   const buildCallerAgentScheduleConfigExtras = (
     callerAgent: NonNullable<ReturnType<typeof resolveCallerAgent>>,
   ): Record<string, unknown> => {
@@ -926,6 +948,9 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
           terminalManager,
           providerSnapshotManager,
           createPaseoWorktree: options.createPaseoWorktree,
+          ...(options.ensureWorkspaceForCreate
+            ? { ensureWorkspaceForCreate: options.ensureWorkspaceForCreate }
+            : {}),
         },
         {
           kind: "mcp",
@@ -1520,8 +1545,12 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
         throw new Error("Terminal manager is not configured");
       }
 
+      const resolvedCwd = resolveScopedCwd(cwd, { required: true });
+      const workspaceId = await resolveTerminalWorkspaceId(resolvedCwd);
+
       const terminal = await terminalManager.createTerminal({
-        cwd: resolveScopedCwd(cwd, { required: true }),
+        cwd: resolvedCwd,
+        workspaceId,
         ...(name?.trim() ? { name: name.trim() } : {}),
       });
 
@@ -2411,7 +2440,7 @@ function archiveWorktreeDependencies(
   if (!options.archiveWorkspaceRecord) {
     throw new Error("Workspace registry archiver is required to archive worktrees");
   }
-  if (!options.resolveWorkspaceIdForCwd) {
+  if (!options.findWorkspaceIdForCwd) {
     throw new Error("Workspace resolver is required to archive worktrees");
   }
   if (!options.listActiveWorkspaces) {
@@ -2433,7 +2462,7 @@ function archiveWorktreeDependencies(
     workspaceGitService: options.workspaceGitService,
     agentManager: context.agentManager,
     agentStorage: context.agentStorage,
-    resolveWorkspaceIdForCwd: options.resolveWorkspaceIdForCwd,
+    findWorkspaceIdForCwd: options.findWorkspaceIdForCwd,
     listActiveWorkspaces: options.listActiveWorkspaces,
     archiveWorkspaceRecord: options.archiveWorkspaceRecord,
     emitWorkspaceUpdatesForWorkspaceIds: options.emitWorkspaceUpdatesForWorkspaceIds,

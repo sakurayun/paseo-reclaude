@@ -104,7 +104,7 @@ function createWorkflowForRequestTest(options: {
         paseoHome: options.paseoHome,
         createPaseoWorktree,
         warmWorkspaceGitData: options.warmWorkspaceGitData ?? (async () => {}),
-        emitWorkspaceUpdateForCwd: async () => {},
+        emitWorkspaceUpdateForWorkspaceId: async () => {},
         cacheWorkspaceSetupSnapshot: () => {},
         emit: () => {},
         sessionLogger: createLogger(),
@@ -428,7 +428,7 @@ describe("create-agent worktree setup boundary", () => {
           paseoHome,
           createPaseoWorktree: createPaseoWorktreeForTest({ paseoHome }),
           warmWorkspaceGitData: async () => {},
-          emitWorkspaceUpdateForCwd: async () => {},
+          emitWorkspaceUpdateForWorkspaceId: async () => {},
           cacheWorkspaceSetupSnapshot: () => {},
           emit: (message) => workspaceSetupEvents.push(message),
           sessionLogger: createLogger(),
@@ -497,7 +497,7 @@ function createAgentStorageStub(): Pick<AgentStorage, "list"> {
 
 function createWorkspaceArchivingDeps() {
   return {
-    resolveWorkspaceIdForCwd: vi.fn(async () => "ws-archive-test"),
+    findWorkspaceIdForCwd: vi.fn(async () => "ws-archive-test"),
     listActiveWorkspaces: vi.fn(async () => []),
     emitWorkspaceUpdatesForWorkspaceIds: vi.fn(async () => {}),
     markWorkspaceArchiving: vi.fn(),
@@ -588,13 +588,13 @@ describe("runWorktreeSetupInBackground", () => {
     const snapshots = new Map<string, unknown>();
     const logger = createLogger();
     const terminalManager = createTerminalManagerStub();
-    const emitWorkspaceUpdateForCwd = vi.fn(async () => {});
+    const emitWorkspaceUpdateForWorkspaceId = vi.fn(async () => {});
     const archiveWorkspaceRecord = vi.fn(async () => {});
 
     await runWorktreeSetupInBackground(
       {
         paseoHome,
-        emitWorkspaceUpdateForCwd,
+        emitWorkspaceUpdateForWorkspaceId,
         cacheWorkspaceSetupSnapshot: (workspaceId, snapshot) =>
           snapshots.set(workspaceId, snapshot),
         emit: (message) => emitted.push(message),
@@ -659,7 +659,7 @@ describe("runWorktreeSetupInBackground", () => {
 
     expect(terminalManager.terminals).toHaveLength(0);
     expect(archiveWorkspaceRecord).not.toHaveBeenCalled();
-    expect(emitWorkspaceUpdateForCwd).toHaveBeenCalledWith(worktreePath);
+    expect(emitWorkspaceUpdateForWorkspaceId).toHaveBeenCalledWith("42");
   });
 
   test("archives the pending workspace and emits a failed snapshot when setup cannot start", async () => {
@@ -686,14 +686,14 @@ describe("runWorktreeSetupInBackground", () => {
     const emitted: SessionOutboundMessage[] = [];
     const snapshots = new Map<string, unknown>();
     const logger = createLogger();
-    const emitWorkspaceUpdateForCwd = vi.fn(async () => {});
+    const emitWorkspaceUpdateForWorkspaceId = vi.fn(async () => {});
     const archiveWorkspaceRecord = vi.fn(async () => {});
     const workspaceId = "ws-broken-feature";
 
     await runWorktreeSetupInBackground(
       {
         paseoHome,
-        emitWorkspaceUpdateForCwd,
+        emitWorkspaceUpdateForWorkspaceId,
         cacheWorkspaceSetupSnapshot: (snapshotWorkspaceId, snapshot) =>
           snapshots.set(snapshotWorkspaceId, snapshot),
         emit: (message) => emitted.push(message),
@@ -732,7 +732,7 @@ describe("runWorktreeSetupInBackground", () => {
       error: expect.stringMatching(/Failed to parse paseo\.json at .*paseo\.json/),
     });
     expect(archiveWorkspaceRecord).toHaveBeenCalledWith(workspaceId);
-    expect(emitWorkspaceUpdateForCwd).toHaveBeenCalledWith(worktreePath);
+    expect(emitWorkspaceUpdateForWorkspaceId).toHaveBeenCalledWith(workspaceId);
   });
 
   // POSIX-only: setup command is hardcoded to sh, printf, and sleep.
@@ -761,13 +761,13 @@ describe("runWorktreeSetupInBackground", () => {
       const emitted: SessionOutboundMessage[] = [];
       const snapshots = new Map<string, unknown>();
       const logger = createLogger();
-      const emitWorkspaceUpdateForCwd = vi.fn(async () => {});
+      const emitWorkspaceUpdateForWorkspaceId = vi.fn(async () => {});
       const archiveWorkspaceRecord = vi.fn(async () => {});
 
       await runWorktreeSetupInBackground(
         {
           paseoHome,
-          emitWorkspaceUpdateForCwd,
+          emitWorkspaceUpdateForWorkspaceId,
           cacheWorkspaceSetupSnapshot: (workspaceId, snapshot) =>
             snapshots.set(workspaceId, snapshot),
           emit: (message) => emitted.push(message),
@@ -885,13 +885,13 @@ describe("runWorktreeSetupInBackground", () => {
     const snapshots = new Map<string, unknown>();
     const logger = createLogger();
     const terminalManager = createTerminalManagerStub();
-    const emitWorkspaceUpdateForCwd = vi.fn(async () => {});
+    const emitWorkspaceUpdateForWorkspaceId = vi.fn(async () => {});
     const archiveWorkspaceRecord = vi.fn(async () => {});
 
     await runWorktreeSetupInBackground(
       {
         paseoHome,
-        emitWorkspaceUpdateForCwd,
+        emitWorkspaceUpdateForWorkspaceId,
         cacheWorkspaceSetupSnapshot: (workspaceId, snapshot) =>
           snapshots.set(workspaceId, snapshot),
         emit: (message) => emitted.push(message),
@@ -947,7 +947,7 @@ describe("runWorktreeSetupInBackground", () => {
       error: null,
     });
     expect(archiveWorkspaceRecord).not.toHaveBeenCalled();
-    expect(emitWorkspaceUpdateForCwd).toHaveBeenCalledWith(existingWorktree.worktreePath);
+    expect(emitWorkspaceUpdateForWorkspaceId).toHaveBeenCalledWith("44");
   });
 
   test("keeps setup completed without attempting script launch afterward", async () => {
@@ -980,13 +980,13 @@ describe("runWorktreeSetupInBackground", () => {
         throw new Error("terminal spawn failed");
       },
     });
-    const emitWorkspaceUpdateForCwd = vi.fn(async () => {});
+    const emitWorkspaceUpdateForWorkspaceId = vi.fn(async () => {});
     const archiveWorkspaceRecord = vi.fn(async () => {});
 
     await runWorktreeSetupInBackground(
       {
         paseoHome,
-        emitWorkspaceUpdateForCwd,
+        emitWorkspaceUpdateForWorkspaceId,
         cacheWorkspaceSetupSnapshot: (workspaceId, snapshot) =>
           snapshots.set(workspaceId, snapshot),
         emit: (message) => emitted.push(message),
@@ -1033,7 +1033,7 @@ describe("runWorktreeSetupInBackground", () => {
       error: null,
     });
     expect(archiveWorkspaceRecord).not.toHaveBeenCalled();
-    expect(emitWorkspaceUpdateForCwd).toHaveBeenCalledWith(worktreePath);
+    expect(emitWorkspaceUpdateForWorkspaceId).toHaveBeenCalledWith("45");
   });
 
   test("does not auto-start scripts in socket mode", async () => {
@@ -1062,13 +1062,13 @@ describe("runWorktreeSetupInBackground", () => {
     const snapshots = new Map<string, unknown>();
     const logger = createLogger();
     const terminalManager = createTerminalManagerStub();
-    const emitWorkspaceUpdateForCwd = vi.fn(async () => {});
+    const emitWorkspaceUpdateForWorkspaceId = vi.fn(async () => {});
     const archiveWorkspaceRecord = vi.fn(async () => {});
 
     await runWorktreeSetupInBackground(
       {
         paseoHome,
-        emitWorkspaceUpdateForCwd,
+        emitWorkspaceUpdateForWorkspaceId,
         cacheWorkspaceSetupSnapshot: (workspaceId, snapshot) =>
           snapshots.set(workspaceId, snapshot),
         emit: (message) => emitted.push(message),
@@ -1096,7 +1096,7 @@ describe("runWorktreeSetupInBackground", () => {
       error: null,
     });
     expect(archiveWorkspaceRecord).not.toHaveBeenCalled();
-    expect(emitWorkspaceUpdateForCwd).toHaveBeenCalledWith(worktreePath);
+    expect(emitWorkspaceUpdateForWorkspaceId).toHaveBeenCalledWith("46");
   });
 
   test("returns the cached workspace setup snapshot for status requests", async () => {
@@ -1816,7 +1816,7 @@ describe("archivePaseoWorktree", () => {
         agentStorage: createAgentStorageStub(),
         archiveWorkspaceRecord: vi.fn(async () => {}),
         ...createWorkspaceArchivingDeps(),
-        resolveWorkspaceIdForCwd: vi.fn(async (cwd: string) =>
+        findWorkspaceIdForCwd: vi.fn(async (cwd: string) =>
           cwd === created.worktreePath ? workspaceId : null,
         ),
         killTerminalsForWorkspace,
@@ -1924,7 +1924,7 @@ describe("archivePaseoWorktree", () => {
           archivedWorkspaceRecords.push(id);
         },
         ...createWorkspaceArchivingDeps(),
-        resolveWorkspaceIdForCwd: vi.fn(async (cwd: string) =>
+        findWorkspaceIdForCwd: vi.fn(async (cwd: string) =>
           cwd === sharedCwd ? workspaceA : null,
         ),
         killTerminalsForWorkspace: (workspaceId) =>
@@ -2030,7 +2030,7 @@ describe("archivePaseoWorktree", () => {
           archiveSnapshot,
         },
         agentStorage: createAgentStorageStub(),
-        resolveWorkspaceIdForCwd: vi.fn(async (cwd: string) =>
+        findWorkspaceIdForCwd: vi.fn(async (cwd: string) =>
           cwd === created.worktreePath ? workspaceId : null,
         ),
         listActiveWorkspaces: vi.fn(async () => []),
@@ -2135,7 +2135,7 @@ describe("archivePaseoWorktree", () => {
         agentStorage: createAgentStorageStub(),
         archiveWorkspaceRecord,
         ...createWorkspaceArchivingDeps(),
-        resolveWorkspaceIdForCwd: vi.fn(async (cwd: string) =>
+        findWorkspaceIdForCwd: vi.fn(async (cwd: string) =>
           cwd === created.worktreePath ? workspaceId : null,
         ),
         killTerminalsForWorkspace: vi.fn(async () => {}),
@@ -2184,7 +2184,7 @@ describe("archivePaseoWorktree", () => {
         agentStorage: createAgentStorageStub(),
         archiveWorkspaceRecord: vi.fn(async () => {}),
         ...createWorkspaceArchivingDeps(),
-        resolveWorkspaceIdForCwd: vi.fn(async (cwd: string) =>
+        findWorkspaceIdForCwd: vi.fn(async (cwd: string) =>
           cwd === created.worktreePath ? "ws-archive-refresh" : null,
         ),
         killTerminalsForWorkspace: vi.fn(async () => {}),
@@ -2233,7 +2233,7 @@ describe("archivePaseoWorktree", () => {
         agentStorage: createAgentStorageStub(),
         archiveWorkspaceRecord: vi.fn(async () => {}),
         ...createWorkspaceArchivingDeps(),
-        resolveWorkspaceIdForCwd: vi.fn(async (cwd: string) =>
+        findWorkspaceIdForCwd: vi.fn(async (cwd: string) =>
           cwd === created.worktreePath ? workspaceId : null,
         ),
         // No other active workspace references the worktree dir.
@@ -2285,7 +2285,7 @@ describe("archivePaseoWorktree", () => {
         agentStorage: createAgentStorageStub(),
         archiveWorkspaceRecord: vi.fn(async () => {}),
         ...createWorkspaceArchivingDeps(),
-        resolveWorkspaceIdForCwd: vi.fn(async (cwd: string) =>
+        findWorkspaceIdForCwd: vi.fn(async (cwd: string) =>
           cwd === sharedCwd ? workspaceA : null,
         ),
         // Sibling workspace B still references the same worktree directory.
@@ -2336,7 +2336,7 @@ describe("archivePaseoWorktree", () => {
         agentStorage: createAgentStorageStub(),
         archiveWorkspaceRecord: vi.fn(async () => {}),
         ...createWorkspaceArchivingDeps(),
-        resolveWorkspaceIdForCwd: vi.fn(async (cwd: string) =>
+        findWorkspaceIdForCwd: vi.fn(async (cwd: string) =>
           cwd === created.worktreePath ? workspaceId : null,
         ),
         listActiveWorkspaces,

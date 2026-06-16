@@ -240,6 +240,7 @@ async function upsertWorkspaceForWorktree(options: {
     cwd: normalizedCwd,
     kind: "worktree",
     displayName: options.worktree.branchName || normalizedCwd,
+    branch: options.worktree.branchName || null,
     createdAt: now,
     updatedAt: now,
     archivedAt: null,
@@ -274,12 +275,19 @@ export async function createLocalCheckoutWorkspace(
   await deps.projectRegistry.upsert(projectRecord);
 
   const trimmedTitle = options.title?.trim();
+  // Persist the live git branch into the dedicated `branch` field so
+  // buildWorkspaceCheckout reports the real branch for directory/local_checkout
+  // workspaces too (it reads workspace.branch). Same source deriveWorkspaceDisplayName
+  // reads. HEAD/detached resolves to null — there is no branch to report.
+  const currentBranch = checkout.currentBranch?.trim() ?? null;
+  const branch = currentBranch && currentBranch.toUpperCase() !== "HEAD" ? currentBranch : null;
   const workspace = createPersistedWorkspaceRecord({
     workspaceId: generateWorkspaceId(),
     projectId: projectRecord.projectId,
     cwd: normalizedCwd,
     kind: membership.workspaceKind,
     displayName: membership.workspaceDisplayName,
+    branch,
     title: trimmedTitle ? trimmedTitle : null,
     createdAt: now,
     updatedAt: now,

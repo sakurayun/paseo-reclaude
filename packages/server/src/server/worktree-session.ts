@@ -97,7 +97,7 @@ interface BuildAgentSessionConfigDependencies {
 interface CreatePaseoWorktreeInBackgroundDependencies {
   paseoHome?: string;
   worktreesRoot?: string;
-  emitWorkspaceUpdateForCwd: (cwd: string, options?: { dedupeGitState?: boolean }) => Promise<void>;
+  emitWorkspaceUpdateForWorkspaceId: (workspaceId: string) => Promise<void>;
   cacheWorkspaceSetupSnapshot: (workspaceId: string, snapshot: WorkspaceSetupSnapshot) => void;
   emit: EmitSessionMessage;
   sessionLogger: Logger;
@@ -764,6 +764,6 @@ export async function runWorktreeSetupInBackground(
       return;
     }
   } finally {
-    await dependencies.emitWorkspaceUpdateForCwd(worktree.worktreePath);
+    await dependencies.emitWorkspaceUpdateForWorkspaceId(options.workspaceId);
   }
 }

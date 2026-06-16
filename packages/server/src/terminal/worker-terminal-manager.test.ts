@@ -166,6 +166,7 @@ it("creates a terminal through the worker and streams output", async () => {
   manager = createWorkerTerminalManager();
   const session = trackTerminal(
     await manager.createTerminal({
+      workspaceId: "ws-test",
       cwd,
       ...nodeTerminalCommand(`
       process.stdin.on("data", (chunk) => {
@@ -212,6 +213,7 @@ it("delivers rapid small writes complete and in order through worker coalescing"
   // on platform-specific PTY input echo/canonical-mode behavior.
   const session = trackTerminal(
     await manager.createTerminal({
+      workspaceId: "ws-test",
       cwd,
       env: { PASEO_TERMINAL_BURST_GATE: burstGatePath },
       ...nodeTerminalCommand(`
@@ -272,6 +274,7 @@ it("pulls fresh terminal state from the worker authority", async () => {
   manager = createWorkerTerminalManager();
   const session = trackTerminal(
     await manager.createTerminal({
+      workspaceId: "ws-test",
       cwd,
       ...nodeTerminalCommand(`
       process.stdout.write("worker-state-ready\\n");
@@ -304,6 +307,7 @@ it.skipIf(isPlatform("win32"))(
     // tracker records and reflects in its replay preamble (\x1b[=1;1u).
     const session = trackTerminal(
       await manager.createTerminal({
+        workspaceId: "ws-test",
         cwd,
         ...nodeTerminalCommand(`
       process.stdout.write("\\u001b[>1u");
@@ -327,6 +331,7 @@ it("refreshes cached terminal title after worker title changes", async () => {
   manager = createWorkerTerminalManager();
   const session = trackTerminal(
     await manager.createTerminal({
+      workspaceId: "ws-test",
       cwd,
       ...nodeTerminalCommand(`
       process.stdout.write("\\u001b]0;Build Output\\u0007");
@@ -344,7 +349,7 @@ it("refreshes cached terminal size after worker resize", async () => {
   const cwd = mkdtempSync(join(tmpdir(), "worker-terminal-manager-resize-"));
   temporaryDirs.push(cwd);
   manager = createWorkerTerminalManager();
-  const session = trackTerminal(await manager.createTerminal({ cwd }));
+  const session = trackTerminal(await manager.createTerminal({ cwd, workspaceId: "ws-test" }));
 
   session.send({ type: "resize", rows: 10, cols: 40 });
 
@@ -361,7 +366,7 @@ it("captures terminal output from the worker authority", async () => {
   const cwd = mkdtempSync(join(tmpdir(), "worker-terminal-manager-capture-"));
   temporaryDirs.push(cwd);
   manager = createWorkerTerminalManager();
-  const session = trackTerminal(await manager.createTerminal({ cwd }));
+  const session = trackTerminal(await manager.createTerminal({ cwd, workspaceId: "ws-test" }));
 
   session.send({ type: "input", data: "echo hello world\r" });
 
@@ -388,6 +393,7 @@ it("does not surface fire-and-forget send timeouts as unhandled rejections", asy
       id: "terminal-1",
       name: "Terminal",
       cwd: "/tmp",
+      workspaceId: "ws-test",
       activity: { state: "idle", changedAt: 0 },
     },
     state: createTerminalState(),
@@ -423,6 +429,7 @@ it("keeps registered cwd env inheritance behind the worker manager interface", a
   });
   trackTerminal(
     await manager.createTerminal({
+      workspaceId: "ws-test",
       cwd,
       ...nodeTerminalCommand(`
       require("node:fs").writeFileSync(
@@ -450,6 +457,7 @@ it("injects parent-minted terminal activity env through the worker", async () =>
 
   const session = trackTerminal(
     await manager.createTerminal({
+      workspaceId: "ws-test",
       cwd,
       ...nodeTerminalCommand(`
         require("node:fs").writeFileSync(
@@ -495,7 +503,7 @@ it("starts the default shell through the worker and accepts quoted commands", as
   const cwd = mkdtempSync(join(tmpdir(), "worker-terminal-manager-shell-"));
   temporaryDirs.push(cwd);
   const markerPath = join(cwd, "shell quoted marker.txt");
-  const session = trackTerminal(await manager.createTerminal({ cwd }));
+  const session = trackTerminal(await manager.createTerminal({ cwd, workspaceId: "ws-test" }));
   const command = [
     "node",
     "-e",
@@ -517,6 +525,7 @@ it("lists subdirectory terminals when querying the workspace root", async () => 
   manager = createWorkerTerminalManager();
   const created = trackTerminal(
     await manager.createTerminal({
+      workspaceId: "ws-test",
       cwd: subdirCwd,
       ...nodeTerminalCommand("setInterval(() => {}, 1000);"),
     }),
@@ -540,6 +549,7 @@ it("lists terminals locally without waiting on the worker", async () => {
       id: "terminal-root",
       name: "Shell",
       cwd: "/workspace",
+      workspaceId: "ws-test",
       activity: { state: "idle", changedAt: 0 },
     },
     state: createTerminalState(),
@@ -550,6 +560,7 @@ it("lists terminals locally without waiting on the worker", async () => {
       id: "terminal-subdir",
       name: "Shell",
       cwd: "/workspace/apps/mobile",
+      workspaceId: "ws-test",
       activity: { state: "idle", changedAt: 0 },
     },
     state: createTerminalState(),
@@ -564,6 +575,58 @@ it("lists terminals locally without waiting on the worker", async () => {
     "terminal-subdir",
   ]);
   expect(worker.sentMessages.some((message) => message.type === "getTerminals")).toBe(false);
+});
+
+it("includes only stamped terminals in workspace-scoped local reads", async () => {
+  const worker = new FakeTerminalWorker();
+  manager = createWorkerTerminalManager({
+    requestTimeoutMs: 5,
+    forkWorker: () => worker,
+  });
+
+  worker.emitWorkerMessage({
+    type: "terminalCreated",
+    terminal: {
+      id: "terminal-legacy",
+      name: "Legacy",
+      cwd: "/workspace",
+      workspaceId: "ws-test",
+      activity: null,
+    },
+    state: createTerminalState(),
+  });
+  worker.emitWorkerMessage({
+    type: "terminalCreated",
+    terminal: {
+      id: "terminal-owned",
+      name: "Owned",
+      cwd: "/workspace",
+      workspaceId: "ws-owned",
+      activity: null,
+    },
+    state: createTerminalState(),
+  });
+  worker.emitWorkerMessage({
+    type: "terminalCreated",
+    terminal: {
+      id: "terminal-sibling",
+      name: "Sibling",
+      cwd: "/workspace",
+      workspaceId: "ws-sibling",
+      activity: null,
+    },
+    state: createTerminalState(),
+  });
+
+  const scoped = await manager.getTerminals("/workspace", { workspaceId: "ws-owned" });
+  const unscoped = await manager.getTerminals("/workspace");
+
+  expect(scoped.map((terminal) => terminal.id)).toEqual(["terminal-owned"]);
+  expect(unscoped.map((terminal) => terminal.id)).toEqual([
+    "terminal-legacy",
+    "terminal-owned",
+    "terminal-sibling",
+  ]);
 });
 
 it("rejects non-absolute cwd in getTerminals", async () => {
@@ -589,6 +652,7 @@ it("surfaces worker activity changes via getActivity, onActivityChange, and term
       id: "terminal-a",
       name: "Shell",
       cwd: "/workspace",
+      workspaceId: "ws-test",
       activity: { state: "idle", changedAt: 0 },
     },
     state: createTerminalState(),
@@ -630,6 +694,7 @@ it("surfaces worker activity changes via getActivity, onActivityChange, and term
       terminalId: "terminal-a",
       name: "Shell",
       cwd: "/workspace",
+      workspaceId: "ws-test",
       activity: workingActivity,
       previous: idleActivity,
     },
@@ -649,6 +714,7 @@ it("sets terminal activity through a worker request", async () => {
       id: "terminal-a",
       name: "Shell",
       cwd: "/workspace",
+      workspaceId: "ws-test",
       activity: null,
     },
     state: createTerminalState(),
@@ -681,6 +747,7 @@ it("clears terminal attention through a worker request", async () => {
       id: "terminal-a",
       name: "Shell",
       cwd: "/workspace",
+      workspaceId: "ws-test",
       activity: { state: "idle", attentionReason: "finished", changedAt: 1000 },
     },
     state: createTerminalState(),
@@ -706,6 +773,7 @@ it("clears finished attention on a real terminal", async () => {
   manager = createWorkerTerminalManager();
   const session = trackTerminal(
     await manager.createTerminal({
+      workspaceId: "ws-test",
       cwd,
       ...nodeTerminalCommand("setInterval(() => {}, 1000);"),
     }),
@@ -741,6 +809,7 @@ it("removes worker terminals after killAndWait", async () => {
   manager = createWorkerTerminalManager();
   const session = trackTerminal(
     await manager.createTerminal({
+      workspaceId: "ws-test",
       cwd,
       ...nodeTerminalCommand("setInterval(() => {}, 1000);"),
     }),
@@ -771,6 +840,7 @@ it("produces one terminals-changed snapshot per title change", async () => {
       id: "terminal-a",
       name: "Shell",
       cwd: "/workspace",
+      workspaceId: "ws-test",
       activity: null,
     },
     state: createTerminalState(),

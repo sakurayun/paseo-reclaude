@@ -1073,12 +1073,12 @@ export const ru: TranslationResources = {
           "Скрыть «{{workspaceName}}» на боковой панели?\n\n Файлы на диске не будут изменены.",
         hideConfirm: "Скрывать",
         cancel: "Отмена",
-      },
-      deleteWorktreePrompt: {
-        title: "Архивировать рабочее пространство",
-        message: "Также удалить рабочее дерево с диска?",
-        keep: "Оставить на диске",
-        delete: "Удалить",
+        deleteWorktreePrompt: {
+          title: "Архивировать рабочее пространство",
+          message: "Также удалить рабочее дерево с диска?",
+          keep: "Оставить на диске",
+          delete: "Удалить",
+        },
       },
       rename: {
         title: "Переименовать рабочую область",

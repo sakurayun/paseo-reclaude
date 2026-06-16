@@ -25,7 +25,7 @@ export interface AutoArchiveArchiveOptions {
   agentManager: AgentManager;
   agentStorage: AgentStorage;
   terminalManager: TerminalManager;
-  resolveWorkspaceIdForCwd: (cwd: string) => Promise<string | null>;
+  findWorkspaceIdForCwd: (cwd: string) => Promise<string | null>;
   listActiveWorkspaces: () => Promise<ActiveWorkspaceRef[]>;
   archiveWorkspaceRecord: (workspaceId: string) => Promise<void>;
   markWorkspaceArchiving: (workspaceIds: Iterable<string>, archivingAt: string) => void;
@@ -105,7 +105,7 @@ export async function archiveIfSafe(input: {
           workspaceGitService: options.workspaceGitService,
           agentManager: options.agentManager,
           agentStorage: options.agentStorage,
-          resolveWorkspaceIdForCwd: options.resolveWorkspaceIdForCwd,
+          findWorkspaceIdForCwd: options.findWorkspaceIdForCwd,
           listActiveWorkspaces: options.listActiveWorkspaces,
           archiveWorkspaceRecord: options.archiveWorkspaceRecord,
           emitWorkspaceUpdatesForWorkspaceIds: options.emitWorkspaceUpdatesForWorkspaceIds,

@@ -1,5 +1,4 @@
 import { useState, useCallback, useEffect, useMemo, type ReactElement } from "react";
-import { router, type Href } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useTranslation } from "react-i18next";
 import { type CheckoutGitActionStatus, useCheckoutGitActionsStore } from "@/git/actions-store";
@@ -15,9 +14,8 @@ import type { CheckoutPrMergeMethod } from "@getpaseo/protocol/messages";
 import { openExternalUrl } from "@/utils/open-external-url";
 import { useToast } from "@/contexts/toast-context";
 import { useSessionStore, type WorkspaceDescriptor } from "@/stores/session-store";
-import { resolveWorkspaceIdByDirectory } from "@/utils/workspace-identity";
-import { buildWorkspaceArchiveRedirectRoute } from "@/utils/workspace-archive-navigation";
-import { buildHostRootRoute } from "@/utils/host-routes";
+import { useActiveWorkspaceSelection } from "@/stores/navigation-active-workspace-store";
+import { redirectIfArchivingActiveWorkspace } from "@/utils/sidebar-workspace-archive-redirect";
 import {
   confirmRiskyWorktreeArchive,
   type WorktreeArchiveWarningLabels,
@@ -61,6 +59,9 @@ function formatBaseRefLabel(baseRef: string | undefined, fallbackLabel: string):
 function isLastWorktreeReference(workspaces: WorkspaceDescriptor[], worktreePath: string): boolean {
   let references = 0;
   for (const candidate of workspaces) {
+    // Git-fact: counting how many workspaces still reference the worktree
+    // directory on disk, not attributing ownership. Same-cwd siblings keep the
+    // directory alive, so the disk-deletion offer must compare directories.
     if (candidate.workspaceDirectory === worktreePath) {
       references += 1;
     }
@@ -227,6 +228,7 @@ interface UseGitActionsResult {
 export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): UseGitActionsResult {
   const { t } = useTranslation();
   const toast = useToast();
+  const activeWorkspaceSelection = useActiveWorkspaceSelection();
   const [postShipArchiveSuggested, setPostShipArchiveSuggested] = useState(false);
   const [shipDefault, setShipDefault] = useState<"merge" | "pr">("pr");
 
@@ -533,27 +535,25 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
 
   const runArchiveWorktreeRecord = useCallback(
     (worktreePath: string, deleteWorktreeFromDisk: boolean) => {
-      const workspaces = useSessionStore.getState().sessions[serverId]?.workspaces;
-      const workspaceList = Array.from(workspaces?.values() ?? []);
-      const archivedWorkspaceId = resolveWorkspaceIdByDirectory({
-        workspaces: workspaceList,
-        workspaceDirectory: worktreePath,
-      });
-      const redirectRoute = archivedWorkspaceId
-        ? buildWorkspaceArchiveRedirectRoute({
-            serverId,
-            archivedWorkspaceId,
-            workspaces: workspaceList,
-          })
-        : buildHostRootRoute(serverId);
-      router.replace(redirectRoute as Href);
+      // These git actions only ever target the workspace the screen is showing,
+      // so the redirect is sourced from the active workspace selection (the
+      // screen's own route context), not from any cwd→workspace inference here.
+      if (activeWorkspaceSelection) {
+        redirectIfArchivingActiveWorkspace({
+          serverId,
+          workspaceId: activeWorkspaceSelection.workspaceId,
+          activeWorkspaceSelection,
+        });
+      }
+      // The server archive is keyed by worktreePath; the daemon owns the
+      // directory→workspace resolution for archive-by-path.
       void runArchiveWorktree({ serverId, cwd, worktreePath, deleteWorktreeFromDisk }).catch(
         (err) => {
           toastActionError(err, t("workspace.git.actions.toasts.failedArchive"));
         },
       );
     },
-    [cwd, runArchiveWorktree, serverId, t, toastActionError],
+    [activeWorkspaceSelection, cwd, runArchiveWorktree, serverId, t, toastActionError],
   );
 
   const worktreeDeletePrompt = useWorktreeDeletePrompt(runArchiveWorktreeRecord);
@@ -567,9 +567,12 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
 
     const workspaces = useSessionStore.getState().sessions[serverId]?.workspaces;
     const workspaceList = Array.from(workspaces?.values() ?? []);
-    const workspace = workspaceList.find(
-      (candidate) => candidate.workspaceDirectory === worktreePath,
-    );
+    // Git-fact lookup: find the workspace backing this worktree directory to show
+    // its name and diff stat in the confirmation. This reads display data by
+    // directory, the same as the disk-deletion reference counting, and never
+    // derives an id used to key the archive (the archive runs by path).
+    const workspace =
+      workspaceList.find((candidate) => candidate.workspaceDirectory === worktreePath) ?? null;
     const confirmed = await confirmRiskyWorktreeArchive(
       {
         worktreeName: workspace?.name ?? branchLabel,

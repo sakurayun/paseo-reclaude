@@ -9,7 +9,6 @@ import type { DownloadTokenStore } from "./file-download/token-store.js";
 import type { TerminalManager } from "../terminal/terminal-manager.js";
 import type pino from "pino";
 import type { ProjectRegistry, WorkspaceRegistry } from "./workspace-registry.js";
-import { resolveActiveWorkspaceRecordForCwd } from "./workspace-registry-model.js";
 import type { FileBackedChatService } from "./chat/chat-service.js";
 import type { LoopService } from "./loop-service.js";
 import type { ScheduleService } from "./schedule/service.js";
@@ -609,6 +608,7 @@ export class VoiceAssistantWebSocketServer {
         void this.broadcastTerminalAttention({
           terminalId: event.terminalId,
           cwd: event.cwd,
+          ...(event.workspaceId ? { workspaceId: event.workspaceId } : {}),
           terminalName: event.name,
           reason,
         }).catch((err) => {
@@ -1890,14 +1890,10 @@ export class VoiceAssistantWebSocketServer {
     }
   }
 
-  private async resolveWorkspaceIdForCwd(cwd: string): Promise<string | undefined> {
-    const workspaces = await this.workspaceRegistry.list();
-    return resolveActiveWorkspaceRecordForCwd(cwd, workspaces)?.workspaceId;
-  }
-
   private async broadcastTerminalAttention(params: {
     terminalId: string;
     cwd: string;
+    workspaceId?: string;
     terminalName: string;
     reason: TerminalAttentionReason;
   }): Promise<void> {
@@ -1915,7 +1911,7 @@ export class VoiceAssistantWebSocketServer {
 
     const allStates = clientEntries.map((e) => e.state);
     const nowMs = Date.now();
-    const workspaceId = await this.resolveWorkspaceIdForCwd(params.cwd);
+    const workspaceId = params.workspaceId;
 
     const plan = computeNotificationPlan({
       allStates,

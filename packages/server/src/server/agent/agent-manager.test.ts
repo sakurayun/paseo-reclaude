@@ -1583,6 +1583,7 @@ test("importProviderSession imports the selected session without listing and pub
     provider: "codex",
     providerHandleId: "thread-selected",
     cwd: workdir,
+    workspaceId: "ws-imported",
   });
 
   expect(client.listCalls).toBe(0);

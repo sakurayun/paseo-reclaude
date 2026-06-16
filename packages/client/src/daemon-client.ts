@@ -86,6 +86,7 @@ import type {
   SendAgentMessageRequest,
   PaseoConfigRaw,
   PaseoConfigRevision,
+  WorkspaceCreateRequest,
 } from "@getpaseo/protocol/messages";
 import type {
   AgentPermissionRequest,
@@ -3336,12 +3337,9 @@ export class DaemonClient {
 
   async createWorkspace(
     input: {
-      backing: "local" | "worktree";
-      cwd?: string;
-      projectId?: string;
-      branch?: string;
-      baseBranch?: string;
+      source: WorkspaceCreateRequest["source"];
       title?: string;
+      firstAgentContext?: WorkspaceCreateRequest["firstAgentContext"];
     },
     requestId?: string,
   ): Promise<WorkspaceCreatePayload> {
@@ -3349,12 +3347,11 @@ export class DaemonClient {
       requestId,
       message: {
         type: "workspace.create.request",
-        backing: input.backing,
-        ...(input.cwd !== undefined ? { cwd: input.cwd } : {}),
-        ...(input.projectId !== undefined ? { projectId: input.projectId } : {}),
-        ...(input.branch !== undefined ? { branch: input.branch } : {}),
-        ...(input.baseBranch !== undefined ? { baseBranch: input.baseBranch } : {}),
+        source: input.source,
         ...(input.title !== undefined ? { title: input.title } : {}),
+        ...(input.firstAgentContext !== undefined
+          ? { firstAgentContext: input.firstAgentContext }
+          : {}),
       },
       responseType: "workspace.create.response",
       timeout: 60000,
