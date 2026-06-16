@@ -2079,11 +2079,15 @@ const styles = StyleSheet.create((theme: Theme) => ({
     gap: theme.spacing[3],
   },
   secondaryContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
     gap: theme.spacing[1],
   },
   secondaryControls: {
     flexDirection: "row",
     alignItems: "center",
+    flexWrap: "wrap",
     gap: theme.spacing[1],
     paddingHorizontal: {
       xs: 0,

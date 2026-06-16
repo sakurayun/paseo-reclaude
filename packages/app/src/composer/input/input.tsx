@@ -2114,6 +2114,10 @@ const styles = StyleSheet.create((theme: Theme) => ({
       : {}),
   },
   secondaryContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: theme.spacing[1],
     borderTopWidth: theme.borderWidth[1],
     borderTopColor: theme.colors.borderAccent,
     marginHorizontal: -theme.spacing[3],
