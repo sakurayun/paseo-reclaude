@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { Archive, ChevronDown, ChevronRight } from "lucide-react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { getProviderIcon } from "@/components/provider-icons";
+import { GlassSurface } from "@/components/ui/glass-surface";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useIsCompactFormFactor, MAX_CONTENT_WIDTH } from "@/constants/layout";
 import { isNative } from "@/constants/platform";
@@ -73,7 +74,7 @@ export function SubagentsTrack({
   return (
     <View style={styles.outer} testID="subagents-track">
       <View style={styles.track}>
-        <View style={surfaceStyle}>
+        <GlassSurface style={surfaceStyle}>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={headerLabel}
@@ -107,7 +108,7 @@ export function SubagentsTrack({
               ))}
             </ScrollView>
           ) : null}
-        </View>
+        </GlassSurface>
       </View>
     </View>
   );
@@ -227,7 +228,6 @@ const styles = StyleSheet.create((theme) => ({
   },
   surface: {
     alignSelf: "stretch",
-    backgroundColor: theme.colors.surface1,
     borderWidth: theme.borderWidth[1],
     borderColor: theme.colors.borderAccent,
     borderBottomWidth: 0,
