@@ -56,9 +56,7 @@ export default {
     scheme: "paseo",
     userInterfaceStyle: "automatic",
     newArchEnabled: true,
-    runtimeVersion: {
-      policy: "appVersion",
-    },
+    runtimeVersion: pkg.version,
     updates: {
       url: "https://u.expo.dev/58537a79-e9dc-4f7c-b9bf-931fb7af4647",
     },
