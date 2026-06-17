@@ -90,5 +90,4 @@ packages/desktop/.cache/
 packages/desktop/src-tauri/resources/managed-runtime/
 app.json
 .spec-workflow/templates/
-packages/app/app.config.js
 package-lock.json
