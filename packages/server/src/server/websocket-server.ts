@@ -1222,6 +1222,8 @@ export class VoiceAssistantWebSocketServer {
         claudeAcpTransport: true,
         // COMPAT(daemonSelfUpdate): added in v0.1.93, remove gate after 2026-12-13.
         daemonSelfUpdate: true,
+        // COMPAT(tcpTunnel): added in v0.1.97, remove gate after 2026-12-13.
+        tcpTunnel: true,
       },
     };
   }
