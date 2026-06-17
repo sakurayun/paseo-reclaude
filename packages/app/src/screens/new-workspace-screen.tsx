@@ -1050,8 +1050,8 @@ async function createMultiplicityWorkspace(input: {
   createFailedMessage: string;
 }): Promise<ReturnType<typeof normalizeWorkspaceDescriptor>> {
   const isWorktree = input.isolation === "worktree";
-  const baseBranch = isWorktree
-    ? (resolveCheckoutRequest(input.selectedItem, input.currentBranch)?.refName ?? undefined)
+  const checkoutRequest = isWorktree
+    ? resolveCheckoutRequest(input.selectedItem, input.currentBranch)
     : undefined;
   const firstAgentContext = buildFirstAgentContext({
     prompt: input.prompt,
@@ -1064,7 +1064,7 @@ async function createMultiplicityWorkspace(input: {
           cwd: input.project.iconWorkingDir,
           projectId: input.project.projectKey,
           worktreeSlug: createNameId(),
-          ...(baseBranch ? { baseBranch } : {}),
+          ...checkoutRequest,
         }
       : {
           kind: "directory",
