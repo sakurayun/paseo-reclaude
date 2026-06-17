@@ -67,8 +67,9 @@ export class TerminalE2EHarness {
         ? {
             command: input.command,
             args: input.args,
+            workspaceId: this.workspaceId,
           }
-        : undefined;
+        : { workspaceId: this.workspaceId };
     const result = await this.client.createTerminal(
       this.tempRepo.path,
       input.name,
@@ -90,7 +91,9 @@ export class TerminalE2EHarness {
     const timeoutMs = input.timeoutMs ?? 10_000;
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
-      const result = await this.client.listTerminals(this.tempRepo.path);
+      const result = await this.client.listTerminals(this.tempRepo.path, undefined, {
+        workspaceId: this.workspaceId,
+      });
       const terminal = result.terminals.find((entry) => entry.id === input.terminalId);
       const activity = terminal?.activity ?? null;
       const attentionMatches =

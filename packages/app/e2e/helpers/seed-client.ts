@@ -53,7 +53,7 @@ export interface SeedDaemonClient {
     cwd: string,
     name?: string,
     requestId?: string,
-    options?: { agentId?: string; command?: string; args?: string[] },
+    options?: { agentId?: string; command?: string; args?: string[]; workspaceId?: string },
   ): Promise<{
     terminal: { id: string; name: string; cwd: string; activity?: TerminalActivity | null } | null;
     error: string | null;

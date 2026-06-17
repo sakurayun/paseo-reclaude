@@ -414,6 +414,9 @@ export const fr: TranslationResources = {
     },
     hoverCard: {
       scriptsAccessibility: "ScriptsWorkspace",
+      copyPath: "Copier le chemin",
+      copyBranchName: "Copier le nom de la branche",
+      copied: "Copié",
     },
     fileExplorer: {
       sort: {
@@ -1090,12 +1093,6 @@ export const fr: TranslationResources = {
           "Masquer «{{workspaceName}}» dans la barre latérale?\n\nLes fichiers sur le disque ne seront pas modifiés.",
         hideConfirm: "Cacher",
         cancel: "Annuler",
-        deleteWorktreePrompt: {
-          title: "Archiver l'espace de travail",
-          message: "Supprimer aussi le worktree du disque?",
-          keep: "Conserver sur le disque",
-          delete: "Supprimer",
-        },
       },
       rename: {
         title: "Renommer l'espace de travail",
@@ -2345,8 +2342,6 @@ export const fr: TranslationResources = {
       metadata: {
         title: "Génération de métadonnées",
         info: "Instructions spécifiques au projet injectées dans les invites de l'IA quePaseoutilise pour générer des métadonnées: utilisez-les pour appliquer les conventions de votre équipe telles que la dénomination des branches, le style de validation ou le formatPR.",
-        agentTitle: "TitresAgent",
-        agentTitlePlaceholder: "Gardez les titres impératifs et inférieurs à 40 caractères",
         branchName: "Noms des succursales",
         branchNamePlaceholder:
           "Préfixez les branches avec feat/ ou fix/, mb/ pour les branches personnelles",

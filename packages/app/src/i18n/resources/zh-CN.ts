@@ -404,6 +404,9 @@ export const zhCN: TranslationResources = {
     },
     hoverCard: {
       scriptsAccessibility: "工作区脚本",
+      copyPath: "复制路径",
+      copyBranchName: "复制分支名称",
+      copied: "已复制",
     },
     fileExplorer: {
       sort: {
@@ -1045,12 +1048,6 @@ export const zhCN: TranslationResources = {
         hideMessage: "从侧边栏隐藏「{{workspaceName}}」？\n\n磁盘上的文件不会被更改。",
         hideConfirm: "隐藏",
         cancel: "取消",
-        deleteWorktreePrompt: {
-          title: "归档 workspace",
-          message: "同时从磁盘删除 worktree？",
-          keep: "保留在磁盘上",
-          delete: "删除",
-        },
       },
       rename: {
         title: "重命名 workspace",
@@ -2254,8 +2251,6 @@ export const zhCN: TranslationResources = {
       metadata: {
         title: "元数据生成",
         info: "注入到 Paseo 用来生成元数据的 AI prompts 中的 Project 专属指令，可用于强制执行团队约定，例如分支命名、提交风格或 PR 格式",
-        agentTitle: "Agent 标题",
-        agentTitlePlaceholder: "标题保持祈使句且不超过 40 个字符",
         branchName: "分支名称",
         branchNamePlaceholder: "分支以 feat/ 或 fix/ 开头，个人分支使用 mb/",
         commitMessage: "提交消息",

@@ -31,6 +31,14 @@ export const usePinnedTargetsStore = create<PinnedTargetsState>()(
     {
       name: "pinned-tab-targets",
       version: 1,
+      merge: (persistedState, currentState) => {
+        const persisted = persistedState as Partial<PinnedTargetsState> | null;
+        return {
+          ...currentState,
+          ...persisted,
+          pinned: persisted?.pinned ?? applyDefaultPinnedTargets([]),
+        };
+      },
       storage: createJSONStorage(() => AsyncStorage),
       partialize: (state) => ({ pinned: state.pinned }),
       migrate: (persistedState, version) => {

@@ -3291,7 +3291,7 @@ export class DaemonClient {
       repoRoot?: string;
       branchName?: string;
       workspaceId?: string;
-      deleteWorktreeFromDisk?: boolean;
+      scope?: "workspace" | "worktree";
     },
     requestId?: string,
   ): Promise<PaseoWorktreeArchivePayload> {
@@ -3303,9 +3303,7 @@ export class DaemonClient {
         repoRoot: input.repoRoot,
         branchName: input.branchName,
         ...(input.workspaceId !== undefined ? { workspaceId: input.workspaceId } : {}),
-        ...(input.deleteWorktreeFromDisk !== undefined
-          ? { deleteWorktreeFromDisk: input.deleteWorktreeFromDisk }
-          : {}),
+        ...(input.scope !== undefined ? { scope: input.scope } : {}),
       },
       responseType: "paseo_worktree_archive_response",
       timeout: 60000,

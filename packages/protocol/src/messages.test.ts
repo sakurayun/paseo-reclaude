@@ -4,6 +4,7 @@ import {
   FileExplorerRequestSchema,
   MutableDaemonConfigPatchSchema,
   MutableDaemonConfigSchema,
+  PaseoWorktreeArchiveRequestSchema,
   SessionInboundMessageSchema,
   SessionOutboundMessageSchema,
 } from "./messages.js";
@@ -276,5 +277,37 @@ describe("file explorer request compatibility", () => {
       requestId: "req-new",
       acceptBinary: true,
     });
+  });
+});
+
+describe("paseo worktree archive request compatibility", () => {
+  test("omitted scope defaults to workspace", () => {
+    const parsed = PaseoWorktreeArchiveRequestSchema.parse({
+      type: "paseo_worktree_archive_request",
+      worktreePath: "/repo/app",
+      requestId: "req-old-scope",
+    });
+    expect(parsed.scope).toBe("workspace");
+  });
+
+  test("scope worktree parses", () => {
+    const parsed = PaseoWorktreeArchiveRequestSchema.parse({
+      type: "paseo_worktree_archive_request",
+      worktreePath: "/repo/app",
+      scope: "worktree",
+      requestId: "req-worktree-scope",
+    });
+    expect(parsed.scope).toBe("worktree");
+  });
+
+  test("unknown extra field is still accepted", () => {
+    const parsed = PaseoWorktreeArchiveRequestSchema.parse({
+      type: "paseo_worktree_archive_request",
+      worktreePath: "/repo/app",
+      requestId: "req-extra",
+      extraField: "ignored",
+    });
+    expect(parsed).not.toHaveProperty("extraField");
+    expect(parsed.scope).toBe("workspace");
   });
 });

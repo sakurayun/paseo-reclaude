@@ -404,6 +404,9 @@ export const ar: TranslationResources = {
     },
     hoverCard: {
       scriptsAccessibility: "البرامج النصية Workspace",
+      copyPath: "نسخ المسار",
+      copyBranchName: "نسخ اسم الفرع",
+      copied: "تم النسخ",
     },
     fileExplorer: {
       sort: {
@@ -1056,12 +1059,6 @@ export const ar: TranslationResources = {
           'إخفاء "{{workspaceName}}" من الشريط الجانبي؟\n\n لن يتم تغيير الملفات الموجودة على القرص.',
         hideConfirm: "يخفي",
         cancel: "يلغي",
-        deleteWorktreePrompt: {
-          title: "أرشفة مساحة العمل",
-          message: "هل تريد أيضًا إزالة شجرة العمل من القرص؟",
-          keep: "الاحتفاظ على القرص",
-          delete: "حذف",
-        },
       },
       rename: {
         title: "إعادة تسمية مساحة العمل",
@@ -2283,8 +2280,6 @@ export const ar: TranslationResources = {
       metadata: {
         title: "توليد البيانات الوصفية",
         info: "تعليمات خاصة بالمشروع يتم إدخالها في الذكاء الاصطناعي الذي يستخدمه Paseo لإنشاء بيانات التعريف - استخدمها لفرض اصطلاحات فريقك مثل تسمية الفرع أو نمط الالتزام أو تنسيق PR",
-        agentTitle: "عناوين Agent",
-        agentTitlePlaceholder: "اجعل العناوين ضرورية وأقل من 40 حرفًا",
         branchName: "اسماء الفروع",
         branchNamePlaceholder: "بادئة الفروع بـ fet/ أو Fix/, mb/ للفروع الشخصية",
         commitMessage: "ارتكاب الرسائل",

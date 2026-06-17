@@ -13,9 +13,11 @@ import { useTranslation } from "react-i18next";
 import { FadeIn, FadeOut } from "react-native-reanimated";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import {
+  Check,
   CircleCheck,
   CircleDot,
   CircleX,
+  Copy,
   ExternalLink,
   Folder,
   GitBranch,
@@ -24,12 +26,14 @@ import { GitHubIcon } from "@/components/icons/github-icon";
 import type { Theme } from "@/styles/theme";
 import { DiffStat } from "@/components/diff-stat";
 import { Pressable } from "react-native";
+import type { GestureResponderEvent } from "react-native";
 import { Portal } from "@gorhom/portal";
 import { useBottomSheetModalInternal } from "@gorhom/bottom-sheet";
 import type { SidebarWorkspaceEntry } from "@/hooks/use-sidebar-workspaces-list";
 import type { PrHint } from "@/git/use-pr-status-query";
 import { openExternalUrl } from "@/utils/open-external-url";
 import { shortenPath } from "@/utils/shorten-path";
+import { copyToClipboard } from "@/utils/copy-to-clipboard";
 import { PrBadge } from "@/components/sidebar-workspace-list";
 import { useHoverSafeZone } from "@/hooks/use-hover-safe-zone";
 import { useIsCompactFormFactor } from "@/constants/layout";
@@ -276,29 +280,27 @@ function WorkspaceHoverCardContent({
           frameStyle={frameStyle}
         >
           <View style={styles.cardHeader}>
-            <Text style={styles.cardTitle} numberOfLines={1} testID="hover-card-workspace-name">
+            <Text style={styles.cardTitle} testID="hover-card-workspace-name">
               {workspace.name}
             </Text>
           </View>
           {workspace.currentBranch ? (
-            <View style={styles.cardInfoRow}>
-              <ThemedGitBranch size={12} uniProps={foregroundMutedColorMapping} />
-              <Text
-                style={styles.cardInfoText}
-                numberOfLines={1}
-                testID="hover-card-workspace-branch"
-              >
-                {workspace.currentBranch}
-              </Text>
-            </View>
+            <CopyableInfoRow
+              icon={ThemedGitBranch}
+              value={workspace.currentBranch}
+              copyValue={workspace.currentBranch}
+              copyLabel={t("workspace.hoverCard.copyBranchName")}
+              testID="hover-card-workspace-branch"
+            />
           ) : null}
           {cwdDisplay ? (
-            <View style={styles.cardInfoRow}>
-              <ThemedFolder size={12} uniProps={foregroundMutedColorMapping} />
-              <Text style={styles.cardInfoText} numberOfLines={1} testID="hover-card-workspace-cwd">
-                {cwdDisplay}
-              </Text>
-            </View>
+            <CopyableInfoRow
+              icon={ThemedFolder}
+              value={cwdDisplay}
+              copyValue={workspace.workspaceDirectory ?? ""}
+              copyLabel={t("workspace.hoverCard.copyPath")}
+              testID="hover-card-workspace-cwd"
+            />
           ) : null}
           {prHint || workspace.diffStat ? (
             <View style={styles.cardMetaRow}>
@@ -330,12 +332,78 @@ const ThemedGitHubIcon = withUnistyles(GitHubIcon);
 const ThemedCircleCheck = withUnistyles(CircleCheck);
 const ThemedCircleDot = withUnistyles(CircleDot);
 const ThemedCircleX = withUnistyles(CircleX);
+const ThemedCopy = withUnistyles(Copy);
+const ThemedCheck = withUnistyles(Check);
 
 const foregroundColorMapping = (theme: Theme) => ({ color: theme.colors.foreground });
 const foregroundMutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
 const successColorMapping = (theme: Theme) => ({ color: theme.colors.statusSuccess });
 const warningColorMapping = (theme: Theme) => ({ color: theme.colors.statusWarning });
 const dangerColorMapping = (theme: Theme) => ({ color: theme.colors.statusDanger });
+
+function CopyableInfoRow({
+  icon: Icon,
+  value,
+  copyValue,
+  copyLabel,
+  testID,
+}: {
+  icon: React.ComponentType<React.ComponentProps<typeof ThemedGitBranch>>;
+  value: string;
+  copyValue: string;
+  copyLabel: string;
+  testID: string;
+}) {
+  const [isHovered, setIsHovered] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const handlePressIn = useCallback((event: GestureResponderEvent) => {
+    event.stopPropagation();
+  }, []);
+
+  const handlePress = useCallback(() => {
+    void copyToClipboard(copyValue);
+    setCopied(true);
+    setTimeout(() => {
+      setCopied(false);
+    }, 2000);
+  }, [copyValue]);
+
+  const handleHoverIn = useCallback(() => setIsHovered(true), []);
+  const handleHoverOut = useCallback(() => setIsHovered(false), []);
+
+  let iconUniProps = foregroundMutedColorMapping;
+  if (copied || isHovered) {
+    iconUniProps = foregroundColorMapping;
+  }
+  const textStyle = copied || isHovered ? cardInfoTextHoveredCombined : styles.cardInfoText;
+
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={copyLabel}
+      style={styles.cardInfoRow}
+      hitSlop={4}
+      onPressIn={handlePressIn}
+      onPress={handlePress}
+      onHoverIn={handleHoverIn}
+      onHoverOut={handleHoverOut}
+    >
+      {(() => {
+        if (copied) {
+          return <ThemedCheck size={12} uniProps={iconUniProps} />;
+        }
+        if (isHovered) {
+          return <ThemedCopy size={12} uniProps={iconUniProps} />;
+        }
+        return <Icon size={12} uniProps={iconUniProps} />;
+      })()}
+      <Text style={textStyle} numberOfLines={1} testID={testID}>
+        {value}
+      </Text>
+    </Pressable>
+  );
+}
 
 function getChecksSummaryCounts(checks: NonNullable<PrHint["checks"]>) {
   return checks.reduce(
@@ -501,6 +569,9 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.xs,
     fontWeight: theme.fontWeight.normal,
   },
+  cardInfoTextHovered: {
+    color: theme.colors.foreground,
+  },
   separator: {
     height: 1,
     backgroundColor: theme.colors.border,
@@ -557,3 +628,5 @@ const checksSummaryLabelHoveredCombined = [
   styles.checksSummaryLabel,
   styles.checksSummaryLabelHovered,
 ];
+
+const cardInfoTextHoveredCombined = [styles.cardInfoText, styles.cardInfoTextHovered];

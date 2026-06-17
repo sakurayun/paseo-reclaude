@@ -2275,7 +2275,7 @@ export function GitDiffPane({
     }),
     [],
   );
-  const { gitActions, branchLabel, worktreeDeletePrompt } = useGitActions({
+  const { gitActions, branchLabel } = useGitActions({
     serverId,
     cwd,
     icons: gitActionsIcons,
@@ -2336,7 +2336,6 @@ export function GitDiffPane({
             testID="changes-branch-switcher"
           />
           {isMobile ? <GitActionsSplitButton gitActions={gitActions} /> : null}
-          {worktreeDeletePrompt}
         </View>
       ) : null}
 
