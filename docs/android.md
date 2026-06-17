@@ -46,6 +46,8 @@ Keep `react` and `react-dom` pinned to the React version embedded by the current
 
 `packages/app/app.config.js` sets `runtimeVersion` explicitly from `packages/app/package.json` (`pkg.version`). Keep it that way. Do not switch back to `{ policy: "appVersion" }` while `packages/app/eas.json` uses `cli.appVersionSource = "remote"`: local config evaluation can resolve the policy to the package version, while EAS remote build evaluation can resolve it to `null`, causing the build to fail with a local/EAS runtime version mismatch.
 
+The root `app.config.js` mirrors the app package version for `expo-updates` runtime resolution in monorepo-root contexts. EAS Build can calculate the local runtime version from `packages/app`, then calculate the in-build runtime version from the checkout root after prebuild; both locations must resolve to the same string.
+
 ## Screenshots
 
 ```bash
