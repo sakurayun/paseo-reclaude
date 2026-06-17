@@ -46,7 +46,7 @@ const variants = {
 
 const variant = variants[appVariant] ?? variants.production;
 
-export default {
+module.exports = {
   expo: {
     name: variant.name,
     slug: "paseo-reclaude",
