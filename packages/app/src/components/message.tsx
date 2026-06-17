@@ -217,6 +217,7 @@ const SCROLL_EDGE_EPSILON = 0.5;
 // Font size for stream metadata (timestamps, durations, live elapsed timer).
 // Lives between theme.fontSize.xs (12) and theme.fontSize.sm (14); no token.
 export const STREAM_METADATA_FONT_SIZE = 13;
+const USER_MESSAGE_TIMESTAMP_MIN_WIDTH = 72;
 type ScrollAxis = "x" | "y";
 
 function normalizeFindHighlights(
@@ -524,6 +525,8 @@ const userMessageStylesheet = StyleSheet.create((theme) => ({
     lineHeight: Math.round(STREAM_METADATA_FONT_SIZE * 1.35),
     fontVariant: ["tabular-nums"],
     flexShrink: 0,
+    minWidth: USER_MESSAGE_TIMESTAMP_MIN_WIDTH,
+    textAlign: "right",
     paddingRight: 1,
   },
 }));
