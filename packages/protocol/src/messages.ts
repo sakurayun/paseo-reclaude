@@ -1309,6 +1309,11 @@ export const ShutdownServerRequestMessageSchema = z.object({
   requestId: z.string(),
 });
 
+export const DaemonUpdateRequestMessageSchema = z.object({
+  type: z.literal("daemon.update.request"),
+  requestId: z.string(),
+});
+
 export const AgentTimelineCursorSchema = z.object({
   epoch: z.string(),
   seq: z.number().int().nonnegative(),
@@ -2204,6 +2209,7 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   CancelAgentRequestMessageSchema,
   ShutdownServerRequestMessageSchema,
   RestartServerRequestMessageSchema,
+  DaemonUpdateRequestMessageSchema,
   FetchAgentTimelineRequestMessageSchema,
   SetAgentModeRequestMessageSchema,
   SetAgentModelRequestMessageSchema,
@@ -2482,6 +2488,8 @@ export const ServerInfoStatusPayloadSchema = z
         workspaceMultiplicity: z.boolean().optional(),
         // COMPAT(claudeAcpTransport): added in v0.1.99, remove gate after 2026-12-15.
         claudeAcpTransport: z.boolean().optional(),
+        // COMPAT(daemonSelfUpdate): added in v0.1.93, remove gate after 2026-12-13.
+        daemonSelfUpdate: z.boolean().optional(),
       })
       .optional(),
   })
@@ -2570,6 +2578,16 @@ export const ShutdownRequestedStatusPayloadSchema = z.object({
   requestId: z.string(),
 });
 
+export const DaemonUpdateProgressStatusPayloadSchema = z.object({
+  status: z.literal("daemon_update_progress"),
+  requestId: z.string(),
+  phase: z.enum(["starting", "downloading", "installing", "complete"]),
+});
+
+export type DaemonUpdateProgressStatusPayload = z.infer<
+  typeof DaemonUpdateProgressStatusPayloadSchema
+>;
+
 export const DaemonConfigChangedStatusPayloadSchema = z
   .object({
     status: z.literal("daemon_config_changed"),
@@ -2584,6 +2602,7 @@ export const KnownStatusPayloadSchema = z.discriminatedUnion("status", [
   AgentRefreshedStatusPayloadSchema,
   ShutdownRequestedStatusPayloadSchema,
   RestartRequestedStatusPayloadSchema,
+  DaemonUpdateProgressStatusPayloadSchema,
   DaemonConfigChangedStatusPayloadSchema,
 ]);
 
@@ -4434,6 +4453,19 @@ export const TerminalAttentionRequiredSchema = z.object({
   }),
 });
 
+export const DaemonUpdateResponseSchema = z.object({
+  type: z.literal("daemon.update.response"),
+  payload: z.object({
+    requestId: z.string(),
+    success: z.boolean(),
+    error: z.string().nullable(),
+    previousVersion: z.string().nullable(),
+    newVersion: z.string().nullable(),
+  }),
+});
+
+export type DaemonUpdateResponse = z.infer<typeof DaemonUpdateResponseSchema>;
+
 export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   ActivityLogMessageSchema,
   AssistantChunkMessageSchema,
@@ -4574,6 +4606,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   LoopInspectResponseSchema,
   LoopLogsResponseSchema,
   LoopStopResponseSchema,
+  DaemonUpdateResponseSchema,
 ]);
 
 export type SessionOutboundMessage = z.infer<typeof SessionOutboundMessageSchema>;

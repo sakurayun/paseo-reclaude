@@ -1220,6 +1220,8 @@ export class VoiceAssistantWebSocketServer {
         workspaceMultiplicity: true,
         // COMPAT(claudeAcpTransport): added in v0.1.99, remove gate after 2026-12-15.
         claudeAcpTransport: true,
+        // COMPAT(daemonSelfUpdate): added in v0.1.93, remove gate after 2026-12-13.
+        daemonSelfUpdate: true,
       },
     };
   }
