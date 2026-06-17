@@ -20,7 +20,10 @@ import { WebView, type WebViewMessageEvent } from "react-native-webview";
 import type { ITheme } from "@xterm/xterm";
 import type { TerminalState } from "@getpaseo/protocol/messages";
 import type { TerminalInputModeState } from "@getpaseo/protocol/terminal-input-mode";
-import type { TerminalOutputData } from "../terminal/runtime/terminal-emulator-runtime";
+import type {
+  TerminalFindResultChangeEvent,
+  TerminalOutputData,
+} from "../terminal/runtime/terminal-emulator-runtime";
 import type {
   TerminalLocalFileLinkSource,
   TerminalLocalFileLinkTarget,
@@ -37,6 +40,10 @@ export interface TerminalEmulatorHandle {
   renderSnapshot: (state: TerminalState | null) => void;
   clear: () => void;
   blur: () => void;
+  findNext: (input: { query: string }) => boolean;
+  findPrevious: (input: { query: string }) => boolean;
+  clearFindDecorations: () => void;
+  onFindResultsChanged: (listener: (event: TerminalFindResultChangeEvent) => void) => () => void;
   requestClipboardRead: () => void;
 }
 
@@ -463,6 +470,10 @@ export default function TerminalEmulator({
         );
         Keyboard.dismiss();
       },
+      findNext: () => false,
+      findPrevious: () => false,
+      clearFindDecorations: () => {},
+      onFindResultsChanged: () => () => {},
       requestClipboardRead: () => {
         webViewRef.current?.injectJavaScript(
           "window.__PASEO_TERMINAL_WEBVIEW_REQUEST_CLIPBOARD_READ__ && window.__PASEO_TERMINAL_WEBVIEW_REQUEST_CLIPBOARD_READ__(); true;",
