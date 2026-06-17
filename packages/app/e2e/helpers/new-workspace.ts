@@ -214,18 +214,34 @@ export async function selectNewWorkspaceProject(
   await expectNewWorkspaceProjectSelected(page, input.projectDisplayName);
 }
 
-export async function selectWorkspaceBacking(
+// The isolation trigger renders the active isolation's label ("Local" / "New
+// worktree"), so asserting its text proves what the screen currently remembers.
+const ISOLATION_TRIGGER_LABEL: Record<"local" | "worktree", string> = {
+  local: "Local",
+  worktree: "New worktree",
+};
+
+export async function expectWorkspaceIsolationSelected(
   page: Page,
-  backing: "local" | "worktree",
+  isolation: "local" | "worktree",
 ): Promise<void> {
-  const trigger = page.getByTestId("workspace-create-backing-trigger");
+  const trigger = page.getByRole("button", { name: "Workspace isolation" });
+  await expect(trigger).toBeVisible({ timeout: 30_000 });
+  await expect(trigger).toContainText(ISOLATION_TRIGGER_LABEL[isolation]);
+}
+
+export async function selectWorkspaceIsolation(
+  page: Page,
+  isolation: "local" | "worktree",
+): Promise<void> {
+  const trigger = page.getByTestId("workspace-create-isolation-trigger");
   await expect(trigger).toBeVisible({ timeout: 30_000 });
   await trigger.click();
 
   // "New worktree" is only listed once the checkout status query confirms the
   // selected project is a git repo, so wait for the option to appear before
   // clicking it.
-  const option = page.getByTestId(`workspace-create-backing-${backing}`);
+  const option = page.getByTestId(`workspace-create-isolation-${isolation}`);
   await expect(option).toBeVisible({ timeout: 30_000 });
   await option.click();
 }

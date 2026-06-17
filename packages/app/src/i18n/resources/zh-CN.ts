@@ -1067,7 +1067,7 @@ export const zhCN: TranslationResources = {
   newWorkspace: {
     title: "新建 workspace",
     create: "创建",
-    backing: {
+    isolation: {
       local: "本地",
       worktree: "新建 worktree",
       label: "隔离",
