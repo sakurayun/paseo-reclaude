@@ -217,6 +217,7 @@ const SCROLL_EDGE_EPSILON = 0.5;
 // Font size for stream metadata (timestamps, durations, live elapsed timer).
 // Lives between theme.fontSize.xs (12) and theme.fontSize.sm (14); no token.
 export const STREAM_METADATA_FONT_SIZE = 13;
+const USER_MESSAGE_TEXT_MIN_WIDTH = 64;
 const USER_MESSAGE_TIMESTAMP_MIN_WIDTH = 72;
 type ScrollAxis = "x" | "y";
 
@@ -468,13 +469,15 @@ const userMessageStylesheet = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.base,
     lineHeight: Math.round(theme.fontSize.base * 1.4),
     overflowWrap: "anywhere",
+    minWidth: USER_MESSAGE_TEXT_MIN_WIDTH,
     // Native text engines re-wrap text inside the frame Yoga assigns, while
     // the bubble's height was measured at the (possibly fractionally wider)
     // pre-rounding content width. When a line ends flush with that measured
     // width, the rounded-down frame pushes the last character onto an extra
     // line that falls outside the measured height and gets clipped. Reserving
-    // right/bottom slack keeps the measure width <= the native render
-    // width, so the re-wrap can never produce more lines than were measured.
+    // a minimum short-message width plus right/bottom slack keeps the measure
+    // width <= the native render width, so the re-wrap can never produce more
+    // lines than were measured.
     paddingRight: 2,
     paddingBottom: 1,
   },
