@@ -1723,8 +1723,6 @@ const styles = StyleSheet.create((theme) => ({
   desktopContainer: {
     backgroundColor: IS_WEB ? theme.colors.surfaceGlass : theme.colors.surfaceGlassStrong,
     borderRadius: theme.borderRadius.lg,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
     ...theme.shadow.md,
     maxHeight: 400,
     overflow: "hidden",

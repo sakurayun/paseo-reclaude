@@ -226,8 +226,6 @@ const styles = StyleSheet.create((theme) => ({
     width: 280,
     paddingHorizontal: theme.spacing[2],
     backgroundColor: theme.colors.surfaceGlass,
-    borderWidth: theme.borderWidth[1],
-    borderColor: theme.colors.borderAccent,
     // Frosted glass; web-only CSS, and this component only renders on web.
     ...(isWeb
       ? ({

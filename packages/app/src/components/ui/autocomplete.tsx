@@ -294,19 +294,17 @@ const styles = StyleSheet.create((theme: Theme) => ({
     gap: theme.spacing[1],
   },
   detailCard: {
-    borderWidth: theme.borderWidth[1],
-    borderColor: theme.colors.borderAccent,
     borderRadius: theme.borderRadius.lg,
     paddingHorizontal: theme.spacing[3],
     paddingVertical: theme.spacing[3],
     ...theme.shadow.md,
   },
   containerBackdrop: {
-    top: theme.borderWidth[1],
-    right: theme.borderWidth[1],
-    bottom: theme.borderWidth[1],
-    left: theme.borderWidth[1],
-    borderRadius: theme.borderRadius.lg - theme.borderWidth[1],
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    borderRadius: theme.borderRadius.lg,
     overflow: "hidden",
   },
   detailLabel: {
@@ -325,8 +323,6 @@ const styles = StyleSheet.create((theme: Theme) => ({
     marginTop: theme.spacing[1],
   },
   container: {
-    borderWidth: theme.borderWidth[1],
-    borderColor: theme.colors.borderAccent,
     borderRadius: theme.borderRadius.lg,
     overflow: "hidden",
     ...theme.shadow.md,

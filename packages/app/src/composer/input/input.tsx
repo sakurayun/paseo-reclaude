@@ -2041,8 +2041,6 @@ const styles = StyleSheet.create((theme: Theme) => ({
     flexDirection: "column",
     gap: theme.spacing[3],
     backgroundColor: isWeb ? theme.colors.surfaceGlass : "transparent",
-    borderWidth: theme.borderWidth[1],
-    borderColor: theme.colors.borderAccent,
     borderRadius: theme.borderRadius["2xl"],
     paddingVertical: {
       xs: theme.spacing[2],
@@ -2056,9 +2054,6 @@ const styles = StyleSheet.create((theme: Theme) => ({
       ? ({
           backdropFilter: "blur(20px) saturate(1.5)",
           WebkitBackdropFilter: "blur(20px) saturate(1.5)",
-          transitionProperty: "border-color",
-          transitionDuration: "200ms",
-          transitionTimingFunction: "ease-in-out",
         } as object)
       : {}),
   },
@@ -2075,9 +2070,8 @@ const styles = StyleSheet.create((theme: Theme) => ({
   // ensureUltracodeGlowStyle); native gets a static halo. Colors come from the
   // theme's ultracodeGlow token (violet by default, terracotta on Claude Light).
   inputWrapperUltracodeGlow: isWeb
-    ? { borderColor: theme.colors.ultracodeGlow.border }
+    ? {}
     : {
-        borderColor: theme.colors.ultracodeGlow.border,
         shadowColor: theme.colors.ultracodeGlow.halo,
         shadowOffset: { width: 0, height: 0 },
         shadowOpacity: 0.3,
@@ -2085,11 +2079,11 @@ const styles = StyleSheet.create((theme: Theme) => ({
         elevation: 5,
       },
   inputBackdrop: {
-    top: theme.borderWidth[1],
-    right: theme.borderWidth[1],
-    bottom: theme.borderWidth[1],
-    left: theme.borderWidth[1],
-    borderRadius: theme.borderRadius["2xl"] - theme.borderWidth[1],
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    borderRadius: theme.borderRadius["2xl"],
     overflow: "hidden",
   },
   textInputScrollWrapper: {

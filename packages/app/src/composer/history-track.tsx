@@ -221,13 +221,10 @@ export function HistoryTrack({
 }
 
 const styles = StyleSheet.create((theme: Theme) => ({
-  // Frosted-glass card matching the todo track: top-rounded, no bottom border,
-  // pulled down to sit flush against the input below.
+  // Frosted-glass card matching the todo track: top-rounded and pulled down
+  // to sit flush against the input below.
   surface: {
     alignSelf: "stretch",
-    borderWidth: theme.borderWidth[1],
-    borderColor: theme.colors.borderAccent,
-    borderBottomWidth: 0,
     borderTopLeftRadius: theme.borderRadius["2xl"],
     borderTopRightRadius: theme.borderRadius["2xl"],
     overflow: "hidden",
@@ -241,12 +238,12 @@ const styles = StyleSheet.create((theme: Theme) => ({
     marginBottom: -(theme.spacing[3] + theme.spacing[4]),
   },
   surfaceBackdrop: {
-    top: theme.borderWidth[1],
-    right: theme.borderWidth[1],
+    top: 0,
+    right: 0,
     bottom: 0,
-    left: theme.borderWidth[1],
-    borderTopLeftRadius: theme.borderRadius["2xl"] - theme.borderWidth[1],
-    borderTopRightRadius: theme.borderRadius["2xl"] - theme.borderWidth[1],
+    left: 0,
+    borderTopLeftRadius: theme.borderRadius["2xl"],
+    borderTopRightRadius: theme.borderRadius["2xl"],
     overflow: "hidden",
   },
   header: {

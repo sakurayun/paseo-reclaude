@@ -889,8 +889,6 @@ const styles = StyleSheet.create((theme) => ({
   },
   content: {
     backgroundColor: isWeb ? theme.colors.surfaceGlass : "transparent",
-    borderWidth: 1,
-    borderColor: theme.colors.borderAccent,
     borderRadius: theme.borderRadius.lg,
     overflow: "hidden",
     ...theme.shadow.md,
@@ -902,11 +900,11 @@ const styles = StyleSheet.create((theme) => ({
       : {}),
   },
   contentBackdrop: {
-    top: theme.borderWidth[1],
-    right: theme.borderWidth[1],
-    bottom: theme.borderWidth[1],
-    left: theme.borderWidth[1],
-    borderRadius: theme.borderRadius.lg - theme.borderWidth[1],
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    borderRadius: theme.borderRadius.lg,
     overflow: "hidden",
   },
   labelContainer: {
