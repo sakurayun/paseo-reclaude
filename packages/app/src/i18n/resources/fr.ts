@@ -427,8 +427,14 @@ export const fr: TranslationResources = {
       context: {
         size: "Taille",
         modified: "Modifié",
+        copyRelativePath: "Copier le chemin relatif",
         copyPath: "Copier le chemin",
         download: "Télécharger",
+        open: "Ouvrir dans l'IDE",
+        openFolder: "Ouvrir dans le gestionnaire de fichiers",
+        openWith: "Ouvrir dans {{editor}}",
+        openUnavailable:
+          "L'ouverture dans un IDE n'est disponible que dans l'application de bureau.",
       },
       actions: {
         back: "Dos",
@@ -551,6 +557,7 @@ export const fr: TranslationResources = {
         editTerminalProfiles: "Modifier les profils…",
         pinTarget: "Épingler",
         unpinTarget: "Détacher",
+        newPortForward: "Ajouter un transfert de port",
       },
       explorer: {
         open: "Ouvrir l'explorateur",
@@ -597,6 +604,25 @@ export const fr: TranslationResources = {
           agents: "Cela archivera les agents{{agents}}.",
         },
       },
+    },
+    portForwards: {
+      title: "Transfert de port",
+      subtitle: "Transférer les ports distants vers cet appareil",
+      description:
+        "Mappe un port sur l'hôte du daemon distant vers un port local sur cette machine. La liste est partagée entre tous vos appareils connectés.",
+      desktopOnlyNotice:
+        "Les transferts ne s'activent que sur le bureau. Vous pouvez gérer la liste ici, mais cet appareil ne liera pas le port local.",
+      needsUpdate: "Mettez à jour l'hôte pour utiliser le transfert de port.",
+      localPortLabel: "Port local",
+      localPortPlaceholder: "p. ex. 3000",
+      remotePortLabel: "Port distant",
+      remotePortPlaceholder: "p. ex. 3000",
+      labelPlaceholder: "Étiquette (optionnel)",
+      addButton: "Ajouter un transfert",
+      empty: "Aucun transfert de port pour l'instant",
+      statusActive: "Actif",
+      statusDesktopOnly: "Bureau uniquement",
+      deleteLabel: "Supprimer le transfert de port",
     },
     header: {
       actions: {

@@ -75,6 +75,9 @@ import type {
   DaemonGetPairingOfferResponse,
   AgentRewindResponseMessage,
   ListTerminalsResponse,
+  PortForwardListResponse,
+  PortForwardCreateResponse,
+  PortForwardDeleteResponse,
   CreateTerminalResponse,
   SubscribeTerminalResponse,
   SubscribeTerminalRequest,
@@ -102,6 +105,7 @@ import type {
   MutableDaemonConfigPatch,
   SpeechDictationListModelsResponse,
   SpeechDictationSetModelResponse,
+  WorkspaceLayoutEnvelope,
 } from "@getpaseo/protocol/messages";
 import { isRelayClientWebSocketUrl } from "@getpaseo/protocol/daemon-endpoints";
 import { terminalSubscriptionKey } from "@getpaseo/protocol/terminal-subscription-key";
@@ -407,6 +411,9 @@ type DictationFinishAcceptedPayload = Extract<
 >["payload"];
 type AgentPermissionResolvedPayload = AgentPermissionResolvedMessage["payload"];
 type ListTerminalsPayload = ListTerminalsResponse["payload"];
+type PortForwardListPayload = PortForwardListResponse["payload"];
+type PortForwardCreatePayload = PortForwardCreateResponse["payload"];
+type PortForwardDeletePayload = PortForwardDeleteResponse["payload"];
 type CreateTerminalPayload = CreateTerminalResponse["payload"];
 export type RenameTerminalResult = z.infer<typeof RenameTerminalResponseSchema>["payload"];
 type SubscribeTerminalPayload = SubscribeTerminalResponse["payload"];
@@ -1595,6 +1602,65 @@ export class DaemonClient {
     if (!response.success) {
       throw new Error(response.error ?? "Failed to clear workspace attention");
     }
+  }
+
+  // COMPAT(workspaceLayoutSync): gated on server_info.features.workspaceLayoutSync.
+  // Push the full normalized desktop layout for one workspace; the daemon arbitrates
+  // last-write-wins by revision and returns the authoritative revision.
+  async pushWorkspaceLayout(params: {
+    workspaceId: string;
+    revision: number;
+    layout: Record<string, unknown>;
+  }): Promise<{ accepted: boolean; revision: number }> {
+    const requestId = this.createRequestId();
+    const message = SessionInboundMessageSchema.parse({
+      type: "workspace.layout.push.request",
+      workspaceId: params.workspaceId,
+      revision: params.revision,
+      layout: params.layout,
+      requestId,
+    });
+    const response = await this.sendRequest({
+      requestId,
+      message,
+      timeout: 15000,
+      options: { skipQueue: true },
+      select: (msg) => {
+        if (msg.type !== "workspace.layout.push.response") {
+          return null;
+        }
+        if (msg.payload.requestId !== requestId) {
+          return null;
+        }
+        return msg.payload;
+      },
+    });
+    return { accepted: response.accepted, revision: response.revision };
+  }
+
+  async getWorkspaceLayout(workspaceId: string): Promise<WorkspaceLayoutEnvelope | null> {
+    const requestId = this.createRequestId();
+    const message = SessionInboundMessageSchema.parse({
+      type: "workspace.layout.get.request",
+      workspaceId,
+      requestId,
+    });
+    const response = await this.sendRequest({
+      requestId,
+      message,
+      timeout: 15000,
+      options: { skipQueue: true },
+      select: (msg) => {
+        if (msg.type !== "workspace.layout.get.response") {
+          return null;
+        }
+        if (msg.payload.requestId !== requestId) {
+          return null;
+        }
+        return msg.payload;
+      },
+    });
+    return response.envelope;
   }
 
   sendHeartbeat(params: {
@@ -4257,6 +4323,62 @@ export class DaemonClient {
       requestId: resolvedRequestId,
       message,
       responseType: "kill_terminal_response",
+      timeout: 10000,
+      options: { skipQueue: true },
+    });
+  }
+
+  // ============================================================================
+  // Port Forwards (global, multi-client-synced TCP forward list)
+  // ============================================================================
+
+  async listPortForwards(requestId?: string): Promise<PortForwardListPayload> {
+    const resolvedRequestId = this.createRequestId(requestId);
+    const message = SessionInboundMessageSchema.parse({
+      type: "port_forward.list.request",
+      requestId: resolvedRequestId,
+    });
+    return this.sendCorrelatedRequest({
+      requestId: resolvedRequestId,
+      message,
+      responseType: "port_forward.list.response",
+      timeout: 10000,
+      options: { skipQueue: true },
+    });
+  }
+
+  async createPortForward(
+    input: { localPort: number; remotePort: number; label?: string },
+    requestId?: string,
+  ): Promise<PortForwardCreatePayload> {
+    const resolvedRequestId = this.createRequestId(requestId);
+    const message = SessionInboundMessageSchema.parse({
+      type: "port_forward.create.request",
+      localPort: input.localPort,
+      remotePort: input.remotePort,
+      ...(input.label !== undefined ? { label: input.label } : {}),
+      requestId: resolvedRequestId,
+    });
+    return this.sendCorrelatedRequest({
+      requestId: resolvedRequestId,
+      message,
+      responseType: "port_forward.create.response",
+      timeout: 10000,
+      options: { skipQueue: true },
+    });
+  }
+
+  async deletePortForward(id: string, requestId?: string): Promise<PortForwardDeletePayload> {
+    const resolvedRequestId = this.createRequestId(requestId);
+    const message = SessionInboundMessageSchema.parse({
+      type: "port_forward.delete.request",
+      id,
+      requestId: resolvedRequestId,
+    });
+    return this.sendCorrelatedRequest({
+      requestId: resolvedRequestId,
+      message,
+      responseType: "port_forward.delete.response",
       timeout: 10000,
       options: { skipQueue: true },
     });

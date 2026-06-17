@@ -1612,10 +1612,6 @@ function ActiveAgentComposer({
       ) : undefined,
     [isCompactComposerLayout, serverId, agentId],
   );
-  const composerContextContent = useMemo(() => {
-    if (sidechainCalls.length === 0) return null;
-    return <SidechainTrack calls={sidechainCalls} embedded />;
-  }, [sidechainCalls]);
 
   return (
     <ReanimatedAnimated.View style={inputAreaStyle} onLayout={onInputAreaLayout}>
@@ -1624,6 +1620,7 @@ function ActiveAgentComposer({
         onOpenSubagent={handleOpenSubagent}
         onArchiveSubagent={handleArchiveSubagent}
       />
+      <SidechainTrack calls={sidechainCalls} />
       <TodoTrack items={latestTodos} />
       <Composer
         agentId={agentId}
@@ -1648,7 +1645,6 @@ function ActiveAgentComposer({
         onMessageSent={onMessageSent}
         onClientSlashCommand={handleClientSlashCommand}
         footer={composerFooter}
-        contextContent={composerContextContent}
         isCompactLayout={isCompactComposerLayout}
         enablePromptPresets
       />

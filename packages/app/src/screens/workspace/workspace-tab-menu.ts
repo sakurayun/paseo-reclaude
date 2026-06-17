@@ -141,6 +141,9 @@ function getCloseButtonTestId(tab: WorkspaceTabDescriptor): string {
   if (tab.target.kind === "sessions") {
     return `workspace-sessions-close-${encodeFilePathForPathSegment(tab.target.workspaceId)}`;
   }
+  if (tab.target.kind === "port-forwards") {
+    return "workspace-port-forwards-close";
+  }
   return `workspace-file-close-${encodeFilePathForPathSegment(tab.target.path)}`;
 }
 

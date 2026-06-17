@@ -36,15 +36,24 @@ export function normalizeWorkspaceTabTarget(
     const path = trimNonEmpty(value.path);
     return path ? { kind: "file-diff", path } : null;
   }
-  if (value.kind === "setup") {
-    const workspaceId = trimNonEmpty(value.workspaceId);
-    return workspaceId ? { kind: "setup", workspaceId } : null;
+  if (value.kind === "setup" || value.kind === "sessions") {
+    return normalizeWorkspaceIdTabTarget(value.kind, value.workspaceId);
   }
-  if (value.kind === "sessions") {
-    const workspaceId = trimNonEmpty(value.workspaceId);
-    return workspaceId ? { kind: "sessions", workspaceId } : null;
+  if (value.kind === "port-forwards") {
+    return { kind: "port-forwards" };
   }
   return null;
+}
+
+function normalizeWorkspaceIdTabTarget(
+  kind: "setup" | "sessions",
+  rawWorkspaceId: string | undefined,
+): WorkspaceTabTarget | null {
+  const workspaceId = trimNonEmpty(rawWorkspaceId);
+  if (!workspaceId) {
+    return null;
+  }
+  return kind === "setup" ? { kind: "setup", workspaceId } : { kind: "sessions", workspaceId };
 }
 
 export function normalizeWorkspaceDraftTabSetup(
@@ -96,11 +105,12 @@ export function workspaceTabTargetsEqual(
   if (left.kind === "file-diff" && right.kind === "file-diff") {
     return left.path === right.path;
   }
-  if (left.kind === "setup" && right.kind === "setup") {
-    return left.workspaceId === right.workspaceId;
+  if (left.kind === "setup" || left.kind === "sessions") {
+    const other = right as Extract<WorkspaceTabTarget, { kind: "setup" | "sessions" }>;
+    return left.workspaceId === other.workspaceId;
   }
-  if (left.kind === "sessions" && right.kind === "sessions") {
-    return left.workspaceId === right.workspaceId;
+  if (left.kind === "port-forwards") {
+    return true;
   }
   return false;
 }
@@ -156,6 +166,9 @@ export function buildDeterministicWorkspaceTabId(target: WorkspaceTabTarget): st
   }
   if (target.kind === "sessions") {
     return `sessions_${target.workspaceId}`;
+  }
+  if (target.kind === "port-forwards") {
+    return "port-forwards";
   }
   if (target.kind === "file-diff") {
     return `filediff_${target.path}`;

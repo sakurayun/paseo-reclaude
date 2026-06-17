@@ -35,7 +35,10 @@ export interface ResolvedLocalSpeechConfig {
 export type { LocalSpeechModelId, LocalSttModelId, LocalTtsModelId };
 
 const DEFAULT_LOCAL_MODELS_SUBDIR = path.join("models", "local-speech");
-const DEFAULT_STT_LANGUAGE = "en";
+// FORK: 默认语音转写语言改为中文（上游默认为 "en"）。dictation / voice 的默认本地模型会
+// 经 resolveDefaultLocalSttModel 自动选用多语言的 SenseVoice（中/粤/英/日/韩），从而开箱即可
+// 识别中文。用户仍可通过设置、env 或 persisted config 覆盖。合并上游时请勿还原为 "en"。
+const DEFAULT_STT_LANGUAGE = "zh";
 
 export interface LocalSpeechSttLanguageConfig {
   dictation: string;

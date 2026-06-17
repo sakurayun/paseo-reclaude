@@ -26,7 +26,8 @@ $PASEO_HOME/
 │   └── loops.json                       # All loop records
 ├── projects/
 │   ├── projects.json                    # Project registry
-│   └── workspaces.json                  # Workspace registry
+│   ├── workspaces.json                  # Workspace registry
+│   └── workspace-layouts.json           # Desktop tab layouts per workspace, synced across desktops
 └── push-tokens.json                     # Expo push notification tokens
 ```
 

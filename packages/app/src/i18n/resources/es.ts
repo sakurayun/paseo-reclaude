@@ -421,8 +421,13 @@ export const es: TranslationResources = {
       context: {
         size: "Tamaño",
         modified: "Modificado",
+        copyRelativePath: "Copiar ruta relativa",
         copyPath: "Copiar ruta",
         download: "Descargar",
+        open: "Abrir en el IDE",
+        openFolder: "Abrir en el explorador de archivos",
+        openWith: "Abrir en {{editor}}",
+        openUnavailable: "Abrir en un IDE solo está disponible en la aplicación de escritorio.",
       },
       actions: {
         back: "Atrás",
@@ -545,6 +550,7 @@ export const es: TranslationResources = {
         editTerminalProfiles: "Editar perfiles…",
         pinTarget: "Fijar",
         unpinTarget: "Desfijar",
+        newPortForward: "Agregar reenvío de puerto",
       },
       explorer: {
         open: "Explorador abierto",
@@ -591,6 +597,25 @@ export const es: TranslationResources = {
           agents: "Esto archivará los agentes{{agents}}.",
         },
       },
+    },
+    portForwards: {
+      title: "Reenvío de puertos",
+      subtitle: "Reenviar puertos remotos a este dispositivo",
+      description:
+        "Mapea un puerto en el host del daemon remoto a un puerto local en esta máquina. La lista se comparte entre todos tus dispositivos conectados.",
+      desktopOnlyNotice:
+        "Los reenvíos solo se activan en el escritorio. Puedes administrar la lista aquí, pero este dispositivo no vinculará el puerto local.",
+      needsUpdate: "Actualiza el host para usar el reenvío de puertos.",
+      localPortLabel: "Puerto local",
+      localPortPlaceholder: "p. ej. 3000",
+      remotePortLabel: "Puerto remoto",
+      remotePortPlaceholder: "p. ej. 3000",
+      labelPlaceholder: "Etiqueta (opcional)",
+      addButton: "Agregar reenvío",
+      empty: "Aún no hay reenvíos de puertos",
+      statusActive: "Activo",
+      statusDesktopOnly: "Solo escritorio",
+      deleteLabel: "Eliminar reenvío de puerto",
     },
     header: {
       actions: {

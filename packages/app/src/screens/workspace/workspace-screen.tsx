@@ -82,6 +82,7 @@ import {
   useWorkspaceLayoutStore,
   useWorkspaceLayoutStoreHydrated,
 } from "@/stores/workspace-layout-store";
+import { pullWorkspaceLayoutIfNeeded } from "@/stores/workspace-layout-sync";
 import type { WorkspaceTab, WorkspaceTabTarget } from "@/stores/workspace-tabs-store";
 import { useKeyboardActionHandler } from "@/hooks/use-keyboard-action-handler";
 import type { KeyboardActionDefinition } from "@/keyboard/keyboard-action-dispatcher";
@@ -360,6 +361,7 @@ function getFallbackTabOptionDescription(
     terminal: string;
     browser: string;
     sessions: string;
+    portForwards: string;
   },
 ): string {
   if (tab.target.kind === "draft") {
@@ -379,6 +381,12 @@ function getFallbackTabOptionDescription(
   }
   if (tab.target.kind === "sessions") {
     return labels.sessions;
+  }
+  if (tab.target.kind === "port-forwards") {
+    return labels.portForwards;
+  }
+  if (tab.target.kind === "file-diff") {
+    return tab.target.path;
   }
   return tab.target.path;
 }
@@ -2189,6 +2197,16 @@ function WorkspaceScreenContent({
     workspaceAgentVisibility,
   ]);
 
+  // Pull-before-push: on a desktop client, fetch the daemon's current layout for this
+  // workspace (overriding local) before this workspace is allowed to push, so a fresh
+  // client's startup prune never propagates. No-ops when unsupported/disabled/pulled.
+  useEffect(() => {
+    if (!hasHydratedWorkspaceLayoutStore || !persistenceKey) {
+      return;
+    }
+    pullWorkspaceLayoutIfNeeded(normalizedServerId, normalizedWorkspaceId);
+  }, [hasHydratedWorkspaceLayoutStore, persistenceKey, normalizedServerId, normalizedWorkspaceId]);
+
   const activeTabId = focusedPaneTabState.activeTabId;
   const activeTab = focusedPaneTabState.activeTab;
 
@@ -2604,6 +2622,7 @@ function WorkspaceScreenContent({
       browser: t("workspace.tabs.fallback.browser"),
       agent: t("workspace.tabs.fallback.agent"),
       sessions: t("workspace.tabs.fallback.sessions"),
+      portForwards: t("workspace.portForwards.title"),
     }),
     [t],
   );

@@ -241,8 +241,13 @@ function renderContextWindowMeter(
 
 function resolveContextWindowPlacement(
   meter: ReactElement | null,
-  _isMobile: boolean,
+  isCompact: boolean,
 ): { beforeVoiceContent: ReactNode; footerInlineContent: ReactNode } {
+  // Desktop (wide) folds the context-window meter onto the toolbar row, before
+  // the voice button; compact keeps it on the secondary row below the toolbar.
+  if (!isCompact) {
+    return { beforeVoiceContent: meter, footerInlineContent: null };
+  }
   return { beforeVoiceContent: null, footerInlineContent: meter };
 }
 
@@ -286,16 +291,12 @@ interface RenderAttachmentTrayArgs {
 function renderComposerSecondaryContent(
   footer: ReactNode,
   footerInlineContent: ReactNode,
-  contextContent: ReactNode,
 ): ReactElement | null {
-  if (!footer && !footerInlineContent && !contextContent) return null;
+  if (!footer && !footerInlineContent) return null;
   return (
-    <View style={styles.secondaryContent}>
-      {contextContent}
-      <View style={styles.secondaryControls}>
-        {footer}
-        {footerInlineContent}
-      </View>
+    <View style={styles.secondaryControls}>
+      {footer}
+      {footerInlineContent}
     </View>
   );
 }
@@ -781,8 +782,6 @@ interface ComposerProps {
   onAttentionPromptSend?: () => void;
   /** Controlled agent controls rendered in input area (draft flows). */
   agentControls?: DraftAgentControlsProps;
-  /** Context/status rows rendered inside the message input surface. */
-  contextContent?: ReactNode;
   /** Extra styles merged onto the message input wrapper (e.g. elevated background). */
   inputWrapperStyle?: import("react-native").ViewStyle;
   /** Rendered below the input, inside the keyboard-shifted container. */
@@ -994,7 +993,6 @@ export function Composer({
   onAttentionInputFocus,
   onAttentionPromptSend,
   agentControls,
-  contextContent,
   inputWrapperStyle,
   footer,
   externalKeyboardShift,
@@ -1940,8 +1938,8 @@ export function Composer({
     [sendError],
   );
   const secondaryContent = useMemo(
-    () => renderComposerSecondaryContent(footer, footerInlineContent, contextContent),
-    [contextContent, footer, footerInlineContent],
+    () => renderComposerSecondaryContent(footer, footerInlineContent),
+    [footer, footerInlineContent],
   );
   const githubEmptyText = githubSearchResultsQuery.isFetching
     ? t("composer.github.searching")
@@ -2010,6 +2008,7 @@ export function Composer({
               autoFocusKey={`${serverId}:${agentId}`}
               disabled={isSubmitLoading}
               isPaneFocused={isPaneFocused}
+              isCompactLayout={isCompactLayout}
               leftContent={leftContent}
               secondaryContent={secondaryContent}
               beforeVoiceContent={beforeVoiceContent}
@@ -2077,12 +2076,6 @@ const styles = StyleSheet.create((theme: Theme) => ({
     width: "100%",
     maxWidth: MAX_CONTENT_WIDTH,
     gap: theme.spacing[3],
-  },
-  secondaryContent: {
-    flexDirection: "row",
-    alignItems: "center",
-    flexWrap: "wrap",
-    gap: theme.spacing[1],
   },
   secondaryControls: {
     flexDirection: "row",

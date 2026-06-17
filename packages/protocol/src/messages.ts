@@ -1901,6 +1901,35 @@ export const WorkspaceClearAttentionRequestSchema = z.object({
   requestId: z.string(),
 });
 
+// COMPAT(workspaceLayoutSync): added in v0.1.101, drop the gate when floor >= v0.1.101.
+// Opaque per-workspace desktop tab layout (split tree + tabs/targets + sizes). The
+// daemon never parses the tree; it stores and fans out the blob verbatim, and the app
+// reconstructs runtime state via normalizeLayout(). Keeping `layout` as an opaque
+// record means future layout-shape changes never touch the protocol.
+export const WorkspaceLayoutEnvelopeSchema = z.object({
+  workspaceId: z.string().min(1),
+  revision: z.number().int().nonnegative(),
+  updatedAt: z.string(),
+  layout: z.record(z.unknown()),
+});
+
+// Push the full normalized layout for one workspace. Last-write-wins by revision: the
+// daemon rejects a push whose revision is not strictly greater than the stored one.
+export const WorkspaceLayoutPushRequestSchema = z.object({
+  type: z.literal("workspace.layout.push.request"),
+  workspaceId: z.string().min(1),
+  revision: z.number().int().nonnegative(),
+  layout: z.record(z.unknown()),
+  requestId: z.string(),
+});
+
+// Fetch the current stored layout for one workspace (envelope is null when none yet).
+export const WorkspaceLayoutGetRequestSchema = z.object({
+  type: z.literal("workspace.layout.get.request"),
+  workspaceId: z.string().min(1),
+  requestId: z.string(),
+});
+
 // Highlighted diff token schema
 // Note: style can be a compound class name (e.g., "heading meta") from the syntax highlighter
 const HighlightTokenSchema = z.object({
@@ -2164,6 +2193,77 @@ export const CaptureTerminalRequestSchema = z.object({
   requestId: z.string(),
 });
 
+// ============================================================================
+// Port Forward Messages
+// ============================================================================
+// A persistent, daemon-global list of TCP port forwards (ssh -L style): each
+// entry maps a remote port on the daemon host to a local port on the client.
+// The list is synced to every connected client; desktop clients additionally
+// bind the local loopback port and tunnel it over the existing WebSocket,
+// reusing the tcpTunnel binary-frame family. Global scope (no cwd/workspace).
+
+export const PortForwardInfoSchema = z.object({
+  id: z.string(),
+  localPort: z.number().int().min(1).max(65535),
+  remotePort: z.number().int().min(1).max(65535),
+  label: z.string().optional(),
+  createdAt: z.number().optional(),
+});
+export type PortForwardInfo = z.infer<typeof PortForwardInfoSchema>;
+
+export const PortForwardListRequestSchema = z.object({
+  type: z.literal("port_forward.list.request"),
+  requestId: z.string(),
+});
+
+export const PortForwardCreateRequestSchema = z.object({
+  type: z.literal("port_forward.create.request"),
+  localPort: z.number().int().min(1).max(65535),
+  remotePort: z.number().int().min(1).max(65535),
+  label: z.string().optional(),
+  requestId: z.string(),
+});
+
+export const PortForwardDeleteRequestSchema = z.object({
+  type: z.literal("port_forward.delete.request"),
+  id: z.string(),
+  requestId: z.string(),
+});
+
+export const PortForwardListResponseSchema = z.object({
+  type: z.literal("port_forward.list.response"),
+  payload: z.object({
+    forwards: z.array(PortForwardInfoSchema),
+    requestId: z.string(),
+  }),
+});
+
+export const PortForwardCreateResponseSchema = z.object({
+  type: z.literal("port_forward.create.response"),
+  payload: z.object({
+    forward: PortForwardInfoSchema.nullable(),
+    error: z.string().nullable(),
+    requestId: z.string(),
+  }),
+});
+
+export const PortForwardDeleteResponseSchema = z.object({
+  type: z.literal("port_forward.delete.response"),
+  payload: z.object({
+    id: z.string(),
+    success: z.boolean(),
+    error: z.string().nullable(),
+    requestId: z.string(),
+  }),
+});
+
+export const PortForwardsChangedSchema = z.object({
+  type: z.literal("port_forward.changed"),
+  payload: z.object({
+    forwards: z.array(PortForwardInfoSchema),
+  }),
+});
+
 export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   VoiceAudioChunkMessageSchema,
   AbortRequestMessageSchema,
@@ -2257,6 +2357,8 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   ArchiveWorkspaceRequestSchema,
   WorkspaceCreateRequestSchema,
   WorkspaceClearAttentionRequestSchema,
+  WorkspaceLayoutPushRequestSchema,
+  WorkspaceLayoutGetRequestSchema,
   FileExplorerRequestSchema,
   ProjectIconRequestSchema,
   FileDownloadTokenRequestSchema,
@@ -2298,6 +2400,9 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   LoopInspectRequestSchema,
   LoopLogsRequestSchema,
   LoopStopRequestSchema,
+  PortForwardListRequestSchema,
+  PortForwardCreateRequestSchema,
+  PortForwardDeleteRequestSchema,
 ]);
 
 export type SessionInboundMessage = z.infer<typeof SessionInboundMessageSchema>;
@@ -2492,6 +2597,10 @@ export const ServerInfoStatusPayloadSchema = z
         daemonSelfUpdate: z.boolean().optional(),
         // COMPAT(tcpTunnel): added in v0.1.97, remove gate after 2026-12-13.
         tcpTunnel: z.boolean().optional(),
+        // COMPAT(portForward): added in v0.1.100, remove gate after 2026-12-17.
+        portForward: z.boolean().optional(),
+        // COMPAT(workspaceLayoutSync): added in v0.1.101, remove gate after 2026-12-17.
+        workspaceLayoutSync: z.boolean().optional(),
       })
       .optional(),
   })
@@ -3125,6 +3234,34 @@ export const WorkspaceClearAttentionResponseSchema = z.object({
     success: z.boolean(),
     error: z.string().nullable(),
   }),
+});
+
+export const WorkspaceLayoutPushResponseSchema = z.object({
+  type: z.literal("workspace.layout.push.response"),
+  payload: z.object({
+    requestId: z.string(),
+    workspaceId: z.string(),
+    // false when rejected as stale (incoming revision <= stored revision).
+    accepted: z.boolean(),
+    // The daemon's authoritative revision after applying (or rejecting) the push.
+    revision: z.number().int().nonnegative(),
+  }),
+});
+
+export const WorkspaceLayoutGetResponseSchema = z.object({
+  type: z.literal("workspace.layout.get.response"),
+  payload: z.object({
+    requestId: z.string(),
+    workspaceId: z.string(),
+    envelope: WorkspaceLayoutEnvelopeSchema.nullable(),
+  }),
+});
+
+// Broadcast (no correlated request): the daemon fans this out to non-mobile clients,
+// excluding the pusher, after accepting a workspace.layout.push.request.
+export const WorkspaceLayoutChangedSchema = z.object({
+  type: z.literal("workspace.layout.changed"),
+  payload: WorkspaceLayoutEnvelopeSchema,
 });
 
 export const SendAgentMessageResponseMessageSchema = z.object({
@@ -4507,6 +4644,9 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   ClearAgentAttentionResponseMessageSchema,
   WorkspaceCreateResponseSchema,
   WorkspaceClearAttentionResponseSchema,
+  WorkspaceLayoutPushResponseSchema,
+  WorkspaceLayoutGetResponseSchema,
+  WorkspaceLayoutChangedSchema,
   SendAgentMessageResponseMessageSchema,
   SetVoiceModeResponseMessageSchema,
   DaemonGetStatusResponseSchema,
@@ -4609,6 +4749,10 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   LoopLogsResponseSchema,
   LoopStopResponseSchema,
   DaemonUpdateResponseSchema,
+  PortForwardListResponseSchema,
+  PortForwardCreateResponseSchema,
+  PortForwardDeleteResponseSchema,
+  PortForwardsChangedSchema,
 ]);
 
 export type SessionOutboundMessage = z.infer<typeof SessionOutboundMessageSchema>;
@@ -4929,6 +5073,12 @@ export type ClearAgentAttentionMessage = z.infer<typeof ClearAgentAttentionMessa
 export type ClearAgentAttentionResponseMessage = z.infer<
   typeof ClearAgentAttentionResponseMessageSchema
 >;
+export type WorkspaceLayoutEnvelope = z.infer<typeof WorkspaceLayoutEnvelopeSchema>;
+export type WorkspaceLayoutPushRequest = z.infer<typeof WorkspaceLayoutPushRequestSchema>;
+export type WorkspaceLayoutPushResponse = z.infer<typeof WorkspaceLayoutPushResponseSchema>;
+export type WorkspaceLayoutGetRequest = z.infer<typeof WorkspaceLayoutGetRequestSchema>;
+export type WorkspaceLayoutGetResponse = z.infer<typeof WorkspaceLayoutGetResponseSchema>;
+export type WorkspaceLayoutChanged = z.infer<typeof WorkspaceLayoutChangedSchema>;
 export type ClientHeartbeatMessage = z.infer<typeof ClientHeartbeatMessageSchema>;
 export type ListCommandsRequest = z.infer<typeof ListCommandsRequestSchema>;
 export type ListCommandsResponse = z.infer<typeof ListCommandsResponseSchema>;
@@ -4937,6 +5087,10 @@ export type RegisterPushTokenMessage = z.infer<typeof RegisterPushTokenMessageSc
 // Terminal message types
 export type ListTerminalsRequest = z.infer<typeof ListTerminalsRequestSchema>;
 export type ListTerminalsResponse = z.infer<typeof ListTerminalsResponseSchema>;
+export type PortForwardListResponse = z.infer<typeof PortForwardListResponseSchema>;
+export type PortForwardCreateResponse = z.infer<typeof PortForwardCreateResponseSchema>;
+export type PortForwardDeleteResponse = z.infer<typeof PortForwardDeleteResponseSchema>;
+export type PortForwardsChanged = z.infer<typeof PortForwardsChangedSchema>;
 export type SubscribeTerminalsRequest = z.infer<typeof SubscribeTerminalsRequestSchema>;
 export type UnsubscribeTerminalsRequest = z.infer<typeof UnsubscribeTerminalsRequestSchema>;
 export type TerminalsChanged = z.infer<typeof TerminalsChangedSchema>;

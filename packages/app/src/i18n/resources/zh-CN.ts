@@ -417,8 +417,13 @@ export const zhCN: TranslationResources = {
       context: {
         size: "大小",
         modified: "修改时间",
+        copyRelativePath: "复制相对路径",
         copyPath: "复制路径",
         download: "下载",
+        open: "用 IDE 打开",
+        openFolder: "在文件管理器中打开",
+        openWith: "在 {{editor}} 中打开",
+        openUnavailable: "「用 IDE 打开」仅在桌面应用中可用。",
       },
       actions: {
         back: "返回",
@@ -540,6 +545,7 @@ export const zhCN: TranslationResources = {
         editTerminalProfiles: "编辑配置…",
         pinTarget: "固定",
         unpinTarget: "取消固定",
+        newPortForward: "添加端口映射",
       },
       explorer: {
         open: "打开 explorer",
@@ -584,6 +590,23 @@ export const zhCN: TranslationResources = {
           agents: "这会归档 {{agents}} 个 Agent。",
         },
       },
+    },
+    portForwards: {
+      title: "端口映射",
+      subtitle: "把远程端口转发到本机",
+      description: "把远程 daemon 主机上的端口映射到本机端口。该列表在你所有已连接的设备间同步。",
+      desktopOnlyNotice: "转发仅在桌面端生效。你可以在此管理列表，但本设备不会绑定本机端口。",
+      needsUpdate: "请更新主机以使用端口映射功能。",
+      localPortLabel: "本机端口",
+      localPortPlaceholder: "如 3000",
+      remotePortLabel: "远程端口",
+      remotePortPlaceholder: "如 3000",
+      labelPlaceholder: "标签（可选）",
+      addButton: "添加映射",
+      empty: "还没有端口映射",
+      statusActive: "已激活",
+      statusDesktopOnly: "仅桌面端",
+      deleteLabel: "删除端口映射",
     },
     header: {
       actions: {

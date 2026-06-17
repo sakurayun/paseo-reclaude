@@ -426,8 +426,13 @@ export const ru: TranslationResources = {
       context: {
         size: "Размер",
         modified: "Модифицированный",
+        copyRelativePath: "Копировать относительный путь",
         copyPath: "Копировать путь",
         download: "Скачать",
+        open: "Открыть в IDE",
+        openFolder: "Открыть в файловом менеджере",
+        openWith: "Открыть в {{editor}}",
+        openUnavailable: "Открытие в IDE доступно только в настольном приложении.",
       },
       actions: {
         back: "Назад",
@@ -550,6 +555,7 @@ export const ru: TranslationResources = {
         editTerminalProfiles: "Редактировать профили…",
         pinTarget: "Закрепить",
         unpinTarget: "Открепить",
+        newPortForward: "Добавить переброс порта",
       },
       explorer: {
         open: "Открыть проводник",
@@ -597,6 +603,25 @@ export const ru: TranslationResources = {
           agents: "Это приведет к архивированию агентов{{agents}}.",
         },
       },
+    },
+    portForwards: {
+      title: "Переброс портов",
+      subtitle: "Перебросить удалённые порты на это устройство",
+      description:
+        "Сопоставьте порт на удалённом хосте daemon с локальным портом на этой машине. Список общий для всех ваших подключённых устройств.",
+      desktopOnlyNotice:
+        "Переброс активируется только на рабочем столе. Вы можете управлять списком здесь, но это устройство не привяжет локальный порт.",
+      needsUpdate: "Обновите хост для использования переброса портов.",
+      localPortLabel: "Локальный порт",
+      localPortPlaceholder: "напр. 3000",
+      remotePortLabel: "Удалённый порт",
+      remotePortPlaceholder: "напр. 3000",
+      labelPlaceholder: "Метка (необязательно)",
+      addButton: "Добавить переброс",
+      empty: "Пока нет перебросов портов",
+      statusActive: "Активен",
+      statusDesktopOnly: "Только рабочий стол",
+      deleteLabel: "Удалить переброс порта",
     },
     header: {
       actions: {

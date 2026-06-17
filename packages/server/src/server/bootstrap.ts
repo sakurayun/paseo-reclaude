@@ -109,6 +109,7 @@ import { ProviderSnapshotManager } from "./agent/provider-snapshot-manager.js";
 import { bootstrapWorkspaceRegistries } from "./workspace-registry-bootstrap.js";
 import { WorkspaceReconciliationService } from "./workspace-reconciliation-service.js";
 import { FileBackedProjectRegistry, FileBackedWorkspaceRegistry } from "./workspace-registry.js";
+import { FileBackedWorkspaceLayoutStore } from "./workspace-layout-store.js";
 import { FileBackedChatService } from "./chat/chat-service.js";
 import { CheckoutDiffManager } from "./checkout-diff-manager.js";
 import { LoopService } from "./loop-service.js";
@@ -124,6 +125,7 @@ import { setupAutoArchiveOnMerge } from "./auto-archive-on-merge/index.js";
 import { wrapSessionMessage, type SessionOutboundMessage } from "./messages.js";
 import type { TerminalManager } from "../terminal/terminal-manager.js";
 import { createConfiguredTerminalManager } from "../terminal/terminal-manager-factory.js";
+import { createPortForwardManager } from "../port-forward/port-forward-manager.js";
 import { applyTerminalAgentHookSetting } from "../terminal/agent-hooks/terminal-agent-hook-setting.js";
 import { createConnectionOfferV2, encodeOfferToFragmentUrl } from "./connection-offer.js";
 import { loadOrCreateDaemonKeyPair } from "./daemon-keypair.js";
@@ -441,6 +443,10 @@ export async function createPaseoDaemon(
   const terminalManager = createConfiguredTerminalManager({
     getTerminalActivityUrl: () => createTerminalActivityUrl(boundListenTarget),
   });
+  // Global, persisted port-forward list synced to every connected client.
+  const portForwardManager = createPortForwardManager({
+    storePath: path.join(config.paseoHome, "port-forwards.json"),
+  });
   applyTerminalAgentHookSetting({ store: daemonConfigStore, logger });
 
   const serviceProxyPublicBaseUrl = config.serviceProxy?.publicBaseUrl
@@ -636,6 +642,11 @@ export async function createPaseoDaemon(
     path.join(config.paseoHome, "projects", "workspaces.json"),
     logger,
   );
+  const workspaceLayoutStore = new FileBackedWorkspaceLayoutStore(
+    path.join(config.paseoHome, "projects", "workspace-layouts.json"),
+    logger,
+  );
+  await workspaceLayoutStore.initialize();
   const chatService = new FileBackedChatService({
     paseoHome: config.paseoHome,
     logger,
@@ -1147,6 +1158,8 @@ export async function createPaseoDaemon(
                 },
               },
               serviceProxyPublicBaseUrl,
+              portForwardManager,
+              workspaceLayoutStore,
             );
 
             if (relayEnabled) {
@@ -1215,6 +1228,7 @@ export async function createPaseoDaemon(
     await agentStorage.flush().catch(() => undefined);
     await providerSnapshotManager.shutdown();
     terminalManager.killAll();
+    portForwardManager.dispose();
     speechService.stop();
     await scheduleService.stop().catch(() => undefined);
     await relayTransport?.stop().catch(() => undefined);

@@ -73,6 +73,10 @@ from the sidebar session list instead of crowding the tab bar.
   hand mid-session are never yanked away, and a fresh launch prunes again.
 - `runningAgentIds` rides along in the snapshot. If it is omitted the prune is
   skipped (no authoritative running status to act on).
+- **Desktop layout sync takes precedence over the startup prune.** When layout sync
+  is active (see [workspace-layout-sync.md](workspace-layout-sync.md)), a fresh client
+  pulls the daemon's layout before it may push, so its startup prune never propagates
+  to peers — a remote layout wins over local startup trimming.
 
 ## Workspace activity
 

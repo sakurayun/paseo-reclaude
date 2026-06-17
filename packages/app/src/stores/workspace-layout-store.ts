@@ -25,6 +25,7 @@ import {
   getFocusedBrowserId,
   getTreeDepth,
   insertSplit,
+  mergeRemoteLayoutPreservingFocus,
   moveTabToPaneInLayout,
   normalizeLayout,
   openTabInLayoutBackground,
@@ -91,6 +92,9 @@ interface WorkspaceLayoutStore {
   retargetTab: (workspaceKey: string, tabId: string, target: WorkspaceTabTarget) => string | null;
   convertDraftToAgent: (workspaceKey: string, tabId: string, agentId: string) => string | null;
   reconcileTabs: (workspaceKey: string, snapshot: WorkspaceTabSnapshot) => void;
+  // Apply a remote layout blob (from another desktop client) over the local layout,
+  // keeping local focus. Opaque blob is validated/reconstructed via normalizeLayout.
+  applyRemoteLayout: (workspaceKey: string, remoteBlob: unknown) => void;
   reorderTabs: (workspaceKey: string, tabIds: string[]) => void;
   getWorkspaceTabs: (workspaceKey: string) => WorkspaceTab[];
   splitPane: (
@@ -503,6 +507,23 @@ export function createWorkspaceLayoutStore(
                     },
                   }
                 : {}),
+            };
+          });
+        },
+        applyRemoteLayout: (workspaceKey, remoteBlob) => {
+          const normalizedWorkspaceKey = trimNonEmpty(workspaceKey);
+          if (!normalizedWorkspaceKey) {
+            return;
+          }
+          set((state) => {
+            const local = getWorkspaceLayout(state.layoutByWorkspace, normalizedWorkspaceKey);
+            const remote = normalizeLayout(remoteBlob);
+            const merged = mergeRemoteLayoutPreservingFocus({ local, remote });
+            return {
+              layoutByWorkspace: {
+                ...state.layoutByWorkspace,
+                [normalizedWorkspaceKey]: merged,
+              },
             };
           });
         },

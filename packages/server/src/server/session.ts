@@ -34,11 +34,14 @@ import {
   type ProjectPlacementPayload,
   type WorkspaceSetupSnapshot,
   type WorkspaceDescriptorPayload,
+  type WorkspaceLayoutEnvelope,
 } from "./messages.js";
 import type {
   TerminalManager,
   TerminalWorkspaceContributionChangedEvent,
 } from "../terminal/terminal-manager.js";
+import type { PortForwardManager } from "../port-forward/port-forward-manager.js";
+import type { WorkspaceLayoutStore } from "./workspace-layout-store.js";
 import { TerminalSessionController } from "../terminal/terminal-session-controller.js";
 import { TunnelForwarder } from "./tunnel-forwarder.js";
 import type { TerminalActivity } from "@getpaseo/protocol/terminal-activity";
@@ -539,6 +542,14 @@ type WorkspaceUpdatePayload = Extract<
   SessionOutboundMessage,
   { type: "workspace_update" }
 >["payload"];
+type WorkspaceLayoutPushRequestMessage = Extract<
+  SessionInboundMessage,
+  { type: "workspace.layout.push.request" }
+>;
+type WorkspaceLayoutGetRequestMessage = Extract<
+  SessionInboundMessage,
+  { type: "workspace.layout.get.request" }
+>;
 interface WorkspaceUpdatesSubscriptionState {
   subscriptionId: string;
   filter?: WorkspaceUpdatesFilter;
@@ -643,6 +654,11 @@ export interface SessionOptions {
   sttLanguage?: string;
   tts: Resolvable<TextToSpeechProvider | null>;
   terminalManager: TerminalManager | null;
+  portForwardManager?: PortForwardManager | null;
+  workspaceLayoutStore?: WorkspaceLayoutStore | null;
+  // Called after a layout push is accepted, so the WebSocket server can fan the new
+  // envelope out to other desktop clients. The session itself has no socket handle.
+  onWorkspaceLayoutPushed?: (envelope: WorkspaceLayoutEnvelope) => void;
   providerSnapshotManager: ProviderSnapshotManager;
   serviceProxy?: ServiceProxySubsystem;
   scriptRuntimeStore?: WorkspaceScriptRuntimeStore;
@@ -853,6 +869,8 @@ export class Session {
   private readonly agentStorage: AgentStorage;
   private readonly projectRegistry: ProjectRegistry;
   private readonly workspaceRegistry: WorkspaceRegistry;
+  private readonly workspaceLayoutStore?: WorkspaceLayoutStore | null;
+  private readonly onWorkspaceLayoutPushed?: (envelope: WorkspaceLayoutEnvelope) => void;
   private readonly filesystem: SessionFileSystem;
   private readonly chatService: FileBackedChatService;
   private readonly scheduleService: ScheduleService;
@@ -868,6 +886,7 @@ export class Session {
   private readonly pushTokenStore: PushTokenStore;
   private unsubscribeAgentEvents: (() => void) | null = null;
   private unsubscribeTerminalWorkspaceContributionEvents: (() => void) | null = null;
+  private unsubscribePortForwardChanged: (() => void) | null = null;
   private agentUpdatesSubscription: AgentUpdatesSubscriptionState | null = null;
   private workspaceUpdatesSubscription: WorkspaceUpdatesSubscriptionState | null = null;
   private clientActivity: {
@@ -879,6 +898,7 @@ export class Session {
     appVisibilityChangedAt: Date;
   } | null = null;
   private readonly terminalManager: TerminalManager | null;
+  private readonly portForwardManager: PortForwardManager | null;
   private readonly providerSnapshotManager: ProviderSnapshotManager;
   private unsubscribeProviderSnapshotEvents: (() => void) | null = null;
   private readonly serviceProxy: ServiceProxySubsystem | null;
@@ -935,6 +955,8 @@ export class Session {
       agentStorage,
       projectRegistry,
       workspaceRegistry,
+      workspaceLayoutStore,
+      onWorkspaceLayoutPushed,
       filesystem,
       chatService,
       scheduleService,
@@ -950,6 +972,7 @@ export class Session {
       sttLanguage,
       tts,
       terminalManager,
+      portForwardManager,
       providerSnapshotManager,
       serviceProxy,
       scriptRuntimeStore,
@@ -989,6 +1012,8 @@ export class Session {
     this.agentStorage = agentStorage;
     this.projectRegistry = projectRegistry;
     this.workspaceRegistry = workspaceRegistry;
+    this.workspaceLayoutStore = workspaceLayoutStore;
+    this.onWorkspaceLayoutPushed = onWorkspaceLayoutPushed;
     this.filesystem = filesystem ?? nodeSessionFileSystem;
     this.chatService = chatService;
     this.scheduleService = scheduleService;
@@ -1001,6 +1026,7 @@ export class Session {
     this.daemonConfigStore = daemonConfigStore;
     this.mcpBaseUrl = mcpBaseUrl ?? null;
     this.terminalManager = terminalManager;
+    this.portForwardManager = portForwardManager ?? null;
     this.terminalController = new TerminalSessionController({
       terminalManager,
       emit: (msg) => this.emit(msg),
@@ -1361,6 +1387,11 @@ export class Session {
             );
           });
         });
+    }
+    if (this.portForwardManager) {
+      this.unsubscribePortForwardChanged = this.portForwardManager.subscribeChanged((forwards) => {
+        this.emit({ type: "port_forward.changed", payload: { forwards } });
+      });
     }
     const handleProviderSnapshotChange = (entries: ProviderSnapshotEntry[], cwd: string) => {
       // COMPAT(providersSnapshot): keep provider visibility gating for older clients.
@@ -1840,8 +1871,10 @@ export class Session {
       this.dispatchAgentConfigMessage(msg) ??
       this.dispatchCheckoutMessage(msg) ??
       this.dispatchWorkspaceAndProjectMessage(msg) ??
+      this.dispatchWorkspaceLayoutMessage(msg) ??
       this.dispatchProviderMessage(msg) ??
       this.dispatchTerminalMessage(msg) ??
+      this.dispatchPortForwardMessage(msg) ??
       this.dispatchChatScheduleLoopMessage(msg) ??
       this.dispatchMiscMessage(msg);
     if (promise) await promise;
@@ -2357,6 +2390,20 @@ export class Session {
     }
   }
 
+  // Split out from dispatchWorkspaceAndProjectMessage to keep each switch under the
+  // cyclomatic-complexity cap.
+  private dispatchWorkspaceLayoutMessage(msg: SessionInboundMessage): Promise<void> | undefined {
+    switch (msg.type) {
+      case "workspace.layout.push.request":
+        return this.handleWorkspaceLayoutPushRequest(msg);
+      case "workspace.layout.get.request":
+        this.handleWorkspaceLayoutGetRequest(msg);
+        return undefined;
+      default:
+        return undefined;
+    }
+  }
+
   private dispatchWorkspaceAndProjectMessage(
     msg: SessionInboundMessage,
   ): Promise<void> | undefined {
@@ -2432,6 +2479,98 @@ export class Session {
       return this.handleStartWorkspaceScriptRequest(msg);
     }
     return this.terminalController.dispatch(msg);
+  }
+
+  private dispatchPortForwardMessage(msg: SessionInboundMessage): Promise<void> | undefined {
+    switch (msg.type) {
+      case "port_forward.list.request":
+        this.handlePortForwardListRequest(msg);
+        return Promise.resolve();
+      case "port_forward.create.request":
+        this.handlePortForwardCreateRequest(msg);
+        return Promise.resolve();
+      case "port_forward.delete.request":
+        this.handlePortForwardDeleteRequest(msg);
+        return Promise.resolve();
+      default:
+        return undefined;
+    }
+  }
+
+  private handlePortForwardListRequest(
+    msg: Extract<SessionInboundMessage, { type: "port_forward.list.request" }>,
+  ): void {
+    const forwards = this.portForwardManager?.list() ?? [];
+    this.emit({
+      type: "port_forward.list.response",
+      payload: { forwards, requestId: msg.requestId },
+    });
+  }
+
+  private handlePortForwardCreateRequest(
+    msg: Extract<SessionInboundMessage, { type: "port_forward.create.request" }>,
+  ): void {
+    if (!this.portForwardManager) {
+      this.emit({
+        type: "port_forward.create.response",
+        payload: {
+          forward: null,
+          error: "Port forwarding is not available on this host",
+          requestId: msg.requestId,
+        },
+      });
+      return;
+    }
+    try {
+      const forward = this.portForwardManager.create({
+        localPort: msg.localPort,
+        remotePort: msg.remotePort,
+        ...(msg.label !== undefined ? { label: msg.label } : {}),
+      });
+      this.emit({
+        type: "port_forward.create.response",
+        payload: { forward, error: null, requestId: msg.requestId },
+      });
+    } catch (error) {
+      this.emit({
+        type: "port_forward.create.response",
+        payload: { forward: null, error: getErrorMessage(error), requestId: msg.requestId },
+      });
+    }
+  }
+
+  private handlePortForwardDeleteRequest(
+    msg: Extract<SessionInboundMessage, { type: "port_forward.delete.request" }>,
+  ): void {
+    if (!this.portForwardManager) {
+      this.emit({
+        type: "port_forward.delete.response",
+        payload: {
+          id: msg.id,
+          success: false,
+          error: "Port forwarding is not available on this host",
+          requestId: msg.requestId,
+        },
+      });
+      return;
+    }
+    try {
+      const success = this.portForwardManager.delete(msg.id);
+      this.emit({
+        type: "port_forward.delete.response",
+        payload: { id: msg.id, success, error: null, requestId: msg.requestId },
+      });
+    } catch (error) {
+      this.emit({
+        type: "port_forward.delete.response",
+        payload: {
+          id: msg.id,
+          success: false,
+          error: getErrorMessage(error),
+          requestId: msg.requestId,
+        },
+      });
+    }
   }
 
   private dispatchChatScheduleLoopMessage(msg: SessionInboundMessage): Promise<void> | undefined {
@@ -3017,6 +3156,51 @@ export class Session {
         },
       });
     }
+  }
+
+  private async handleWorkspaceLayoutPushRequest(
+    msg: WorkspaceLayoutPushRequestMessage,
+  ): Promise<void> {
+    const { workspaceId, revision, layout, requestId } = msg;
+    if (!this.workspaceLayoutStore) {
+      this.emit({
+        type: "workspace.layout.push.response",
+        payload: { requestId, workspaceId, accepted: false, revision: 0 },
+      });
+      return;
+    }
+    // Ownership check: only store layout for a live (non-archived) workspace, so a
+    // stale or rogue client cannot write orphan layout blobs.
+    const existing = await this.workspaceRegistry.get(workspaceId);
+    if (!existing || existing.archivedAt) {
+      const current = this.workspaceLayoutStore.get(workspaceId);
+      this.emit({
+        type: "workspace.layout.push.response",
+        payload: { requestId, workspaceId, accepted: false, revision: current?.revision ?? 0 },
+      });
+      return;
+    }
+    const { accepted, current } = this.workspaceLayoutStore.applyPush({
+      workspaceId,
+      revision,
+      layout,
+    });
+    this.emit({
+      type: "workspace.layout.push.response",
+      payload: { requestId, workspaceId, accepted, revision: current.revision },
+    });
+    // Fan out to other desktop clients only when this push advanced the layout.
+    if (accepted) {
+      this.onWorkspaceLayoutPushed?.(current);
+    }
+  }
+
+  private handleWorkspaceLayoutGetRequest(msg: WorkspaceLayoutGetRequestMessage): void {
+    const envelope = this.workspaceLayoutStore?.get(msg.workspaceId) ?? null;
+    this.emit({
+      type: "workspace.layout.get.response",
+      payload: { requestId: msg.requestId, workspaceId: msg.workspaceId, envelope },
+    });
   }
 
   private async handleWorkspaceTitleSetRequest(
@@ -8751,6 +8935,9 @@ export class Session {
           error: null,
         },
       });
+      // Drop the persisted desktop layout for an archived workspace so it doesn't
+      // dangle. Fire-and-forget: archiving already succeeded.
+      void this.workspaceLayoutStore?.remove(request.workspaceId);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to archive workspace";
       this.sessionLogger.error(
@@ -10013,6 +10200,10 @@ export class Session {
     if (this.unsubscribeTerminalWorkspaceContributionEvents) {
       this.unsubscribeTerminalWorkspaceContributionEvents();
       this.unsubscribeTerminalWorkspaceContributionEvents = null;
+    }
+    if (this.unsubscribePortForwardChanged) {
+      this.unsubscribePortForwardChanged();
+      this.unsubscribePortForwardChanged = null;
     }
     if (this.unsubscribeProviderSnapshotEvents) {
       this.unsubscribeProviderSnapshotEvents();

@@ -180,7 +180,6 @@ function closeButtonStyle({
 
 export interface SidechainTrackProps {
   calls: ReadonlyArray<SidechainCall>;
-  embedded?: boolean;
 }
 
 /**
@@ -188,10 +187,7 @@ export interface SidechainTrackProps {
  * composer so their status stays visible while the agent works — the same
  * collapsible-track pattern as the subagents track and the todo track.
  */
-export function SidechainTrack({
-  calls,
-  embedded = false,
-}: SidechainTrackProps): ReactElement | null {
+export function SidechainTrack({ calls }: SidechainTrackProps): ReactElement | null {
   const [dismissedIds, setDismissedIds] = useState<ReadonlySet<string>>(() => new Set());
   const [panelDismissed, setPanelDismissed] = useState(false);
   const knownIdsRef = useRef<Set<string>>(new Set());
@@ -237,7 +233,6 @@ export function SidechainTrack({
     <ToolCallSheetProvider>
       <SidechainTrackInner
         calls={visibleCalls}
-        embedded={embedded}
         onDismissPanel={handleDismissPanel}
         onDismissCall={handleDismissCall}
       />
@@ -247,7 +242,6 @@ export function SidechainTrack({
 
 function SidechainTrackInner({
   calls,
-  embedded = false,
   onDismissPanel,
   onDismissCall,
 }: SidechainTrackProps & {
@@ -262,18 +256,17 @@ function SidechainTrackInner({
   }, []);
 
   const surfaceStyle = useMemo(
-    () => [styles.surface, embedded && styles.surfaceEmbedded, expanded && styles.surfaceExpanded],
-    [embedded, expanded],
+    () => [styles.surface, expanded && styles.surfaceExpanded],
+    [expanded],
   );
 
   const headerStyle = useCallback(
     ({ hovered, pressed }: PressableStateCallbackType & { hovered?: boolean }) => [
       styles.header,
-      !embedded && !expanded && styles.headerCollapsed,
-      embedded && styles.headerEmbedded,
+      !expanded && styles.headerCollapsed,
       (Boolean(hovered) || pressed) && styles.headerActive,
     ],
-    [embedded, expanded],
+    [expanded],
   );
 
   if (calls.length === 0) {
@@ -292,37 +285,21 @@ function SidechainTrackInner({
     : t("sidechainTrack.allDone");
 
   return (
-    <View style={embedded ? styles.outerEmbedded : styles.outer} testID="sidechain-track">
-      <View style={embedded ? styles.trackEmbedded : styles.track}>
-        {embedded ? (
-          <View style={surfaceStyle}>
-            <SidechainTrackContent
-              calls={calls}
-              expanded={expanded}
-              headerStyle={headerStyle}
-              headerDetail={headerDetail}
-              progressLabel={progressLabel}
-              runningCount={runningCount}
-              onDismissCall={onDismissCall}
-              onDismissPanel={onDismissPanel}
-              toggleExpanded={toggleExpanded}
-            />
-          </View>
-        ) : (
-          <GlassSurface backdropStyle={styles.surfaceBackdrop} style={surfaceStyle}>
-            <SidechainTrackContent
-              calls={calls}
-              expanded={expanded}
-              headerStyle={headerStyle}
-              headerDetail={headerDetail}
-              progressLabel={progressLabel}
-              runningCount={runningCount}
-              onDismissCall={onDismissCall}
-              onDismissPanel={onDismissPanel}
-              toggleExpanded={toggleExpanded}
-            />
-          </GlassSurface>
-        )}
+    <View style={styles.outer} testID="sidechain-track">
+      <View style={styles.track}>
+        <GlassSurface backdropStyle={styles.surfaceBackdrop} style={surfaceStyle}>
+          <SidechainTrackContent
+            calls={calls}
+            expanded={expanded}
+            headerStyle={headerStyle}
+            headerDetail={headerDetail}
+            progressLabel={progressLabel}
+            runningCount={runningCount}
+            onDismissCall={onDismissCall}
+            onDismissPanel={onDismissPanel}
+            toggleExpanded={toggleExpanded}
+          />
+        </GlassSurface>
       </View>
     </View>
   );
@@ -416,16 +393,10 @@ const styles = StyleSheet.create((theme, rt) => ({
     alignItems: "center",
     paddingHorizontal: theme.spacing[4],
   },
-  outerEmbedded: {
-    width: "100%",
-  },
   track: {
     width: "100%",
     maxWidth: MAX_CONTENT_WIDTH,
     marginBottom: -theme.spacing[4],
-  },
-  trackEmbedded: {
-    width: "100%",
   },
   surface: {
     alignSelf: "stretch",
@@ -442,12 +413,6 @@ const styles = StyleSheet.create((theme, rt) => ({
     borderTopRightRadius: theme.borderRadius["2xl"],
     overflow: "hidden",
   },
-  surfaceEmbedded: {
-    borderWidth: 0,
-    borderTopWidth: theme.borderWidth[1],
-    borderColor: theme.colors.borderAccent,
-    borderRadius: 0,
-  },
   surfaceExpanded: {
     paddingBottom: theme.spacing[4],
   },
@@ -457,10 +422,6 @@ const styles = StyleSheet.create((theme, rt) => ({
     gap: theme.spacing[2],
     paddingHorizontal: theme.spacing[3],
     paddingVertical: theme.spacing[2],
-  },
-  headerEmbedded: {
-    paddingHorizontal: 0,
-    paddingVertical: theme.spacing[1],
   },
   headerCollapsed: {
     paddingBottom: theme.spacing[6],

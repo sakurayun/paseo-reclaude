@@ -24,6 +24,7 @@ import {
   Download,
   Eye,
   EyeOff,
+  FolderOpen,
   MoreVertical,
   RotateCw,
 } from "lucide-react-native";
@@ -47,10 +48,20 @@ import {
 } from "@/hooks/use-file-explorer-actions";
 import { usePanelStore, type SortOption } from "@/stores/panel-store";
 import { formatTimeAgo } from "@/utils/time";
-import { buildAbsoluteExplorerPath } from "@/utils/explorer-paths";
+import { buildAbsoluteExplorerPath, buildRelativeExplorerPath } from "@/utils/explorer-paths";
 import { filterVisibleExplorerEntries, isHiddenExplorerPath } from "@/file-explorer/visibility";
 import { useWebScrollViewScrollbar } from "@/components/use-web-scrollbar";
 import { isWeb } from "@/constants/platform";
+import { useToast } from "@/contexts/toast-context";
+import { useIsLocalDaemon } from "@/hooks/use-is-local-daemon";
+import { resolvePreferredEditorId, usePreferredEditor } from "@/hooks/use-preferred-editor";
+import { isAbsolutePath } from "@/utils/path";
+import {
+  type DesktopOpenTarget,
+  type OpenDesktopTargetInput,
+  openDesktopTarget,
+  useDesktopOpenTargets,
+} from "@/workspace/desktop-open-targets";
 
 const SORT_OPTIONS: { value: SortOption }[] = [
   { value: "name" },
@@ -70,6 +81,32 @@ function formatFileSize({ size }: { size: number }): string {
   return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+const AUTO_REFRESH_INTERVAL_MS = 3000;
+
+// Maps a file-explorer entry + the chosen editor target to a desktop open
+// request. Editors open files/folders directly (passing the workspace as cwd
+// for context); file managers open a folder directly but reveal a file inside
+// its containing folder.
+function planExplorerEntryOpenInput({
+  entry,
+  absolutePath,
+  editorTarget,
+  workspaceDirectory,
+}: {
+  entry: ExplorerEntry;
+  absolutePath: string;
+  editorTarget: DesktopOpenTarget;
+  workspaceDirectory: string;
+}): OpenDesktopTargetInput {
+  if (editorTarget.kind === "editor") {
+    return { editorId: editorTarget.id, path: absolutePath, cwd: workspaceDirectory };
+  }
+  if (entry.kind === "directory") {
+    return { editorId: editorTarget.id, path: absolutePath };
+  }
+  return { editorId: editorTarget.id, path: absolutePath, mode: "reveal" };
+}
+
 interface TreeRowItemProps {
   entry: ExplorerEntry;
   depth: number;
@@ -78,7 +115,11 @@ interface TreeRowItemProps {
   loading: boolean;
   onEntryPress: (entry: ExplorerEntry) => void;
   onCopyPath: (path: string) => void;
+  onCopyRelativePath: (path: string) => void;
   onDownloadEntry: (entry: ExplorerEntry) => void;
+  onOpenWithEditor: (entry: ExplorerEntry) => void;
+  openFileLabel: string;
+  openFolderLabel: string;
 }
 
 function stopPressInPropagation(event: { stopPropagation?: () => void }) {
@@ -119,7 +160,11 @@ function TreeRowItem({
   loading,
   onEntryPress,
   onCopyPath,
+  onCopyRelativePath,
   onDownloadEntry,
+  onOpenWithEditor,
+  openFileLabel,
+  openFolderLabel,
 }: TreeRowItemProps) {
   const { theme } = useUnistyles();
   const { t } = useTranslation();
@@ -142,9 +187,17 @@ function TreeRowItem({
     onCopyPath(entry.path);
   }, [onCopyPath, entry.path]);
 
+  const handleCopyRelative = useCallback(() => {
+    onCopyRelativePath(entry.path);
+  }, [onCopyRelativePath, entry.path]);
+
   const handleDownload = useCallback(() => {
     onDownloadEntry(entry);
   }, [onDownloadEntry, entry]);
+
+  const handleOpenWithEditor = useCallback(() => {
+    onOpenWithEditor(entry);
+  }, [onOpenWithEditor, entry]);
 
   const chevronStyle = useMemo(
     () => [styles.chevron, isExpanded && styles.chevronExpanded],
@@ -157,6 +210,10 @@ function TreeRowItem({
   );
   const downloadLeading = useMemo(
     () => <Download size={14} color={theme.colors.foregroundMuted} />,
+    [theme.colors.foregroundMuted],
+  );
+  const openLeading = useMemo(
+    () => <FolderOpen size={14} color={theme.colors.foregroundMuted} />,
     [theme.colors.foregroundMuted],
   );
 
@@ -205,6 +262,12 @@ function TreeRowItem({
             </View>
           </View>
           <DropdownMenuSeparator />
+          <DropdownMenuItem leading={openLeading} onSelect={handleOpenWithEditor}>
+            {isDirectory ? openFolderLabel : openFileLabel}
+          </DropdownMenuItem>
+          <DropdownMenuItem leading={copyLeading} onSelect={handleCopyRelative}>
+            {t("workspace.fileExplorer.context.copyRelativePath")}
+          </DropdownMenuItem>
           <DropdownMenuItem leading={copyLeading} onSelect={handleCopy}>
             {t("workspace.fileExplorer.context.copyPath")}
           </DropdownMenuItem>
@@ -272,6 +335,47 @@ export function FileExplorerPane({
       workspaceId,
       workspaceRoot: normalizedWorkspaceRoot,
     });
+
+  const toast = useToast();
+  const isLocalDaemon = useIsLocalDaemon(serverId);
+  const { preferredEditorId } = usePreferredEditor();
+  const { targets: desktopOpenTargets, isAvailable: isDesktopOpenAvailable } =
+    useDesktopOpenTargets({ isLocalExecution: isLocalDaemon });
+  // Files open in the chosen editor; folders open in the platform file manager
+  // (Finder / Explorer / …). Split the desktop targets by kind so each entry
+  // type resolves the right one.
+  const editorTargets = useMemo(
+    () => desktopOpenTargets.filter((target) => target.kind === "editor"),
+    [desktopOpenTargets],
+  );
+  const editorTargetIds = useMemo(() => editorTargets.map((target) => target.id), [editorTargets]);
+  const preferredEditorTarget = useMemo(() => {
+    const editorId = resolvePreferredEditorId(editorTargetIds, preferredEditorId);
+    return editorTargets.find((target) => target.id === editorId) ?? null;
+  }, [editorTargets, editorTargetIds, preferredEditorId]);
+  const fileManagerTarget = useMemo(
+    () => desktopOpenTargets.find((target) => target.kind === "file-manager") ?? null,
+    [desktopOpenTargets],
+  );
+  // The desktop bridge + a local, absolute workspace are the baseline; the
+  // per-entry target (editor for files, file manager for folders) is checked in
+  // the handler. The menu item always shows (per product choice) and explains
+  // why on tap when something is missing.
+  const canOpenInDesktop = isDesktopOpenAvailable && isAbsolutePath(normalizedWorkspaceRoot);
+  const openFileLabel = useMemo(
+    () =>
+      preferredEditorTarget
+        ? t("workspace.fileExplorer.context.openWith", { editor: preferredEditorTarget.label })
+        : t("workspace.fileExplorer.context.open"),
+    [preferredEditorTarget, t],
+  );
+  const openFolderLabel = useMemo(
+    () =>
+      fileManagerTarget
+        ? t("workspace.fileExplorer.context.openWith", { editor: fileManagerTarget.label })
+        : t("workspace.fileExplorer.context.openFolder"),
+    [fileManagerTarget, t],
+  );
   const sortOption = usePanelStore((state) => state.explorerSortOption);
   const showHiddenFiles = usePanelStore((state) => state.explorerShowHiddenFiles);
   const setSortOption = usePanelStore((state) => state.setExplorerSortOption);
@@ -315,6 +419,24 @@ export function FileExplorerPane({
       requestDirectoryListing,
     });
   }, [hasWorkspaceScope, requestDirectoryListing, workspaceStateKey]);
+
+  // Auto-refresh the expanded directories on an interval so the list reflects
+  // external file changes without a manual refresh. Runs silently (no spinner,
+  // no error flashes) and only while a workspace scope is active.
+  useEffect(() => {
+    if (!hasWorkspaceScope) {
+      return;
+    }
+    const interval = setInterval(() => {
+      void refreshExplorerDirectories({
+        hasWorkspaceScope,
+        expandedPaths,
+        requestDirectoryListing,
+        silent: true,
+      });
+    }, AUTO_REFRESH_INTERVAL_MS);
+    return () => clearInterval(interval);
+  }, [hasWorkspaceScope, expandedPaths, requestDirectoryListing]);
 
   const handleToggleDirectory = useCallback(
     (entry: ExplorerEntry) =>
@@ -369,6 +491,10 @@ export function FileExplorerPane({
     [normalizedWorkspaceRoot],
   );
 
+  const handleCopyRelativePath = useCallback(async (path: string) => {
+    await Clipboard.setStringAsync(buildRelativeExplorerPath(path));
+  }, []);
+
   const startDownload = useDownloadStore((state) => state.startDownload);
   const handleDownloadEntry = useCallback(
     (entry: ExplorerEntry) =>
@@ -381,6 +507,34 @@ export function FileExplorerPane({
         requestFileDownloadToken,
       }),
     [daemonProfile, requestFileDownloadToken, serverId, startDownload, workspaceScopeId],
+  );
+
+  const handleOpenWithEditor = useCallback(
+    (entry: ExplorerEntry) => {
+      const target = entry.kind === "directory" ? fileManagerTarget : preferredEditorTarget;
+      if (!canOpenInDesktop || !target) {
+        toast.error(t("workspace.fileExplorer.context.openUnavailable"));
+        return;
+      }
+      const absolutePath = buildAbsoluteExplorerPath({
+        workspaceRoot: normalizedWorkspaceRoot,
+        entryPath: entry.path,
+      });
+      const openInput = planExplorerEntryOpenInput({
+        entry,
+        absolutePath,
+        editorTarget: target,
+        workspaceDirectory: normalizedWorkspaceRoot,
+      });
+      void openDesktopTarget(openInput).catch((openError) => {
+        toast.error(
+          openError instanceof Error
+            ? openError.message
+            : t("workspace.fileExplorer.context.openUnavailable"),
+        );
+      });
+    },
+    [canOpenInDesktop, fileManagerTarget, preferredEditorTarget, normalizedWorkspaceRoot, t, toast],
   );
 
   const handleSortCycle = useCallback(() => {
@@ -448,14 +602,22 @@ export function FileExplorerPane({
         isDirectoryLoading={isDirectoryLoading}
         onEntryPress={handleEntryPress}
         onCopyPath={handleCopyPath}
+        onCopyRelativePath={handleCopyRelativePath}
         onDownloadEntry={handleDownloadEntry}
+        onOpenWithEditor={handleOpenWithEditor}
+        openFileLabel={openFileLabel}
+        openFolderLabel={openFolderLabel}
       />
     ),
     [
       expandedPaths,
       handleEntryPress,
       handleCopyPath,
+      handleCopyRelativePath,
       handleDownloadEntry,
+      handleOpenWithEditor,
+      openFileLabel,
+      openFolderLabel,
       isDirectoryLoading,
       selectedEntryPath,
     ],
@@ -890,7 +1052,11 @@ function TreeRowDispatcher({
   isDirectoryLoading,
   onEntryPress,
   onCopyPath,
+  onCopyRelativePath,
   onDownloadEntry,
+  onOpenWithEditor,
+  openFileLabel,
+  openFolderLabel,
 }: {
   info: ListRenderItemInfo<TreeRow>;
   expandedPaths: Set<string>;
@@ -898,7 +1064,11 @@ function TreeRowDispatcher({
   isDirectoryLoading: (path: string) => boolean;
   onEntryPress: (entry: ExplorerEntry) => void;
   onCopyPath: (path: string) => void | Promise<void>;
+  onCopyRelativePath: (path: string) => void | Promise<void>;
   onDownloadEntry: (entry: ExplorerEntry) => void;
+  onOpenWithEditor: (entry: ExplorerEntry) => void;
+  openFileLabel: string;
+  openFolderLabel: string;
 }) {
   const entry = info.item.entry;
   const depth = info.item.depth;
@@ -916,7 +1086,11 @@ function TreeRowDispatcher({
       loading={loading}
       onEntryPress={onEntryPress}
       onCopyPath={onCopyPath}
+      onCopyRelativePath={onCopyRelativePath}
       onDownloadEntry={onDownloadEntry}
+      onOpenWithEditor={onOpenWithEditor}
+      openFileLabel={openFileLabel}
+      openFolderLabel={openFolderLabel}
     />
   );
 }
@@ -1004,13 +1178,15 @@ async function refreshExplorerDirectories({
   hasWorkspaceScope,
   expandedPaths,
   requestDirectoryListing,
+  silent = false,
 }: {
   hasWorkspaceScope: boolean;
   expandedPaths: Set<string>;
   requestDirectoryListing: (
     path: string,
-    opts?: { recordHistory?: boolean; setCurrentPath?: boolean },
+    opts?: { recordHistory?: boolean; setCurrentPath?: boolean; silent?: boolean },
   ) => Promise<boolean>;
+  silent?: boolean;
 }): Promise<null> {
   if (!hasWorkspaceScope) {
     return null;
@@ -1027,6 +1203,7 @@ async function refreshExplorerDirectories({
       requestDirectoryListing(path, {
         recordHistory: false,
         setCurrentPath: false,
+        silent,
       }),
     ),
   );

@@ -27,6 +27,7 @@ import type { GitLogCommit } from "@getpaseo/protocol/messages";
 import type { Theme } from "@/styles/theme";
 import { useSessionStore } from "@/stores/session-store";
 import { useToast } from "@/contexts/toast-context";
+import { useIsCompactFormFactor } from "@/constants/layout";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { shortenPath } from "@/utils/shorten-path";
 import { useCheckoutStatusQuery } from "./use-status-query";
@@ -130,6 +131,7 @@ function SourceControlPaneContent({
   onOpenDiffFile,
 }: SourceControlPaneProps) {
   const { t } = useTranslation();
+  const isCompact = useIsCompactFormFactor();
   const { status } = useCheckoutStatusQuery({ serverId, cwd });
   const log = useGitLogQuery({ serverId, cwd, enabled });
 
@@ -228,6 +230,11 @@ function SourceControlPaneContent({
     [isLoading, isError, handleRetry],
   );
 
+  const changesFooterStyle = useMemo(
+    () => [styles.changesFooter, isCompact ? styles.changesFooterCompact : null],
+    [isCompact],
+  );
+
   return (
     <Animated.View
       style={PANE_CONTAINER_STYLE}
@@ -249,7 +256,7 @@ function SourceControlPaneContent({
       {/* Changes (commit box) pinned below the scrollable history so it is
           always reachable without scrolling back up. */}
       {status?.isGit ? (
-        <View style={styles.changesFooter}>
+        <View style={changesFooterStyle}>
           <ChangesSection
             serverId={serverId}
             cwd={cwd}
@@ -1166,6 +1173,13 @@ const styles = StyleSheet.create((theme) => ({
     borderTopWidth: 1,
     borderTopColor: theme.colors.border,
     paddingTop: theme.spacing[3],
+  },
+  // Compact layout renders the explorer as a full-screen drawer tinted with
+  // surfaceSidebar; the commit box is the user's main surface there, so pin it
+  // to the workspace background to match the rest of the app instead of the
+  // sidebar tint. Desktop keeps the sidebar tint since it really is a sidebar.
+  changesFooterCompact: {
+    backgroundColor: theme.colors.surfaceWorkspace,
   },
   changesBody: {
     paddingHorizontal: theme.spacing[3],

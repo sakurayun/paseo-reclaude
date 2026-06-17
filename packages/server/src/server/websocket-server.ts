@@ -7,16 +7,19 @@ import type { AgentManager } from "./agent/agent-manager.js";
 import type { AgentStorage } from "./agent/agent-storage.js";
 import type { DownloadTokenStore } from "./file-download/token-store.js";
 import type { TerminalManager } from "../terminal/terminal-manager.js";
+import type { PortForwardManager } from "../port-forward/port-forward-manager.js";
 import type pino from "pino";
 import type { ProjectRegistry, WorkspaceRegistry } from "./workspace-registry.js";
 import type { FileBackedChatService } from "./chat/chat-service.js";
 import type { LoopService } from "./loop-service.js";
+import type { WorkspaceLayoutStore } from "./workspace-layout-store.js";
 import type { ScheduleService } from "./schedule/service.js";
 import type { CheckoutDiffManager, CheckoutDiffMetrics } from "./checkout-diff-manager.js";
 import type { DaemonConfigStore, MutableDaemonConfig } from "./daemon-config-store.js";
 import {
   type ServerInfoStatusPayload,
   type WorkspaceSetupSnapshot,
+  type WorkspaceLayoutEnvelope,
   type WSHelloMessage,
   type WSInboundMessage,
   WSInboundMessageSchema,
@@ -374,6 +377,7 @@ export class VoiceAssistantWebSocketServer {
   private readonly agentStorage: AgentStorage;
   private readonly projectRegistry: ProjectRegistry;
   private readonly workspaceRegistry: WorkspaceRegistry;
+  private readonly workspaceLayoutStore: WorkspaceLayoutStore | null;
   private readonly chatService: FileBackedChatService;
   private readonly loopService: LoopService;
   private readonly scheduleService: ScheduleService;
@@ -390,6 +394,7 @@ export class VoiceAssistantWebSocketServer {
   private speech!: SpeechService | null;
   private dictationSettings: DictationSettingsController | null = null;
   private terminalManager!: TerminalManager | null;
+  private portForwardManager!: PortForwardManager | null;
   private serviceProxy!: ServiceProxySubsystem | null;
   private scriptRuntimeStore!: WorkspaceScriptRuntimeStore | null;
   private getDaemonTcpPort!: (() => number | null) | null;
@@ -470,6 +475,8 @@ export class VoiceAssistantWebSocketServer {
       };
     },
     serviceProxyPublicBaseUrl?: string | null,
+    portForwardManager?: PortForwardManager | null,
+    workspaceLayoutStore?: WorkspaceLayoutStore | null,
   ) {
     this.logger = logger.child({ module: "websocket-server" });
     this.serverId = serverId;
@@ -482,6 +489,7 @@ export class VoiceAssistantWebSocketServer {
     this.agentStorage = agentStorage;
     this.projectRegistry = projectRegistry ?? createNoopProjectRegistry();
     this.workspaceRegistry = workspaceRegistry ?? createNoopWorkspaceRegistry();
+    this.workspaceLayoutStore = workspaceLayoutStore ?? null;
     const requiredServices = requireWebSocketServices({
       chatService,
       loopService,
@@ -502,6 +510,7 @@ export class VoiceAssistantWebSocketServer {
     this.assignOptionalServices({
       speech,
       terminalManager,
+      portForwardManager,
       dictation,
       onLifecycleIntent,
       serviceProxy,
@@ -581,6 +590,7 @@ export class VoiceAssistantWebSocketServer {
   private assignOptionalServices(params: {
     speech: SpeechService | null | undefined;
     terminalManager: TerminalManager | null | undefined;
+    portForwardManager: PortForwardManager | null | undefined;
     dictation: { finalTimeoutMs?: number } | undefined;
     onLifecycleIntent: ((intent: SessionLifecycleIntent) => void) | undefined;
     serviceProxy: ServiceProxySubsystem | null | undefined;
@@ -595,6 +605,7 @@ export class VoiceAssistantWebSocketServer {
   }): void {
     this.speech = params.speech ?? null;
     this.terminalManager = params.terminalManager ?? null;
+    this.portForwardManager = params.portForwardManager ?? null;
     if (this.terminalManager) {
       this.unsubscribeTerminalActivity = this.terminalManager.subscribeTerminalActivity((event) => {
         const reason = resolveTerminalAttentionReason({
@@ -1006,6 +1017,13 @@ export class VoiceAssistantWebSocketServer {
       agentStorage: this.agentStorage,
       projectRegistry: this.projectRegistry,
       workspaceRegistry: this.workspaceRegistry,
+      workspaceLayoutStore: this.workspaceLayoutStore,
+      onWorkspaceLayoutPushed: (envelope) => {
+        if (!connection) {
+          return;
+        }
+        this.broadcastWorkspaceLayoutChanged(envelope, connection);
+      },
       chatService: this.chatService,
       loopService: this.loopService,
       scheduleService: this.scheduleService,
@@ -1018,6 +1036,7 @@ export class VoiceAssistantWebSocketServer {
       sttLanguage: this.speech?.resolveSttLanguage() ?? "en",
       tts: () => this.speech?.resolveTts() ?? null,
       terminalManager: this.terminalManager,
+      portForwardManager: this.portForwardManager,
       providerSnapshotManager: this.providerSnapshotManager,
       serviceProxy: this.serviceProxy ?? undefined,
       scriptRuntimeStore: this.scriptRuntimeStore ?? undefined,
@@ -1224,6 +1243,10 @@ export class VoiceAssistantWebSocketServer {
         daemonSelfUpdate: true,
         // COMPAT(tcpTunnel): added in v0.1.97, remove gate after 2026-12-13.
         tcpTunnel: true,
+        // COMPAT(portForward): added in v0.1.100, remove gate after 2026-12-17.
+        portForward: true,
+        // COMPAT(workspaceLayoutSync): added in v0.1.101, remove gate after 2026-12-17.
+        workspaceLayoutSync: true,
       },
     };
   }
@@ -1827,6 +1850,27 @@ export class VoiceAssistantWebSocketServer {
       focusedTerminalId: activity.focusedTerminalId,
       lastActivityAtMs: activity.lastActivityAt.getTime(),
     };
+  }
+
+  // Fan a workspace layout out to every connected desktop client except the pusher.
+  // Mobile/compact clients are skipped (desktop-only sync); they keep an independent
+  // local tab view. deviceType is undefined until a client's first heartbeat — treat
+  // unknown as desktop so a freshly connected desktop isn't starved. Sender is excluded
+  // by whole connection (not single ws) so its other sockets don't get an echo.
+  private broadcastWorkspaceLayoutChanged(
+    envelope: WorkspaceLayoutEnvelope,
+    senderConnection: SessionConnection,
+  ): void {
+    const message = wrapSessionMessage({ type: "workspace.layout.changed", payload: envelope });
+    for (const [ws, connection] of this.sessions) {
+      if (connection === senderConnection) {
+        continue;
+      }
+      if (connection.session.getClientActivity()?.deviceType === "mobile") {
+        continue;
+      }
+      this.sendToClient(ws, message);
+    }
   }
 
   private async broadcastAgentAttention(params: {

@@ -3,15 +3,11 @@ import { Pressable, ScrollView, Text, View, type PressableStateCallbackType } fr
 import { useTranslation } from "react-i18next";
 import { Archive, ChevronDown, ChevronRight } from "lucide-react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
-import { getProviderIcon } from "@/components/provider-icons";
 import { GlassSurface } from "@/components/ui/glass-surface";
+import { SessionStatusIcon } from "@/components/sidebar/session-status-icon";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useIsCompactFormFactor, MAX_CONTENT_WIDTH } from "@/constants/layout";
 import { isNative } from "@/constants/platform";
-import {
-  WorkspaceTabIcon,
-  type WorkspaceTabPresentation,
-} from "@/screens/workspace/workspace-tab-presentation";
 import type { Theme } from "@/styles/theme";
 import type { SubagentRow } from "./select";
 import { buildSubagentRowPresentationData, formatHeaderLabel } from "./track-presentation";
@@ -33,13 +29,6 @@ export interface SubagentsTrackProps {
 
 const SUBAGENTS_LIST_MAX_HEIGHT = 200;
 
-function buildRowPresentation(row: SubagentRow): WorkspaceTabPresentation {
-  return {
-    ...buildSubagentRowPresentationData(row),
-    icon: getProviderIcon(row.provider),
-  };
-}
-
 export function SubagentsTrack({
   rows,
   onOpenSubagent,
@@ -59,7 +48,7 @@ export function SubagentsTrack({
   const headerStyle = useCallback(
     ({ hovered, pressed }: PressableStateCallbackType) => [
       styles.header,
-      expanded ? styles.headerDivider : styles.headerCollapsed,
+      !expanded && styles.headerCollapsed,
       (hovered || pressed) && styles.headerActive,
     ],
     [expanded],
@@ -128,9 +117,19 @@ function SubagentsTrackRow({
   const { t } = useTranslation();
   const isCompact = useIsCompactFormFactor();
   const [hovered, setHovered] = useState(false);
-  const presentation = useMemo(() => buildRowPresentation(row), [row]);
+  const presentation = useMemo(() => buildSubagentRowPresentationData(row), [row]);
   const displayLabel =
     presentation.titleState === "loading" ? t("common.states.loading") : presentation.label;
+  // Tint the label by lifecycle state so failed/needs-input rows stand out,
+  // matching the sidebar workspace sessions.
+  const labelStyle = useMemo(
+    () => [
+      styles.rowLabel,
+      presentation.statusBucket === "failed" && styles.rowLabelFailed,
+      presentation.statusBucket === "needs_input" && styles.rowLabelNeedsInput,
+    ],
+    [presentation.statusBucket],
+  );
   const handlePress = useCallback(() => {
     onOpenSubagent(row.id);
   }, [onOpenSubagent, row.id]);
@@ -155,8 +154,12 @@ function SubagentsTrackRow({
       >
         {({ pressed }) => (
           <View style={hovered || pressed ? styles.rowActive : styles.row}>
-            <WorkspaceTabIcon presentation={presentation} />
-            <Text style={styles.rowLabel} numberOfLines={1}>
+            <SessionStatusIcon
+              provider={row.provider}
+              stateBucket={presentation.statusBucket}
+              size={14}
+            />
+            <Text style={labelStyle} numberOfLines={1}>
               {displayLabel}
             </Text>
             <SubagentArchiveButton
@@ -257,10 +260,6 @@ const styles = StyleSheet.create((theme) => ({
   headerActive: {
     backgroundColor: theme.colors.surface2,
   },
-  headerDivider: {
-    borderBottomWidth: theme.borderWidth[1],
-    borderBottomColor: theme.colors.border,
-  },
   headerLabel: {
     flexShrink: 1,
     minWidth: 0,
@@ -293,6 +292,12 @@ const styles = StyleSheet.create((theme) => ({
     minWidth: 0,
     fontSize: theme.fontSize.sm,
     color: theme.colors.foreground,
+  },
+  rowLabelFailed: {
+    color: theme.colors.palette.red[500],
+  },
+  rowLabelNeedsInput: {
+    color: theme.colors.palette.amber[500],
   },
   archiveSlotVisible: {
     opacity: 1,

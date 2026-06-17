@@ -140,6 +140,13 @@ export interface MessageInputProps {
   attachmentSlot?: React.ReactNode;
   /** Swaps the resting shadow for the purple Ultracode glow. */
   isUltracodeActive?: boolean;
+  /**
+   * Panel/screen breakpoint from the composer. On wide (desktop) layouts the
+   * agent controls fold onto the toolbar row next to the attachment button and
+   * the divider above the secondary row is dropped; compact/mobile keeps the
+   * controls on their own divided row below. Defaults to compact when omitted.
+   */
+  isCompactLayout?: boolean;
 }
 
 export interface MessageInputRef {
@@ -400,9 +407,54 @@ function VoiceButtonIcon({
   return <ThemedMic size={buttonIconSize} uniProps={colorMapping} />;
 }
 
-function MessageInputSecondaryContent({ children }: { children: React.ReactNode }) {
+function MessageInputSecondaryContent({
+  children,
+  inline = false,
+}: {
+  children: React.ReactNode;
+  /** Desktop: drop the top divider (agent controls live on the toolbar row instead). */
+  inline?: boolean;
+}) {
   if (!children) return null;
-  return <View style={styles.secondaryContent}>{children}</View>;
+  return (
+    <View style={inline ? styles.secondaryContentPlain : styles.secondaryContent}>{children}</View>
+  );
+}
+
+/** Renders the agent controls inline on the toolbar row (desktop) or nothing (compact). */
+function InlineToolbarControls({
+  visible,
+  children,
+}: {
+  visible: boolean;
+  children: React.ReactNode;
+}): React.ReactNode {
+  return visible ? children : null;
+}
+
+/**
+ * The row below the toolbar. On desktop the agent controls have already moved up
+ * to the toolbar row, so this only carries the context/footer content with no
+ * divider; on compact it keeps the controls and context together above a divider.
+ */
+function MessageInputSecondaryRow({
+  inline,
+  leftContent,
+  secondaryContent,
+}: {
+  inline: boolean;
+  leftContent: React.ReactNode;
+  secondaryContent: React.ReactNode;
+}) {
+  if (inline) {
+    return <MessageInputSecondaryContent inline>{secondaryContent}</MessageInputSecondaryContent>;
+  }
+  return (
+    <MessageInputSecondaryContent>
+      {leftContent}
+      {secondaryContent}
+    </MessageInputSecondaryContent>
+  );
 }
 
 type ShortcutChord = NonNullable<React.ComponentProps<typeof Shortcut>["chord"]>;
@@ -1180,6 +1232,7 @@ interface ResolvedMessageInputProps {
   inputWrapperStyle: import("react-native").ViewStyle | undefined;
   attachmentSlot: React.ReactNode;
   isUltracodeActive: boolean;
+  isCompactLayout: boolean;
 }
 
 function resolveMessageInputProps(props: MessageInputProps): ResolvedMessageInputProps {
@@ -1223,6 +1276,9 @@ function resolveMessageInputProps(props: MessageInputProps): ResolvedMessageInpu
     inputWrapperStyle: props.inputWrapperStyle,
     attachmentSlot: props.attachmentSlot,
     isUltracodeActive: props.isUltracodeActive ?? false,
+    // Default to compact (separate divided row) when the composer doesn't pass
+    // a breakpoint, so existing layouts keep their current behavior.
+    isCompactLayout: props.isCompactLayout ?? true,
   };
 }
 
@@ -1298,12 +1354,17 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       inputWrapperStyle,
       attachmentSlot,
       isUltracodeActive,
+      isCompactLayout,
     } = resolveMessageInputProps(props);
     const { t } = useTranslation();
     const isCompact = useIsCompactFormFactor();
     const { height: windowHeight } = useWindowDimensions();
     const maxInputHeight = resolveMaxInputHeight(windowHeight);
     const buttonIconSize = isWeb ? ICON_SIZE.md : ICON_SIZE.lg;
+    // Wide (desktop) layouts fold the agent controls inline on the toolbar row
+    // beside the attachment button and drop the divided secondary row; compact
+    // keeps them on their own row below. Driven by the composer's panel breakpoint.
+    const inlineToolbarControls = !isCompactLayout;
     const toast = useToast();
     const voice = useVoiceOptional();
     const voiceMuteToggleKeys = useShortcutKeys("voice-mute-toggle");
@@ -1888,7 +1949,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
 
           {/* Button row */}
           <View style={styles.buttonRow}>
-            {/* Toolbar left: attachment button + agent controls */}
+            {/* Toolbar left: attachment button + (desktop) inline agent controls */}
             <View style={styles.leftButtonGroup}>
               <AttachmentDropdown
                 isConnected={isConnected}
@@ -1898,6 +1959,9 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
                 attachmentMenuItems={attachmentMenuItems}
                 addAttachmentLabel={t("composer.input.addAttachment")}
               />
+              <InlineToolbarControls visible={inlineToolbarControls}>
+                {leftContent}
+              </InlineToolbarControls>
             </View>
 
             {/* Right: voice button, contextual button (realtime/send/cancel) */}
@@ -1933,10 +1997,11 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
             </View>
           </View>
 
-          <MessageInputSecondaryContent>
-            {leftContent}
-            {secondaryContent}
-          </MessageInputSecondaryContent>
+          <MessageInputSecondaryRow
+            inline={inlineToolbarControls}
+            leftContent={leftContent}
+            secondaryContent={secondaryContent}
+          />
         </Animated.View>
 
         <Animated.View style={overlayContainerStyle}>
@@ -2120,6 +2185,15 @@ const styles = StyleSheet.create((theme: Theme) => ({
     borderTopColor: theme.colors.borderAccent,
     marginHorizontal: -theme.spacing[3],
     paddingHorizontal: theme.spacing[3],
+    paddingTop: theme.spacing[1],
+  },
+  // Desktop variant of secondaryContent: same row layout, no top divider (the
+  // agent controls have folded onto the toolbar row above it).
+  secondaryContentPlain: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: theme.spacing[1],
     paddingTop: theme.spacing[1],
   },
   buttonRow: {

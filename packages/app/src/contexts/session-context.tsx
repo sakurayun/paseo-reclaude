@@ -34,6 +34,7 @@ import {
 } from "@getpaseo/protocol/agent-attention-notification";
 import type { AgentLifecycleStatus } from "@getpaseo/protocol/agent-lifecycle";
 import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
+import { startWorkspaceLayoutSync } from "@/stores/workspace-layout-sync";
 import type { AgentSessionConfig } from "@getpaseo/protocol/agent-types";
 import type { GitSetupOptions } from "@getpaseo/protocol/messages";
 import type { AgentPermissionResponse } from "@getpaseo/protocol/agent-types";
@@ -524,6 +525,12 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
   const wasConnectedRef = useRef(isConnected);
   const audioOutputBuffersRef = useRef<Map<string, BufferedAudioChunk[]>>(new Map());
   const activeAudioGroupsRef = useRef<Set<string>>(new Set());
+
+  // Desktop workspace-layout sync: mirror the local layout store to the daemon and
+  // apply peers' layouts. No-ops on non-desktop or when the daemon lacks the feature.
+  useEffect(() => {
+    return startWorkspaceLayoutSync({ serverId, client });
+  }, [serverId, client]);
 
   useEffect(() => {
     const subscription = AppState.addEventListener("change", (nextState) => {

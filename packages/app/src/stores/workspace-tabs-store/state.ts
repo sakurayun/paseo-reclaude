@@ -24,7 +24,8 @@ export type WorkspaceTabTarget =
   | WorkspaceFileTabTarget
   | { kind: "file-diff"; path: string }
   | { kind: "setup"; workspaceId: string }
-  | { kind: "sessions"; workspaceId: string };
+  | { kind: "sessions"; workspaceId: string }
+  | { kind: "port-forwards" };
 
 export interface WorkspaceTab {
   tabId: string;
@@ -529,6 +530,9 @@ function coerceWorkspaceTabTarget(raw: Record<string, unknown>): WorkspaceTabTar
   }
   if (kind === "setup" && typeof raw.workspaceId === "string") {
     return normalizeWorkspaceTabTarget({ kind: "setup", workspaceId: raw.workspaceId });
+  }
+  if (kind === "port-forwards") {
+    return normalizeWorkspaceTabTarget({ kind: "port-forwards" });
   }
   return null;
 }

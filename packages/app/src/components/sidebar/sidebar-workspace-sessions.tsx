@@ -1,17 +1,9 @@
-import { memo, useCallback, useEffect, useMemo, useState, type ComponentType } from "react";
+import { memo, useCallback, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Pressable, Text, View, type PressableStateCallbackType } from "react-native";
 import { useQueryClient } from "@tanstack/react-query";
-import { StyleSheet, withUnistyles } from "react-native-unistyles";
-import Animated, {
-  cancelAnimation,
-  Easing,
-  useAnimatedStyle,
-  useSharedValue,
-  withRepeat,
-  withTiming,
-} from "react-native-reanimated";
-import { getProviderBrandColor, getProviderIcon } from "@/components/provider-icons";
+import { StyleSheet } from "react-native-unistyles";
+import { SessionStatusIcon } from "@/components/sidebar/session-status-icon";
 import { deriveSidebarStateBucket } from "@/utils/sidebar-agent-state";
 import { AdaptiveRenameModal } from "@/components/rename-modal";
 import {
@@ -28,7 +20,6 @@ import { buildWorkspaceSessionSections } from "@/panels/sessions-panel-model";
 import { usePanelStore } from "@/stores/panel-store";
 import { useSessionStore, type WorkspaceDescriptor } from "@/stores/session-store";
 import type { AgentDirectoryEntry } from "@/types/agent-directory";
-import type { Theme } from "@/styles/theme";
 import { toErrorMessage } from "@/utils/error-messages";
 import { formatTimeAgo } from "@/utils/time";
 import { navigateToAgentDirectoryEntry } from "@/utils/navigate-to-agent-directory-entry";
@@ -186,16 +177,6 @@ function SidebarSessionRow({ session }: { session: AgentDirectoryEntry }) {
     attentionReason: session.attentionReason,
   });
 
-  const ProviderIcon = useMemo(() => {
-    let colorMapping = mutedColorMapping;
-    if (stateBucket === "failed") {
-      colorMapping = failedColorMapping;
-    } else if (stateBucket === "needs_input") {
-      colorMapping = needsInputColorMapping;
-    }
-    return withUnistyles(getProviderIcon(session.provider), colorMapping);
-  }, [session.provider, stateBucket]);
-
   const titleStyle = useMemo(
     () => [
       styles.sessionTitle,
@@ -213,13 +194,7 @@ function SidebarSessionRow({ session }: { session: AgentDirectoryEntry }) {
         accessibilityRole="button"
         testID={`sidebar-session-${session.id}`}
       >
-        <View style={styles.sessionIcon}>
-          <ProviderIcon size={12} />
-          {stateBucket === "running" ? (
-            <SessionRunningIconOverlay provider={session.provider} />
-          ) : null}
-          {stateBucket === "attention" ? <View style={styles.attentionDot} /> : null}
-        </View>
+        <SessionStatusIcon provider={session.provider} stateBucket={stateBucket} />
         <Text style={titleStyle} numberOfLines={1}>
           {session.title ?? t("sessions.workspacePanel.untitled")}
         </Text>
@@ -317,62 +292,6 @@ export const SidebarWorkspaceSessions = memo(function SidebarWorkspaceSessions({
   );
 });
 
-/**
- * Breathing colored copy of the provider icon, stacked over the gray base
- * icon while the agent is running. Opacity pulses 0 → 1 so the icon fades
- * between gray and the provider's brand color (theme accent as fallback).
- */
-function SessionRunningIconOverlay({ provider }: { provider: string }) {
-  const breath = useSharedValue(0);
-
-  useEffect(() => {
-    breath.value = withRepeat(
-      withTiming(1, { duration: 900, easing: Easing.inOut(Easing.ease) }),
-      -1,
-      true,
-    );
-    return () => {
-      cancelAnimation(breath);
-    };
-  }, [breath]);
-
-  const overlayStyle = useAnimatedStyle(() => ({ opacity: breath.value }));
-  const containerStyle = useMemo(() => [styles.iconOverlay, overlayStyle], [overlayStyle]);
-
-  const OverlayIcon = useMemo((): ComponentType<{ size: number }> => {
-    const Icon = getProviderIcon(provider);
-    const brandColor = getProviderBrandColor(provider);
-    if (brandColor) {
-      const BrandedIcon = ({ size }: { size: number }) => <Icon size={size} color={brandColor} />;
-      BrandedIcon.displayName = `BrandedProviderIcon(${provider})`;
-      return BrandedIcon;
-    }
-    return withUnistyles(Icon, accentColorMapping) as unknown as ComponentType<{ size: number }>;
-  }, [provider]);
-
-  return (
-    <Animated.View style={containerStyle} pointerEvents="none">
-      <OverlayIcon size={12} />
-    </Animated.View>
-  );
-}
-
-const mutedColorMapping = (theme: Theme) => ({
-  color: theme.colors.foregroundMuted,
-});
-
-const accentColorMapping = (theme: Theme) => ({
-  color: theme.colors.accent,
-});
-
-const failedColorMapping = (theme: Theme) => ({
-  color: theme.colors.palette.red[500],
-});
-
-const needsInputColorMapping = (theme: Theme) => ({
-  color: theme.colors.palette.amber[500],
-});
-
 const styles = StyleSheet.create((theme) => ({
   container: {
     paddingHorizontal: theme.spacing[2],
@@ -388,30 +307,6 @@ const styles = StyleSheet.create((theme) => ({
     paddingVertical: theme.spacing[1],
     paddingHorizontal: theme.spacing[2],
     borderRadius: theme.borderRadius.md,
-  },
-  sessionIcon: {
-    width: 14,
-    alignItems: "center",
-    justifyContent: "center",
-    flexShrink: 0,
-  },
-  iconOverlay: {
-    position: "absolute",
-    top: 0,
-    bottom: 0,
-    left: 0,
-    right: 0,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  attentionDot: {
-    position: "absolute",
-    right: -2,
-    bottom: -2,
-    width: 5,
-    height: 5,
-    borderRadius: 2.5,
-    backgroundColor: theme.colors.palette.green[500],
   },
   sessionTitle: {
     flex: 1,

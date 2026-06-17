@@ -117,10 +117,10 @@ describe("STTManager", () => {
     return fakeStt;
   }
 
-  it("defaults to English when no voice language config is set", async () => {
+  it("defaults to Chinese when no voice language config is set", async () => {
     const fakeStt = await transcribeWithResolvedVoiceLanguage({});
 
-    expect(fakeStt.lastLanguage).toBe("en");
+    expect(fakeStt.lastLanguage).toBe("zh");
   });
 
   it("uses PASEO_VOICE_LANGUAGE over PASEO_DICTATION_LANGUAGE", async () => {
@@ -152,7 +152,7 @@ describe("STTManager", () => {
       } as NodeJS.ProcessEnv,
     });
 
-    expect(fakeStt.lastLanguage).toBe("en");
+    expect(fakeStt.lastLanguage).toBe("zh");
   });
 
   it("uses settings voice STT language when no env var is set", async () => {

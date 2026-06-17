@@ -417,8 +417,13 @@ export const ar: TranslationResources = {
       context: {
         size: "مقاس",
         modified: "معدل",
+        copyRelativePath: "نسخ المسار النسبي",
         copyPath: "نسخ المسار",
         download: "تحميل",
+        open: "فتح في IDE",
+        openFolder: "فتح في مدير الملفات",
+        openWith: "فتح في {{editor}}",
+        openUnavailable: "الفتح في IDE متاح فقط في تطبيق سطح المكتب.",
       },
       actions: {
         back: "خلف",
@@ -540,6 +545,7 @@ export const ar: TranslationResources = {
         editTerminalProfiles: "تعديل الملفات…",
         pinTarget: "تثبيت",
         unpinTarget: "إلغاء التثبيت",
+        newPortForward: "إضافة توجيه منفذ",
       },
       explorer: {
         open: "افتح المستكشف",
@@ -586,6 +592,25 @@ export const ar: TranslationResources = {
           agents: "سيؤدي هذا إلى أرشفة وكيل (وكلاء){{agents}}.",
         },
       },
+    },
+    portForwards: {
+      title: "توجيه المنافذ",
+      subtitle: "توجيه المنافذ البعيدة إلى هذا الجهاز",
+      description:
+        "قم بتعيين منفذ على المضيف البعيد للـ daemon إلى منفذ محلي على هذا الجهاز. القائمة مشتركة بين جميع أجهزتك المتصلة.",
+      desktopOnlyNotice:
+        "يُفعَّل التوجيه على سطح المكتب فقط. يمكنك إدارة القائمة هنا، لكن هذا الجهاز لن يربط المنفذ المحلي.",
+      needsUpdate: "قم بتحديث المضيف لاستخدام توجيه المنافذ.",
+      localPortLabel: "المنفذ المحلي",
+      localPortPlaceholder: "مثال 3000",
+      remotePortLabel: "المنفذ البعيد",
+      remotePortPlaceholder: "مثال 3000",
+      labelPlaceholder: "تسمية (اختياري)",
+      addButton: "إضافة توجيه",
+      empty: "لا يوجد توجيه للمنافذ بعد",
+      statusActive: "نشط",
+      statusDesktopOnly: "سطح المكتب فقط",
+      deleteLabel: "حذف توجيه المنفذ",
     },
     header: {
       actions: {

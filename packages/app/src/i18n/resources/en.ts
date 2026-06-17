@@ -416,8 +416,13 @@ export const en = {
       context: {
         size: "Size",
         modified: "Modified",
+        copyRelativePath: "Copy relative path",
         copyPath: "Copy path",
         download: "Download",
+        open: "Open in IDE",
+        openFolder: "Open in file manager",
+        openWith: "Open in {{editor}}",
+        openUnavailable: "Opening in an IDE is only available in the desktop app.",
       },
       actions: {
         back: "Back",
@@ -539,6 +544,7 @@ export const en = {
         editTerminalProfiles: "Edit profiles…",
         pinTarget: "Pin",
         unpinTarget: "Unpin",
+        newPortForward: "Add port forward",
       },
       explorer: {
         open: "Open explorer",
@@ -584,6 +590,25 @@ export const en = {
           agents: "This will archive {{agents}} agent(s).",
         },
       },
+    },
+    portForwards: {
+      title: "Port forwarding",
+      subtitle: "Forward remote ports to this device",
+      description:
+        "Map a port on the remote daemon host to a local port on this machine. The list is shared across all your connected devices.",
+      desktopOnlyNotice:
+        "Forwards only activate on desktop. You can manage the list here, but this device won't bind the local port.",
+      needsUpdate: "Update the host to use port forwarding.",
+      localPortLabel: "Local port",
+      localPortPlaceholder: "e.g. 3000",
+      remotePortLabel: "Remote port",
+      remotePortPlaceholder: "e.g. 3000",
+      labelPlaceholder: "Label (optional)",
+      addButton: "Add forward",
+      empty: "No port forwards yet",
+      statusActive: "Active",
+      statusDesktopOnly: "Desktop only",
+      deleteLabel: "Delete port forward",
     },
     header: {
       actions: {

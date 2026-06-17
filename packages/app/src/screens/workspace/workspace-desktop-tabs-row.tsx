@@ -28,6 +28,7 @@ import {
   Rows2,
   Globe,
   Plus,
+  Cable,
   SquarePen,
   SquareTerminal,
   X,
@@ -96,6 +97,8 @@ import { runPinnedTabTarget, type TabTargetHandlers } from "@/workspace-pins/run
 import type { PinnedTabTarget } from "@/workspace-pins/target";
 import { PinnedTargetsRow } from "@/workspace-pins/pinned-targets-row";
 import { PinnableMenuItem } from "@/workspace-pins/pinnable-menu-item";
+import { useWorkspaceLayoutStore } from "@/stores/workspace-layout-store";
+import { buildWorkspaceTabPersistenceKey } from "@/stores/workspace-tabs-store";
 
 const DROPDOWN_WIDTH = 220;
 const LOADING_TAB_LABEL_SKELETON_WIDTH = 80;
@@ -116,12 +119,14 @@ const ThemedGlobe = withUnistyles(Globe);
 const ThemedColumns2 = withUnistyles(Columns2);
 const ThemedRows2 = withUnistyles(Rows2);
 const ThemedPlus = withUnistyles(Plus);
+const ThemedCable = withUnistyles(Cable);
 const foregroundColorMapping = (theme: Theme) => ({ color: theme.colors.foreground });
 const mutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
 
 const AGENT_ICON = <ThemedSquarePen size={14} uniProps={mutedColorMapping} />;
 const TERMINAL_ICON = <ThemedSquareTerminal size={14} uniProps={mutedColorMapping} />;
 const BROWSER_ICON = <ThemedGlobe size={14} uniProps={mutedColorMapping} />;
+const PORT_FORWARD_ICON = <ThemedCable size={14} uniProps={mutedColorMapping} />;
 
 const DRAFT_TARGET: PinnedTabTarget = { kind: "draft" };
 const TERMINAL_TARGET: PinnedTabTarget = { kind: "terminal" };
@@ -221,6 +226,7 @@ interface WorkspaceTabRowExtrasProps {
   onCreateBrowser: () => void;
   onCreateTerminalWithProfile: (profile: TerminalProfileInput) => void;
   onEditProfiles: () => void;
+  onCreatePortForwards: () => void;
   normalizedServerId: string;
   showCreateBrowserTab: boolean;
   terminalDisabled: boolean;
@@ -232,6 +238,7 @@ function WorkspaceTabRowExtras({
   onCreateBrowser,
   onCreateTerminalWithProfile,
   onEditProfiles,
+  onCreatePortForwards,
   normalizedServerId,
   showCreateBrowserTab,
   terminalDisabled,
@@ -305,6 +312,13 @@ function WorkspaceTabRowExtras({
               onSelect={onCreateBrowser}
             />
           ) : null}
+          <DropdownMenuItem
+            testID="workspace-new-tab-menu-port-forwards"
+            leading={PORT_FORWARD_ICON}
+            onSelect={onCreatePortForwards}
+          >
+            {t("workspace.tabs.actions.newPortForward")}
+          </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuLabel>{t("workspace.tabs.actions.terminalProfilesMenu")}</DropdownMenuLabel>
           {profiles.map((profile) => (
@@ -992,6 +1006,18 @@ export function WorkspaceDesktopTabsRow({
     onCreateBrowserTab({ paneId });
   }, [onCreateBrowserTab, paneId]);
 
+  const openTabFocused = useWorkspaceLayoutStore((state) => state.openTabFocused);
+  const handleCreatePortForwards = useCallback(() => {
+    const key = buildWorkspaceTabPersistenceKey({
+      serverId: normalizedServerId,
+      workspaceId: normalizedWorkspaceId,
+    });
+    if (!key) {
+      return;
+    }
+    openTabFocused(key, { kind: "port-forwards" });
+  }, [normalizedServerId, normalizedWorkspaceId, openTabFocused]);
+
   const terminalDisabled = disableCreateTerminal || isWaitingOnTerminalReadiness;
 
   const renderTab = useCallback(
@@ -1114,6 +1140,7 @@ export function WorkspaceDesktopTabsRow({
           onCreateBrowser={handleCreateBrowser}
           onCreateTerminalWithProfile={handleCreateTerminalWithProfile}
           onEditProfiles={handleEditProfiles}
+          onCreatePortForwards={handleCreatePortForwards}
           normalizedServerId={normalizedServerId}
           showCreateBrowserTab={showCreateBrowserTab}
           terminalDisabled={terminalDisabled}

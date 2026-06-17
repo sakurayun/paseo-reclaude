@@ -978,6 +978,75 @@ export function collectAllPanes(root: SplitNode): SplitPane[] {
   return internalRoot.group.children.flatMap((child) => collectAllPanes(child));
 }
 
+function stripFocusFromNode(node: SplitNode): SplitNode {
+  if (node.kind === "pane") {
+    return { kind: "pane", pane: { ...node.pane, focusedTabId: null } };
+  }
+  return {
+    kind: "group",
+    group: { ...node.group, children: node.group.children.map(stripFocusFromNode) },
+  };
+}
+
+// Strip focus from a layout for sync: the pushed blob carries no focusedPaneId nor any
+// per-pane focusedTabId, so a pure focus change yields an identical stripped blob (the
+// sync bridge dedupes on it and skips the push) and a receiver never flashes a remote
+// peer's focus. Structure (tabs/order/panes/sizes) is preserved verbatim.
+export function stripWorkspaceLayoutFocus(layout: WorkspaceLayout): WorkspaceLayout {
+  return {
+    ...layout,
+    focusedPaneId: null,
+    root: stripFocusFromNode(layout.root),
+  };
+}
+
+function applyLocalPaneFocus(
+  node: SplitNode,
+  localFocusByPaneId: Map<string, string | null>,
+): SplitNode {
+  if (node.kind === "pane") {
+    const localFocusedTabId = localFocusByPaneId.get(node.pane.id);
+    if (localFocusedTabId && node.pane.tabIds.includes(localFocusedTabId)) {
+      return { kind: "pane", pane: { ...node.pane, focusedTabId: localFocusedTabId } };
+    }
+    return node;
+  }
+  return {
+    kind: "group",
+    group: {
+      ...node.group,
+      children: node.group.children.map((child) => applyLocalPaneFocus(child, localFocusByPaneId)),
+    },
+  };
+}
+
+// Merge a remote layout into the local one, keeping local focus (decision: focus is not
+// synced). Structure — which tabs exist, their order, the pane/split tree — comes wholly
+// from remote; the focused pane and each pane's focused tab stay local when they still
+// point at something present in the remote tree, else fall back to remote's defaults.
+export function mergeRemoteLayoutPreservingFocus(input: {
+  local: WorkspaceLayout;
+  remote: WorkspaceLayout;
+}): WorkspaceLayout {
+  const { local, remote } = input;
+  const remotePaneIds = new Set(collectAllPanes(remote.root).map((pane) => pane.id));
+  const nextFocusedPaneId =
+    local.focusedPaneId && remotePaneIds.has(local.focusedPaneId)
+      ? local.focusedPaneId
+      : remote.focusedPaneId;
+
+  const localFocusByPaneId = new Map<string, string | null>();
+  for (const pane of collectAllPanes(local.root)) {
+    localFocusByPaneId.set(pane.id, pane.focusedTabId);
+  }
+
+  return normalizeLayout({
+    ...remote,
+    root: applyLocalPaneFocus(remote.root, localFocusByPaneId),
+    focusedPaneId: nextFocusedPaneId,
+  });
+}
+
 export function getFocusedBrowserId(layout: WorkspaceLayout | null | undefined): string | null {
   if (!layout) {
     return null;
