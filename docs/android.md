@@ -48,6 +48,8 @@ Keep `react` and `react-dom` pinned to the React version embedded by the current
 
 Keep `packages/app/app.config.js` as CommonJS (`module.exports`). EAS Build's app-config read phase must load the dynamic config; if it falls back to package defaults like `name: @getpaseo/app`, `runtimeVersion` is omitted and expo-updates resolves the in-build runtime as `null`.
 
+Do not ignore `packages/app/app.config.js`. EAS Build's archive step applies ignore rules, and excluding this tracked config file causes the remote worker to fall back to package defaults.
+
 ## Screenshots
 
 ```bash
