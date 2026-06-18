@@ -9,6 +9,16 @@ import { createTestLogger } from "../test-utils/test-logger.js";
 import { AgentStorage } from "./agent/agent-storage.js";
 import { getAskModeConfig } from "./daemon-e2e/agent-configs.js";
 import { MockLoadTestAgentClient } from "./agent/providers/mock-load-test-agent.js";
+import type {
+  AgentCapabilityFlags,
+  AgentClient,
+  AgentMode,
+  AgentModelDefinition,
+  AgentPersistenceHandle,
+  AgentSession,
+  AgentSessionConfig,
+  ListModelsOptions,
+} from "./agent/agent-sdk-types.js";
 import {
   createPersistedProjectRecord,
   createPersistedWorkspaceRecord,
@@ -18,6 +28,126 @@ const WORKSPACE_A = "wks_same_cwd_a";
 const WORKSPACE_B = "wks_same_cwd_b";
 const LEGACY_OWNER_WORKSPACE = "wks_legacy_owner";
 const PERMISSION_WAIT_MS = 15_000;
+const SNAPSHOT_STORM_PROVIDER_COUNT = 18;
+const SNAPSHOT_STORM_MODELS_PER_PROVIDER = 150;
+const SNAPSHOT_STORM_DESCRIPTION = "x".repeat(120);
+
+const SNAPSHOT_STORM_CAPABILITIES: AgentCapabilityFlags = {
+  supportsStreaming: false,
+  supportsSessionPersistence: false,
+  supportsDynamicModes: false,
+  supportsMcpServers: false,
+  supportsReasoningStream: false,
+  supportsToolInvocations: false,
+};
+
+class SnapshotStormProviderClient implements AgentClient {
+  readonly capabilities = SNAPSHOT_STORM_CAPABILITIES;
+  private readonly models: AgentModelDefinition[];
+
+  constructor(
+    readonly provider: string,
+    private readonly delayMs: number,
+  ) {
+    this.models = Array.from({ length: SNAPSHOT_STORM_MODELS_PER_PROVIDER }, (_, index) => ({
+      provider,
+      id: `${provider}-model-${index.toString().padStart(3, "0")}`,
+      label: `${provider} model ${index.toString().padStart(3, "0")}`,
+      description: SNAPSHOT_STORM_DESCRIPTION,
+      isDefault: index === 0,
+      metadata: {
+        providerId: provider,
+        modelId: `model-${index.toString().padStart(3, "0")}`,
+      },
+    }));
+  }
+
+  async createSession(_config: AgentSessionConfig): Promise<AgentSession> {
+    throw new Error(`${this.provider} is only used for provider snapshot tests`);
+  }
+
+  async resumeSession(_handle: AgentPersistenceHandle): Promise<AgentSession> {
+    throw new Error(`${this.provider} is only used for provider snapshot tests`);
+  }
+
+  async listModels(_options: ListModelsOptions): Promise<AgentModelDefinition[]> {
+    await new Promise((resolve) => setTimeout(resolve, this.delayMs));
+    return this.models;
+  }
+
+  async listModes(): Promise<AgentMode[]> {
+    return [];
+  }
+
+  async isAvailable(): Promise<boolean> {
+    return true;
+  }
+}
+
+class MetadataMockLoadTestAgentClient extends MockLoadTestAgentClient {
+  override async listModels(_options: ListModelsOptions): Promise<AgentModelDefinition[]> {
+    return [
+      {
+        provider: "mock",
+        id: "gpt-5.4-mini",
+        label: "GPT 5.4 Mini",
+        isDefault: true,
+      },
+    ];
+  }
+}
+
+function createSnapshotStormClients(): SnapshotStormProviderClient[] {
+  return Array.from(
+    { length: SNAPSHOT_STORM_PROVIDER_COUNT },
+    (_, index) =>
+      new SnapshotStormProviderClient(`snapshot-storm-${index.toString().padStart(2, "0")}`, index),
+  );
+}
+
+async function createSnapshotStormDaemon(clients: SnapshotStormProviderClient[]) {
+  return createTestPaseoDaemon({
+    mcpEnabled: false,
+    isDev: true,
+    agentClients: {
+      mock: new MetadataMockLoadTestAgentClient(),
+      ...Object.fromEntries(clients.map((client) => [client.provider, client])),
+    },
+    providerOverrides: {
+      claude: { enabled: false },
+      codex: { enabled: false },
+      copilot: { enabled: false },
+      opencode: { enabled: false },
+      pi: { enabled: false },
+      omp: { enabled: false },
+      "mock-slow": { enabled: false },
+      ...Object.fromEntries(
+        clients.map((client) => [
+          client.provider,
+          {
+            extends: "mock",
+            label: client.provider,
+            enabled: true,
+          },
+        ]),
+      ),
+    },
+  });
+}
+
+function collectProviderSnapshotUpdateBytes(client: DaemonClient): {
+  sizes: number[];
+  unsubscribe: () => void;
+} {
+  const sizes: number[] = [];
+  const unsubscribe = client.subscribeRawMessages((message) => {
+    if (message.type !== "providers_snapshot_update") {
+      return;
+    }
+    sizes.push(JSON.stringify({ type: "session", message }).length);
+  });
+  return { sizes, unsubscribe };
+}
 
 // Seed two active workspaces that share one cwd, so we can prove agent
 // ownership and status stay workspaceId-scoped — a sibling that owns nothing
@@ -228,6 +358,54 @@ test("workspace.create directory source with firstAgentContext generates a daemo
       .poll(() => workspaceName(client, workspaceId), { timeout: 10_000 })
       .toBe("Fix login bug");
   } finally {
+    await client.close().catch(() => undefined);
+    await daemon.close();
+    rmSync(cwd, { recursive: true, force: true });
+  }
+}, 20_000);
+
+test("local workspace auto-title does not broadcast provider snapshot warm-up to clients", async () => {
+  const cwd = mkdtempSync(path.join(tmpdir(), "paseo-title-snapshot-storm-"));
+  const stormClients = createSnapshotStormClients();
+  const daemon = await createSnapshotStormDaemon(stormClients);
+  const client = new DaemonClient({
+    url: `ws://127.0.0.1:${daemon.port}/ws`,
+    appVersion: "0.1.82",
+  });
+  const snapshotUpdates = collectProviderSnapshotUpdateBytes(client);
+
+  try {
+    await client.connect();
+    await client.getProvidersSnapshot({ cwd });
+    await expect
+      .poll(
+        async () => {
+          const snapshot = await client.getProvidersSnapshot({ cwd });
+          return snapshot.entries.filter((entry) => entry.status === "loading").length;
+        },
+        { timeout: 10_000 },
+      )
+      .toBe(0);
+    snapshotUpdates.sizes.length = 0;
+
+    const created = await client.createWorkspace({
+      source: { kind: "directory", path: cwd },
+      firstAgentContext: {
+        prompt: "hello",
+        attachments: [],
+      },
+    });
+    const workspaceId = created.workspace?.id;
+    if (!workspaceId) {
+      throw new Error(created.error ?? "Expected workspace to be created");
+    }
+
+    await expect.poll(() => workspaceName(client, workspaceId), { timeout: 10_000 }).toBe("hello");
+    await new Promise((resolve) => setTimeout(resolve, 500));
+
+    expect(snapshotUpdates.sizes).toEqual([]);
+  } finally {
+    snapshotUpdates.unsubscribe();
     await client.close().catch(() => undefined);
     await daemon.close();
     rmSync(cwd, { recursive: true, force: true });

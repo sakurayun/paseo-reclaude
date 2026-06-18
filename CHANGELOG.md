@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.97-beta.2 - 2026-06-17
+## 0.1.97-beta.3 - 2026-06-18
 
 ### Added
 
@@ -30,6 +30,7 @@
 - ACP agents shut down without leaving orphaned processes ([#1460](https://github.com/getpaseo/paseo/pull/1460) by [@yeshan333](https://github.com/yeshan333))
 - Imported session previews show clean prompts ([#1502](https://github.com/getpaseo/paseo/pull/1502))
 - Local pairing offers use the correct app URL ([#1187](https://github.com/getpaseo/paseo/pull/1187) by [@aibaiiqpl](https://github.com/aibaiiqpl))
+- The app no longer freezes from repeated provider re-probes
 
 ## 0.1.96 - 2026-06-13
 
