@@ -4780,8 +4780,13 @@ export class Session {
     const prompt = await buildMetadataPrompt({
       cwd,
       workspaceGitService: this.workspaceGitService,
-      configKey: "commitMessage",
-      before: "Write a concise git commit message for the changes below.",
+      contract: "Write a concise git commit message for the changes below.",
+      styles: [
+        {
+          configKey: "commitMessage",
+          default: "Concise, imperative mood, no trailing period.",
+        },
+      ],
       after: [
         "Return JSON only with a single field 'message'.",
         "",
@@ -4858,8 +4863,13 @@ export class Session {
     const prompt = await buildMetadataPrompt({
       cwd,
       workspaceGitService: this.workspaceGitService,
-      configKey: "pullRequest",
-      before: "Write a pull request title and body for the changes below.",
+      contract: "Write a pull request title and body for the changes below.",
+      styles: [
+        {
+          configKey: "pullRequest",
+          default: "Clear, descriptive title; body explaining what changed and why.",
+        },
+      ],
       after: [
         "Return JSON only with fields 'title' and 'body'.",
         "",

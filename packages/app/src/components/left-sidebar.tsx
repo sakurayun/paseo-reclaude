@@ -1,7 +1,7 @@
 import { router, usePathname } from "expo-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { Clock, FolderPlus, Home, Plus, Search, Settings, X } from "lucide-react-native";
+import { FolderPlus, History, Home, Plus, Search, Settings, X } from "lucide-react-native";
 import {
   type Dispatch,
   memo,
@@ -864,7 +864,7 @@ function MobileSidebar({
                 shortcutKeys={newWorkspaceKeys}
               />
               <SidebarHeaderRow
-                icon={Clock}
+                icon={History}
                 label={labels.sessions}
                 onPress={handleViewMore}
                 isActive={isSessionsActive}
@@ -1047,7 +1047,7 @@ function DesktopSidebar({
               shortcutKeys={newWorkspaceKeys}
             />
             <SidebarHeaderRow
-              icon={Clock}
+              icon={History}
               label={labels.sessions}
               onPress={handleViewMore}
               isActive={isSessionsActive}

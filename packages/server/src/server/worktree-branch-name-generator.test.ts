@@ -17,11 +17,21 @@ import {
 } from "../utils/worktree-metadata.js";
 
 const cleanupPaths: string[] = [];
-const BRANCH_PROMPT_BASELINE = `Generate a git branch name for a coding agent based on the user prompt and attachments.
-Title: a short human-readable sentence-case label for the task (no slug rules, max 80 characters).
-Branch: concise lowercase slug using letters, numbers, hyphens, and slashes only.
-No spaces, no uppercase, no leading or trailing hyphen, no consecutive hyphens.
+const BRANCH_PROMPT_BASELINE = `Generate a title and a git branch name for a coding agent from the user prompt and attachments.
+The branch must be a valid git ref: lowercase letters, numbers, hyphens, and slashes only, with no spaces, no uppercase, no leading or trailing hyphen, and no consecutive hyphens.
 The branch is generated directly from the prompt — it is NEVER derived from or slugified from the title.
+
+Title style:
+A terse, task-shaped label naming what the task is about (sentence case, max 80 characters).
+Aim for about 4 words. Go longer only when the task genuinely needs it; most titles must stay short.
+Do not start with a generic 'do' verb (Fix, Add, Implement, Diagnose, Update, Change, Create, Set, Make) — every task is implicitly one of these, so the verb is noise. Name the thing instead.
+Keep a verb only when it states the specific operation (Swap, Split, Extract, Rename, Merge, Inline).
+Good titles: "Swap sidebar history icon", "Composer keyboard shift", "Agent auto-titling", "Worktree selection memory", "Split browser pane".
+Bad titles: "Fix composer pushed up by keyboard in workspace", "Diagnose auto-titling still happening for agents", "Change sidebar history icon from clock to history icon".
+
+Branch style:
+A short, descriptive slug — a few lowercase words joined by hyphens.
+
 Return JSON only with fields 'title' and 'branch'.
 
 User context:
@@ -204,36 +214,50 @@ describe("generateBranchNameFromFirstAgentContext", () => {
       "branchName exists but instructions is whitespace-only",
       { metadataGeneration: { branchName: { instructions: "   \n\t " } } },
     ],
-  ])("keeps the pre-change prompt byte-identical when %s", async (_name, config) => {
+    [
+      "title exists but instructions is empty",
+      { metadataGeneration: { title: { instructions: "" } } },
+    ],
+  ])("renders the default styles when no overrides apply (%s)", async (_name, config) => {
     const { prompt } = await generateBranchPromptWithConfig(config);
 
     expect(prompt).toBe(BRANCH_PROMPT_BASELINE);
   });
 
-  test("injects project instructions between the default rules and JSON contract", async () => {
+  test("title instructions replace the default title style, leaving the rest intact", async () => {
+    const { prompt } = await generateBranchPromptWithConfig({
+      metadataGeneration: { title: { instructions: "Title in Spanish." } },
+    });
+
+    expect(prompt).toContain("Title style:\nTitle in Spanish.");
+    expect(prompt).not.toContain("Aim for about 4 words");
+    // Contract and branch style are not part of the title override.
+    expect(prompt).toContain("Generate a title and a git branch name");
+    expect(prompt).toContain("Branch style:\nA short, descriptive slug");
+    expect(prompt).toContain("Return JSON only with fields 'title' and 'branch'.");
+  });
+
+  test("branch instructions replace the default branch style, leaving the title style intact", async () => {
+    const { prompt } = await generateBranchPromptWithConfig({
+      metadataGeneration: { branchName: { instructions: "Use the prefix mb/." } },
+    });
+
+    expect(prompt).toContain("Branch style:\nUse the prefix mb/.");
+    expect(prompt).not.toContain("A short, descriptive slug");
+    expect(prompt).toContain("Aim for about 4 words");
+  });
+
+  test("the contract is never overridable by user instructions", async () => {
     const { prompt } = await generateBranchPromptWithConfig({
       metadataGeneration: {
-        branchName: {
-          instructions: "Use the prefix mb/.",
-        },
+        title: { instructions: "anything" },
+        branchName: { instructions: "anything" },
       },
     });
 
-    const defaultRuleIndex = prompt.indexOf("No spaces, no uppercase");
-    const noticeIndex = prompt.indexOf("override the guidelines above");
-    const openTagIndex = prompt.indexOf("<user-instructions>");
-    const userInstructionIndex = prompt.indexOf("Use the prefix mb/.");
-    const closeTagIndex = prompt.indexOf("</user-instructions>");
-    const jsonContractIndex = prompt.indexOf("Return JSON only");
-    const payloadIndex = prompt.indexOf("User context:");
-
-    expect(defaultRuleIndex).toBeGreaterThanOrEqual(0);
-    expect(defaultRuleIndex).toBeLessThan(openTagIndex);
-    expect(openTagIndex).toBeLessThan(noticeIndex);
-    expect(noticeIndex).toBeLessThan(userInstructionIndex);
-    expect(userInstructionIndex).toBeLessThan(closeTagIndex);
-    expect(closeTagIndex).toBeLessThan(jsonContractIndex);
-    expect(jsonContractIndex).toBeLessThan(payloadIndex);
+    expect(prompt).toContain(
+      "The branch is generated directly from the prompt — it is NEVER derived from or slugified from the title.",
+    );
   });
 
   test("keeps the branch slug validator fallback when instructions are present", async () => {

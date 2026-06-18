@@ -54,14 +54,30 @@ async function buildPrompt(
   return buildMetadataPrompt({
     cwd: options.cwd,
     workspaceGitService: options.workspaceGitService,
-    configKey: "branchName",
-    before: [
-      "Generate a git branch name for a coding agent based on the user prompt and attachments.",
-      "Title: a short human-readable sentence-case label for the task (no slug rules, max 80 characters).",
-      "Branch: concise lowercase slug using letters, numbers, hyphens, and slashes only.",
-      "No spaces, no uppercase, no leading or trailing hyphen, no consecutive hyphens.",
+    contract: [
+      "Generate a title and a git branch name for a coding agent from the user prompt and attachments.",
+      "The branch must be a valid git ref: lowercase letters, numbers, hyphens, and slashes only, with no spaces, no uppercase, no leading or trailing hyphen, and no consecutive hyphens.",
       "The branch is generated directly from the prompt — it is NEVER derived from or slugified from the title.",
     ].join("\n"),
+    styles: [
+      {
+        configKey: "title",
+        label: "Title style",
+        default: [
+          "A terse, task-shaped label naming what the task is about (sentence case, max 80 characters).",
+          "Aim for about 4 words. Go longer only when the task genuinely needs it; most titles must stay short.",
+          "Do not start with a generic 'do' verb (Fix, Add, Implement, Diagnose, Update, Change, Create, Set, Make) — every task is implicitly one of these, so the verb is noise. Name the thing instead.",
+          "Keep a verb only when it states the specific operation (Swap, Split, Extract, Rename, Merge, Inline).",
+          'Good titles: "Swap sidebar history icon", "Composer keyboard shift", "Agent auto-titling", "Worktree selection memory", "Split browser pane".',
+          'Bad titles: "Fix composer pushed up by keyboard in workspace", "Diagnose auto-titling still happening for agents", "Change sidebar history icon from clock to history icon".',
+        ].join("\n"),
+      },
+      {
+        configKey: "branchName",
+        label: "Branch style",
+        default: "A short, descriptive slug — a few lowercase words joined by hyphens.",
+      },
+    ],
     after: "Return JSON only with fields 'title' and 'branch'.",
     trailing: `User context:\n${seed}`,
   });

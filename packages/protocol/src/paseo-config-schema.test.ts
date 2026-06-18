@@ -37,6 +37,7 @@ describe("paseo config schema", () => {
     expect(
       PaseoConfigSchema.parse({
         metadataGeneration: {
+          title: { instructions: "Keep titles to a few words." },
           branchName: { instructions: "Prefix branches with feat/." },
           commitMessage: { instructions: "Use imperative mood." },
           pullRequest: { instructions: "Include risk notes." },
@@ -44,6 +45,7 @@ describe("paseo config schema", () => {
       }),
     ).toEqual({
       metadataGeneration: {
+        title: { instructions: "Keep titles to a few words." },
         branchName: { instructions: "Prefix branches with feat/." },
         commitMessage: { instructions: "Use imperative mood." },
         pullRequest: { instructions: "Include risk notes." },

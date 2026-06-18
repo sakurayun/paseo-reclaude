@@ -39,6 +39,7 @@ export const PaseoMetadataGenerationEntrySchema = z
 
 export const PaseoMetadataGenerationSchema = z
   .object({
+    title: PaseoMetadataGenerationEntrySchema.optional(),
     branchName: PaseoMetadataGenerationEntrySchema.optional(),
     commitMessage: PaseoMetadataGenerationEntrySchema.optional(),
     pullRequest: PaseoMetadataGenerationEntrySchema.optional(),

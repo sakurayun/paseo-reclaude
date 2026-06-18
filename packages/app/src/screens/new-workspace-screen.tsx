@@ -2101,6 +2101,7 @@ export function NewWorkspaceScreen({
             </View>
             {formStack}
             <Composer
+              externalKeyboardShift
               agentId={draftKey}
               serverId={serverId}
               isPaneFocused={true}
