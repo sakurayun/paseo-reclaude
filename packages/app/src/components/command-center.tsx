@@ -9,7 +9,7 @@ import {
 } from "react-native";
 import { memo, useCallback, useEffect, useMemo, useRef, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { Home, Plus, Settings } from "lucide-react-native";
+import { FileText, Home, MessageSquareText, Plus, Settings } from "lucide-react-native";
 import { StyleSheet, useUnistyles, withUnistyles } from "react-native-unistyles";
 import { useCommandCenter } from "@/hooks/use-command-center";
 import type { AggregatedAgent } from "@/hooks/use-aggregated-agents";
@@ -392,6 +392,269 @@ function AgentItemsSection({
   );
 }
 
+interface CommandCenterMessageRowProps {
+  item: Extract<ReturnType<typeof useCommandCenter>["items"][number], { kind: "message" }>;
+  rowIndex: number;
+  active: boolean;
+  rowRefs: React.MutableRefObject<Map<number, View>>;
+  onLayout?: (event: { nativeEvent: { layout: { y: number; height: number } } }) => void;
+  onSelect: (item: ReturnType<typeof useCommandCenter>["items"][number]) => void;
+}
+
+function MessagePreviewText({
+  preview,
+  matchStart,
+  matchEnd,
+}: {
+  preview: string;
+  matchStart: number;
+  matchEnd: number;
+}) {
+  const { theme } = useUnistyles();
+  const subtitleStyle = useMemo(
+    () => [styles.subtitle, { color: theme.colors.foregroundMuted }],
+    [theme.colors.foregroundMuted],
+  );
+  const hitStyle = useMemo(
+    () => ({ color: theme.colors.foreground, fontWeight: "700" as const }),
+    [theme.colors.foreground],
+  );
+  return (
+    <Text style={subtitleStyle} numberOfLines={1}>
+      {preview.slice(0, matchStart)}
+      <Text style={hitStyle}>{preview.slice(matchStart, matchEnd)}</Text>
+      {preview.slice(matchEnd)}
+    </Text>
+  );
+}
+
+function CommandCenterMessageRow({
+  item,
+  rowIndex,
+  active,
+  rowRefs,
+  onLayout,
+  onSelect,
+}: CommandCenterMessageRowProps) {
+  const { theme } = useUnistyles();
+  const handlePress = useCallback(() => onSelect(item), [onSelect, item]);
+  const match = item.message.match;
+  const title = match.agentTitle && match.agentTitle.length > 0 ? match.agentTitle : match.agentId;
+  const titleStyle = useMemo(
+    () => [styles.title, { color: theme.colors.foreground }],
+    [theme.colors.foreground],
+  );
+  return (
+    <CommandCenterRowContainer
+      rowIndex={rowIndex}
+      active={active}
+      rowRefs={rowRefs}
+      onPress={handlePress}
+      onLayout={onLayout}
+    >
+      <View style={styles.rowContent}>
+        <View style={styles.rowMain}>
+          <View style={styles.iconSlot}>
+            <MessageSquareText size={16} color={theme.colors.foregroundMuted} />
+          </View>
+          <View style={styles.textContent}>
+            <Text style={titleStyle} numberOfLines={1}>
+              {title}
+            </Text>
+            <MessagePreviewText
+              preview={match.preview}
+              matchStart={match.previewMatchStart}
+              matchEnd={match.previewMatchEnd}
+            />
+          </View>
+        </View>
+      </View>
+    </CommandCenterRowContainer>
+  );
+}
+
+interface MessageItemsSectionProps {
+  messageItems: Extract<
+    ReturnType<typeof useCommandCenter>["items"][number],
+    { kind: "message" }
+  >[];
+  precedingItemsLength: number;
+  activeIndex: number;
+  rowRefs: React.MutableRefObject<Map<number, View>>;
+  onRowLayout: (
+    rowIndex: number,
+  ) => (event: { nativeEvent: { layout: { y: number; height: number } } }) => void;
+  onSelect: (item: ReturnType<typeof useCommandCenter>["items"][number]) => void;
+  sectionDividerStyle: React.ComponentProps<typeof View>["style"];
+  sectionLabelStyle: React.ComponentProps<typeof Text>["style"];
+}
+
+function MessageItemsSection({
+  messageItems,
+  precedingItemsLength,
+  activeIndex,
+  rowRefs,
+  onRowLayout,
+  onSelect,
+  sectionDividerStyle,
+  sectionLabelStyle,
+}: MessageItemsSectionProps) {
+  const { t } = useTranslation();
+  return (
+    <>
+      {precedingItemsLength > 0 ? <View style={sectionDividerStyle} /> : null}
+      <Text style={sectionLabelStyle}>
+        {t("shell.commandCenter.messages")} · {t("shell.commandCenter.messagesScopeNote")}
+      </Text>
+      {messageItems.map((item, index) => {
+        const rowIndex = precedingItemsLength + index;
+        return (
+          <CommandCenterMessageRow
+            key={`message:${item.message.match.agentId}:${item.message.match.seq}:${item.message.match.segmentKey}`}
+            item={item}
+            rowIndex={rowIndex}
+            active={rowIndex === activeIndex}
+            rowRefs={rowRefs}
+            onLayout={onRowLayout(rowIndex)}
+            onSelect={onSelect}
+          />
+        );
+      })}
+    </>
+  );
+}
+
+interface CommandCenterFileContentRowProps {
+  item: Extract<ReturnType<typeof useCommandCenter>["items"][number], { kind: "file-content" }>;
+  rowIndex: number;
+  active: boolean;
+  rowRefs: React.MutableRefObject<Map<number, View>>;
+  onLayout?: (event: { nativeEvent: { layout: { y: number; height: number } } }) => void;
+  onSelect: (item: ReturnType<typeof useCommandCenter>["items"][number]) => void;
+}
+
+function FileContentPreviewText({
+  lineText,
+  matchStart,
+  matchEnd,
+}: {
+  lineText: string;
+  matchStart: number;
+  matchEnd: number;
+}) {
+  const { theme } = useUnistyles();
+  const subtitleStyle = useMemo(
+    () => [styles.subtitle, { color: theme.colors.foregroundMuted }],
+    [theme.colors.foregroundMuted],
+  );
+  const hitStyle = useMemo(
+    () => ({ color: theme.colors.foreground, fontWeight: "700" as const }),
+    [theme.colors.foreground],
+  );
+  const safeStart = Math.max(0, Math.min(lineText.length, matchStart));
+  const safeEnd = Math.max(safeStart, Math.min(lineText.length, matchEnd));
+  return (
+    <Text style={subtitleStyle} numberOfLines={1}>
+      {lineText.slice(0, safeStart)}
+      <Text style={hitStyle}>{lineText.slice(safeStart, safeEnd)}</Text>
+      {lineText.slice(safeEnd)}
+    </Text>
+  );
+}
+
+function CommandCenterFileContentRow({
+  item,
+  rowIndex,
+  active,
+  rowRefs,
+  onLayout,
+  onSelect,
+}: CommandCenterFileContentRowProps) {
+  const { theme } = useUnistyles();
+  const handlePress = useCallback(() => onSelect(item), [onSelect, item]);
+  const match = item.fileContent.match;
+  const titleStyle = useMemo(
+    () => [styles.title, { color: theme.colors.foreground }],
+    [theme.colors.foreground],
+  );
+  return (
+    <CommandCenterRowContainer
+      rowIndex={rowIndex}
+      active={active}
+      rowRefs={rowRefs}
+      onPress={handlePress}
+      onLayout={onLayout}
+    >
+      <View style={styles.rowContent}>
+        <View style={styles.rowMain}>
+          <View style={styles.iconSlot}>
+            <FileText size={16} color={theme.colors.foregroundMuted} />
+          </View>
+          <View style={styles.textContent}>
+            <Text style={titleStyle} numberOfLines={1}>
+              {`${match.relPath}:${match.line}`}
+            </Text>
+            <FileContentPreviewText
+              lineText={match.lineText}
+              matchStart={match.matchStart}
+              matchEnd={match.matchEnd}
+            />
+          </View>
+        </View>
+      </View>
+    </CommandCenterRowContainer>
+  );
+}
+
+interface FileContentItemsSectionProps {
+  fileContentItems: Extract<
+    ReturnType<typeof useCommandCenter>["items"][number],
+    { kind: "file-content" }
+  >[];
+  precedingItemsLength: number;
+  activeIndex: number;
+  rowRefs: React.MutableRefObject<Map<number, View>>;
+  onRowLayout: (
+    rowIndex: number,
+  ) => (event: { nativeEvent: { layout: { y: number; height: number } } }) => void;
+  onSelect: (item: ReturnType<typeof useCommandCenter>["items"][number]) => void;
+  sectionDividerStyle: React.ComponentProps<typeof View>["style"];
+  sectionLabelStyle: React.ComponentProps<typeof Text>["style"];
+}
+
+function FileContentItemsSection({
+  fileContentItems,
+  precedingItemsLength,
+  activeIndex,
+  rowRefs,
+  onRowLayout,
+  onSelect,
+  sectionDividerStyle,
+  sectionLabelStyle,
+}: FileContentItemsSectionProps) {
+  const { t } = useTranslation();
+  return (
+    <>
+      {precedingItemsLength > 0 ? <View style={sectionDividerStyle} /> : null}
+      <Text style={sectionLabelStyle}>{t("shell.commandCenter.workspaceFiles")}</Text>
+      {fileContentItems.map((item, index) => {
+        const rowIndex = precedingItemsLength + index;
+        return (
+          <CommandCenterFileContentRow
+            key={`file-content:${item.fileContent.match.workspaceId}:${item.fileContent.match.relPath}:${item.fileContent.match.line}:${item.fileContent.match.column}`}
+            item={item}
+            rowIndex={rowIndex}
+            active={rowIndex === activeIndex}
+            rowRefs={rowRefs}
+            onLayout={onRowLayout(rowIndex)}
+            onSelect={onSelect}
+          />
+        );
+      })}
+    </>
+  );
+}
+
 export function CommandCenter() {
   const { theme } = useUnistyles();
   const { t } = useTranslation();
@@ -511,6 +774,11 @@ export function CommandCenter() {
   const actionItems = useMemo(() => items.filter((item) => item.kind === "action"), [items]);
   const fileItems = useMemo(() => items.filter((item) => item.kind === "file"), [items]);
   const agentItems = useMemo(() => items.filter((item) => item.kind === "agent"), [items]);
+  const messageItems = useMemo(() => items.filter((item) => item.kind === "message"), [items]);
+  const fileContentItems = useMemo(
+    () => items.filter((item) => item.kind === "file-content"),
+    [items],
+  );
 
   const panelStyle = useMemo(
     () => [
@@ -592,6 +860,34 @@ export function CommandCenter() {
           <AgentItemsSection
             agentItems={agentItems}
             actionItemsLength={actionItems.length + fileItems.length}
+            activeIndex={activeIndex}
+            rowRefs={rowRefs}
+            onRowLayout={handleRowLayout}
+            onSelect={handleSelectItem}
+            sectionDividerStyle={sectionDividerStyle}
+            sectionLabelStyle={sectionLabelStyle}
+          />
+        ) : null}
+
+        {messageItems.length > 0 ? (
+          <MessageItemsSection
+            messageItems={messageItems}
+            precedingItemsLength={actionItems.length + fileItems.length + agentItems.length}
+            activeIndex={activeIndex}
+            rowRefs={rowRefs}
+            onRowLayout={handleRowLayout}
+            onSelect={handleSelectItem}
+            sectionDividerStyle={sectionDividerStyle}
+            sectionLabelStyle={sectionLabelStyle}
+          />
+        ) : null}
+
+        {fileContentItems.length > 0 ? (
+          <FileContentItemsSection
+            fileContentItems={fileContentItems}
+            precedingItemsLength={
+              actionItems.length + fileItems.length + agentItems.length + messageItems.length
+            }
             activeIndex={activeIndex}
             rowRefs={rowRefs}
             onRowLayout={handleRowLayout}

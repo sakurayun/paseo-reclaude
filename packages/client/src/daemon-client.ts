@@ -55,6 +55,8 @@ import type {
   GitHubSearchRequest,
   DirectorySuggestionsResponse,
   WorkspaceScanGitReposResponse,
+  SearchSessionsContentResponse,
+  SearchWorkspaceFilesResponse,
   CheckoutGetLogResponse,
   CheckoutGetCommitFilesResponse,
   PaseoWorktreeListResponse,
@@ -334,6 +336,8 @@ type BranchSuggestionsPayload = BranchSuggestionsResponse["payload"];
 type GitHubSearchPayload = GitHubSearchResponse["payload"];
 type DirectorySuggestionsPayload = DirectorySuggestionsResponse["payload"];
 export type WorkspaceScanGitReposPayload = WorkspaceScanGitReposResponse["payload"];
+export type SearchSessionsContentPayload = SearchSessionsContentResponse["payload"];
+export type SearchWorkspaceFilesPayload = SearchWorkspaceFilesResponse["payload"];
 export type CheckoutGetLogPayload = CheckoutGetLogResponse["payload"];
 export type CheckoutGetCommitFilesPayload = CheckoutGetCommitFilesResponse["payload"];
 type PaseoWorktreeListPayload = PaseoWorktreeListResponse["payload"];
@@ -3529,6 +3533,54 @@ export class DaemonClient {
       },
       responseType: "directory_suggestions_response",
       timeout: 10000,
+    });
+  }
+
+  async searchSessionContent(
+    options: {
+      query: string;
+      agentIds?: string[];
+      limit?: number;
+      maxMatchesPerAgent?: number;
+    },
+    requestId?: string,
+  ): Promise<SearchSessionsContentPayload> {
+    return this.sendCorrelatedSessionRequest({
+      requestId,
+      message: {
+        type: "search.sessions.content.request",
+        query: options.query,
+        ...(options.agentIds ? { agentIds: options.agentIds } : {}),
+        ...(options.limit !== undefined ? { limit: options.limit } : {}),
+        ...(options.maxMatchesPerAgent !== undefined
+          ? { maxMatchesPerAgent: options.maxMatchesPerAgent }
+          : {}),
+      },
+      responseType: "search.sessions.content.response",
+      timeout: 15000,
+    });
+  }
+
+  async searchWorkspaceFiles(
+    options: {
+      query: string;
+      workspaceIds?: string[];
+      maxResults?: number;
+      caseSensitive?: boolean;
+    },
+    requestId?: string,
+  ): Promise<SearchWorkspaceFilesPayload> {
+    return this.sendCorrelatedSessionRequest({
+      requestId,
+      message: {
+        type: "search.workspace.files.request",
+        query: options.query,
+        ...(options.workspaceIds ? { workspaceIds: options.workspaceIds } : {}),
+        ...(options.maxResults !== undefined ? { maxResults: options.maxResults } : {}),
+        ...(options.caseSensitive !== undefined ? { caseSensitive: options.caseSensitive } : {}),
+      },
+      responseType: "search.workspace.files.response",
+      timeout: 20000,
     });
   }
 

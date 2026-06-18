@@ -81,6 +81,9 @@ export const ar: TranslationResources = {
       openProject: "مشروع مفتوح",
       home: "بيت",
       files: "الملفات",
+      messages: "الرسائل",
+      workspaceFiles: "ملفات مساحة العمل",
+      messagesScopeNote: "يتم البحث في الجلسات المحمّلة فقط",
     },
   },
   composer: {

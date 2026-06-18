@@ -81,6 +81,9 @@ export const zhCN: TranslationResources = {
       openProject: "打开项目",
       home: "首页",
       files: "文件",
+      messages: "消息",
+      workspaceFiles: "工作区文件",
+      messagesScopeNote: "仅搜索已加载的会话",
     },
   },
   composer: {

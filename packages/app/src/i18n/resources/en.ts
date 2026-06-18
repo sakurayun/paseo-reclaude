@@ -79,6 +79,9 @@ export const en = {
       openProject: "Open project",
       home: "Home",
       files: "Files",
+      messages: "Messages",
+      workspaceFiles: "Workspace files",
+      messagesScopeNote: "Only loaded sessions are searched",
     },
   },
   composer: {

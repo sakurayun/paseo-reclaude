@@ -174,7 +174,7 @@ export interface MessageFindHighlight {
   isCurrent: boolean;
 }
 
-interface MessageFindTextSegment {
+export interface MessageFindTextSegment {
   key: string;
   text: string;
   highlight?: MessageFindHighlight;
@@ -239,7 +239,7 @@ function normalizeFindHighlights(
     .sort((left, right) => left.start - right.start || left.end - right.end);
 }
 
-function createMessageFindTextSegments(
+export function createMessageFindTextSegments(
   text: string,
   highlights: MessageFindHighlight[] | undefined,
 ): MessageFindTextSegment[] {
@@ -534,7 +534,7 @@ const userMessageStylesheet = StyleSheet.create((theme) => ({
   },
 }));
 
-function MessageFindHighlightedText({ segments }: { segments: MessageFindTextSegment[] }) {
+export function MessageFindHighlightedText({ segments }: { segments: MessageFindTextSegment[] }) {
   return (
     <>
       {segments.map((segment) => (
@@ -3356,6 +3356,10 @@ interface ToolCallProps {
   onInlineDetailsHoverChange?: (hovered: boolean) => void;
   onInlineDetailsExpandedChange?: (expanded: boolean) => void;
   onOpenFilePath?: (filePath: string) => void;
+  /** When this token changes, the inline details auto-expand (cross-session search jump). */
+  forceExpandToken?: number;
+  /** Find highlights keyed by tool-call detail segment (shell.output, edit.diff, …). */
+  findHighlights?: Map<string, MessageFindHighlight[]>;
 }
 
 export const ToolCall = memo(function ToolCall({
@@ -3372,6 +3376,8 @@ export const ToolCall = memo(function ToolCall({
   onInlineDetailsHoverChange,
   onInlineDetailsExpandedChange,
   onOpenFilePath,
+  forceExpandToken,
+  findHighlights,
 }: ToolCallProps) {
   const { openToolCall } = useToolCallSheet();
   const [expandedOverride, setExpandedOverride] = useState<boolean | null>(null);
@@ -3398,6 +3404,14 @@ export const ToolCall = memo(function ToolCall({
   // toggle always wins once made.
   const defaultExpanded = effectiveDetail?.type === "edit" || effectiveDetail?.type === "write";
   const isExpanded = expandedOverride ?? defaultExpanded;
+
+  // A cross-session/in-session search jump bumps this token to reveal the matched
+  // tool call's inline details on desktop without a manual click.
+  useEffect(() => {
+    if (forceExpandToken !== undefined && !isMobile) {
+      setExpandedOverride(true);
+    }
+  }, [forceExpandToken, isMobile]);
 
   const presentation = useMemo(
     () =>
@@ -3483,9 +3497,16 @@ export const ToolCall = memo(function ToolCall({
         errorText={presentation.errorText}
         maxHeight={400}
         showLoadingSkeleton={presentation.isLoadingDetails}
+        findHighlights={findHighlights}
       />
     );
-  }, [isMobile, effectiveDetail, presentation.errorText, presentation.isLoadingDetails]);
+  }, [
+    isMobile,
+    effectiveDetail,
+    presentation.errorText,
+    presentation.isLoadingDetails,
+    findHighlights,
+  ]);
 
   if (presentation.isPlan && effectiveDetail?.type === "plan") {
     return (

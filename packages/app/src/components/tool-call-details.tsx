@@ -23,6 +23,8 @@ import { HighlightedLines } from "./highlighted-content";
 import { DiffViewer } from "./diff-viewer";
 import { getCodeInsets } from "./code-insets";
 import { isWeb } from "@/constants/platform";
+// Type-only import keeps the message <-> tool-call-details cycle compile-time only.
+import type { MessageFindHighlight } from "./message";
 
 const ScrollView = isWeb ? RNScrollView : GHScrollView;
 
@@ -34,6 +36,8 @@ interface ToolCallDetailsContentProps {
   maxHeight?: number;
   fillAvailableHeight?: boolean;
   showLoadingSkeleton?: boolean;
+  /** Find highlights keyed by detail segment (shell.command, shell.output, …). */
+  findHighlights?: Map<string, MessageFindHighlight[]>;
 }
 
 interface DetailStyles {
@@ -157,12 +161,72 @@ interface ShellDetailProps {
   command: string;
   output: string | null | undefined;
   ds: DetailStyles;
+  findHighlights?: Map<string, MessageFindHighlight[]>;
 }
 
-function ShellDetailSection({ command, output, ds }: ShellDetailProps) {
+function ShellHighlightedText({
+  text,
+  highlights,
+}: {
+  text: string;
+  highlights: MessageFindHighlight[] | undefined;
+}): ReactNode {
+  if (!highlights || highlights.length === 0) {
+    return text;
+  }
+  const sorted = [...highlights].sort((a, b) => a.start - b.start);
+  const parts: ReactNode[] = [];
+  let cursor = 0;
+  for (const highlight of sorted) {
+    const start = Math.max(0, Math.min(text.length, highlight.start));
+    const end = Math.max(start, Math.min(text.length, highlight.end));
+    if (end <= cursor) {
+      continue;
+    }
+    if (cursor < start) {
+      parts.push(text.slice(cursor, start));
+    }
+    parts.push(
+      <Text
+        key={highlight.id}
+        style={highlight.isCurrent ? styles.shellHitCurrent : styles.shellHit}
+      >
+        {text.slice(start, end)}
+      </Text>,
+    );
+    cursor = end;
+  }
+  if (cursor < text.length) {
+    parts.push(text.slice(cursor));
+  }
+  return parts;
+}
+
+// Output is rendered with leading newlines stripped, so shift its highlight
+// offsets to keep them aligned with the trimmed string.
+function shiftShellHighlights(
+  highlights: MessageFindHighlight[] | undefined,
+  delta: number,
+): MessageFindHighlight[] | undefined {
+  if (!highlights || delta === 0) {
+    return highlights;
+  }
+  return highlights.map((highlight) => ({
+    ...highlight,
+    start: highlight.start + delta,
+    end: highlight.end + delta,
+  }));
+}
+
+function ShellDetailSection({ command, output, ds, findHighlights }: ShellDetailProps) {
   const normalizedCommand = command.replace(/\n+$/, "");
-  const commandOutput = (output ?? "").replace(/^\n+/, "");
+  const rawOutput = output ?? "";
+  const commandOutput = rawOutput.replace(/^\n+/, "");
   const hasOutput = commandOutput.length > 0;
+  const outputHighlights = shiftShellHighlights(
+    findHighlights?.get("shell.output"),
+    commandOutput.length - rawOutput.length,
+  );
   return (
     <View style={ds.sectionFillStyle}>
       <View style={ds.codeBlockFillStyle}>
@@ -176,8 +240,20 @@ function ShellDetailSection({ command, output, ds }: ShellDetailProps) {
             <View style={styles.codeLine} dataSet={CODE_SURFACE_DATASET}>
               <Text selectable style={styles.scrollText}>
                 <Text style={styles.shellPrompt}>$ </Text>
-                {normalizedCommand}
-                {hasOutput ? `\n\n${commandOutput}` : ""}
+                <ShellHighlightedText
+                  text={normalizedCommand}
+                  highlights={findHighlights?.get("shell.command")}
+                />
+                {hasOutput
+                  ? [
+                      "\n\n",
+                      <ShellHighlightedText
+                        key="output"
+                        text={commandOutput}
+                        highlights={outputHighlights}
+                      />,
+                    ]
+                  : null}
               </Text>
             </View>
           </View>
@@ -619,11 +695,18 @@ function buildDetailSections(
   diffLines: DiffLine[] | undefined,
   ds: DetailStyles,
   t: TFunction,
+  findHighlights: Map<string, MessageFindHighlight[]> | undefined,
 ): ReactNode[] {
   if (!detail) return [];
   if (detail.type === "shell") {
     return [
-      <ShellDetailSection key="shell" command={detail.command} output={detail.output} ds={ds} />,
+      <ShellDetailSection
+        key="shell"
+        command={detail.command}
+        output={detail.output}
+        ds={ds}
+        findHighlights={findHighlights}
+      />,
     ];
   }
   if (detail.type === "worktree_setup") {
@@ -732,13 +815,14 @@ function ToolCallDetailsContentInner({
   maxHeight,
   fillAvailableHeight = false,
   showLoadingSkeleton = false,
+  findHighlights,
 }: ToolCallDetailsContentProps) {
   const { t } = useTranslation();
   const resolvedMaxHeight = fillAvailableHeight ? undefined : (maxHeight ?? 300);
   const ds = useDetailStyles(detail, resolvedMaxHeight, fillAvailableHeight);
   const diffLines = useDiffLines(detail);
 
-  const sections: ReactNode[] = buildDetailSections(detail, diffLines, ds, t);
+  const sections: ReactNode[] = buildDetailSections(detail, diffLines, ds, t, findHighlights);
 
   if (errorText) {
     sections.push(<ErrorSection key="error" errorText={errorText} ds={ds} />);
@@ -860,6 +944,14 @@ const styles = StyleSheet.create((theme) => {
     },
     shellPrompt: {
       color: theme.colors.foregroundMuted,
+    },
+    shellHit: {
+      backgroundColor:
+        theme.colorScheme === "dark" ? "rgba(250, 204, 21, 0.32)" : "rgba(250, 204, 21, 0.38)",
+    },
+    shellHitCurrent: {
+      backgroundColor:
+        theme.colorScheme === "dark" ? "rgba(251, 146, 60, 0.58)" : "rgba(251, 146, 60, 0.48)",
     },
     subAgentSessionText: {
       fontFamily: theme.fontFamily.mono,

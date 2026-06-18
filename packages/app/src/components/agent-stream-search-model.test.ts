@@ -77,13 +77,16 @@ describe("buildAgentStreamSearchModel", () => {
     expect(getSearchableText(assistantMessage("a1", "assistant text"))).toBe("assistant text");
   });
 
-  it("excludes non-message rows that do not render find highlights", () => {
-    expect(getSearchableText(thought("t1", "thought text"))).toBe("");
-    expect(getSearchableText(activityLog("l1", "activity text"))).toBe("");
+  it("indexes thought and activity log text", () => {
+    expect(getSearchableText(thought("t1", "thought text"))).toBe("thought text");
+    expect(getSearchableText(activityLog("l1", "activity text"))).toBe("activity text");
+  });
+
+  it("excludes rows without find-highlight rendering", () => {
     expect(getSearchableText(todoList("todo"))).toBe("");
   });
 
-  it("excludes tool call rows from the search index", () => {
+  it("indexes agent tool call detail fields including file contents", () => {
     const toolCall: StreamItem = {
       kind: "tool_call",
       id: "shell",
@@ -99,13 +102,25 @@ describe("buildAgentStreamSearchModel", () => {
           detail: {
             type: "shell",
             command: "npm run typecheck",
-            output: "internal output should stay out",
+            output: "internal output is searchable",
           },
         },
       },
     };
 
-    expect(getSearchableText(toolCall)).toBe("");
+    const searchable = getSearchableText(toolCall);
+    expect(searchable).toContain("npm run typecheck");
+    expect(searchable).toContain("internal output is searchable");
+
+    const model = buildAgentStreamSearchModel({
+      streamItems: [toolCall],
+      streamHead: [],
+      platform: "web",
+      isMobileBreakpoint: true,
+    });
+    const matches = findAgentStreamSearchMatches({ model, query: "searchable" });
+    expect(matches.map((match) => match.segmentKey)).toEqual(["shell.output"]);
+    expect(matches[0]?.entry.item.id).toBe("shell");
   });
 
   it("orders virtualized history, mounted history, live head, and optimistic items deterministically", () => {
@@ -172,7 +187,7 @@ describe("findAgentStreamSearchMatches", () => {
     expect(matches.map((match) => match.entry.item.id)).toEqual(["a1", "a1", "h1"]);
   });
 
-  it("skips fenced code blocks while preserving message offsets for highlights", () => {
+  it("includes fenced code block content while preserving message offsets for highlights", () => {
     const model = buildAgentStreamSearchModel({
       streamItems: [assistantMessage("a1", "before alpha\n```\nalpha\n```\nafter alpha")],
       streamHead: [],
@@ -185,6 +200,12 @@ describe("findAgentStreamSearchMatches", () => {
       query: "alpha",
     });
 
-    expect(matches.map((match) => match.id)).toEqual(["a1:text:0:7:12", "a1:text:0:33:38"]);
+    // Code-block content is now searchable; offsets stay relative to the full
+    // message so highlights land on the original text (incl. the code block).
+    expect(matches.map((match) => match.id)).toEqual([
+      "a1:text:0:7:12",
+      "a1:text:1:17:22",
+      "a1:text:2:33:38",
+    ]);
   });
 });

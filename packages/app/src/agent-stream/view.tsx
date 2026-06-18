@@ -49,6 +49,7 @@ import type {
   AgentPermissionResponse,
 } from "@getpaseo/protocol/agent-types";
 import type { AgentScreenAgent } from "@/hooks/use-agent-screen-state-machine";
+import { useSessionSearchFocusStore } from "@/stores/session-search-focus-store";
 import { useSessionStore } from "@/stores/session-store";
 import { useFileExplorerActions } from "@/hooks/use-file-explorer-actions";
 import { useLoadOlderAgentHistory } from "@/hooks/use-load-older-agent-history";
@@ -243,30 +244,26 @@ function createAgentStreamFindMatchState(input: {
 function createAgentStreamFindHighlightsByItemId(input: {
   matches: AgentStreamSearchMatch[];
   currentMatchId: string | null;
-}): Map<string, MessageFindHighlight[]> {
-  const highlightsByItemId = new Map<string, MessageFindHighlight[]>();
+}): Map<string, Map<string, MessageFindHighlight[]>> {
+  const byItemId = new Map<string, Map<string, MessageFindHighlight[]>>();
 
   for (const match of input.matches) {
-    if (match.segmentKey !== "text") {
-      continue;
+    let bySegment = byItemId.get(match.entry.item.id);
+    if (!bySegment) {
+      bySegment = new Map<string, MessageFindHighlight[]>();
+      byItemId.set(match.entry.item.id, bySegment);
     }
-
-    const itemKind = match.entry.item.kind;
-    if (itemKind !== "user_message" && itemKind !== "assistant_message") {
-      continue;
-    }
-
-    const highlights = highlightsByItemId.get(match.entry.item.id) ?? [];
+    const highlights = bySegment.get(match.segmentKey) ?? [];
     highlights.push({
       id: match.id,
       start: match.start,
       end: match.end,
       isCurrent: match.id === input.currentMatchId,
     });
-    highlightsByItemId.set(match.entry.item.id, highlights);
+    bySegment.set(match.segmentKey, highlights);
   }
 
-  return highlightsByItemId;
+  return byItemId;
 }
 
 interface AgentStreamFindState {
@@ -530,6 +527,11 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         }),
       [currentFindMatchId, findMatches],
     );
+    const [autoExpandToolCall, setAutoExpandToolCall] = useState<{
+      itemId: string;
+      token: number;
+    } | null>(null);
+    const autoExpandTokenRef = useRef(0);
     const scrollFindMatchIntoView = useCallback((match: AgentStreamSearchMatch | undefined) => {
       if (!match) {
         return;
@@ -539,6 +541,11 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         index: match.entry.index,
         itemId: match.entry.item.id,
       });
+      // Reveal the matched tool call's inline details so the highlighted hit is visible.
+      if (match.entry.item.kind === "tool_call") {
+        autoExpandTokenRef.current += 1;
+        setAutoExpandToolCall({ itemId: match.entry.item.id, token: autoExpandTokenRef.current });
+      }
     }, []);
     const paneFind = usePaneFind({
       matchState: findMatchState,
@@ -594,6 +601,33 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         setFindState(EMPTY_AGENT_STREAM_FIND_STATE);
       },
     });
+    // Cross-session jump: when a global search result targets this agent, open
+    // the find bar with the query once history is ready, reusing the in-session
+    // search to highlight and scroll to the match.
+    const focusRequest = useSessionSearchFocusStore((state) => state.request);
+    const consumeSessionSearchFocus = useSessionSearchFocusStore((state) => state.consumeFocus);
+    const handledFocusTokenRef = useRef(0);
+    const openFindWithQuery = paneFind.openWithQuery;
+    useEffect(() => {
+      if (!isAuthoritativeHistoryReady) {
+        return;
+      }
+      if (!focusRequest || focusRequest.agentId !== agentId) {
+        return;
+      }
+      if (focusRequest.token === handledFocusTokenRef.current) {
+        return;
+      }
+      handledFocusTokenRef.current = focusRequest.token;
+      consumeSessionSearchFocus(agentId);
+      openFindWithQuery(focusRequest.query);
+    }, [
+      agentId,
+      consumeSessionSearchFocus,
+      focusRequest,
+      isAuthoritativeHistoryReady,
+      openFindWithQuery,
+    ]);
     useEffect(() => {
       setFindState((current) => {
         if (current.query.length === 0) {
@@ -689,7 +723,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
             client={client}
             isFirstInGroup={layoutItem.isFirstInUserGroup}
             isLastInGroup={layoutItem.isLastInUserGroup}
-            findHighlights={findHighlightsByItemId.get(item.id)}
+            findHighlights={findHighlightsByItemId.get(item.id)?.get("text")}
           />
         );
       },
@@ -713,7 +747,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
               serverId={resolvedServerId}
               client={client}
               spacing={layoutItem.assistantSpacing}
-              findHighlights={findHighlightsByItemId.get(item.id)}
+              findHighlights={findHighlightsByItemId.get(item.id)?.get("text")}
             />
           </AssistantFileLinkResolverProvider>
         );
@@ -774,6 +808,10 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
               metadata={data.metadata}
               isLastInSequence={layoutItem.isLastInToolSequence}
               onOpenFilePath={handleToolCallOpenFile}
+              forceExpandToken={
+                autoExpandToolCall?.itemId === item.id ? autoExpandToolCall.token : undefined
+              }
+              findHighlights={findHighlightsByItemId.get(item.id)}
             />
           );
         }
@@ -789,10 +827,19 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
             status={data.status}
             isLastInSequence={layoutItem.isLastInToolSequence}
             onOpenFilePath={handleToolCallOpenFile}
+            forceExpandToken={
+              autoExpandToolCall?.itemId === item.id ? autoExpandToolCall.token : undefined
+            }
           />
         );
       },
-      [agent.cwd, setInlineDetailsExpanded, handleToolCallOpenFile],
+      [
+        agent.cwd,
+        setInlineDetailsExpanded,
+        handleToolCallOpenFile,
+        autoExpandToolCall,
+        findHighlightsByItemId,
+      ],
     );
 
     const renderStreamItemContent = useCallback(

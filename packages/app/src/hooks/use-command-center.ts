@@ -33,7 +33,13 @@ import { useWorkspaceLayoutStore, collectAllTabs } from "@/stores/workspace-layo
 import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { navigateToPreparedWorkspaceTab } from "@/utils/workspace-navigation";
-import type { DirectorySuggestionsResponse } from "@getpaseo/protocol/messages";
+import type {
+  DirectorySuggestionsResponse,
+  SessionContentMatch,
+  WorkspaceFileMatch,
+} from "@getpaseo/protocol/messages";
+import { useSessionStore } from "@/stores/session-store";
+import { useSessionSearchFocusStore } from "@/stores/session-search-focus-store";
 
 interface CommandCenterFileMatch {
   path: string;
@@ -111,6 +117,8 @@ const EMPTY_AGENTS: AggregatedAgent[] = [];
 const EMPTY_ACTION_ITEMS: CommandCenterActionItem[] = [];
 const EMPTY_FILE_ITEMS: CommandCenterFileItem[] = [];
 const EMPTY_COMMAND_CENTER_ITEMS: CommandCenterItem[] = [];
+const EMPTY_MESSAGE_ITEMS: CommandCenterMessageItem[] = [];
+const EMPTY_FILE_CONTENT_ITEMS: CommandCenterFileContentItem[] = [];
 
 function isMatch(agent: AggregatedAgent, query: string, fallbackTitle: string): boolean {
   if (!query) return true;
@@ -200,6 +208,16 @@ type CommandCenterFileItem = CommandCenterFileMatch & {
   serverId: string;
 };
 
+export interface CommandCenterMessageItem {
+  match: SessionContentMatch;
+  serverId: string;
+}
+
+export interface CommandCenterFileContentItem {
+  match: WorkspaceFileMatch;
+  serverId: string;
+}
+
 export type CommandCenterItem =
   | {
       kind: "action";
@@ -212,6 +230,14 @@ export type CommandCenterItem =
   | {
       kind: "agent";
       agent: AggregatedAgent;
+    }
+  | {
+      kind: "message";
+      message: CommandCenterMessageItem;
+    }
+  | {
+      kind: "file-content";
+      fileContent: CommandCenterFileContentItem;
     };
 
 function resolveActionShortcutKeys(
@@ -228,6 +254,49 @@ function resolveActionShortcutKeys(
   if (override) return chordStringToShortcutKeys(override);
   const defaultKeys = getDefaultKeysForAction(actionId, platform);
   return defaultKeys ? [defaultKeys] : undefined;
+}
+
+// Capability-gated global search section (cross-session messages / workspace
+// files). Extracted from useCommandCenter to keep that hook's complexity low and
+// to share the identical query/gate/empty-state wiring between both sections.
+function useGlobalSearchSection<T>(input: {
+  feature: "sessionContentSearch" | "workspaceFileSearch";
+  queryKey: string;
+  open: boolean;
+  client: ReturnType<typeof useHostRuntimeClient>;
+  isConnected: boolean;
+  activeServerId: string | null;
+  debouncedQuery: string;
+  hasQuery: boolean;
+  empty: T[];
+  fetch: (
+    client: NonNullable<ReturnType<typeof useHostRuntimeClient>>,
+    serverId: string,
+    query: string,
+  ) => Promise<T[]>;
+}): T[] {
+  const { client, activeServerId, debouncedQuery, empty } = input;
+  const supported = useSessionStore(
+    (state) => state.sessions[activeServerId ?? ""]?.serverInfo?.features?.[input.feature] === true,
+  );
+  const query = useQuery({
+    queryKey: [input.queryKey, activeServerId ?? "", debouncedQuery],
+    queryFn: async (): Promise<T[]> => {
+      if (!client || !activeServerId) {
+        return empty;
+      }
+      return input.fetch(client, activeServerId, debouncedQuery);
+    },
+    enabled:
+      input.open && Boolean(client) && input.isConnected && supported && debouncedQuery.length > 0,
+    retry: false,
+    staleTime: 15_000,
+    placeholderData: keepPreviousData,
+  });
+  return useMemo(
+    () => (input.hasQuery ? (query.data ?? empty) : empty),
+    [input.hasQuery, query.data, empty],
+  );
 }
 
 export function useCommandCenter() {
@@ -352,6 +421,47 @@ export function useCommandCenter() {
     return fileSuggestionsQuery.data ?? EMPTY_FILE_ITEMS;
   }, [trimmedQuery, openFileTabs, fileSuggestionsQuery.data]);
 
+  const messageItems = useGlobalSearchSection<CommandCenterMessageItem>({
+    feature: "sessionContentSearch",
+    queryKey: "command-center-session-content",
+    open,
+    client,
+    isConnected,
+    activeServerId,
+    debouncedQuery: debouncedFileQuery,
+    hasQuery: trimmedQuery.length > 0,
+    empty: EMPTY_MESSAGE_ITEMS,
+    fetch: async (resolvedClient, serverId, searchQuery) => {
+      const payload = await resolvedClient.searchSessionContent({ query: searchQuery, limit: 30 });
+      if (payload.error) {
+        throw new Error(payload.error);
+      }
+      return payload.results.map((match) => ({ match, serverId }));
+    },
+  });
+
+  const fileContentItems = useGlobalSearchSection<CommandCenterFileContentItem>({
+    feature: "workspaceFileSearch",
+    queryKey: "command-center-workspace-content",
+    open,
+    client,
+    isConnected,
+    activeServerId,
+    debouncedQuery: debouncedFileQuery,
+    hasQuery: trimmedQuery.length > 0,
+    empty: EMPTY_FILE_CONTENT_ITEMS,
+    fetch: async (resolvedClient, serverId, searchQuery) => {
+      const payload = await resolvedClient.searchWorkspaceFiles({
+        query: searchQuery,
+        maxResults: 30,
+      });
+      if (payload.error) {
+        throw new Error(payload.error);
+      }
+      return payload.results.map((match) => ({ match, serverId }));
+    },
+  });
+
   const settingsRoute = useMemo<Href>(() => {
     return buildSettingsRoute();
   }, []);
@@ -406,8 +516,20 @@ export function useCommandCenter() {
         agent,
       });
     }
+    for (const message of messageItems) {
+      next.push({
+        kind: "message",
+        message,
+      });
+    }
+    for (const fileContent of fileContentItems) {
+      next.push({
+        kind: "file-content",
+        fileContent,
+      });
+    }
     return next;
-  }, [actionItems, agentResults, fileItems, open]);
+  }, [actionItems, agentResults, fileContentItems, fileItems, messageItems, open]);
 
   const handleClose = useCallback(() => {
     setOpen(false);
@@ -444,6 +566,48 @@ export function useCommandCenter() {
     [pathname, setOpen],
   );
 
+  const requestSessionSearchFocus = useSessionSearchFocusStore((state) => state.requestFocus);
+
+  const handleSelectMessage = useCallback(
+    (message: CommandCenterMessageItem) => {
+      didNavigateRef.current = true;
+      clearCommandCenterFocusRestoreElement();
+      setOpen(false);
+      // Queue an in-session find for the target agent, then navigate to it; its
+      // AgentStreamView consumes the focus once ready (see session-search-focus-store).
+      requestSessionSearchFocus({
+        agentId: message.match.agentId,
+        query: trimmedQuery,
+        itemId: message.match.itemId.length > 0 ? message.match.itemId : undefined,
+      });
+      navigateToAgent({
+        serverId: message.serverId,
+        agentId: message.match.agentId,
+        currentPathname: pathname,
+      });
+    },
+    [pathname, requestSessionSearchFocus, setOpen, trimmedQuery],
+  );
+
+  const handleSelectFileContent = useCallback(
+    (fileContent: CommandCenterFileContentItem) => {
+      didNavigateRef.current = true;
+      clearCommandCenterFocusRestoreElement();
+      setOpen(false);
+      navigateToPreparedWorkspaceTab({
+        serverId: fileContent.serverId,
+        workspaceId: fileContent.match.workspaceId,
+        target: {
+          kind: "file",
+          path: fileContent.match.relPath,
+          lineStart: fileContent.match.line,
+        },
+        currentPathname: pathname,
+      });
+    },
+    [pathname, setOpen],
+  );
+
   const openProjectPicker = useOpenProjectPicker(activeServerId);
 
   const handleSelectAction = useCallback(
@@ -473,9 +637,23 @@ export function useCommandCenter() {
         handleSelectFile(item.file);
         return;
       }
+      if (item.kind === "message") {
+        handleSelectMessage(item.message);
+        return;
+      }
+      if (item.kind === "file-content") {
+        handleSelectFileContent(item.fileContent);
+        return;
+      }
       handleSelectAgent(item.agent);
     },
-    [handleSelectAction, handleSelectAgent, handleSelectFile],
+    [
+      handleSelectAction,
+      handleSelectAgent,
+      handleSelectFile,
+      handleSelectFileContent,
+      handleSelectMessage,
+    ],
   );
 
   useEffect(() => {

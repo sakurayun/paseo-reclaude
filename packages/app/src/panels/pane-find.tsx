@@ -42,6 +42,8 @@ export interface FindBarProps {
 export interface UsePaneFindResult {
   isOpen: boolean;
   findBarProps: FindBarProps;
+  /** Programmatically open the find bar pre-filled with a query (cross-session jump). */
+  openWithQuery(query: string): void;
 }
 
 export function usePaneFind(input: UsePaneFindInput): UsePaneFindResult {
@@ -138,6 +140,14 @@ export function usePaneFind(input: UsePaneFindInput): UsePaneFindResult {
     closeFind();
   }, [closeFind]);
 
+  const openWithQuery = useCallback(
+    (nextQuery: string) => {
+      openFind();
+      handleQueryChange(nextQuery);
+    },
+    [openFind, handleQueryChange],
+  );
+
   const findBarProps = useMemo(
     () => ({
       query,
@@ -151,7 +161,7 @@ export function usePaneFind(input: UsePaneFindInput): UsePaneFindResult {
     [focusToken, handleClose, handleNext, handlePrev, handleQueryChange, matchState, query],
   );
 
-  return { isOpen, findBarProps };
+  return { isOpen, findBarProps, openWithQuery };
 }
 
 export function FindBar({

@@ -1,3 +1,8 @@
+import {
+  getMessageSearchableSegments,
+  getToolCallDetailSearchableSegments,
+  type SearchableSegment,
+} from "@getpaseo/protocol/searchable-text";
 import type { StreamItem } from "@/types/stream";
 import {
   findMountedWindowStart,
@@ -7,11 +12,7 @@ import {
 
 type AgentStreamSearchSource = "historyVirtualized" | "historyMounted" | "liveHead";
 
-interface AgentStreamSearchTextSegment {
-  key: string;
-  text: string;
-  startOffset: number;
-}
+type AgentStreamSearchTextSegment = SearchableSegment;
 
 interface AgentStreamSearchEntry {
   item: StreamItem;
@@ -53,69 +54,21 @@ interface FindAgentStreamSearchMatchesInput {
   query: string;
 }
 
-function getFenceDelimiter(line: string): string | null {
-  const match = /^( {0,3})(`{3,}|~{3,})/.exec(line);
-  return match?.[2] ?? null;
-}
-
-function getMessageSearchableSegments(text: string): AgentStreamSearchTextSegment[] {
-  const segments: AgentStreamSearchTextSegment[] = [];
-  let activeFenceCharacter: "`" | "~" | null = null;
-  let activeFenceLength = 0;
-  let currentText = "";
-  let currentStartOffset = 0;
-  let offset = 0;
-
-  const flush = () => {
-    if (currentText.length > 0) {
-      segments.push({ key: "text", text: currentText, startOffset: currentStartOffset });
-      currentText = "";
-    }
-  };
-
-  for (const line of text.split("\n")) {
-    const lineWithBreak = offset + line.length < text.length ? `${line}\n` : line;
-    const fenceDelimiter = getFenceDelimiter(line);
-    const isClosingFence =
-      activeFenceCharacter &&
-      fenceDelimiter?.[0] === activeFenceCharacter &&
-      fenceDelimiter.length >= activeFenceLength;
-    const isOpeningFence = !activeFenceCharacter && fenceDelimiter;
-    const isIndentedCode = !activeFenceCharacter && (/^( {4,}|\t)/.test(line) || line === "    ");
-
-    if (isOpeningFence || activeFenceCharacter || isIndentedCode) {
-      flush();
-    } else {
-      if (currentText.length === 0) {
-        currentStartOffset = offset;
-      }
-      currentText += lineWithBreak;
-    }
-
-    if (isOpeningFence) {
-      activeFenceCharacter = fenceDelimiter[0] as "`" | "~";
-      activeFenceLength = fenceDelimiter.length;
-    } else if (isClosingFence) {
-      activeFenceCharacter = null;
-      activeFenceLength = 0;
-    }
-
-    offset += lineWithBreak.length;
-  }
-
-  flush();
-  return segments;
-}
-
 function getAgentStreamItemSearchableSegments(item: StreamItem): AgentStreamSearchTextSegment[] {
   switch (item.kind) {
     case "user_message":
     case "assistant_message":
-      return item.text ? getMessageSearchableSegments(item.text) : [];
     case "thought":
+      return item.text ? getMessageSearchableSegments(item.text) : [];
     case "activity_log":
-    case "todo_list":
+      return item.message ? getMessageSearchableSegments(item.message) : [];
     case "tool_call":
+      // Orchestrator tool calls carry opaque MCP argument/result blobs rather
+      // than file-operation details, so only agent tool calls are searchable.
+      return item.payload.source === "agent"
+        ? getToolCallDetailSearchableSegments(item.payload.data.detail)
+        : [];
+    case "todo_list":
     case "compaction":
       return [];
   }

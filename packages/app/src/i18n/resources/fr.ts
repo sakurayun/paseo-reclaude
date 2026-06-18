@@ -82,6 +82,9 @@ export const fr: TranslationResources = {
       openProject: "Projet ouvert",
       home: "Maison",
       files: "Fichiers",
+      messages: "Messages",
+      workspaceFiles: "Fichiers de l'espace de travail",
+      messagesScopeNote: "Seules les sessions chargées sont recherchées",
     },
   },
   composer: {

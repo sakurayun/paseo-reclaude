@@ -1247,6 +1247,10 @@ export class VoiceAssistantWebSocketServer {
         portForward: true,
         // COMPAT(workspaceLayoutSync): added in v0.1.101, remove gate after 2026-12-17.
         workspaceLayoutSync: true,
+        // COMPAT(sessionContentSearch): added in v0.1.102, remove gate after 2026-12-17.
+        sessionContentSearch: true,
+        // COMPAT(workspaceFileSearch): added in v0.1.102, remove gate after 2026-12-17.
+        workspaceFileSearch: true,
       },
     };
   }

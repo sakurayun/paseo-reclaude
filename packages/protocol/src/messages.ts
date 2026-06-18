@@ -1331,6 +1331,84 @@ export const FetchAgentTimelineRequestMessageSchema = z.object({
   projection: z.enum(["projected", "canonical"]).optional(),
 });
 
+// ---- Cross-session content search RPCs ----
+// Shared text extraction lives in ./searchable-text.ts so the daemon and the
+// in-session client produce identical segments and offsets.
+
+export const SessionContentMatchSchema = z.object({
+  agentId: z.string(),
+  agentTitle: z.string().nullable(),
+  provider: z.string(),
+  cwd: z.string().nullable(),
+  itemId: z.string(),
+  // Kept as a free string (not an enum) so new item kinds stay parseable by old clients.
+  itemKind: z.string(),
+  segmentKey: z.string(),
+  preview: z.string(),
+  previewMatchStart: z.number().int().nonnegative(),
+  previewMatchEnd: z.number().int().nonnegative(),
+  seq: z.number().int().nonnegative(),
+});
+export type SessionContentMatch = z.infer<typeof SessionContentMatchSchema>;
+
+export const SearchSessionsContentRequestMessageSchema = z.object({
+  type: z.literal("search.sessions.content.request"),
+  requestId: z.string(),
+  query: z.string(),
+  // Restrict to specific agents; omit to search all loaded sessions.
+  agentIds: z.array(z.string()).optional(),
+  limit: z.number().int().nonnegative().optional(),
+  maxMatchesPerAgent: z.number().int().nonnegative().optional(),
+});
+
+export const SearchSessionsContentResponseMessageSchema = z.object({
+  type: z.literal("search.sessions.content.response"),
+  payload: z.object({
+    requestId: z.string(),
+    results: z.array(SessionContentMatchSchema),
+    scope: z.object({
+      searchedAgentCount: z.number().int().nonnegative(),
+      // True when only in-memory (loaded) sessions were searched — surfaced in the UI.
+      loadedOnly: z.boolean(),
+    }),
+    error: z.string().nullable(),
+  }),
+});
+
+export const WorkspaceFileMatchSchema = z.object({
+  workspaceId: z.string(),
+  absPath: z.string(),
+  relPath: z.string(),
+  line: z.number().int().nonnegative(),
+  column: z.number().int().nonnegative(),
+  lineText: z.string(),
+  matchStart: z.number().int().nonnegative(),
+  matchEnd: z.number().int().nonnegative(),
+});
+export type WorkspaceFileMatch = z.infer<typeof WorkspaceFileMatchSchema>;
+
+export const SearchWorkspaceFilesRequestMessageSchema = z.object({
+  type: z.literal("search.workspace.files.request"),
+  requestId: z.string(),
+  query: z.string(),
+  // Restrict to specific workspaces; omit to search all active workspaces.
+  workspaceIds: z.array(z.string()).optional(),
+  maxResults: z.number().int().nonnegative().optional(),
+  caseSensitive: z.boolean().optional(),
+});
+
+export const SearchWorkspaceFilesResponseMessageSchema = z.object({
+  type: z.literal("search.workspace.files.response"),
+  payload: z.object({
+    requestId: z.string(),
+    results: z.array(WorkspaceFileMatchSchema),
+    truncated: z.boolean(),
+    // Engine used; "node-walk" is reserved for the future no-ripgrep fallback.
+    engine: z.enum(["ripgrep", "node-walk"]),
+    error: z.string().nullable(),
+  }),
+});
+
 export const SetAgentModeRequestMessageSchema = z.object({
   type: z.literal("set_agent_mode_request"),
   agentId: z.string(),
@@ -2311,6 +2389,8 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   RestartServerRequestMessageSchema,
   DaemonUpdateRequestMessageSchema,
   FetchAgentTimelineRequestMessageSchema,
+  SearchSessionsContentRequestMessageSchema,
+  SearchWorkspaceFilesRequestMessageSchema,
   SetAgentModeRequestMessageSchema,
   SetAgentModelRequestMessageSchema,
   SetAgentThinkingRequestMessageSchema,
@@ -2601,6 +2681,10 @@ export const ServerInfoStatusPayloadSchema = z
         portForward: z.boolean().optional(),
         // COMPAT(workspaceLayoutSync): added in v0.1.101, remove gate after 2026-12-17.
         workspaceLayoutSync: z.boolean().optional(),
+        // COMPAT(sessionContentSearch): added in v0.1.102, remove gate after 2026-12-17.
+        sessionContentSearch: z.boolean().optional(),
+        // COMPAT(workspaceFileSearch): added in v0.1.102, remove gate after 2026-12-17.
+        workspaceFileSearch: z.boolean().optional(),
       })
       .optional(),
   })
@@ -4640,6 +4724,8 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   ArchiveWorkspaceResponseMessageSchema,
   FetchAgentResponseMessageSchema,
   FetchAgentTimelineResponseMessageSchema,
+  SearchSessionsContentResponseMessageSchema,
+  SearchWorkspaceFilesResponseMessageSchema,
   CancelAgentResponseMessageSchema,
   ClearAgentAttentionResponseMessageSchema,
   WorkspaceCreateResponseSchema,
@@ -5039,6 +5125,12 @@ export type DirectorySuggestionsResponse = z.infer<typeof DirectorySuggestionsRe
 export type ScannedGitRepo = z.infer<typeof ScannedGitRepoSchema>;
 export type WorkspaceScanGitReposRequest = z.infer<typeof WorkspaceScanGitReposRequestSchema>;
 export type WorkspaceScanGitReposResponse = z.infer<typeof WorkspaceScanGitReposResponseSchema>;
+export type SearchSessionsContentResponse = z.infer<
+  typeof SearchSessionsContentResponseMessageSchema
+>;
+export type SearchWorkspaceFilesResponse = z.infer<
+  typeof SearchWorkspaceFilesResponseMessageSchema
+>;
 export type GitLogCommit = z.infer<typeof GitLogCommitSchema>;
 export type CheckoutGetLogRequest = z.infer<typeof CheckoutGetLogRequestSchema>;
 export type GitCommitFileStatus = z.infer<typeof GitCommitFileStatusSchema>;

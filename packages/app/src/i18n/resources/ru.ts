@@ -81,6 +81,9 @@ export const ru: TranslationResources = {
       openProject: "Открыть проект",
       home: "Дом",
       files: "Файлы",
+      messages: "Сообщения",
+      workspaceFiles: "Файлы рабочей области",
+      messagesScopeNote: "Поиск только по загруженным сессиям",
     },
   },
   composer: {
