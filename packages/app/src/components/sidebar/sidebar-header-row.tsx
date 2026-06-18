@@ -52,9 +52,10 @@ export function SidebarHeaderRow({
   const buttonStyle = useCallback(
     ({ hovered }: PressableStateCallbackType & { hovered?: boolean }) => [
       styles.button,
+      variant === "compact" && styles.buttonCompact,
       (Boolean(hovered) || isActive) && styles.buttonHovered,
     ],
-    [isActive],
+    [isActive, variant],
   );
 
   const renderChildren = useCallback(
@@ -134,6 +135,15 @@ const styles = StyleSheet.create((theme) => ({
     paddingVertical: theme.spacing[2],
     paddingHorizontal: theme.spacing[3],
     borderRadius: theme.borderRadius.lg,
+  },
+  // Compact header entries (New workspace / History) sit tighter than the
+  // workspace-row shape the base button mirrors.
+  buttonCompact: {
+    minHeight: 32,
+    paddingVertical: theme.spacing[1.5],
+    // Match the project rows' inner padding so the icons align on one vertical
+    // edge with the workspace list below (base button uses a wider spacing[3]).
+    paddingHorizontal: theme.spacing[2],
   },
   buttonHovered: {
     backgroundColor: theme.colors.surfaceSidebarHover,

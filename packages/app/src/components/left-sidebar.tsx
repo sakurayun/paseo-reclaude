@@ -1216,9 +1216,11 @@ const staticStyles = RNStyleSheet.create({
 const styles = StyleSheet.create((theme) => ({
   sidebarHeaderGroup: {
     paddingTop: theme.spacing[2],
-    // Match WorkspacesSectionHeader's paddingTop below the divider so the divider
-    // sits visually centered between the Sessions row and the Workspaces header.
-    paddingBottom: theme.spacing[2],
+    gap: 2,
+    // Distance from History's bottom edge to the divider. WorkspacesSectionHeader
+    // uses a slightly smaller paddingTop to balance the action buttons' centering
+    // offset so the divider reads as visually centered between the two.
+    paddingBottom: theme.spacing[1.5],
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.border,
   },
@@ -1227,9 +1229,16 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     justifyContent: "space-between",
     gap: theme.spacing[2],
-    paddingLeft: theme.spacing[2] + theme.spacing[3],
-    paddingRight: theme.spacing[4],
-    paddingTop: theme.spacing[2],
+    // Align the title with the compact rows' icons and the project icons below
+    // (listContent + projectRow inner padding both spacing[2]).
+    paddingLeft: theme.spacing[2] + theme.spacing[2],
+    // Align the trailing action pill's right edge with the New workspace and
+    // project row pills (both 8px from the sidebar edge).
+    paddingRight: theme.spacing[2],
+    // Less than sidebarHeaderGroup's paddingBottom: the 28px-tall action buttons
+    // center the title and add their own offset above it, so equal padding reads
+    // as a larger gap than History's. Trim paddingTop to balance it visually.
+    paddingTop: theme.spacing[1],
     paddingBottom: theme.spacing[1],
   },
   workspacesSectionTitle: {

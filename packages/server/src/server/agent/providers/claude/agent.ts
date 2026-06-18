@@ -514,7 +514,7 @@ function readClaudeFastModeSetting(settings: ClaudeOptions["settings"]): boolean
 type ClaudeSettingsObject = NonNullable<Exclude<ClaudeOptions["settings"], string>>;
 
 interface ClaudeExtendedSettings extends ClaudeSettingsObject {
-  ultracode?: boolean | null;
+  ultracode?: boolean;
 }
 
 function readClaudeUltracodeSetting(settings: ClaudeOptions["settings"]): boolean | null {

@@ -272,7 +272,7 @@ export const PersistedConfigSchema = z
             // localhost service proxying remains always enabled.
             enabled: z.boolean().optional(),
             listen: z.string().optional(),
-            publicBaseUrl: z.string().url().optional(),
+            publicBaseUrl: z.url().optional(),
           })
           .strict()
           .optional(),

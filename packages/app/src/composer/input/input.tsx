@@ -95,6 +95,8 @@ export interface MessageInputProps {
   submitIcon?: "arrow" | "return";
   isSubmitDisabled?: boolean;
   isSubmitLoading?: boolean;
+  /** When true, keep the grown input height after submit (text is preserved, not cleared). */
+  preserveHeightOnSubmit?: boolean;
   attachments: ComposerAttachment[];
   cwd: string;
   attachmentMenuItems: AttachmentMenuItem[];
@@ -1044,6 +1046,7 @@ interface SendMessageContext {
   isAgentRunning: boolean;
   onSubmit: (payload: MessagePayload) => void;
   onMinimizeHeight: () => void;
+  preserveHeightOnSubmit: boolean;
 }
 
 function sendMessageImpl(ctx: SendMessageContext): void {
@@ -1062,7 +1065,11 @@ function sendMessageImpl(ctx: SendMessageContext): void {
     cwd: ctx.cwd,
     forceSend: ctx.isAgentRunning || undefined,
   });
-  ctx.onMinimizeHeight();
+  // When the host preserves and locks the composer (e.g. new-workspace creation),
+  // the text stays put — collapsing the height would clip it. Keep it grown.
+  if (!ctx.preserveHeightOnSubmit) {
+    ctx.onMinimizeHeight();
+  }
 }
 
 interface QueueMessageContext {
@@ -1203,6 +1210,7 @@ interface ResolvedMessageInputProps {
   submitIcon: "arrow" | "return";
   isSubmitDisabled: boolean;
   isSubmitLoading: boolean;
+  preserveHeightOnSubmit: boolean;
   attachments: ComposerAttachment[];
   cwd: string;
   attachmentMenuItems: AttachmentMenuItem[];
@@ -1247,6 +1255,7 @@ function resolveMessageInputProps(props: MessageInputProps): ResolvedMessageInpu
     submitIcon: props.submitIcon ?? "arrow",
     isSubmitDisabled: props.isSubmitDisabled ?? false,
     isSubmitLoading: props.isSubmitLoading ?? false,
+    preserveHeightOnSubmit: props.preserveHeightOnSubmit ?? false,
     attachments: props.attachments,
     cwd: props.cwd,
     attachmentMenuItems: props.attachmentMenuItems,
@@ -1325,6 +1334,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       submitIcon,
       isSubmitDisabled,
       isSubmitLoading,
+      preserveHeightOnSubmit,
       attachments,
       cwd,
       attachmentMenuItems,
@@ -1647,6 +1657,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
           isAgentRunning,
           onSubmit,
           onMinimizeHeight: minimizeInputHeight,
+          preserveHeightOnSubmit,
         }),
       [
         allowEmptySubmit,
@@ -1656,6 +1667,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
         isAgentRunning,
         hasExternalContent,
         minimizeInputHeight,
+        preserveHeightOnSubmit,
       ],
     );
 

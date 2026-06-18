@@ -165,9 +165,7 @@ export function resolveDefaultLocalSttModel(language: string | undefined): Local
   return DEFAULT_LOCAL_STT_MODEL;
 }
 
-function createModelIdSchema<T extends string>(
-  modelIds: readonly T[],
-): z.ZodType<T, z.ZodTypeDef, string> {
+function createModelIdSchema<T extends string>(modelIds: readonly T[]): z.ZodType<T, string> {
   const validIds = new Set<string>(modelIds);
   return z
     .string()

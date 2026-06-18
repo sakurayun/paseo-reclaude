@@ -15,9 +15,9 @@ import {
   ExternalLink,
   Folder,
   FolderGit2,
-  GitBranch,
   GitPullRequest,
   Globe,
+  Monitor,
   SquareTerminal,
 } from "lucide-react-native";
 import { GitHubIcon } from "@/components/icons/github-icon";
@@ -57,9 +57,9 @@ const ThemedGitHubIcon = withUnistyles(GitHubIcon);
 const ThemedActivityIndicator = withUnistyles(ActivityIndicator);
 const ThemedCircleAlert = withUnistyles(CircleAlert);
 const ThemedSyncedLoader = withUnistyles(SyncedLoader);
+const ThemedMonitor = withUnistyles(Monitor);
 const ThemedFolder = withUnistyles(Folder);
 const ThemedFolderGit2 = withUnistyles(FolderGit2);
-const ThemedGitBranch = withUnistyles(GitBranch);
 const ThemedGlobe = withUnistyles(Globe);
 const ThemedSquareTerminal = withUnistyles(SquareTerminal);
 
@@ -132,40 +132,44 @@ export const SidebarWorkspaceRowContent = memo(function SidebarWorkspaceRowConte
   return (
     <View style={styles.workspaceRowContent}>
       <View style={styles.workspaceRowMain}>
-        <View style={styles.workspaceRowLeft}>
-          {sessionsCount > 0 && onToggleSessions ? (
-            <SessionsCountToggle
-              count={sessionsCount}
-              expanded={sessionsExpanded}
-              onToggle={onToggleSessions}
-            />
-          ) : null}
-          <WorkspaceStatusIndicator
-            bucket={workspace.statusBucket}
-            workspaceKind={workspace.workspaceKind}
-            loading={isLoading}
+        {sessionsCount > 0 && onToggleSessions ? (
+          <SessionsCountToggle
+            count={sessionsCount}
+            expanded={sessionsExpanded}
+            onToggle={onToggleSessions}
           />
-          <Text style={workspaceBranchTextStyle} numberOfLines={1}>
-            {workspace.name}
-          </Text>
-          {scriptIconKind ? <WorkspaceScriptIcon kind={scriptIconKind} /> : null}
+        ) : null}
+        <WorkspaceStatusIndicator
+          bucket={workspace.statusBucket}
+          workspaceKind={workspace.workspaceKind}
+          loading={isLoading}
+        />
+        <View style={styles.workspaceContentColumn}>
+          <View style={styles.workspaceTitleRow}>
+            <View style={styles.workspaceTitleLeft}>
+              <Text style={workspaceBranchTextStyle} numberOfLines={1}>
+                {workspace.name}
+              </Text>
+              {scriptIconKind ? <WorkspaceScriptIcon kind={scriptIconKind} /> : null}
+            </View>
+            <View style={styles.workspaceRowRight}>{children}</View>
+          </View>
+          {subtitle ? (
+            <Text style={styles.workspaceSubtitle} numberOfLines={1}>
+              {subtitle}
+            </Text>
+          ) : null}
+          {workspace.prHint ? (
+            <View style={styles.workspacePrBadgeRow}>
+              <PrBadge hint={workspace.prHint} />
+              <ChecksBadge checks={workspace.prHint.checks} />
+            </View>
+          ) : null}
         </View>
-        <View style={styles.workspaceRowRight}>{children}</View>
       </View>
       {showShortcutBadge && shortcutNumber !== null ? (
         <View style={styles.shortcutBadgeOverlay} pointerEvents="none">
           <SidebarWorkspaceShortcutBadge number={shortcutNumber} />
-        </View>
-      ) : null}
-      {subtitle ? (
-        <Text style={styles.workspaceSubtitle} numberOfLines={1}>
-          {subtitle}
-        </Text>
-      ) : null}
-      {workspace.prHint ? (
-        <View style={styles.workspacePrBadgeRow}>
-          <PrBadge hint={workspace.prHint} />
-          <ChecksBadge checks={workspace.prHint.checks} />
         </View>
       ) : null}
     </View>
@@ -266,11 +270,20 @@ function WorkspaceStatusIndicator({
     );
   }
 
-  let KindIcon: typeof ThemedGitBranch;
-  if (workspaceKind === "worktree") KindIcon = ThemedFolderGit2;
-  else if (workspaceKind === "directory") KindIcon = ThemedFolder;
-  // Git checkouts (local or managed) read as branches in the sidebar.
-  else KindIcon = ThemedGitBranch;
+  if (bucket === "attention") {
+    return (
+      <View style={styles.workspaceStatusDot} testID="workspace-status-indicator-attention">
+        <View style={styles.standaloneStatusDot} />
+      </View>
+    );
+  }
+
+  if (bucket === "done") return null;
+
+  let KindIcon: typeof ThemedMonitor;
+  if (workspaceKind === "local_checkout") KindIcon = ThemedMonitor;
+  else if (workspaceKind === "worktree") KindIcon = ThemedFolderGit2;
+  else KindIcon = ThemedFolder;
 
   const dotColorStyle = getStatusDotColorStyle(bucket);
   const statusDotSize = isEmphasizedStatusDotBucket(bucket)
@@ -524,11 +537,20 @@ const styles = StyleSheet.create((theme) => ({
   workspaceRowMain: {
     flexDirection: "row",
     alignItems: "flex-start",
-    justifyContent: "space-between",
     gap: theme.spacing[2],
     width: "100%",
   },
-  workspaceRowLeft: {
+  workspaceContentColumn: {
+    flex: 1,
+    minWidth: 0,
+  },
+  workspaceTitleRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: theme.spacing[2],
+  },
+  workspaceTitleLeft: {
     flexDirection: "row",
     alignItems: "center",
     gap: theme.spacing[2],
@@ -585,6 +607,12 @@ const styles = StyleSheet.create((theme) => ({
     borderRadius: theme.borderRadius.full,
     borderWidth: 1,
   },
+  standaloneStatusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: theme.borderRadius.full,
+    backgroundColor: theme.colors.palette.green[500],
+  },
   workspaceBranchText: {
     color: theme.colors.foreground,
     fontSize: theme.fontSize.sm,
@@ -614,15 +642,13 @@ const styles = StyleSheet.create((theme) => ({
   workspaceSubtitle: {
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.xs,
-    lineHeight: Math.round(theme.fontSize.xs * 1.3),
-    marginLeft: WORKSPACE_STATUS_DOT_WIDTH + theme.spacing[2],
+    lineHeight: 14,
   },
   workspacePrBadgeRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: theme.spacing[2],
     marginTop: theme.spacing[1],
-    paddingLeft: WORKSPACE_STATUS_DOT_WIDTH + theme.spacing[2],
   },
   statusDotNeedsInput: {
     backgroundColor: theme.colors.palette.amber[500],

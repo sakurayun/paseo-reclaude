@@ -1996,6 +1996,7 @@ export function Composer({
               submitIcon={submitIcon}
               isSubmitDisabled={isSubmitBusy}
               isSubmitLoading={isSubmitBusy}
+              preserveHeightOnSubmit={submitBehavior === "preserve-and-lock"}
               attachments={selectedAttachments}
               cwd={cwd}
               attachmentMenuItems={attachmentMenuItems}
