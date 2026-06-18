@@ -20,7 +20,7 @@ export type ScheduleCadence = z.infer<typeof ScheduleCadenceSchema>;
 export const ScheduleTargetSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("agent"),
-    agentId: z.guid(),
+    agentId: z.string().uuid(),
   }),
   z.object({
     type: z.literal("new-agent"),
@@ -56,7 +56,7 @@ export const ScheduleRunSchema = z.object({
   startedAt: z.string(),
   endedAt: z.string().nullable(),
   status: z.enum(["running", "succeeded", "failed"]),
-  agentId: z.guid().nullable(),
+  agentId: z.string().uuid().nullable(),
   output: z.string().nullable(),
   error: z.string().nullable(),
 });

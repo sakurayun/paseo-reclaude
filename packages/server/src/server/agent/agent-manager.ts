@@ -422,7 +422,7 @@ interface SubscriptionRecord {
 }
 
 const BUSY_STATUSES: Set<AgentLifecycleStatus> = new Set(["initializing", "running"]);
-const AgentIdSchema = z.guid();
+const AgentIdSchema = z.string().uuid();
 
 function isAgentBusy(status: AgentLifecycleStatus): boolean {
   return BUSY_STATUSES.has(status);
