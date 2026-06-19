@@ -82,7 +82,7 @@ import { ChatSelectionBubble } from "@/agent-stream/selection/chat-selection-bub
 import { openSeededDraftWindow } from "@/agent-stream/selection/open-seeded-draft-window";
 import { useChatTextSelection } from "@/agent-stream/selection/use-chat-text-selection";
 import type { Theme } from "@/styles/theme";
-import { useArchiveSubagent, useSubagentsForParent } from "@/subagents";
+import { useArchiveSubagent, useDetachSubagent, useSubagentsForParent } from "@/subagents";
 import { SubagentsTrack } from "@/subagents/track";
 import { TodoTrack, useLatestAgentTodos } from "@/components/todo-track";
 import { SidechainTrack, useCurrentRunSidechainCalls } from "@/components/sidechain-track";
@@ -90,6 +90,7 @@ import type { PendingPermission } from "@/types/shared";
 import type { StreamItem } from "@/types/stream";
 import { getInitDeferred, getInitKey } from "@/utils/agent-initialization";
 import { derivePendingPermissionKey, normalizeAgentSnapshot } from "@/utils/agent-snapshots";
+import { applyLegacyDaemonWorkspaceOwnership } from "@/workspace/legacy-daemon-workspaces";
 import type { WorkspaceFileOpenRequest } from "@/workspace/file-open";
 import { navigateToAgent } from "@/utils/navigate-to-agent";
 import { deriveSidebarStateBucket } from "@/utils/sidebar-agent-state";
@@ -245,10 +246,13 @@ function storeFetchedAgentDetail(input: {
   result: NonNullable<FetchAgentResult>;
 }): Agent {
   const normalized = normalizeAgentSnapshot(input.result.agent, input.serverId);
-  const hydrated: Agent = {
-    ...normalized,
-    projectPlacement: input.result.project,
-  };
+  const hydrated: Agent = applyLegacyDaemonWorkspaceOwnership({
+    serverId: input.serverId,
+    agent: {
+      ...normalized,
+      projectPlacement: input.result.project,
+    },
+  });
   const store = useSessionStore.getState();
 
   if (shouldStoreFetchedAgentInActiveDirectory(hydrated)) {
@@ -352,9 +356,10 @@ function DraftPanel() {
   const handleCreated = useCallback(
     (agentSnapshot: Parameters<typeof normalizeAgentSnapshot>[0]) => {
       const normalized = normalizeAgentSnapshot(agentSnapshot, serverId);
+      const agent = applyLegacyDaemonWorkspaceOwnership({ serverId, agent: normalized });
       useSessionStore.getState().setAgents(serverId, (prev) => {
         const next = new Map(prev);
-        next.set(agentSnapshot.id, normalized);
+        next.set(agentSnapshot.id, agent);
         return next;
       });
       retargetCurrentTab({ kind: "agent", agentId: agentSnapshot.id });
@@ -1516,6 +1521,9 @@ function ActiveAgentComposer({
   });
   const latestTodos = useLatestAgentTodos(serverId, agentId);
   const sidechainCalls = useCurrentRunSidechainCalls(serverId, agentId);
+  const canDetachSubagents = useSessionStore(
+    (state) => state.sessions[serverId]?.serverInfo?.features?.agentDetach === true,
+  );
   const handleOpenSubagent = useCallback(
     (subagentId: string) => {
       navigateToAgent({ serverId, agentId: subagentId });
@@ -1523,6 +1531,7 @@ function ActiveAgentComposer({
     [serverId],
   );
   const handleArchiveSubagent = useArchiveSubagent({ serverId });
+  const handleDetachSubagent = useDetachSubagent({ serverId });
   const workspaceAttachmentScopeKey = useWorkspaceAttachmentScopeKey({
     serverId,
     cwd,
@@ -1619,6 +1628,7 @@ function ActiveAgentComposer({
         rows={subagentRows}
         onOpenSubagent={handleOpenSubagent}
         onArchiveSubagent={handleArchiveSubagent}
+        onDetachSubagent={canDetachSubagents ? handleDetachSubagent : undefined}
       />
       <SidechainTrack calls={sidechainCalls} />
       <TodoTrack items={latestTodos} />

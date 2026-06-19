@@ -5,7 +5,6 @@ import { useSessionStore } from "@/stores/session-store";
 import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
 import { buildHostRootRoute } from "@/utils/host-routes";
 import { normalizeWorkspaceOpaqueId } from "@/utils/workspace-identity";
-import { navigateToPreparedWorkspaceTab } from "@/utils/workspace-navigation";
 import {
   AGENT_READY_ROUTE_CONNECTION_FALLBACK_TIMEOUT_MS,
   shouldFallbackHostAgentReadyRoute,
@@ -15,6 +14,7 @@ import {
 // history session) so they surface as a recoverable error screen instead of a
 // white screen / launch crash. See components/route-error-boundary.tsx.
 export { RouteErrorBoundary as ErrorBoundary } from "@/components/route-error-boundary";
+import { navigateToAgent } from "@/utils/navigate-to-agent";
 
 export default function HostAgentReadyRoute() {
   return (
@@ -82,10 +82,9 @@ function HostAgentReadyRouteContent() {
 
     if (resolvedWorkspaceId) {
       redirectedRef.current = true;
-      navigateToPreparedWorkspaceTab({
+      navigateToAgent({
         serverId,
-        workspaceId: resolvedWorkspaceId,
-        target: { kind: "agent", agentId },
+        agentId,
         currentPathname: pathname,
       });
     }
@@ -143,10 +142,10 @@ function HostAgentReadyRouteContent() {
         const workspaceId = normalizeWorkspaceOpaqueId(result?.agent?.workspaceId);
         redirectedRef.current = true;
         if (workspaceId) {
-          navigateToPreparedWorkspaceTab({
+          navigateToAgent({
             serverId,
+            agentId,
             workspaceId,
-            target: { kind: "agent", agentId },
             currentPathname: pathname,
           });
           return;

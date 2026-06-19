@@ -271,7 +271,7 @@ export const en = {
       currentBadge: "Current",
       untitled: "Untitled session",
     },
-    title: "Agent history",
+    title: "History",
     empty: "No sessions yet",
     actions: {
       loadMore: "Load more",
@@ -397,11 +397,15 @@ export const en = {
   workspace: {
     route: {
       loading: "Loading workspace",
+      restoring: "Restoring workspace",
+      restoreFailed:
+        "Couldn't restore this workspace — the directory may have been moved or deleted",
       connecting: "Connecting",
       hostOffline: "{{hostName}} is offline",
       cannotReachHost: "Cannot reach {{hostName}}",
       hostStatus: "Host status: {{status}}",
       missing: "Workspace not found",
+      needsHostUpgrade: "Update your host to restore this workspace",
       manageHost: "Manage host",
     },
     hoverCard: {
@@ -852,16 +856,16 @@ export const en = {
           success: "Archived",
         },
         mergePr: {
-          squash: "Merge",
-          merge: "Merge",
-          rebase: "Merge",
+          squash: "Merge PR (squash)",
+          merge: "Merge PR (merge)",
+          rebase: "Merge PR (rebase)",
           pending: "Merging PR...",
           success: "PR merged",
         },
         autoMerge: {
-          enableSquash: "Auto merge",
-          enableMerge: "Auto merge",
-          enableRebase: "Auto merge",
+          enableSquash: "Auto merge (squash)",
+          enableMerge: "Auto merge (merge)",
+          enableRebase: "Auto merge (rebase)",
           enabled: "Auto-merge enabled",
           enabling: "Enabling auto-merge...",
           disabling: "Disabling auto-merge...",
@@ -1054,6 +1058,7 @@ export const en = {
       toasts: {
         hostDisconnected: "Host is not connected",
         removeFailed: "Failed to remove some workspaces",
+        updateHostToRemove: "Update the host to remove projects.",
       },
       empty: {
         title: "No projects yet",
@@ -1600,6 +1605,8 @@ export const en = {
     backdrop: "Menu backdrop",
   },
   subagents: {
+    detachAction: "Detach {{label}}",
+    detachTooltip: "Detach subagent",
     archiveAction: "Archive {{label}}",
     archiveTooltip: "Archive subagent",
     archiveDialog: {
@@ -2237,6 +2244,9 @@ export const en = {
         button: "Diagnostic",
         refresh: "Refresh",
         refreshing: "Refreshing...",
+        copyLabel: "diagnostic",
+        copyAccessibility: "Copy diagnostic",
+        copyFailed: "Failed to copy diagnostic",
         refreshAccessibility: "Refresh diagnostic",
         refreshingAccessibility: "Refreshing diagnostic",
         running: "Running diagnostic...",

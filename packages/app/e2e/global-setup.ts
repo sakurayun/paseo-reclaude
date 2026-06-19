@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { spawn, type ChildProcess, execSync } from "node:child_process";
 import { existsSync } from "node:fs";
-import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import net from "node:net";
@@ -152,6 +152,67 @@ async function stopProcess(child: ChildProcess | null): Promise<void> {
     }, 5000);
     child.once("exit", settle);
   });
+}
+
+function isProcessRunning(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function readSupervisorPidLock(home: string): Promise<number | null> {
+  try {
+    const content = await readFile(path.join(home, "paseo.pid"), "utf8");
+    const parsed = JSON.parse(content) as { pid?: unknown };
+    return typeof parsed.pid === "number" ? parsed.pid : null;
+  } catch {
+    return null;
+  }
+}
+
+async function stopProcessByPid(pid: number): Promise<void> {
+  if (!isProcessRunning(pid)) {
+    return;
+  }
+
+  try {
+    process.kill(pid, "SIGTERM");
+  } catch {
+    return;
+  }
+  const deadline = Date.now() + 5000;
+  while (Date.now() < deadline) {
+    if (!isProcessRunning(pid)) {
+      return;
+    }
+    await sleep(100);
+  }
+
+  if (isProcessRunning(pid)) {
+    try {
+      process.kill(pid, "SIGKILL");
+    } catch {
+      return;
+    }
+  }
+}
+
+async function stopCurrentDaemonFromPidLock(): Promise<void> {
+  if (!paseoHome) {
+    return;
+  }
+  if (process.env.E2E_DAEMON_PORT === "6767") {
+    throw new Error("Refusing to clean up daemon PID lock for developer daemon port 6767.");
+  }
+
+  const pid = await readSupervisorPidLock(paseoHome);
+  if (pid === null) {
+    return;
+  }
+  await stopProcessByPid(pid);
 }
 
 function summarizeOpenAiErrorBody(body: string): string {
@@ -665,6 +726,7 @@ async function performCleanup(shouldRemovePaseoHome: boolean): Promise<void> {
     stopProcess(metroProcess),
     stopProcess(relayProcess),
   ]);
+  await stopCurrentDaemonFromPidLock();
   daemonProcess = null;
   metroProcess = null;
   relayProcess = null;

@@ -282,7 +282,7 @@ export const fr: TranslationResources = {
       currentBadge: "Actuelle",
       untitled: "Session sans titre",
     },
-    title: "Historique des agents",
+    title: "Historique",
     empty: "Aucune séance pour l'instant",
     actions: {
       loadMore: "Charger plus",
@@ -408,11 +408,15 @@ export const fr: TranslationResources = {
   workspace: {
     route: {
       loading: "Chargement de l'espace de travail",
+      restoring: "Restauration de l'espace de travail",
+      restoreFailed:
+        "Impossible de restaurer cet espace de travail — le répertoire a peut-être été déplacé ou supprimé",
       connecting: "De liaison",
       hostOffline: "{{hostName}}est hors ligne",
       cannotReachHost: "Impossible d'atteindre{{hostName}}",
       hostStatus: "StatutHost:{{status}}",
       missing: "Workspaceintrouvable",
+      needsHostUpgrade: "Mettez à jour votre hôte pour restaurer cet espace de travail",
       manageHost: "Gérer l'hôte",
     },
     hoverCard: {
@@ -869,16 +873,16 @@ export const fr: TranslationResources = {
           success: "Archivé",
         },
         mergePr: {
-          squash: "Fusionner",
-          merge: "Fusionner",
-          rebase: "Fusionner",
-          pending: "Fusion dePR...",
-          success: "PRfusionné",
+          squash: "Fusionner PR (squash)",
+          merge: "Fusionner PR (merge)",
+          rebase: "Fusionner PR (rebase)",
+          pending: "Fusion de PR...",
+          success: "PR fusionné",
         },
         autoMerge: {
-          enableSquash: "Fusion automatique",
-          enableMerge: "Fusion automatique",
-          enableRebase: "Fusion automatique",
+          enableSquash: "Fusion automatique (squash)",
+          enableMerge: "Fusion automatique (merge)",
+          enableRebase: "Fusion automatique (rebase)",
           enabled: "Fusion automatique activée",
           enabling: "Activation de la fusion automatique...",
           disabling: "Désactivation de la fusion automatique...",
@@ -1083,6 +1087,7 @@ export const fr: TranslationResources = {
       toasts: {
         hostDisconnected: "Hostn'est pas connecté",
         removeFailed: "Échec de la suppression de certains espaces de travail",
+        updateHostToRemove: "Mettez à jour le host pour supprimer des projets.",
       },
       empty: {
         title: "Aucun projet pour l'instant",
@@ -1642,6 +1647,8 @@ export const fr: TranslationResources = {
     backdrop: "Toile de fond du menu",
   },
   subagents: {
+    detachAction: "Detacher {{label}}",
+    detachTooltip: "Detacher le sous-agent",
     archiveAction: "Archiver{{label}}",
     archiveTooltip: "Sous-agent d'archivage",
     archiveDialog: {
@@ -2290,6 +2297,9 @@ export const fr: TranslationResources = {
         button: "Diagnostique",
         refresh: "Rafraîchir",
         refreshing: "Rafraîchissant...",
+        copyLabel: "diagnostic",
+        copyAccessibility: "Copier le diagnostic",
+        copyFailed: "Échec de la copie du diagnostic",
         refreshAccessibility: "Actualiser le diagnostic",
         refreshingAccessibility: "Diagnostic rafraîchissant",
         running: "Exécution du diagnostic...",

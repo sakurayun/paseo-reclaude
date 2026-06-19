@@ -69,6 +69,7 @@ export interface TerminalSessionControllerOptions {
   hasBinaryChannel: () => boolean;
   isPathWithinRoot: (rootPath: string, candidatePath: string) => boolean;
   sessionLogger: pino.Logger;
+  listTerminalWorkspaceRefs?: () => Promise<readonly TerminalWorkspaceRef[]>;
   listTerminalWorkspaceRoots?: () => Promise<readonly string[]>;
   // Whether the connected client can reflow restored snapshots. When true the
   // daemon attaches per-row soft-wrap flags to snapshots; otherwise it omits them
@@ -82,6 +83,11 @@ export interface TerminalSessionControllerOptions {
   // Bytes queued on the client transport but not yet sent, or null when the
   // transport exposes no backpressure signal (e.g. the multiplexed relay socket).
   getClientBufferedAmount?: () => number | null;
+}
+
+interface TerminalWorkspaceRef {
+  workspaceId: string;
+  cwd: string;
 }
 
 export interface TerminalSessionControllerMetrics {
@@ -134,6 +140,7 @@ export class TerminalSessionController {
   private readonly hasBinaryChannel: () => boolean;
   private readonly isPathWithinRoot: (rootPath: string, candidatePath: string) => boolean;
   private readonly sessionLogger: pino.Logger;
+  private readonly listTerminalWorkspaceRefs: () => Promise<readonly TerminalWorkspaceRef[]>;
   private readonly listTerminalWorkspaceRoots: () => Promise<readonly string[]>;
   private readonly clientSupportsWrapReflow: () => boolean;
   private readonly getClientBufferedAmount: () => number | null;
@@ -159,7 +166,10 @@ export class TerminalSessionController {
     this.hasBinaryChannel = options.hasBinaryChannel;
     this.isPathWithinRoot = options.isPathWithinRoot;
     this.sessionLogger = options.sessionLogger;
-    this.listTerminalWorkspaceRoots = options.listTerminalWorkspaceRoots ?? (async () => []);
+    this.listTerminalWorkspaceRefs = options.listTerminalWorkspaceRefs ?? (async () => []);
+    this.listTerminalWorkspaceRoots =
+      options.listTerminalWorkspaceRoots ??
+      (async () => (await this.listTerminalWorkspaceRefs()).map((workspace) => workspace.cwd));
     this.clientSupportsWrapReflow = options.clientSupportsWrapReflow ?? (() => false);
     this.getClientBufferedAmount = options.getClientBufferedAmount ?? (() => 0);
   }
@@ -535,9 +545,14 @@ export class TerminalSessionController {
       }
 
       // workspaceId is optional in the protocol; id-less callers (CLI / old
-      // clients) get a stable standalone id derived from the cwd instead of a
-      // rejection. See resolveStandaloneWorkspaceId.
-      const workspaceId = msg.workspaceId ?? resolveStandaloneWorkspaceId(msg.cwd);
+      // clients) must never be rejected. Prefer resolving an existing workspace
+      // by cwd (upstream legacy lookup); fall back to a stable standalone id
+      // derived from the cwd so `paseo terminal create` and the packaged-desktop
+      // smoke test keep working. See resolveStandaloneWorkspaceId.
+      const workspaceId =
+        msg.workspaceId ??
+        (await this.resolveLegacyTerminalWorkspaceId(msg.cwd)) ??
+        resolveStandaloneWorkspaceId(msg.cwd);
 
       const session = await this.terminalManager.createTerminal({
         cwd: msg.cwd,
@@ -574,6 +589,31 @@ export class TerminalSessionController {
         },
       });
     }
+  }
+
+  private async resolveLegacyTerminalWorkspaceId(cwd: string): Promise<string | null> {
+    const workspaceRefs = await this.listTerminalWorkspaceRefs();
+    if (workspaceRefs.length === 0) {
+      return null;
+    }
+
+    const exactMatch = workspaceRefs.find((workspace) => this.isSamePath(workspace.cwd, cwd));
+    if (exactMatch) {
+      return exactMatch.workspaceId;
+    }
+
+    const ownerRoot = this.resolveTerminalOwnerRoot(
+      cwd,
+      workspaceRefs.map((workspace) => workspace.cwd),
+    );
+    if (!ownerRoot) {
+      return null;
+    }
+
+    return (
+      workspaceRefs.find((workspace) => this.isSamePath(workspace.cwd, ownerRoot))?.workspaceId ??
+      null
+    );
   }
 
   private async handleRenameTerminalRequest(msg: RenameTerminalRequest): Promise<void> {

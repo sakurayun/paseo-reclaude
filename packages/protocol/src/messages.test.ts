@@ -5,6 +5,7 @@ import {
   MutableDaemonConfigPatchSchema,
   MutableDaemonConfigSchema,
   PaseoWorktreeArchiveRequestSchema,
+  parseServerInfoStatusPayload,
   SessionInboundMessageSchema,
   SessionOutboundMessageSchema,
 } from "./messages.js";
@@ -242,6 +243,51 @@ describe("model gateway message compatibility", () => {
       baseUrl: "https://router.example.com/v1",
       model: "premium-coding",
     });
+  });
+});
+
+describe("agent detach RPC", () => {
+  test("parses the namespaced detach request", () => {
+    const parsed = SessionInboundMessageSchema.parse({
+      type: "agent.detach.request",
+      agentId: "child-agent",
+      requestId: "req-detach",
+    });
+
+    expect(parsed).toEqual({
+      type: "agent.detach.request",
+      agentId: "child-agent",
+      requestId: "req-detach",
+    });
+  });
+
+  test("parses the namespaced detach response", () => {
+    const parsed = SessionOutboundMessageSchema.parse({
+      type: "agent.detach.response",
+      payload: {
+        requestId: "req-detach",
+        agentId: "child-agent",
+        accepted: true,
+        error: null,
+      },
+    });
+
+    expect(parsed.type).toBe("agent.detach.response");
+  });
+
+  test("parses the agentDetach server feature gate", () => {
+    const parsed = parseServerInfoStatusPayload({
+      status: "server_info",
+      serverId: "srv-test",
+      features: {
+        agentDetach: true,
+      },
+    });
+
+    if (!parsed) {
+      throw new Error("Expected server info payload to parse");
+    }
+    expect(parsed.features?.agentDetach).toBe(true);
   });
 });
 

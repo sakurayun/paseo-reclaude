@@ -27,6 +27,24 @@ async function hideWorkspaceFromSidebar(page: Page, workspaceId: string): Promis
   await archiveItem.click();
 }
 
+async function removeProjectFromSidebar(page: Page, projectId: string): Promise<void> {
+  const projectRow = page.getByTestId(`sidebar-project-row-${projectId}`);
+  await expect(projectRow).toBeVisible({ timeout: 30_000 });
+  await projectRow.hover();
+
+  const kebab = page.getByTestId(`sidebar-project-kebab-${projectId}`);
+  await expect(kebab).toBeVisible({ timeout: 10_000 });
+  await kebab.click();
+
+  // Removing a project raises a browser confirm; accept it so the
+  // user-confirmed removal proceeds deterministically.
+  page.once("dialog", (dialog) => void dialog.accept());
+
+  const removeItem = page.getByTestId(`sidebar-project-menu-remove-${projectId}`);
+  await expect(removeItem).toBeVisible({ timeout: 10_000 });
+  await removeItem.click();
+}
+
 // Model B makes the project a first-class parent: archiving its last workspace
 // must not delete the project. The per-project "+ New workspace" row is gone;
 // the empty project keeps its parent row, and creation stays reachable from the
@@ -71,6 +89,46 @@ test.describe("Empty project persists", () => {
       await expect(projectRow).toBeVisible({ timeout: 30_000 });
       await projectRow.hover();
       await expect(projectNewWorktreeIcon).toBeVisible({ timeout: 30_000 });
+    } finally {
+      await workspace.cleanup();
+    }
+  });
+});
+
+test.describe("Project remove", () => {
+  test("removing a project from project actions removes it from the sidebar", async ({ page }) => {
+    const workspace = await seedWorkspace({ repoPrefix: "project-remove-sidebar-" });
+
+    try {
+      const projectRow = page.getByTestId(`sidebar-project-row-${workspace.projectId}`);
+
+      await gotoAppShell(page);
+      await waitForSidebarHydration(page);
+      await expect(projectRow).toBeVisible({ timeout: 30_000 });
+      await expect(page.getByTestId(workspaceRowTestId(workspace.workspaceId))).toBeVisible({
+        timeout: 30_000,
+      });
+
+      await removeProjectFromSidebar(page, workspace.projectId);
+
+      await expect(page.getByTestId(workspaceRowTestId(workspace.workspaceId))).toHaveCount(0, {
+        timeout: 30_000,
+      });
+      await expect(projectRow).toHaveCount(0, { timeout: 30_000 });
+
+      await page.reload();
+      await waitForSidebarHydration(page);
+      await expect(projectRow).toHaveCount(0, { timeout: 30_000 });
+
+      const reopened = await workspace.client.openProject(workspace.repoPath);
+      expect(reopened.error).toBeNull();
+      expect(reopened.workspace?.projectDisplayName).toBe(workspace.projectDisplayName);
+
+      await page.reload();
+      await waitForSidebarHydration(page);
+      await expect(projectRow).toBeVisible({ timeout: 30_000 });
+      await expect(projectRow).toContainText(workspace.projectDisplayName);
+      await expect(projectRow).not.toContainText(workspace.repoPath);
     } finally {
       await workspace.cleanup();
     }

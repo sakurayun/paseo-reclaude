@@ -281,7 +281,7 @@ export const ru: TranslationResources = {
       currentBadge: "Текущая",
       untitled: "Сессия без названия",
     },
-    title: "История агентов",
+    title: "История",
     empty: "Сеансов пока нет",
     actions: {
       loadMore: "Загрузить больше",
@@ -407,11 +407,15 @@ export const ru: TranslationResources = {
   workspace: {
     route: {
       loading: "Загрузка рабочей области",
+      restoring: "Восстановление рабочей области",
+      restoreFailed:
+        "Не удалось восстановить эту рабочую область — каталог мог быть перемещён или удалён",
       connecting: "Подключение",
       hostOffline: "{{hostName}}не в сети",
       cannotReachHost: "Невозможно связаться с{{hostName}}",
       hostStatus: "Статус Host:{{status}}",
       missing: "Workspace не найден",
+      needsHostUpgrade: "Обновите хост, чтобы восстановить эту рабочую область",
       manageHost: "Управление хостом",
     },
     hoverCard: {
@@ -866,16 +870,16 @@ export const ru: TranslationResources = {
           success: "В архиве",
         },
         mergePr: {
-          squash: "Объединить",
-          merge: "Объединить",
-          rebase: "Объединить",
+          squash: "Объединить PR (squash)",
+          merge: "Объединить PR (merge)",
+          rebase: "Объединить PR (rebase)",
           pending: "Объединение PR...",
           success: "PR объединен",
         },
         autoMerge: {
-          enableSquash: "Автообъединение",
-          enableMerge: "Автообъединение",
-          enableRebase: "Автообъединение",
+          enableSquash: "Автообъединение (squash)",
+          enableMerge: "Автообъединение (merge)",
+          enableRebase: "Автообъединение (rebase)",
           enabled: "Автоматическое объединение включено",
           enabling: "Включение автоматического объединения...",
           disabling: "Отключение автоматического объединения...",
@@ -1074,6 +1078,7 @@ export const ru: TranslationResources = {
       toasts: {
         hostDisconnected: "Host не подключен",
         removeFailed: "Не удалось удалить некоторые рабочие области.",
+        updateHostToRemove: "Обновите host, чтобы удалять проекты.",
       },
       empty: {
         title: "Пока нет проектов",
@@ -1629,6 +1634,8 @@ export const ru: TranslationResources = {
     backdrop: "Фон меню",
   },
   subagents: {
+    detachAction: "Отсоединить {{label}}",
+    detachTooltip: "Отсоединить субагент",
     archiveAction: "Архив{{label}}",
     archiveTooltip: "Архивный субагент",
     archiveDialog: {
@@ -2273,6 +2280,9 @@ export const ru: TranslationResources = {
         button: "Диагностика",
         refresh: "Обновить",
         refreshing: "Освежающий...",
+        copyLabel: "диагностика",
+        copyAccessibility: "Скопировать диагностику",
+        copyFailed: "Не удалось скопировать диагностику",
         refreshAccessibility: "Обновить диагностику",
         refreshingAccessibility: "Обновление диагностики",
         running: "Запускаю диагностику...",

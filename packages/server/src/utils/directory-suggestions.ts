@@ -90,8 +90,8 @@ const IGNORED_SUGGESTION_DIRECTORY_NAMES = new Set([
   "coverage",
   "vendor",
   "__pycache__",
+  ".git",
 ]);
-const ALLOWED_HIDDEN_WORKSPACE_DIRECTORY_NAMES = new Set([".claude", ".codex", ".cursor"]);
 
 export async function searchHomeDirectories(
   options: SearchHomeDirectoriesOptions,
@@ -319,6 +319,9 @@ async function searchWorkspaceWithinParentDirectory(input: {
     if (entry.kind === "file" && !input.includeFiles) {
       continue;
     }
+    if (isHiddenWorkspaceSuggestion(entry)) {
+      continue;
+    }
     const rankedEntry = rankWorkspaceEntry({
       absolutePath: entry.absolutePath,
       kind: entry.kind,
@@ -384,6 +387,10 @@ async function searchWorkspaceAcrossTree(input: {
       }
 
       if (entry.kind === "directory" && !input.includeDirectories) {
+        continue;
+      }
+      // Hidden directories are traversed, but not offered as suggestions.
+      if (isHiddenWorkspaceSuggestion(entry)) {
         continue;
       }
       if (entry.kind === "file" && !input.includeFiles) {
@@ -868,11 +875,19 @@ async function listWorkspaceChildEntries(input: {
   const dirents = await readdir(input.directory, { withFileTypes: true }).catch(
     () => [] as Dirent[],
   );
-  const candidates = dirents.filter(
-    (dirent) =>
-      (!isHiddenDirectoryName(dirent.name) || isAllowedHiddenWorkspaceDirectoryName(dirent.name)) &&
-      !isIgnoredSuggestionDirectoryName(dirent.name),
-  );
+  const candidates = dirents.filter((dirent) => {
+    if (isIgnoredSuggestionDirectoryName(dirent.name)) {
+      return false;
+    }
+    // Hidden directories must remain traversable so file links like
+    // `.claude/settings.local.json` can resolve, but hidden files (e.g.
+    // `.DS_Store`) should never be suggested.
+    if (dirent.isFile() && isHiddenDirectoryName(dirent.name)) {
+      return false;
+    }
+    return true;
+  });
+
   const resolved = await Promise.all(
     candidates.map(async (dirent) => {
       const candidatePath = path.join(input.directory, dirent.name);
@@ -962,8 +977,8 @@ function isHiddenDirectoryName(name: string): boolean {
   return name.startsWith(".");
 }
 
-function isAllowedHiddenWorkspaceDirectoryName(name: string): boolean {
-  return ALLOWED_HIDDEN_WORKSPACE_DIRECTORY_NAMES.has(name);
+function isHiddenWorkspaceSuggestion(entry: ChildWorkspaceEntry): boolean {
+  return isHiddenDirectoryName(entry.name);
 }
 
 function isIgnoredSuggestionDirectoryName(name: string): boolean {

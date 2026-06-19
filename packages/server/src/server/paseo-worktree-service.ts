@@ -21,6 +21,7 @@ import { validateBranchSlug, type WorktreeConfig } from "../utils/worktree.js";
 import { getCurrentBranch, localBranchExists, renameCurrentBranch } from "../utils/checkout-git.js";
 import {
   markPaseoWorktreeFirstAgentBranchAutoNameAttempted,
+  normalizeBaseRefName,
   readPaseoWorktreeMetadata,
   writePaseoWorktreeFirstAgentBranchAutoNameMetadata,
 } from "../utils/worktree-metadata.js";
@@ -71,6 +72,7 @@ export async function createPaseoWorktree(
     projectId: input.projectId,
     repoRoot: createdWorktree.repoRoot,
     worktree: createdWorktree.worktree,
+    baseBranch: resolveIntentBaseBranch(createdWorktree.intent),
     title: resolveFirstAgentPromptTitle(input.firstAgentContext),
     deps,
   });
@@ -197,11 +199,25 @@ function maybeMarkFirstAgentBranchAutoNameEligible(options: {
   });
 }
 
+// The base branch is normalized to match worktree.json's baseRefName (origin/
+// stripped). checkout-branch worktrees have no distinct base, so they stay null.
+function resolveIntentBaseBranch(intent: WorktreeCreationIntent): string | null {
+  switch (intent.kind) {
+    case "branch-off":
+      return normalizeBaseRefName(intent.baseBranch);
+    case "checkout-github-pr":
+      return normalizeBaseRefName(intent.baseRefName);
+    case "checkout-branch":
+      return null;
+  }
+}
+
 async function upsertWorkspaceForWorktree(options: {
   inputCwd: string;
   projectId?: string;
   repoRoot: string;
   worktree: WorktreeConfig;
+  baseBranch?: string | null;
   title?: string | null;
   deps: Pick<
     CreatePaseoWorktreeDeps,
@@ -244,6 +260,7 @@ async function upsertWorkspaceForWorktree(options: {
     kind: "worktree",
     displayName: options.worktree.branchName || normalizedCwd,
     branch: options.worktree.branchName || null,
+    baseBranch: options.baseBranch ?? null,
     title: options.title ?? null,
     createdAt: now,
     updatedAt: now,

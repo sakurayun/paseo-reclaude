@@ -47,6 +47,7 @@ import {
 } from "./feature-definitions.js";
 import {
   buildBinaryDiagnosticRows,
+  buildCommandResolutionDiagnosticRows,
   formatDiagnosticStatus,
   formatProviderDiagnostic,
   formatProviderDiagnosticError,
@@ -1635,6 +1636,9 @@ export class ClaudeAgentClient implements AgentClient {
 
       return {
         diagnostic: formatProviderDiagnostic("Claude Code", [
+          ...(await buildCommandResolutionDiagnosticRows(launch, {
+            knownBinaryNames: ["claude"],
+          })),
           ...(await buildBinaryDiagnosticRows(launch, availability)),
           ...(auth ? [{ label: "Auth", value: auth }] : []),
           { label: "Models", value: modelsValue },

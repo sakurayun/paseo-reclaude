@@ -45,6 +45,14 @@ const PersistedWorkspaceRecordSchema = z.object({
     .nullable()
     .optional()
     .transform((value) => value ?? null),
+  // The base branch the worktree was created from (normalized like worktree.json's
+  // baseRefName). Only worktree workspaces carry a base branch; checkout-branch
+  // worktrees and directory/local_checkout workspaces leave it null.
+  baseBranch: z
+    .string()
+    .nullable()
+    .optional()
+    .transform((value) => value ?? null),
   createdAt: z.string(),
   updatedAt: z.string(),
   archivedAt: z.string().nullable(),
@@ -245,6 +253,7 @@ export function createPersistedWorkspaceRecord(input: {
   displayName: string;
   title?: string | null;
   branch?: string | null;
+  baseBranch?: string | null;
   createdAt: string;
   updatedAt: string;
   archivedAt?: string | null;
@@ -253,6 +262,7 @@ export function createPersistedWorkspaceRecord(input: {
     ...input,
     title: input.title ?? null,
     branch: input.branch ?? null,
+    baseBranch: input.baseBranch ?? null,
     archivedAt: input.archivedAt ?? null,
   });
 }

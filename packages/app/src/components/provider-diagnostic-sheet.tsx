@@ -1,5 +1,7 @@
+import * as Clipboard from "expo-clipboard";
 import {
   AlertTriangle,
+  Copy,
   FileText,
   Plus,
   RotateCw,
@@ -27,6 +29,7 @@ import { Button } from "@/components/ui/button";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { isWeb } from "@/constants/platform";
+import { useToast } from "@/contexts/toast-context";
 import { CODE_SURFACE_DATASET } from "@/styles/code-surface";
 import { useDaemonConfig } from "@/hooks/use-daemon-config";
 import { useProvidersSnapshot } from "@/hooks/use-providers-snapshot";
@@ -353,6 +356,7 @@ function DiagnosticSubSheet({
 }) {
   const { t } = useTranslation();
   const { theme } = useUnistyles();
+  const toast = useToast();
   const client = useHostRuntimeClient(serverId);
   const [diagnostic, setDiagnostic] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -393,31 +397,62 @@ function DiagnosticSubSheet({
     void fetchDiagnostic();
   }, [fetchDiagnostic]);
 
+  const copyButtonStyle = useCallback(
+    ({ hovered, pressed }: PressableStateCallbackType & { hovered?: boolean }) => [
+      sheetStyles.iconButton,
+      (Boolean(hovered) || pressed) && Boolean(diagnostic) && sheetStyles.iconButtonHovered,
+      diagnostic ? null : sheetStyles.disabled,
+    ],
+    [diagnostic],
+  );
+
+  const handleCopyPress = useCallback(() => {
+    if (!diagnostic) return;
+    void Clipboard.setStringAsync(diagnostic)
+      .then(() => toast.copied(t("settings.providers.diagnostic.copyLabel")))
+      .catch(() => toast.error(t("settings.providers.diagnostic.copyFailed")));
+  }, [diagnostic, t, toast]);
+
   const header = useMemo<SheetHeader>(
     () => ({
       title: t("settings.providers.diagnostic.title"),
       actions: (
-        <Pressable
-          onPress={handleRefreshPress}
-          disabled={loading}
-          hitSlop={8}
-          style={refreshButtonStyle}
-          accessibilityRole="button"
-          accessibilityLabel={
-            loading
-              ? t("settings.providers.diagnostic.refreshingAccessibility")
-              : t("settings.providers.diagnostic.refreshAccessibility")
-          }
-        >
-          {loading ? (
-            <LoadingSpinner size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
-          ) : (
-            <RotateCw size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
-          )}
-        </Pressable>
+        <View style={sheetStyles.headerActions}>
+          <Pressable
+            onPress={handleCopyPress}
+            disabled={!diagnostic}
+            hitSlop={8}
+            style={copyButtonStyle}
+            accessibilityRole="button"
+            accessibilityLabel={t("settings.providers.diagnostic.copyAccessibility")}
+          >
+            <Copy size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
+          </Pressable>
+          <Pressable
+            onPress={handleRefreshPress}
+            disabled={loading}
+            hitSlop={8}
+            style={refreshButtonStyle}
+            accessibilityRole="button"
+            accessibilityLabel={
+              loading
+                ? t("settings.providers.diagnostic.refreshingAccessibility")
+                : t("settings.providers.diagnostic.refreshAccessibility")
+            }
+          >
+            {loading ? (
+              <LoadingSpinner size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
+            ) : (
+              <RotateCw size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
+            )}
+          </Pressable>
+        </View>
       ),
     }),
     [
+      copyButtonStyle,
+      diagnostic,
+      handleCopyPress,
       handleRefreshPress,
       loading,
       refreshButtonStyle,
@@ -860,6 +895,11 @@ const sheetStyles = StyleSheet.create((theme) => ({
   },
   iconButtonHovered: {
     backgroundColor: theme.colors.surface2,
+  },
+  headerActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[1],
   },
   disabled: {
     opacity: 0.5,

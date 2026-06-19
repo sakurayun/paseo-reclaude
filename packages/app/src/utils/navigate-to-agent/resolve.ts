@@ -5,6 +5,9 @@ import type { NavigateToPreparedWorkspaceTabInput } from "@/utils/prepare-worksp
 export interface NavigateToAgentInput {
   serverId: string;
   agentId: string;
+  // Used as the workspace target when the agent is not yet in the session store
+  // (cold deep-links). Otherwise the workspace is read from the store.
+  workspaceId?: string | null;
   currentPathname?: string | null;
   pin?: boolean;
 }
@@ -17,16 +20,20 @@ export interface NavigateToAgentDeps {
   readAgentNavTarget: (input: { serverId: string; agentId: string }) => AgentNavTarget;
   navigateToHostAgent: (route: string) => void;
   navigateToPreparedWorkspaceTab: (input: NavigateToPreparedWorkspaceTabInput) => string;
+  restoreArchivedWorkspace: (input: {
+    serverId: string;
+    agentId: string;
+    workspaceId: string;
+  }) => void;
 }
 
 export function resolveNavigateToAgent(
   input: NavigateToAgentInput,
   deps: NavigateToAgentDeps,
 ): string {
-  const { agentWorkspaceId } = deps.readAgentNavTarget({
-    serverId: input.serverId,
-    agentId: input.agentId,
-  });
+  const agentWorkspaceId =
+    input.workspaceId ??
+    deps.readAgentNavTarget({ serverId: input.serverId, agentId: input.agentId }).agentWorkspaceId;
   const workspaceId = normalizeWorkspaceOpaqueId(agentWorkspaceId);
 
   if (!workspaceId) {
@@ -34,6 +41,14 @@ export function resolveNavigateToAgent(
     deps.navigateToHostAgent(route);
     return route;
   }
+
+  // Restore self-gates on the agent being archived with its workspace absent, so
+  // ordinary navigations are a cheap no-op.
+  deps.restoreArchivedWorkspace({
+    serverId: input.serverId,
+    agentId: input.agentId,
+    workspaceId,
+  });
 
   return deps.navigateToPreparedWorkspaceTab({
     serverId: input.serverId,

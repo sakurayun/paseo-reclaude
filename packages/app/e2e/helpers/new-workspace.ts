@@ -104,8 +104,12 @@ export async function openProjectViaDaemon(
 export async function archiveWorkspaceFromDaemon(
   client: NewWorkspaceDaemonClient,
   workspaceDirectory: string,
+  options?: { scope?: "workspace" | "worktree" },
 ): Promise<void> {
-  const payload = await client.archivePaseoWorktree({ worktreePath: workspaceDirectory });
+  const payload = await client.archivePaseoWorktree({
+    worktreePath: workspaceDirectory,
+    ...(options?.scope !== undefined ? { scope: options.scope } : {}),
+  });
   if (payload.error) {
     throw new Error(payload.error.message);
   }

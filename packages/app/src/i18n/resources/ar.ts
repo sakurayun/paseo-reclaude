@@ -272,7 +272,7 @@ export const ar: TranslationResources = {
       currentBadge: "الحالية",
       untitled: "جلسة بدون عنوان",
     },
-    title: "سجل الوكلاء",
+    title: "السجل",
     empty: "لا توجد جلسات بعد",
     actions: {
       loadMore: "تحميل المزيد",
@@ -398,11 +398,14 @@ export const ar: TranslationResources = {
   workspace: {
     route: {
       loading: "جارٍ تحميل مساحة العمل",
+      restoring: "جارٍ استعادة مساحة العمل",
+      restoreFailed: "تعذّر استعادة مساحة العمل هذه — ربما تم نقل المجلد أو حذفه",
       connecting: "الاتصال",
       hostOffline: "{{hostName}}غير متواجد حالياً",
       cannotReachHost: "لا يمكن الوصول إلى{{hostName}}",
       hostStatus: "حالة Host:{{status}}",
       missing: "لم يتم العثور على Workspace",
+      needsHostUpgrade: "قم بتحديث مضيفك لاستعادة مساحة العمل هذه",
       manageHost: "إدارة المضيف",
     },
     hoverCard: {
@@ -854,16 +857,16 @@ export const ar: TranslationResources = {
           success: "مؤرشف",
         },
         mergePr: {
-          squash: "دمج",
-          merge: "دمج",
-          rebase: "دمج",
+          squash: "دمج PR (squash)",
+          merge: "دمج PR (merge)",
+          rebase: "دمج PR (rebase)",
           pending: "دمج PR...",
           success: "تم دمج PR",
         },
         autoMerge: {
-          enableSquash: "دمج تلقائي",
-          enableMerge: "دمج تلقائي",
-          enableRebase: "دمج تلقائي",
+          enableSquash: "دمج تلقائي (squash)",
+          enableMerge: "دمج تلقائي (merge)",
+          enableRebase: "دمج تلقائي (rebase)",
           enabled: "تم تمكين الدمج التلقائي",
           enabling: "تمكين الدمج التلقائي...",
           disabling: "تعطيل الدمج التلقائي...",
@@ -1048,6 +1051,7 @@ export const ar: TranslationResources = {
       toasts: {
         hostDisconnected: "Host غير متصل",
         removeFailed: "فشل في إزالة بعض مساحات العمل",
+        updateHostToRemove: "قم بتحديث Host لإزالة المشاريع.",
       },
       empty: {
         title: "لا توجد مشاريع حتى الآن",
@@ -1594,6 +1598,8 @@ export const ar: TranslationResources = {
     backdrop: "خلفية القائمة",
   },
   subagents: {
+    detachAction: "فصل {{label}}",
+    detachTooltip: "فصل الوكيل الفرعي",
     archiveAction: "أرشيف{{label}}",
     archiveTooltip: "أرشفة الوكيل الفرعي",
     archiveDialog: {
@@ -2229,6 +2235,9 @@ export const ar: TranslationResources = {
         button: "التشخيص",
         refresh: "ينعش",
         refreshing: "منعش...",
+        copyLabel: "التشخيص",
+        copyAccessibility: "نسخ التشخيص",
+        copyFailed: "فشل نسخ التشخيص",
         refreshAccessibility: "تحديث التشخيص",
         refreshingAccessibility: "تحديث التشخيص",
         running: "تشغيل التشخيص...",

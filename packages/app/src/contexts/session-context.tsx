@@ -77,6 +77,10 @@ import { isNative } from "@/constants/platform";
 import { useToast } from "@/contexts/toast-context";
 import { toErrorMessage } from "@/utils/error-messages";
 import { applyCheckoutStatusUpdateFromEvent } from "@/git/checkout-status-cache";
+import {
+  applyLegacyDaemonWorkspaceOwnership,
+  backfillLegacyDaemonWorkspaceDirectoryIfEmpty,
+} from "@/workspace/legacy-daemon-workspaces";
 
 // Re-export types from session-store and draft-store for backward compatibility
 export type { DraftInput } from "@/stores/draft-store";
@@ -117,6 +121,56 @@ interface BufferedAudioChunk {
   audio: string;
   format: string;
   id: string;
+}
+
+interface WorkspaceHydrationSnapshot {
+  workspaces: Map<string, WorkspaceDescriptor>;
+  emptyProjects: Map<string, EmptyProjectDescriptor>;
+}
+
+async function fetchWorkspaceHydrationSnapshot(input: {
+  client: DaemonClient;
+  serverId: string;
+  subscribe: boolean;
+  isCancelled?: () => boolean;
+}): Promise<WorkspaceHydrationSnapshot | null> {
+  const workspaces = new Map<string, WorkspaceDescriptor>();
+  const emptyProjects = new Map<string, EmptyProjectDescriptor>();
+  let cursor: string | null = null;
+  let includeSubscribe = input.subscribe;
+
+  while (true) {
+    const payload = await input.client.fetchWorkspaces({
+      sort: [{ key: "activity_at", direction: "desc" }],
+      ...(includeSubscribe ? { subscribe: {} } : {}),
+      page: cursor ? { limit: 200, cursor } : { limit: 200 },
+    });
+    if (input.isCancelled?.()) {
+      return null;
+    }
+
+    for (const entry of payload.entries) {
+      const workspace = normalizeWorkspaceDescriptor(entry);
+      if (shouldSuppressWorkspaceForLocalArchive({ serverId: input.serverId, workspace })) {
+        continue;
+      }
+      workspaces.set(workspace.id, workspace);
+    }
+
+    // Empty project parents only ride on the first page.
+    for (const project of payload.emptyProjects ?? []) {
+      const descriptor = normalizeEmptyProjectDescriptor(project);
+      emptyProjects.set(descriptor.projectId, descriptor);
+    }
+
+    if (!payload.pageInfo.hasMore || !payload.pageInfo.nextCursor) {
+      break;
+    }
+    cursor = payload.pageInfo.nextCursor;
+    includeSubscribe = false;
+  }
+
+  return { workspaces, emptyProjects };
 }
 
 function decodeBase64Chunk(base64: string): Uint8Array {
@@ -482,6 +536,7 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
   const setWorkspaces = useSessionStore((state) => state.setWorkspaces);
   const setEmptyProjects = useSessionStore((state) => state.setEmptyProjects);
   const addEmptyProject = useSessionStore((state) => state.addEmptyProject);
+  const removeEmptyProject = useSessionStore((state) => state.removeEmptyProject);
   const mergeWorkspaces = useSessionStore((state) => state.mergeWorkspaces);
   const removeWorkspace = useSessionStore((state) => state.removeWorkspace);
   const setAgentLastActivity = useSessionStore((state) => state.setAgentLastActivity);
@@ -555,48 +610,29 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
         return;
       }
 
-      const workspaces = new Map<string, WorkspaceDescriptor>();
-      const emptyProjects = new Map<string, EmptyProjectDescriptor>();
-      let cursor: string | null = null;
-      let includeSubscribe = options?.subscribe ?? false;
-
-      while (true) {
-        const payload = await client.fetchWorkspaces({
-          sort: [{ key: "activity_at", direction: "desc" }],
-          ...(includeSubscribe ? { subscribe: {} } : {}),
-          page: cursor ? { limit: 200, cursor } : { limit: 200 },
-        });
-        if (options?.isCancelled?.()) {
-          return;
-        }
-
-        for (const entry of payload.entries) {
-          const workspace = normalizeWorkspaceDescriptor(entry);
-          if (shouldSuppressWorkspaceForLocalArchive({ serverId, workspace })) {
-            continue;
-          }
-          workspaces.set(workspace.id, workspace);
-        }
-
-        // Empty project parents only ride on the first page.
-        for (const project of payload.emptyProjects ?? []) {
-          const descriptor = normalizeEmptyProjectDescriptor(project);
-          emptyProjects.set(descriptor.projectId, descriptor);
-        }
-
-        if (!payload.pageInfo.hasMore || !payload.pageInfo.nextCursor) {
-          break;
-        }
-        cursor = payload.pageInfo.nextCursor;
-        includeSubscribe = false;
-      }
-
-      if (options?.isCancelled?.()) {
+      const snapshot = await fetchWorkspaceHydrationSnapshot({
+        client,
+        serverId,
+        subscribe: options?.subscribe ?? false,
+        isCancelled: options?.isCancelled,
+      });
+      if (!snapshot || options?.isCancelled?.()) {
         return;
       }
 
-      setWorkspaces(serverId, workspaces);
-      setEmptyProjects(serverId, emptyProjects.values());
+      const didBackfillLegacy = await backfillLegacyDaemonWorkspaceDirectoryIfEmpty({
+        client,
+        serverId,
+        workspaces: snapshot.workspaces,
+        emptyProjects: snapshot.emptyProjects,
+        isCancelled: options?.isCancelled,
+      });
+      if (didBackfillLegacy) {
+        return;
+      }
+
+      setWorkspaces(serverId, snapshot.workspaces);
+      setEmptyProjects(serverId, snapshot.emptyProjects.values());
       setHasHydratedWorkspaces(serverId, true);
     },
     [client, isConnected, serverId, setEmptyProjects, setHasHydratedWorkspaces, setWorkspaces],
@@ -1063,13 +1099,16 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
       }
 
       const normalized = normalizeAgentSnapshot(update.agent, serverId);
-      const agent = {
-        ...normalized,
-        projectPlacement: resolveProjectPlacement({
-          projectPlacement: update.project,
-          cwd: normalized.cwd,
-        }),
-      };
+      const agent = applyLegacyDaemonWorkspaceOwnership({
+        serverId,
+        agent: {
+          ...normalized,
+          projectPlacement: resolveProjectPlacement({
+            projectPlacement: update.project,
+            cwd: normalized.cwd,
+          }),
+        },
+      });
 
       applyAuthoritativeAgentSnapshot(agent);
     },
@@ -1129,10 +1168,15 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
 
       if (payload.agent) {
         const normalized = normalizeAgentSnapshot(payload.agent, serverId);
-        applyAuthoritativeAgentSnapshot({
-          ...normalized,
-          projectPlacement: session?.agents.get(agentId)?.projectPlacement ?? null,
-        });
+        applyAuthoritativeAgentSnapshot(
+          applyLegacyDaemonWorkspaceOwnership({
+            serverId,
+            agent: {
+              ...normalized,
+              projectPlacement: session?.agents.get(agentId)?.projectPlacement ?? null,
+            },
+          }),
+        );
       }
 
       // Call pure reducer
@@ -1323,6 +1367,9 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
         removeWorkspace(serverId, message.payload.id);
         if (message.payload.emptyProject) {
           addEmptyProject(serverId, normalizeEmptyProjectDescriptor(message.payload.emptyProject));
+        }
+        if (message.payload.removedProjectId) {
+          removeEmptyProject(serverId, message.payload.removedProjectId);
         }
         return;
       }
@@ -1759,6 +1806,7 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
     removeWorkspace,
     removeWorkspaceSetup,
     addEmptyProject,
+    removeEmptyProject,
     setAgentLastActivity,
     setPendingPermissions,
     setHasHydratedAgents,

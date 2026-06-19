@@ -71,6 +71,7 @@ import {
 } from "@/hooks/use-sidebar-workspaces-list";
 import { useSidebarOrderStore } from "@/stores/sidebar-order-store";
 import type { SidebarGroupMode } from "@/stores/sidebar-view-store";
+import { useSessionStore } from "@/stores/session-store";
 import { useShowShortcutBadges } from "@/hooks/use-show-shortcut-badges";
 import { navigateToPreparedWorkspaceTab } from "@/utils/workspace-navigation";
 import {
@@ -121,8 +122,6 @@ import { buildSidebarProjectRowModel } from "@/utils/sidebar-project-row-model";
 import { redirectIfArchivingActiveWorkspace } from "@/utils/sidebar-workspace-archive-redirect";
 import { openExternalUrl } from "@/utils/open-external-url";
 import { requireWorkspaceDirectory, resolveWorkspaceDirectory } from "@/utils/workspace-directory";
-import { archiveWorkspacesOptimistically } from "@/workspace/workspace-archive";
-import { selectProjectWorkspacesToArchive } from "@/workspace/project-workspace-archive";
 import { useWorkspaceArchive } from "@/workspace/use-workspace-archive";
 import {
   isWeb as platformIsWeb,
@@ -348,7 +347,7 @@ export function PrBadge({ hint }: { hint: PrHint }) {
         <ThemedGitPullRequest size={12} uniProps={iconUniProps} />
       )}
       <Text style={textStyle} numberOfLines={1}>
-        #{hint.number}
+        {hint.number}
       </Text>
     </Pressable>
   );
@@ -1864,6 +1863,7 @@ function ProjectBlock({
   displayName,
   iconDataUri,
   serverId,
+  canRemoveProject,
   selectionEnabled,
   showShortcutBadges,
   shortcutIndexByWorkspaceKey,
@@ -1885,6 +1885,7 @@ function ProjectBlock({
   displayName: string;
   iconDataUri: string | null;
   serverId: string | null;
+  canRemoveProject: boolean;
   selectionEnabled: boolean;
   showShortcutBadges: boolean;
   shortcutIndexByWorkspaceKey: Map<string, number>;
@@ -2004,26 +2005,24 @@ function ProjectBlock({
         toast.error(t("sidebar.project.toasts.hostDisconnected"));
         return;
       }
+      if (!canRemoveProject) {
+        toast.error(t("sidebar.project.toasts.updateHostToRemove"));
+        return;
+      }
 
       setIsRemovingProject(true);
-      void selectProjectWorkspacesToArchive(project.workspaces)
-        .then((workspaces) => archiveWorkspacesOptimistically({ client, workspaces }))
-        .then((failures) => {
-          if (failures.length > 0) {
-            toast.error(t("sidebar.project.toasts.removeFailed"));
-          }
-          setIsRemovingProject(false);
-          return;
-        })
+      void client
+        .removeProject(project.projectKey)
         .catch((error) => {
           toast.error(
             error instanceof Error ? error.message : t("sidebar.project.toasts.removeFailed"),
           );
+        })
+        .finally(() => {
           setIsRemovingProject(false);
-          return;
         });
     })();
-  }, [isRemovingProject, serverId, displayName, t, toast, project.workspaces]);
+  }, [isRemovingProject, serverId, displayName, t, toast, project.projectKey, canRemoveProject]);
 
   const handleToggleCollapsed = useCallback(() => {
     onToggleCollapsed(project.projectKey);
@@ -2130,9 +2129,23 @@ function areProjectBlockPropsEqual(previous: ProjectBlockProps, next: ProjectBlo
     previous.displayName === next.displayName &&
     previous.iconDataUri === next.iconDataUri &&
     previous.serverId === next.serverId &&
+    previous.canRemoveProject === next.canRemoveProject &&
     previous.selectionEnabled === next.selectionEnabled &&
     previous.showShortcutBadges === next.showShortcutBadges &&
     previous.shortcutIndexByWorkspaceKey === next.shortcutIndexByWorkspaceKey &&
+    previous.useNestable === next.useNestable &&
+    previous.creatingWorkspaceIds === next.creatingWorkspaceIds &&
+    previous.showProjectSessions === next.showProjectSessions &&
+    areProjectBlockHandlersEqual(previous, next) &&
+    areProjectBlockSelectionsEqual(previous, next)
+  );
+}
+
+function areProjectBlockHandlersEqual(
+  previous: ProjectBlockProps,
+  next: ProjectBlockProps,
+): boolean {
+  return (
     previous.parentGestureRef === next.parentGestureRef &&
     previous.onToggleCollapsed === next.onToggleCollapsed &&
     previous.onWorkspacePress === next.onWorkspacePress &&
@@ -2140,11 +2153,7 @@ function areProjectBlockPropsEqual(previous: ProjectBlockProps, next: ProjectBlo
     previous.onWorktreeCreated === next.onWorktreeCreated &&
     previous.drag === next.drag &&
     previous.isDragging === next.isDragging &&
-    previous.dragHandleProps === next.dragHandleProps &&
-    previous.useNestable === next.useNestable &&
-    previous.creatingWorkspaceIds === next.creatingWorkspaceIds &&
-    previous.showProjectSessions === next.showProjectSessions &&
-    areProjectBlockSelectionsEqual(previous, next)
+    previous.dragHandleProps === next.dragHandleProps
   );
 }
 
@@ -2279,6 +2288,9 @@ function ProjectModeList({
   const setProjectOrder = useSidebarOrderStore((state) => state.setProjectOrder);
   const getWorkspaceOrder = useSidebarOrderStore((state) => state.getWorkspaceOrder);
   const setWorkspaceOrder = useSidebarOrderStore((state) => state.setWorkspaceOrder);
+  const canRemoveProject = useSessionStore((state) =>
+    serverId ? state.sessions[serverId]?.serverInfo?.features?.projectRemove === true : false,
+  );
 
   const isWorkspaceRoute = useMemo(
     () => Boolean(pathname && parseHostWorkspaceRouteFromPathname(pathname)),
@@ -2443,6 +2455,7 @@ function ProjectModeList({
           displayName={item.projectName}
           iconDataUri={projectIconByProjectKey.get(item.projectKey) ?? null}
           serverId={serverId}
+          canRemoveProject={canRemoveProject}
           selectionEnabled={selectionEnabled}
           showShortcutBadges={showShortcutBadges}
           shortcutIndexByWorkspaceKey={shortcutIndexByWorkspaceKey}
@@ -2470,6 +2483,7 @@ function ProjectModeList({
       onToggleProjectCollapsed,
       parentGestureRef,
       projectIconByProjectKey,
+      canRemoveProject,
       selectionEnabled,
       serverId,
       shortcutIndexByWorkspaceKey,
