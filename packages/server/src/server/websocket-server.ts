@@ -13,6 +13,7 @@ import type { ProjectRegistry, WorkspaceRegistry } from "./workspace-registry.js
 import type { FileBackedChatService } from "./chat/chat-service.js";
 import type { LoopService } from "./loop-service.js";
 import type { WorkspaceLayoutStore } from "./workspace-layout-store.js";
+import type { PromptPresetsStore } from "./prompt-presets-store.js";
 import type { ScheduleService } from "./schedule/service.js";
 import type { CheckoutDiffManager, CheckoutDiffMetrics } from "./checkout-diff-manager.js";
 import type { DaemonConfigStore, MutableDaemonConfig } from "./daemon-config-store.js";
@@ -20,6 +21,7 @@ import {
   type ServerInfoStatusPayload,
   type WorkspaceSetupSnapshot,
   type WorkspaceLayoutEnvelope,
+  type PromptPresetsEnvelope,
   type WSHelloMessage,
   type WSInboundMessage,
   WSInboundMessageSchema,
@@ -379,6 +381,7 @@ export class VoiceAssistantWebSocketServer {
   private readonly projectRegistry: ProjectRegistry;
   private readonly workspaceRegistry: WorkspaceRegistry;
   private readonly workspaceLayoutStore: WorkspaceLayoutStore | null;
+  private readonly promptPresetsStore: PromptPresetsStore | null;
   private readonly chatService: FileBackedChatService;
   private readonly loopService: LoopService;
   private readonly scheduleService: ScheduleService;
@@ -479,6 +482,7 @@ export class VoiceAssistantWebSocketServer {
     serviceProxyPublicBaseUrl?: string | null,
     portForwardManager?: PortForwardManager | null,
     workspaceLayoutStore?: WorkspaceLayoutStore | null,
+    promptPresetsStore?: PromptPresetsStore | null,
   ) {
     this.logger = logger.child({ module: "websocket-server" });
     this.serverId = serverId;
@@ -492,6 +496,7 @@ export class VoiceAssistantWebSocketServer {
     this.projectRegistry = projectRegistry ?? createNoopProjectRegistry();
     this.workspaceRegistry = workspaceRegistry ?? createNoopWorkspaceRegistry();
     this.workspaceLayoutStore = workspaceLayoutStore ?? null;
+    this.promptPresetsStore = promptPresetsStore ?? null;
     const requiredServices = requireWebSocketServices({
       chatService,
       loopService,
@@ -1024,11 +1029,18 @@ export class VoiceAssistantWebSocketServer {
       projectRegistry: this.projectRegistry,
       workspaceRegistry: this.workspaceRegistry,
       workspaceLayoutStore: this.workspaceLayoutStore,
+      promptPresetsStore: this.promptPresetsStore,
       onWorkspaceLayoutPushed: (envelope) => {
         if (!connection) {
           return;
         }
         this.broadcastWorkspaceLayoutChanged(envelope, connection);
+      },
+      onPromptPresetsPushed: (envelope) => {
+        if (!connection) {
+          return;
+        }
+        this.broadcastPromptPresetsChanged(envelope, connection);
       },
       chatService: this.chatService,
       loopService: this.loopService,
@@ -1258,6 +1270,8 @@ export class VoiceAssistantWebSocketServer {
         sessionContentSearch: true,
         // COMPAT(workspaceFileSearch): added in v0.1.102, remove gate after 2026-12-17.
         workspaceFileSearch: true,
+        // COMPAT(promptPresetsSync): added in v0.1.102, remove gate after 2026-12-21.
+        promptPresetsSync: true,
         // COMPAT(projectRemove): added in v0.1.97, drop the gate when floor >= v0.1.97.
         projectRemove: true,
         // COMPAT(projectAdd): added in v0.1.97, drop the gate when floor >= v0.1.97.
@@ -1888,6 +1902,19 @@ export class VoiceAssistantWebSocketServer {
         continue;
       }
       if (connection.session.getClientActivity()?.deviceType === "mobile") {
+        continue;
+      }
+      this.sendToClient(ws, message);
+    }
+  }
+
+  private broadcastPromptPresetsChanged(
+    envelope: PromptPresetsEnvelope,
+    senderConnection: SessionConnection,
+  ): void {
+    const message = wrapSessionMessage({ type: "prompt.presets.changed", payload: envelope });
+    for (const [ws, connection] of this.sessions) {
+      if (connection === senderConnection) {
         continue;
       }
       this.sendToClient(ws, message);

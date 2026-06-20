@@ -2054,6 +2054,27 @@ export const WorkspaceLayoutGetRequestSchema = z.object({
   requestId: z.string(),
 });
 
+// COMPAT(promptPresetsSync): added in v0.1.102, remove gate after 2026-12-21.
+// Global user prompt presets synced through the daemon so every connected client
+// sees the same composer presets over direct or relay connections.
+export const PromptPresetsEnvelopeSchema = z.object({
+  revision: z.number().int().nonnegative(),
+  updatedAt: z.string(),
+  presets: z.array(z.string()),
+});
+
+export const PromptPresetsPushRequestSchema = z.object({
+  type: z.literal("prompt.presets.push.request"),
+  revision: z.number().int().nonnegative(),
+  presets: z.array(z.string()),
+  requestId: z.string(),
+});
+
+export const PromptPresetsGetRequestSchema = z.object({
+  type: z.literal("prompt.presets.get.request"),
+  requestId: z.string(),
+});
+
 // Highlighted diff token schema
 // Note: style can be a compound class name (e.g., "heading meta") from the syntax highlighter
 const HighlightTokenSchema = z.object({
@@ -2489,6 +2510,8 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   WorkspaceClearAttentionRequestSchema,
   WorkspaceLayoutPushRequestSchema,
   WorkspaceLayoutGetRequestSchema,
+  PromptPresetsPushRequestSchema,
+  PromptPresetsGetRequestSchema,
   FileExplorerRequestSchema,
   ProjectIconRequestSchema,
   FileDownloadTokenRequestSchema,
@@ -2735,6 +2758,8 @@ export const ServerInfoStatusPayloadSchema = z
         sessionContentSearch: z.boolean().optional(),
         // COMPAT(workspaceFileSearch): added in v0.1.102, remove gate after 2026-12-17.
         workspaceFileSearch: z.boolean().optional(),
+        // COMPAT(promptPresetsSync): added in v0.1.102, remove gate after 2026-12-21.
+        promptPresetsSync: z.boolean().optional(),
         // COMPAT(projectRemove): added in v0.1.97, drop the gate when floor >= v0.1.97.
         projectRemove: z.boolean().optional(),
         // COMPAT(projectAdd): added in v0.1.97, drop the gate when floor >= v0.1.97.
@@ -3421,6 +3446,28 @@ export const WorkspaceLayoutGetResponseSchema = z.object({
 export const WorkspaceLayoutChangedSchema = z.object({
   type: z.literal("workspace.layout.changed"),
   payload: WorkspaceLayoutEnvelopeSchema,
+});
+
+export const PromptPresetsPushResponseSchema = z.object({
+  type: z.literal("prompt.presets.push.response"),
+  payload: z.object({
+    requestId: z.string(),
+    accepted: z.boolean(),
+    revision: z.number().int().nonnegative(),
+  }),
+});
+
+export const PromptPresetsGetResponseSchema = z.object({
+  type: z.literal("prompt.presets.get.response"),
+  payload: z.object({
+    requestId: z.string(),
+    envelope: PromptPresetsEnvelopeSchema,
+  }),
+});
+
+export const PromptPresetsChangedSchema = z.object({
+  type: z.literal("prompt.presets.changed"),
+  payload: PromptPresetsEnvelopeSchema,
 });
 
 export const SendAgentMessageResponseMessageSchema = z.object({
@@ -4864,6 +4911,9 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   WorkspaceLayoutPushResponseSchema,
   WorkspaceLayoutGetResponseSchema,
   WorkspaceLayoutChangedSchema,
+  PromptPresetsPushResponseSchema,
+  PromptPresetsGetResponseSchema,
+  PromptPresetsChangedSchema,
   SendAgentMessageResponseMessageSchema,
   SetVoiceModeResponseMessageSchema,
   DaemonGetStatusResponseSchema,
@@ -5321,6 +5371,12 @@ export type WorkspaceLayoutPushResponse = z.infer<typeof WorkspaceLayoutPushResp
 export type WorkspaceLayoutGetRequest = z.infer<typeof WorkspaceLayoutGetRequestSchema>;
 export type WorkspaceLayoutGetResponse = z.infer<typeof WorkspaceLayoutGetResponseSchema>;
 export type WorkspaceLayoutChanged = z.infer<typeof WorkspaceLayoutChangedSchema>;
+export type PromptPresetsEnvelope = z.infer<typeof PromptPresetsEnvelopeSchema>;
+export type PromptPresetsPushRequest = z.infer<typeof PromptPresetsPushRequestSchema>;
+export type PromptPresetsPushResponse = z.infer<typeof PromptPresetsPushResponseSchema>;
+export type PromptPresetsGetRequest = z.infer<typeof PromptPresetsGetRequestSchema>;
+export type PromptPresetsGetResponse = z.infer<typeof PromptPresetsGetResponseSchema>;
+export type PromptPresetsChanged = z.infer<typeof PromptPresetsChangedSchema>;
 export type ClientHeartbeatMessage = z.infer<typeof ClientHeartbeatMessageSchema>;
 export type ListCommandsRequest = z.infer<typeof ListCommandsRequestSchema>;
 export type ListCommandsResponse = z.infer<typeof ListCommandsResponseSchema>;

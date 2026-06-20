@@ -111,6 +111,7 @@ import type {
   SpeechDictationListModelsResponse,
   SpeechDictationSetModelResponse,
   WorkspaceLayoutEnvelope,
+  PromptPresetsEnvelope,
 } from "@getpaseo/protocol/messages";
 import { isRelayClientWebSocketUrl } from "@getpaseo/protocol/daemon-endpoints";
 import { terminalSubscriptionKey } from "@getpaseo/protocol/terminal-subscription-key";
@@ -1687,6 +1688,60 @@ export class DaemonClient {
       options: { skipQueue: true },
       select: (msg) => {
         if (msg.type !== "workspace.layout.get.response") {
+          return null;
+        }
+        if (msg.payload.requestId !== requestId) {
+          return null;
+        }
+        return msg.payload;
+      },
+    });
+    return response.envelope;
+  }
+
+  // COMPAT(promptPresetsSync): gated on server_info.features.promptPresetsSync.
+  async pushPromptPresets(params: {
+    revision: number;
+    presets: string[];
+  }): Promise<{ accepted: boolean; revision: number }> {
+    const requestId = this.createRequestId();
+    const message = SessionInboundMessageSchema.parse({
+      type: "prompt.presets.push.request",
+      revision: params.revision,
+      presets: params.presets,
+      requestId,
+    });
+    const response = await this.sendRequest({
+      requestId,
+      message,
+      timeout: 15000,
+      options: { skipQueue: true },
+      select: (msg) => {
+        if (msg.type !== "prompt.presets.push.response") {
+          return null;
+        }
+        if (msg.payload.requestId !== requestId) {
+          return null;
+        }
+        return msg.payload;
+      },
+    });
+    return { accepted: response.accepted, revision: response.revision };
+  }
+
+  async getPromptPresets(): Promise<PromptPresetsEnvelope> {
+    const requestId = this.createRequestId();
+    const message = SessionInboundMessageSchema.parse({
+      type: "prompt.presets.get.request",
+      requestId,
+    });
+    const response = await this.sendRequest({
+      requestId,
+      message,
+      timeout: 15000,
+      options: { skipQueue: true },
+      select: (msg) => {
+        if (msg.type !== "prompt.presets.get.response") {
           return null;
         }
         if (msg.payload.requestId !== requestId) {

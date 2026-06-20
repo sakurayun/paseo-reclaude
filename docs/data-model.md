@@ -31,6 +31,7 @@ $PASEO_HOME/
 ├── runtime/
 │   └── managed-processes/
 │       └── {recordId}.json              # Helper processes owned by Paseo; reconciled on daemon bootstrap
+├── prompt-presets.json                  # Global composer prompt presets synced across clients
 └── push-tokens.json                     # Expo push notification tokens
 ```
 

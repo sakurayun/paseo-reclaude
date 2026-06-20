@@ -35,6 +35,7 @@ import {
   type WorkspaceSetupSnapshot,
   type WorkspaceDescriptorPayload,
   type WorkspaceLayoutEnvelope,
+  type PromptPresetsEnvelope,
 } from "./messages.js";
 import type {
   TerminalManager,
@@ -42,6 +43,7 @@ import type {
 } from "../terminal/terminal-manager.js";
 import type { PortForwardManager } from "../port-forward/port-forward-manager.js";
 import type { WorkspaceLayoutStore } from "./workspace-layout-store.js";
+import type { PromptPresetsStore } from "./prompt-presets-store.js";
 import { TerminalSessionController } from "../terminal/terminal-session-controller.js";
 import { TunnelForwarder } from "./tunnel-forwarder.js";
 import type { TerminalActivity } from "@getpaseo/protocol/terminal-activity";
@@ -562,6 +564,14 @@ type WorkspaceLayoutGetRequestMessage = Extract<
   SessionInboundMessage,
   { type: "workspace.layout.get.request" }
 >;
+type PromptPresetsPushRequestMessage = Extract<
+  SessionInboundMessage,
+  { type: "prompt.presets.push.request" }
+>;
+type PromptPresetsGetRequestMessage = Extract<
+  SessionInboundMessage,
+  { type: "prompt.presets.get.request" }
+>;
 interface WorkspaceUpdatesSubscriptionState {
   subscriptionId: string;
   filter?: WorkspaceUpdatesFilter;
@@ -668,9 +678,11 @@ export interface SessionOptions {
   terminalManager: TerminalManager | null;
   portForwardManager?: PortForwardManager | null;
   workspaceLayoutStore?: WorkspaceLayoutStore | null;
+  promptPresetsStore?: PromptPresetsStore | null;
   // Called after a layout push is accepted, so the WebSocket server can fan the new
   // envelope out to other desktop clients. The session itself has no socket handle.
   onWorkspaceLayoutPushed?: (envelope: WorkspaceLayoutEnvelope) => void;
+  onPromptPresetsPushed?: (envelope: PromptPresetsEnvelope) => void;
   providerSnapshotManager: ProviderSnapshotManager;
   providerUsageService: ProviderUsageService;
   serviceProxy?: ServiceProxySubsystem;
@@ -884,6 +896,8 @@ export class Session {
   private readonly workspaceRegistry: WorkspaceRegistry;
   private readonly workspaceLayoutStore?: WorkspaceLayoutStore | null;
   private readonly onWorkspaceLayoutPushed?: (envelope: WorkspaceLayoutEnvelope) => void;
+  private readonly promptPresetsStore?: PromptPresetsStore | null;
+  private readonly onPromptPresetsPushed?: (envelope: PromptPresetsEnvelope) => void;
   private readonly filesystem: SessionFileSystem;
   private readonly chatService: FileBackedChatService;
   private readonly scheduleService: ScheduleService;
@@ -970,7 +984,9 @@ export class Session {
       projectRegistry,
       workspaceRegistry,
       workspaceLayoutStore,
+      promptPresetsStore,
       onWorkspaceLayoutPushed,
+      onPromptPresetsPushed,
       filesystem,
       chatService,
       scheduleService,
@@ -1029,6 +1045,8 @@ export class Session {
     this.workspaceRegistry = workspaceRegistry;
     this.workspaceLayoutStore = workspaceLayoutStore;
     this.onWorkspaceLayoutPushed = onWorkspaceLayoutPushed;
+    this.promptPresetsStore = promptPresetsStore;
+    this.onPromptPresetsPushed = onPromptPresetsPushed;
     this.filesystem = filesystem ?? nodeSessionFileSystem;
     this.chatService = chatService;
     this.scheduleService = scheduleService;
@@ -1935,6 +1953,7 @@ export class Session {
       this.dispatchCheckoutMessage(msg) ??
       this.dispatchWorkspaceAndProjectMessage(msg) ??
       this.dispatchWorkspaceLayoutMessage(msg) ??
+      this.dispatchPromptPresetsMessage(msg) ??
       this.dispatchProjectMessage(msg) ??
       this.dispatchProviderMessage(msg) ??
       this.dispatchTerminalMessage(msg) ??
@@ -2471,6 +2490,19 @@ export class Session {
         return this.handleWorkspaceLayoutPushRequest(msg);
       case "workspace.layout.get.request":
         this.handleWorkspaceLayoutGetRequest(msg);
+        return undefined;
+      default:
+        return undefined;
+    }
+  }
+
+  private dispatchPromptPresetsMessage(msg: SessionInboundMessage): Promise<void> | undefined {
+    switch (msg.type) {
+      case "prompt.presets.push.request":
+        this.handlePromptPresetsPushRequest(msg);
+        return undefined;
+      case "prompt.presets.get.request":
+        this.handlePromptPresetsGetRequest(msg);
         return undefined;
       default:
         return undefined;
@@ -3313,6 +3345,37 @@ export class Session {
     this.emit({
       type: "workspace.layout.get.response",
       payload: { requestId: msg.requestId, workspaceId: msg.workspaceId, envelope },
+    });
+  }
+
+  private handlePromptPresetsPushRequest(msg: PromptPresetsPushRequestMessage): void {
+    const { revision, presets, requestId } = msg;
+    if (!this.promptPresetsStore) {
+      this.emit({
+        type: "prompt.presets.push.response",
+        payload: { requestId, accepted: false, revision: 0 },
+      });
+      return;
+    }
+    const { accepted, current } = this.promptPresetsStore.applyPush({ revision, presets });
+    this.emit({
+      type: "prompt.presets.push.response",
+      payload: { requestId, accepted, revision: current.revision },
+    });
+    if (accepted) {
+      this.onPromptPresetsPushed?.(current);
+    }
+  }
+
+  private handlePromptPresetsGetRequest(msg: PromptPresetsGetRequestMessage): void {
+    const envelope = this.promptPresetsStore?.get() ?? {
+      revision: 0,
+      updatedAt: new Date(0).toISOString(),
+      presets: [],
+    };
+    this.emit({
+      type: "prompt.presets.get.response",
+      payload: { requestId: msg.requestId, envelope },
     });
   }
 
