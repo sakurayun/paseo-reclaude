@@ -1783,6 +1783,7 @@ export const ar: TranslationResources = {
       agents: "الوكلاء",
       workspaces: "مساحات العمل",
       providers: "مقدمي الخدمات",
+      usage: "الاستخدام",
       terminals: "الطرفيات",
       host: "المضيف",
     },

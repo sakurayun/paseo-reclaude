@@ -60,14 +60,19 @@ export function createWithWorkspace(page: Page): WithWorkspaceHandle {
       );
       worktrees.push({ repoPath: repo.path, worktreePath: workspacePath });
       // Register the parent project so the sidebar lists it before we navigate.
-      await client.openProject(repo.path);
+      const added = await client.addProject(repo.path);
+      if (!added.project) {
+        throw new Error(added.error ?? `Failed to add project ${repo.path}`);
+      }
     }
 
-    const opened = await client.openProject(workspacePath);
-    if (!opened.workspace) {
-      throw new Error(opened.error ?? `Failed to open project ${workspacePath}`);
+    const created = await client.createWorkspace({
+      source: { kind: "directory", path: workspacePath },
+    });
+    if (!created.workspace) {
+      throw new Error(created.error ?? `Failed to create workspace ${workspacePath}`);
     }
-    const workspaceId = opened.workspace.id;
+    const workspaceId = created.workspace.id;
 
     return {
       workspaceId,

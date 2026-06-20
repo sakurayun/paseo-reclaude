@@ -69,6 +69,7 @@ import {
   type WebSocketRuntimeCounters,
 } from "./websocket/runtime-metrics.js";
 import { QuotaFetcherService } from "../services/quota-fetcher.js";
+import { ProviderUsageService } from "../services/quota-fetcher/service.js";
 
 const WS_CLOSE_DAEMON_AUTH_FAILED = 4401;
 
@@ -421,6 +422,7 @@ export class VoiceAssistantWebSocketServer {
   private readonly quotaFetcher: QuotaFetcherService;
   private readonly agentStatuses = new Map<string, string>();
   private unsubscribeAgentManager: (() => void) | null = null;
+  private readonly providerUsageService: ProviderUsageService;
   private unsubscribeTerminalActivity: (() => void) | null = null;
 
   constructor(
@@ -579,6 +581,10 @@ export class VoiceAssistantWebSocketServer {
           }
         }
       }
+    });
+
+    this.providerUsageService = new ProviderUsageService({
+      logger: this.logger,
     });
 
     this.wss = this.createWebSocketServer(server, wsConfig, auth);
@@ -1038,6 +1044,7 @@ export class VoiceAssistantWebSocketServer {
       terminalManager: this.terminalManager,
       portForwardManager: this.portForwardManager,
       providerSnapshotManager: this.providerSnapshotManager,
+      providerUsageService: this.providerUsageService,
       serviceProxy: this.serviceProxy ?? undefined,
       scriptRuntimeStore: this.scriptRuntimeStore ?? undefined,
       workspaceSetupSnapshots: this.workspaceSetupSnapshots,
@@ -1253,8 +1260,12 @@ export class VoiceAssistantWebSocketServer {
         workspaceFileSearch: true,
         // COMPAT(projectRemove): added in v0.1.97, drop the gate when floor >= v0.1.97.
         projectRemove: true,
+        // COMPAT(projectAdd): added in v0.1.97, drop the gate when floor >= v0.1.97.
+        projectAdd: true,
         // COMPAT(worktreeRestore): added in v0.1.97, drop the gate when floor >= v0.1.97
         worktreeRestore: true,
+        // COMPAT(providerUsageList): added in v0.1.98, drop the gate when daemon floor >= v0.1.98.
+        providerUsageList: true,
         // COMPAT(agentDetach): added in v0.1.98, remove gate after 2026-12-19 once daemon floor >= v0.1.98.
         agentDetach: true,
       },

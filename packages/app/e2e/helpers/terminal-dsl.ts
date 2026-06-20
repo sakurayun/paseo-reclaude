@@ -43,7 +43,9 @@ export class TerminalE2EHarness {
   static async create(input: { tempPrefix: string }): Promise<TerminalE2EHarness> {
     const tempRepo = await createTempGitRepo(input.tempPrefix);
     const client = await connectSeedClient();
-    const seedResult = await client.openProject(tempRepo.path);
+    const seedResult = await client.createWorkspace({
+      source: { kind: "directory", path: tempRepo.path },
+    });
     if (!seedResult.workspace) {
       await client.close().catch(() => {});
       await tempRepo.cleanup().catch(() => {});

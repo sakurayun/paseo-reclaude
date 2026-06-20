@@ -171,25 +171,27 @@ export async function launchAgent(input: {
   execFileSync("git", ["add", "README.md"], { cwd: input.cwd, stdio: "ignore" });
   execFileSync("git", ["commit", "-m", "Initial commit"], { cwd: input.cwd, stdio: "ignore" });
   const client = await connectSeedClient();
-  const opened = await client.openProject(input.cwd);
-  if (!opened.workspace) {
-    throw new Error(opened.error ?? `Failed to open project ${input.cwd}`);
+  const createdWorkspace = await client.createWorkspace({
+    source: { kind: "directory", path: input.cwd },
+  });
+  if (!createdWorkspace.workspace) {
+    throw new Error(createdWorkspace.error ?? `Failed to create workspace ${input.cwd}`);
   }
   const agent = await client.createAgent({
     ...fullAccessConfig(input.provider),
     cwd: input.cwd,
-    workspaceId: opened.workspace.id,
+    workspaceId: createdWorkspace.workspace.id,
     title: `rewind-flow-${input.provider}-${randomUUID()}`,
   });
   const handle = {
     page: input.page,
     client,
     agentId: agent.id,
-    workspaceId: opened.workspace.id,
+    workspaceId: createdWorkspace.workspace.id,
     cwd: input.cwd,
     provider: input.provider,
   };
-  await openAgent(input.page, { workspaceId: opened.workspace.id, agentId: agent.id });
+  await openAgent(input.page, { workspaceId: createdWorkspace.workspace.id, agentId: agent.id });
   return handle;
 }
 

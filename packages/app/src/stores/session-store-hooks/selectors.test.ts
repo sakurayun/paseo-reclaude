@@ -231,7 +231,7 @@ describe("workspace structure composition", () => {
     tracked.stop();
   });
 
-  it("renders a project with zero active workspaces as an empty project parent", () => {
+  it("renders a project parent with zero active workspaces", () => {
     useSessionStore.getState().initializeSession(SERVER_ID, null as unknown as DaemonClient);
     useSessionStore.getState().setWorkspaces(SERVER_ID, new Map());
     useSessionStore.getState().setEmptyProjects(SERVER_ID, [

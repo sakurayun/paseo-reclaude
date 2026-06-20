@@ -1823,6 +1823,7 @@ export const es: TranslationResources = {
       agents: "Agents",
       workspaces: "Workspaces",
       providers: "Proveedores",
+      usage: "Uso",
       terminals: "Terminales",
       host: "Host",
     },

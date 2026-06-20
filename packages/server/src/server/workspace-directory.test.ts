@@ -527,7 +527,7 @@ describe("WorkspaceDirectory empty projects", () => {
     } satisfies PersistedProjectRecord;
   }
 
-  test("surfaces a project with no active workspaces as an empty project", async () => {
+  test("surfaces a project with no active workspaces through the compatibility projection", async () => {
     const directory = makeDirectory({
       projects: [project({ projectId: "empty", customName: "Renamed" })],
       workspaces: [],

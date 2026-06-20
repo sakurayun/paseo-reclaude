@@ -50,6 +50,8 @@ import {
 } from "@/runtime/host-runtime";
 import { ModelGatewaysSection } from "@/screens/settings/model-gateways-section";
 import { ProvidersSection } from "@/screens/settings/providers-section";
+import { ProviderUsageSettingsSection } from "@/provider-usage/settings-section";
+import { useProviderUsage } from "@/provider-usage/use-provider-usage";
 import { SettingsSection } from "@/screens/settings/settings-section";
 import { useSessionStore } from "@/stores/session-store";
 import { settingsStyles } from "@/styles/settings";
@@ -312,6 +314,24 @@ export function HostProvidersPage({ serverId }: { serverId: string }) {
       <ModelGatewaysSection serverId={serverId} />
 
       <ProvidersSection serverId={serverId} />
+    </View>
+  );
+}
+
+export function HostUsagePage({ serverId }: { serverId: string }) {
+  const host = useHostProfile(serverId);
+  const { view: providerUsageView, refresh: refreshProviderUsage } = useProviderUsage(serverId);
+  const handleRefresh = useCallback(() => {
+    void refreshProviderUsage();
+  }, [refreshProviderUsage]);
+
+  if (!host) {
+    return <HostNotFound />;
+  }
+
+  return (
+    <View>
+      <ProviderUsageSettingsSection view={providerUsageView} onRefresh={handleRefresh} />
     </View>
   );
 }

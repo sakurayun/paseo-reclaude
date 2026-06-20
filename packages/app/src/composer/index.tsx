@@ -220,7 +220,6 @@ function renderContextWindowMeter(
   totalCostUsd: number | null,
   showPercentage: boolean,
   serverId: string,
-  selectedModel: string | null,
   provider: string | null,
 ): ReactElement | null {
   if (contextWindowMaxTokens === null || contextWindowUsedTokens === null) {
@@ -233,7 +232,6 @@ function renderContextWindowMeter(
       totalCostUsd={totalCostUsd}
       showPercentage={showPercentage}
       serverId={serverId}
-      selectedModel={selectedModel}
       provider={provider}
     />
   );
@@ -1736,7 +1734,6 @@ export function Composer({
         agentState.totalCostUsd,
         isCompactLayout,
         serverId,
-        agentState.model,
         agentState.provider,
       ),
     [
@@ -1745,7 +1742,6 @@ export function Composer({
       agentState.totalCostUsd,
       isCompactLayout,
       serverId,
-      agentState.model,
       agentState.provider,
     ],
   );

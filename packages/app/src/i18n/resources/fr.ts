@@ -1836,6 +1836,7 @@ export const fr: TranslationResources = {
       agents: "Agents",
       workspaces: "Workspaces",
       providers: "Fournisseurs",
+      usage: "Utilisation",
       terminals: "Terminaux",
       host: "Host",
     },

@@ -27,6 +27,7 @@ import {
   type AgentPermissionResponse,
   type AgentPermissionResult,
   type AgentPersistenceHandle,
+  type AgentProviderNotice,
   type AgentPromptInput,
   type AgentProvider,
   type AgentRunOptions,
@@ -1328,9 +1329,9 @@ export class AgentManager {
     });
   }
 
-  async setAgentMode(agentId: string, modeId: string): Promise<void> {
+  async setAgentMode(agentId: string, modeId: string): Promise<AgentProviderNotice | null> {
     const agent = this.requireSessionAgent(agentId);
-    await agent.session.setMode(modeId);
+    const notice = (await agent.session.setMode(modeId)) ?? null;
     const currentMode = (await agent.session.getCurrentMode()) ?? modeId;
     agent.config.modeId = currentMode ?? undefined;
     agent.currentModeId = currentMode;
@@ -1340,6 +1341,7 @@ export class AgentManager {
     }
     this.touchUpdatedAt(agent);
     this.emitState(agent);
+    return notice;
   }
 
   async setAgentModel(agentId: string, modelId: string | null): Promise<void> {
@@ -1378,22 +1380,31 @@ export class AgentManager {
     this.emitState(agent);
   }
 
-  async setAgentThinkingOption(agentId: string, thinkingOptionId: string | null): Promise<void> {
+  async setAgentThinkingOption(
+    agentId: string,
+    thinkingOptionId: string | null,
+  ): Promise<AgentProviderNotice | null> {
     const agent = this.requireSessionAgent(agentId);
     const normalizedThinkingOptionId =
       typeof thinkingOptionId === "string" && thinkingOptionId.trim().length > 0
         ? thinkingOptionId
         : null;
 
+    let notice: AgentProviderNotice | null = null;
     if (agent.session.setThinkingOption) {
       const update = await agent.session.setThinkingOption(normalizedThinkingOptionId);
-      if (update?.featureValues !== undefined) {
-        agent.config.featureValues = update.featureValues;
-      }
-      if (update && Object.prototype.hasOwnProperty.call(update, "thinkingOptionId")) {
-        agent.config.thinkingOptionId = update.thinkingOptionId ?? undefined;
-      } else {
+      if (update && "message" in update) {
+        notice = update;
         agent.config.thinkingOptionId = normalizedThinkingOptionId ?? undefined;
+      } else {
+        if (update?.featureValues !== undefined) {
+          agent.config.featureValues = update.featureValues;
+        }
+        if (update && Object.prototype.hasOwnProperty.call(update, "thinkingOptionId")) {
+          agent.config.thinkingOptionId = update.thinkingOptionId ?? undefined;
+        } else {
+          agent.config.thinkingOptionId = normalizedThinkingOptionId ?? undefined;
+        }
       }
     } else {
       agent.config.thinkingOptionId = normalizedThinkingOptionId ?? undefined;
@@ -1407,6 +1418,7 @@ export class AgentManager {
     }
     this.touchUpdatedAt(agent);
     this.emitState(agent);
+    return notice;
   }
 
   async setAgentFeature(agentId: string, featureId: string, value: unknown): Promise<void> {

@@ -269,6 +269,7 @@ import {
   type GitHubService,
   type PullRequestTimelineItem,
 } from "../services/github-service.js";
+import type { ProviderUsageService } from "../services/quota-fetcher/service.js";
 import {
   summarizeFetchWorkspacesEntries,
   workspaceIdsOnCheckout,
@@ -671,6 +672,7 @@ export interface SessionOptions {
   // envelope out to other desktop clients. The session itself has no socket handle.
   onWorkspaceLayoutPushed?: (envelope: WorkspaceLayoutEnvelope) => void;
   providerSnapshotManager: ProviderSnapshotManager;
+  providerUsageService: ProviderUsageService;
   serviceProxy?: ServiceProxySubsystem;
   scriptRuntimeStore?: WorkspaceScriptRuntimeStore;
   workspaceSetupSnapshots?: Map<string, WorkspaceSetupSnapshot>;
@@ -911,6 +913,7 @@ export class Session {
   private readonly terminalManager: TerminalManager | null;
   private readonly portForwardManager: PortForwardManager | null;
   private readonly providerSnapshotManager: ProviderSnapshotManager;
+  private readonly providerUsageService: ProviderUsageService;
   private unsubscribeProviderSnapshotEvents: (() => void) | null = null;
   private readonly serviceProxy: ServiceProxySubsystem | null;
   private readonly scriptRuntimeStore: WorkspaceScriptRuntimeStore | null;
@@ -985,6 +988,7 @@ export class Session {
       terminalManager,
       portForwardManager,
       providerSnapshotManager,
+      providerUsageService,
       serviceProxy,
       scriptRuntimeStore,
       workspaceSetupSnapshots,
@@ -1088,6 +1092,7 @@ export class Session {
       logger: this.sessionLogger,
     });
     this.providerSnapshotManager = providerSnapshotManager;
+    this.providerUsageService = providerUsageService;
     this.serviceProxy = serviceProxy ?? null;
     this.scriptRuntimeStore = scriptRuntimeStore ?? null;
     this.workspaceSetupSnapshots = workspaceSetupSnapshots ?? new Map();
@@ -2480,6 +2485,8 @@ export class Session {
         return this.handleOpenProjectRequest(msg);
       case "archive_workspace_request":
         return this.handleArchiveWorkspaceRequest(msg);
+      case "project.add.request":
+        return this.handleProjectAddRequest(msg);
       case "project.remove.request":
         return this.handleProjectRemoveRequest(msg);
       case "project_icon_request":
@@ -2548,6 +2555,8 @@ export class Session {
         return this.handleRefreshProvidersSnapshotRequest(msg);
       case "provider_diagnostic_request":
         return this.handleProviderDiagnosticRequest(msg);
+      case "provider.usage.list.request":
+        return this.handleProviderUsageListRequest(msg);
       default:
         return undefined;
     }
@@ -4929,6 +4938,34 @@ export class Session {
     }
   }
 
+  private async handleProviderUsageListRequest(
+    msg: Extract<SessionInboundMessage, { type: "provider.usage.list.request" }>,
+  ): Promise<void> {
+    try {
+      const usage = await this.providerUsageService.listUsage();
+      this.emit({
+        type: "provider.usage.list.response",
+        payload: {
+          requestId: msg.requestId,
+          fetchedAt: usage.fetchedAt,
+          providers: usage.providers,
+        },
+      });
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
+      this.sessionLogger.error({ err }, "Failed to list provider usage");
+      this.emit({
+        type: "rpc_error",
+        payload: {
+          requestId: msg.requestId,
+          requestType: msg.type,
+          error: `Failed to list provider usage: ${err.message}`,
+          code: "provider_usage_list_failed",
+        },
+      });
+    }
+  }
+
   private assertSafeGitRef(ref: string, label: string): void {
     if (!/^[A-Za-z0-9._/-]+$/.test(ref)) {
       throw new Error(`Invalid ${label}: ${ref}`);
@@ -5207,14 +5244,17 @@ export class Session {
     this.sessionLogger.info({ agentId, modeId, requestId }, "session: set_agent_mode_request");
 
     try {
-      await setAgentModeCommand({ agentManager: this.agentManager }, { agentId, modeId });
+      const result = await setAgentModeCommand(
+        { agentManager: this.agentManager },
+        { agentId, modeId },
+      );
       this.sessionLogger.info(
         { agentId, modeId, requestId },
         "session: set_agent_mode_request success",
       );
       this.emit({
         type: "set_agent_mode_response",
-        payload: { requestId, agentId, accepted: true, error: null },
+        payload: { requestId, agentId, accepted: true, error: null, notice: result.notice },
       });
     } catch (error) {
       this.sessionLogger.error(
@@ -5343,14 +5383,14 @@ export class Session {
     );
 
     try {
-      await this.agentManager.setAgentThinkingOption(agentId, thinkingOptionId);
+      const notice = await this.agentManager.setAgentThinkingOption(agentId, thinkingOptionId);
       this.sessionLogger.info(
         { agentId, thinkingOptionId, requestId },
         "session: set_agent_thinking_request success",
       );
       this.emit({
         type: "set_agent_thinking_response",
-        payload: { requestId, agentId, accepted: true, error: null },
+        payload: { requestId, agentId, accepted: true, error: null, notice },
       });
     } catch (error) {
       this.sessionLogger.error(
@@ -8031,6 +8071,30 @@ export class Session {
     return workspaceRecord;
   }
 
+  private async findOrCreateProjectForDirectory(cwd: string): Promise<PersistedProjectRecord> {
+    const normalizedCwd = resolve(cwd);
+    const checkout = await this.workspaceGitService.getCheckout(normalizedCwd);
+    const membership = classifyDirectoryForProjectMembership({ cwd: normalizedCwd, checkout });
+    const projectRecord = await this.resolveProjectRecordForPlacement({
+      membership,
+      timestamp: new Date().toISOString(),
+    });
+    await this.projectRegistry.upsert(projectRecord);
+    return projectRecord;
+  }
+
+  private buildProjectDescriptor(
+    project: PersistedProjectRecord,
+  ): WorkspaceProjectDescriptorPayload {
+    return {
+      projectId: project.projectId,
+      projectDisplayName: resolveProjectDisplayName(project),
+      projectCustomName: project.customName ?? null,
+      projectRootPath: project.rootPath,
+      projectKind: project.kind,
+    };
+  }
+
   private async reclassifyOrUnarchiveWorkspaceForDirectory(input: {
     workspace: PersistedWorkspaceRecord;
     project: PersistedProjectRecord | null;
@@ -8445,24 +8509,24 @@ export class Session {
     return {
       kind: "remove",
       id: workspaceId,
-      ...(await this.resolveEmptyProjectForArchivedWorkspace(workspaceId)),
+      ...(await this.resolveProjectWithoutActiveWorkspacesForArchivedWorkspace(workspaceId)),
     };
   }
 
-  // When a workspace is archived its project may become empty. Resolve the
-  // now-empty project parent so the `remove` update can carry it, keeping the
-  // sidebar's empty project row in sync without a full re-hydration.
-  private async resolveEmptyProjectForArchivedWorkspace(
+  // When a workspace is archived its project may have no active workspaces left.
+  // Resolve that project parent so the `remove` update can carry it, keeping the
+  // sidebar in sync without a full re-hydration.
+  private async resolveProjectWithoutActiveWorkspacesForArchivedWorkspace(
     workspaceId: string,
   ): Promise<{ emptyProject: WorkspaceProjectDescriptorPayload } | null> {
     const archivedWorkspace = await this.workspaceRegistry.get(workspaceId);
     if (!archivedWorkspace) {
       return null;
     }
-    const emptyProject = (await this.workspaceDirectory.listEmptyProjects()).find(
+    const projectWithoutActiveWorkspaces = (await this.workspaceDirectory.listEmptyProjects()).find(
       (project) => project.projectId === archivedWorkspace.projectId,
     );
-    return emptyProject ? { emptyProject } : null;
+    return projectWithoutActiveWorkspaces ? { emptyProject: projectWithoutActiveWorkspaces } : null;
   }
 
   private async emitWorkspaceUpdateForTerminalContribution(
@@ -9010,6 +9074,69 @@ export class Session {
         payload: {
           requestId: request.requestId,
           workspace: null,
+          error: message,
+        },
+      });
+    }
+  }
+
+  private async handleProjectAddRequest(
+    request: Extract<SessionInboundMessage, { type: "project.add.request" }>,
+  ): Promise<void> {
+    const requestedCwd = request.cwd;
+    const cwd = expandTilde(requestedCwd);
+    const directoryExists = await this.filesystem.isDirectory(cwd).catch(() => false);
+    if (!directoryExists) {
+      this.sessionLogger.info(
+        { requestedCwd, resolvedCwd: cwd, reason: "directory_not_found" },
+        "Add project rejected",
+      );
+      this.emit({
+        type: "project.add.response",
+        payload: {
+          requestId: request.requestId,
+          project: null,
+          error: `Directory not found: ${cwd}`,
+          errorCode: "directory_not_found",
+        },
+      });
+      return;
+    }
+
+    try {
+      const projectsBefore = new Map<string, PersistedProjectRecord>();
+      for (const project of await this.projectRegistry.list()) {
+        projectsBefore.set(project.projectId, project);
+      }
+      const project = await this.findOrCreateProjectForDirectory(cwd);
+      this.sessionLogger.info(
+        {
+          requestedCwd,
+          resolvedCwd: cwd,
+          projectId: project.projectId,
+          projectKind: project.kind,
+          projectTransition: describeRegistryTransition(
+            projectsBefore.get(project.projectId) ?? null,
+          ),
+        },
+        "Project added",
+      );
+      this.emit({
+        type: "project.add.response",
+        payload: {
+          requestId: request.requestId,
+          project: this.buildProjectDescriptor(project),
+          error: null,
+        },
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to add project";
+      this.sessionLogger.error({ err: error, cwd }, "Failed to add project");
+      this.emit({
+        type: "project.add.response",
+        payload: {
+          requestId: request.requestId,
+          project: null,
           error: message,
         },
       });

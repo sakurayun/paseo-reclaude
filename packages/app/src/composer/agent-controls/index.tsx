@@ -83,6 +83,7 @@ import {
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { useToast } from "@/contexts/toast-context";
 import { toErrorMessage } from "@/utils/error-messages";
+import { showProviderNoticeToast } from "@/utils/provider-notice-toast";
 
 interface AgentControlOption {
   id: string;
@@ -1975,10 +1976,13 @@ export const AgentControls = memo(function AgentControls({
           console.warn("[AgentControls] persist thinking preference failed", error);
         });
       }
-      void client.setAgentThinkingOption(agentId, thinkingOptionId).catch((error) => {
-        console.warn("[AgentControls] setAgentThinkingOption failed", error);
-        toast.error(toErrorMessage(error));
-      });
+      void client
+        .setAgentThinkingOption(agentId, thinkingOptionId)
+        .then((notice) => showProviderNoticeToast(toast, notice))
+        .catch((error) => {
+          console.warn("[AgentControls] setAgentThinkingOption failed", error);
+          toast.error(toErrorMessage(error));
+        });
     },
     [activeModelId, agentId, agentProvider, client, toast, updatePreferences],
   );

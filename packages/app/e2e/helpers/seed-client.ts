@@ -4,6 +4,15 @@ import type { TerminalActivity } from "@getpaseo/protocol/terminal-activity";
 import { connectDaemonClient } from "./daemon-client-loader";
 import { createTempDirectory, createTempGitRepo } from "./workspace";
 
+export interface SeedWorkspaceDescriptor {
+  id: string;
+  name: string;
+  projectId: string;
+  projectDisplayName: string;
+  projectRootPath: string;
+  workspaceDirectory: string;
+}
+
 /**
  * The general-purpose E2E daemon client used to seed and drive state out of
  * band (workspaces, agents, terminals) while the UI is exercised through the
@@ -13,16 +22,16 @@ import { createTempDirectory, createTempGitRepo } from "./workspace";
 export interface SeedDaemonClient {
   connect(): Promise<void>;
   close(): Promise<void>;
-  openProject(cwd: string): Promise<{
-    workspace: {
-      id: string;
-      name: string;
+  addProject(cwd: string): Promise<{
+    project: {
       projectId: string;
       projectDisplayName: string;
       projectRootPath: string;
-      workspaceDirectory: string;
     } | null;
     error: string | null;
+  }>;
+  fetchWorkspaces(options?: { filter?: { projectId?: string } }): Promise<{
+    entries: SeedWorkspaceDescriptor[];
   }>;
   createWorkspace(input: {
     source:
@@ -39,7 +48,7 @@ export interface SeedDaemonClient {
         };
     title?: string;
   }): Promise<{
-    workspace: { id: string; name: string } | null;
+    workspace: SeedWorkspaceDescriptor | null;
     error: string | null;
   }>;
   /**
@@ -126,7 +135,7 @@ export interface SeedDaemonClient {
     agentId: string,
   ): Promise<{ agent: { id: string; archivedAt?: string | null } } | null>;
   getLastServerInfoMessage(): {
-    features?: { worktreeRestore?: boolean } | null;
+    features?: { projectAdd?: boolean; worktreeRestore?: boolean } | null;
   } | null;
   fetchAgentHistory(options?: {
     page?: { limit: number };
@@ -184,18 +193,20 @@ export async function seedWorkspace(options: {
       : await createTempGitRepo(options.repoPrefix, options.repo);
   const client = await connectSeedClient();
   try {
-    const opened = await client.openProject(project.path);
-    if (!opened.workspace) {
-      throw new Error(opened.error ?? `Failed to open project ${project.path}`);
+    const created = await client.createWorkspace({
+      source: { kind: "directory", path: project.path },
+    });
+    if (!created.workspace) {
+      throw new Error(created.error ?? `Failed to create workspace ${project.path}`);
     }
     return {
       client,
       repoPath: project.path,
-      workspaceId: opened.workspace.id,
-      workspaceName: opened.workspace.name,
-      workspaceDirectory: opened.workspace.workspaceDirectory,
-      projectId: opened.workspace.projectId,
-      projectDisplayName: opened.workspace.projectDisplayName,
+      workspaceId: created.workspace.id,
+      workspaceName: created.workspace.name,
+      workspaceDirectory: created.workspace.workspaceDirectory,
+      projectId: created.workspace.projectId,
+      projectDisplayName: created.workspace.projectDisplayName,
       cleanup: async () => {
         await client.close().catch(() => undefined);
         await project.cleanup().catch(() => undefined);

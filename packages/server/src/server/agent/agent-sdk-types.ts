@@ -1,5 +1,8 @@
 import type { Options as ClaudeAgentOptions } from "@anthropic-ai/claude-agent-sdk";
+import type { AgentProviderNotice } from "@getpaseo/protocol/agent-types";
 import type { AgentAttachment } from "@getpaseo/protocol/messages";
+
+export type { AgentProviderNotice };
 
 export type AgentProvider = string;
 
@@ -633,7 +636,7 @@ export interface AgentSession {
   getRuntimeInfo(): Promise<AgentRuntimeInfo>;
   getAvailableModes(): Promise<AgentMode[]>;
   getCurrentMode(): Promise<string | null>;
-  setMode(modeId: string): Promise<void>;
+  setMode(modeId: string): Promise<void | AgentProviderNotice>;
   getPendingPermissions(): AgentPermissionRequest[];
   respondToPermission(
     requestId: string,
@@ -646,7 +649,7 @@ export interface AgentSession {
   setModel?(modelId: string | null): Promise<AgentConfigurationUpdateResult | void>;
   setThinkingOption?(
     thinkingOptionId: string | null,
-  ): Promise<AgentConfigurationUpdateResult | void>;
+  ): Promise<AgentConfigurationUpdateResult | AgentProviderNotice | void>;
   setFeature?(featureId: string, value: unknown): Promise<AgentConfigurationUpdateResult | void>;
   revertConversation?(input: { messageId: string }): Promise<void>;
   revertFiles?(input: { messageId: string }): Promise<void>;

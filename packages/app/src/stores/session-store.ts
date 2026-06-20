@@ -332,8 +332,8 @@ export interface SessionState {
   agents: Map<string, Agent>;
   agentDetails: Map<string, Agent>;
   workspaces: Map<string, WorkspaceDescriptor>;
-  // Project parents with no active workspaces, keyed by projectId. Rendered as
-  // empty project rows in the sidebar.
+  // Project parents with no active workspaces, keyed by projectId. The
+  // `emptyProjects` name is the existing protocol/store projection.
   emptyProjects: Map<string, EmptyProjectDescriptor>;
   // Transient restore state for archived workspaces, keyed by normalized
   // workspaceId. Cleared in mergeWorkspaces when the descriptor lands.

@@ -1,12 +1,11 @@
-import type { TFunction } from "i18next";
-import { useMemo, type ReactNode } from "react";
-import { useTranslation } from "react-i18next";
-import { Pressable, Text, View, type StyleProp, type ViewStyle } from "react-native";
+import { useCallback, useState } from "react";
+import { Pressable, Text, View } from "react-native";
 import Svg, { Circle } from "react-native-svg";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
+import { useTranslation } from "react-i18next";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { useDaemonConfig } from "@/hooks/use-daemon-config";
-import { useSessionStore } from "@/stores/session-store";
+import { ProviderUsageTooltipSection } from "@/provider-usage/tooltip-section";
+import { useProviderUsage } from "@/provider-usage/use-provider-usage";
 import { formatTokenCount } from "./context-window-meter.utils";
 
 interface ContextWindowMeterProps {
@@ -15,7 +14,6 @@ interface ContextWindowMeterProps {
   totalCostUsd?: number | null;
   showPercentage?: boolean;
   serverId?: string;
-  selectedModel?: string | null;
   /** The Paseo provider key, e.g. "claude", "gemini", "codex" */
   provider?: string | null;
 }
@@ -74,12 +72,6 @@ function getMeterColors(
   return { progress: theme.colors.foregroundMuted, track };
 }
 
-function getBarColor(pct: number, theme: ReturnType<typeof useUnistyles>["theme"]): string {
-  if (pct > 90) return theme.colors.destructive;
-  if (pct >= 70) return theme.colors.palette.amber[500];
-  return theme.colors.accent;
-}
-
 function getMeterGeometry(showPercentage: boolean) {
   if (showPercentage) {
     return {
@@ -101,403 +93,31 @@ function getMeterGeometry(showPercentage: boolean) {
   };
 }
 
-function formatResetsAtLabel(t: TFunction, resetsAt: string | undefined): string {
-  if (!resetsAt) return "";
-  const diffMs = new Date(resetsAt).getTime() - Date.now();
-  if (!Number.isFinite(diffMs)) return "";
-  if (diffMs <= 0) return t("contextWindow.quota.resettingNow");
-  const diffMinutes = Math.floor(diffMs / 60_000);
-  const diffHours = Math.floor(diffMinutes / 60);
-  const diffDays = Math.floor(diffHours / 24);
-  if (diffDays > 0) return t("contextWindow.quota.resetsDays", { value: diffDays });
-  if (diffHours > 0) return t("contextWindow.quota.resetsHours", { value: diffHours });
-  return t("contextWindow.quota.resetsMinutes", { value: diffMinutes });
-}
-
-function QuotaUsageBar({
-  label,
-  utilizationPct,
-  resetsAt,
-  theme,
-}: {
-  label: string;
-  utilizationPct: number;
-  resetsAt?: string;
-  theme: ReturnType<typeof useUnistyles>["theme"];
-}) {
-  const { t } = useTranslation();
-  const pct = clampPercentage(utilizationPct);
-  const barColor = getBarColor(pct, theme);
-  const resetLabel = formatResetsAtLabel(t, resetsAt);
-
-  const fillStyle = useMemo<StyleProp<ViewStyle>>(
-    () => [styles.usageBarFill, { width: `${pct}%`, backgroundColor: barColor }],
-    [pct, barColor],
-  );
-
-  return (
-    <View style={styles.usageBarContainer}>
-      <View style={styles.usageBarRow}>
-        <Text style={styles.usageBarLabel}>{label}</Text>
-        <Text style={styles.usageBarValue}>
-          {`${Math.round(pct)}%`}
-          {resetLabel ? ` · ${resetLabel}` : ""}
-        </Text>
-      </View>
-      <View style={styles.usageBarTrack}>
-        <View style={fillStyle} />
-      </View>
-    </View>
-  );
-}
-
-type ProviderQuota = NonNullable<
-  ReturnType<typeof useSessionStore.getState>["sessions"][string]["providerQuota"]
->;
-
-function ClaudeQuotaContent({
-  quota,
-  theme,
-}: {
-  quota: NonNullable<ProviderQuota["claude"]>;
-  theme: ReturnType<typeof useUnistyles>["theme"];
-}) {
-  const { t } = useTranslation();
-  return (
-    <>
-      <Text style={styles.tooltipTitle}>
-        {`${t("contextWindow.quota.planUsage")}${quota.plan ? ` · ${quota.plan}` : ""}`}
-      </Text>
-      {quota.fiveHour ? (
-        <QuotaUsageBar
-          label={t("contextWindow.quota.claude.fiveHour")}
-          utilizationPct={quota.fiveHour.utilizationPct}
-          resetsAt={quota.fiveHour.resetsAt}
-          theme={theme}
-        />
-      ) : null}
-      {quota.sevenDay ? (
-        <QuotaUsageBar
-          label={t("contextWindow.quota.claude.weeklyAll")}
-          utilizationPct={quota.sevenDay.utilizationPct}
-          resetsAt={quota.sevenDay.resetsAt}
-          theme={theme}
-        />
-      ) : null}
-      {quota.sevenDayOpus ? (
-        <QuotaUsageBar
-          label={t("contextWindow.quota.claude.weeklyOpus")}
-          utilizationPct={quota.sevenDayOpus.utilizationPct}
-          resetsAt={quota.sevenDayOpus.resetsAt}
-          theme={theme}
-        />
-      ) : null}
-      {quota.sevenDayOmelette ? (
-        <QuotaUsageBar
-          label={t("contextWindow.quota.claude.weeklyDesign")}
-          utilizationPct={quota.sevenDayOmelette.utilizationPct}
-          resetsAt={quota.sevenDayOmelette.resetsAt}
-          theme={theme}
-        />
-      ) : null}
-      {quota.extraUsage?.isEnabled ? (
-        <Text style={styles.tooltipDetail}>{t("contextWindow.quota.claude.overageEnabled")}</Text>
-      ) : null}
-    </>
-  );
-}
-
-function CodexQuotaContent({
-  quota,
-  theme,
-}: {
-  quota: NonNullable<ProviderQuota["codex"]>;
-  theme: ReturnType<typeof useUnistyles>["theme"];
-}) {
-  const { t } = useTranslation();
-  return (
-    <>
-      <Text style={styles.tooltipTitle}>
-        {`${t("contextWindow.quota.planUsage")}${quota.planType ? ` · ${quota.planType}` : ""}`}
-      </Text>
-      {quota.session ? (
-        <QuotaUsageBar
-          label={t("contextWindow.quota.codex.session")}
-          utilizationPct={quota.session.utilizationPct}
-          resetsAt={quota.session.resetsAt}
-          theme={theme}
-        />
-      ) : null}
-      {quota.weekly ? (
-        <QuotaUsageBar
-          label={t("contextWindow.quota.codex.weekly")}
-          utilizationPct={quota.weekly.utilizationPct}
-          resetsAt={quota.weekly.resetsAt}
-          theme={theme}
-        />
-      ) : null}
-      {quota.codeReview ? (
-        <QuotaUsageBar
-          label={t("contextWindow.quota.codex.codeReview")}
-          utilizationPct={quota.codeReview.utilizationPct}
-          resetsAt={quota.codeReview.resetsAt}
-          theme={theme}
-        />
-      ) : null}
-      {quota.credits?.balance != null ? (
-        <Text style={styles.tooltipDetail}>
-          {t("contextWindow.quota.codex.creditsRemaining", {
-            amount: quota.credits.balance.toFixed(2),
-          })}
-        </Text>
-      ) : null}
-    </>
-  );
-}
-
-function CopilotQuotaContent({
-  quota,
-  theme: _theme,
-}: {
-  quota: NonNullable<ProviderQuota["copilot"]>;
-  theme: ReturnType<typeof useUnistyles>["theme"];
-}) {
-  const { t } = useTranslation();
-  const resetLabel = formatResetsAtLabel(t, quota.quotaResetDate || undefined);
-  return (
-    <>
-      <Text style={styles.tooltipTitle}>
-        {`${t("contextWindow.quota.copilot.title")}${quota.plan ? ` · ${quota.plan}` : ""}`}
-      </Text>
-      {resetLabel ? (
-        <Text style={styles.tooltipDetail}>
-          {t("contextWindow.quota.copilot.resets", { label: resetLabel })}
-        </Text>
-      ) : null}
-    </>
-  );
-}
-
-function CursorQuotaContent({
-  quota,
-  theme,
-}: {
-  quota: NonNullable<ProviderQuota["cursor"]>;
-  theme: ReturnType<typeof useUnistyles>["theme"];
-}) {
-  const { t } = useTranslation();
-  const limit = quota.planUsage?.limit;
-  const remaining = quota.planUsage?.remaining;
-  const totalSpend = quota.planUsage?.totalSpend;
-  const utilizationPct =
-    typeof limit === "number" && typeof remaining === "number" && limit > 0
-      ? ((limit - remaining) / limit) * 100
-      : 0;
-
-  const label =
-    typeof totalSpend === "number" && typeof limit === "number"
-      ? t("contextWindow.quota.cursor.spent", {
-          spent: `$${totalSpend.toFixed(2)}`,
-          limit: `$${limit.toFixed(2)}`,
-        })
-      : t("contextWindow.quota.usage");
-
-  return (
-    <>
-      <Text style={styles.tooltipTitle}>{t("contextWindow.quota.cursor.title")}</Text>
-      {quota.planUsage ? (
-        <QuotaUsageBar label={label} utilizationPct={utilizationPct} theme={theme} />
-      ) : null}
-      {quota.billingCycleEnd ? (
-        <Text style={styles.tooltipDetail}>
-          {t("contextWindow.quota.cursor.billingResets", {
-            date: new Date(quota.billingCycleEnd).toLocaleDateString(),
-          })}
-        </Text>
-      ) : null}
-    </>
-  );
-}
-
-function ZaiQuotaContent({
-  quota,
-  theme: _theme,
-}: {
-  quota: NonNullable<ProviderQuota["zai"]>;
-  theme: ReturnType<typeof useUnistyles>["theme"];
-}) {
-  const { t } = useTranslation();
-  return (
-    <>
-      <Text style={styles.tooltipTitle}>
-        {`${t("contextWindow.quota.zai.title")}${quota.productName ? ` · ${quota.productName}` : ""}`}
-      </Text>
-      {quota.status ? (
-        <Text style={styles.tooltipDetail}>
-          {t("contextWindow.quota.zai.status", { status: quota.status })}
-        </Text>
-      ) : null}
-      {quota.valid ? (
-        <Text style={styles.tooltipDetail}>
-          {t("contextWindow.quota.zai.valid", { valid: quota.valid })}
-        </Text>
-      ) : null}
-    </>
-  );
-}
-
-function GrokQuotaContent({
-  quota,
-  theme,
-}: {
-  quota: NonNullable<ProviderQuota["grok"]>;
-  theme: ReturnType<typeof useUnistyles>["theme"];
-}) {
-  const { t } = useTranslation();
-  const limit = quota.monthlyLimit;
-  const usage = quota.creditUsage;
-  const utilizationPct =
-    typeof limit === "number" && typeof usage === "number" && limit > 0 ? (usage / limit) * 100 : 0;
-
-  const label =
-    typeof usage === "number" && typeof limit === "number"
-      ? t("contextWindow.quota.used", {
-          used: usage.toLocaleString(),
-          limit: limit.toLocaleString(),
-        })
-      : t("contextWindow.quota.usage");
-
-  return (
-    <>
-      <Text style={styles.tooltipTitle}>{t("contextWindow.quota.grok.title")}</Text>
-      <QuotaUsageBar label={label} utilizationPct={utilizationPct} theme={theme} />
-    </>
-  );
-}
-
-function KimiQuotaContent({
-  quota,
-  theme,
-}: {
-  quota: NonNullable<ProviderQuota["kimi"]>;
-  theme: ReturnType<typeof useUnistyles>["theme"];
-}) {
-  const { t } = useTranslation();
-  const limitVal = quota.limit ? parseFloat(quota.limit) : NaN;
-  const remainingVal = quota.remaining ? parseFloat(quota.remaining) : NaN;
-
-  const hasNumbers = !isNaN(limitVal) && !isNaN(remainingVal);
-  const usedVal = hasNumbers ? limitVal - remainingVal : 0;
-  const utilizationPct = hasNumbers && limitVal > 0 ? (usedVal / limitVal) * 100 : 0;
-
-  const label = hasNumbers
-    ? t("contextWindow.quota.used", {
-        used: Math.round(usedVal).toLocaleString(),
-        limit: Math.round(limitVal).toLocaleString(),
-      })
-    : t("contextWindow.quota.usage");
-
-  return (
-    <>
-      <Text style={styles.tooltipTitle}>{t("contextWindow.quota.kimi.title")}</Text>
-      {hasNumbers ? (
-        <QuotaUsageBar
-          label={label}
-          utilizationPct={utilizationPct}
-          resetsAt={quota.resetTime || undefined}
-          theme={theme}
-        />
-      ) : (
-        <Text style={styles.tooltipDetail}>{t("contextWindow.quota.kimi.noData")}</Text>
-      )}
-    </>
-  );
-}
-
-const QUOTA_RENDERERS: Record<
-  string,
-  (quota: unknown, theme: ReturnType<typeof useUnistyles>["theme"]) => ReactNode
-> = {
-  claude: (q, t) => (
-    <ClaudeQuotaContent quota={q as NonNullable<ProviderQuota["claude"]>} theme={t} />
-  ),
-  codex: (q, t) => <CodexQuotaContent quota={q as NonNullable<ProviderQuota["codex"]>} theme={t} />,
-  copilot: (q, t) => (
-    <CopilotQuotaContent quota={q as NonNullable<ProviderQuota["copilot"]>} theme={t} />
-  ),
-  cursor: (q, t) => (
-    <CursorQuotaContent quota={q as NonNullable<ProviderQuota["cursor"]>} theme={t} />
-  ),
-  zai: (q, t) => <ZaiQuotaContent quota={q as NonNullable<ProviderQuota["zai"]>} theme={t} />,
-  grok: (q, t) => <GrokQuotaContent quota={q as NonNullable<ProviderQuota["grok"]>} theme={t} />,
-  kimi: (q, t) => <KimiQuotaContent quota={q as NonNullable<ProviderQuota["kimi"]>} theme={t} />,
-};
-
-function PlanUsageSection({
-  provider,
-  providerQuota,
-  reclaudeEnabled,
-}: {
-  provider: string | null | undefined;
-  providerQuota: ProviderQuota | null;
-  reclaudeEnabled: boolean;
-}) {
-  const { theme } = useUnistyles();
-  const { t } = useTranslation();
-  const p = provider?.toLowerCase();
-  if (!p || !(p in QUOTA_RENDERERS)) return null;
-
-  // reclaude swaps the Claude binary for a third-party backend, so the SDK
-  // rate-limit data we derive plan usage from is never reported. Surface a
-  // clear notice instead of a perpetual "loading" state.
-  if (p === "claude" && reclaudeEnabled) {
-    return (
-      <>
-        <View style={styles.tooltipDivider} />
-        <Text style={styles.tooltipTitle}>{t("contextWindow.quota.planUsage")}</Text>
-        <Text style={styles.tooltipDetail}>
-          {t("contextWindow.quota.claude.reclaudeUnsupported")}
-        </Text>
-      </>
-    );
-  }
-
-  const render = QUOTA_RENDERERS[p];
-  const quotaData = providerQuota ? providerQuota[p as keyof ProviderQuota] : null;
-  const content = quotaData ? (
-    render(quotaData, theme)
-  ) : (
-    <Text style={styles.tooltipDetail}>{t("contextWindow.quota.loading")}</Text>
-  );
-
-  return (
-    <>
-      <View style={styles.tooltipDivider} />
-      {content}
-    </>
-  );
-}
-
 export function ContextWindowMeter({
   maxTokens,
   usedTokens,
   totalCostUsd,
   showPercentage = false,
   serverId,
-  selectedModel: _selectedModel,
   provider,
 }: ContextWindowMeterProps) {
   const { theme } = useUnistyles();
   const { t } = useTranslation();
-  const percentage = getUsagePercentage(maxTokens, usedTokens);
-
-  const providerQuota = useSessionStore((state) =>
-    serverId ? (state.sessions[serverId]?.providerQuota ?? null) : null,
+  const [isTooltipOpen, setIsTooltipOpen] = useState(false);
+  const { view: providerUsageView, refresh: refreshProviderUsage } = useProviderUsage(
+    serverId ?? null,
+    { enabled: isTooltipOpen },
   );
-  // reclaude is enabled by setting the Claude launch command to ["reclaude"]
-  // in the daemon config; under it the plan-usage quota cannot be queried.
-  const { config: daemonConfig } = useDaemonConfig(serverId ?? null);
-  const reclaudeEnabled = daemonConfig?.providers?.claude?.command?.[0] === "reclaude";
+  const percentage = getUsagePercentage(maxTokens, usedTokens);
+  const handleTooltipOpenChange = useCallback(
+    (nextOpen: boolean) => {
+      setIsTooltipOpen(nextOpen);
+      if (nextOpen) {
+        void refreshProviderUsage();
+      }
+    },
+    [refreshProviderUsage],
+  );
 
   if (percentage === null) {
     return null;
@@ -513,10 +133,17 @@ export function ContextWindowMeter({
     typeof totalCostUsd === "number" ? formatSessionCost(totalCostUsd) : null;
 
   return (
-    <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile>
+    <Tooltip
+      open={isTooltipOpen}
+      onOpenChange={handleTooltipOpenChange}
+      delayDuration={0}
+      enabledOnDesktop
+      enabledOnMobile
+    >
       <TooltipTrigger asChild triggerRefProp="ref">
         <Pressable
           style={containerStyle}
+          testID="context-window-meter"
           accessibilityRole="image"
           accessibilityLabel={t("contextWindow.accessibility", {
             percentage: roundedPercentage,
@@ -572,11 +199,7 @@ export function ContextWindowMeter({
               {t("contextWindow.sessionCost", { cost: formattedSessionCost })}
             </Text>
           ) : null}
-          <PlanUsageSection
-            provider={provider}
-            providerQuota={providerQuota}
-            reclaudeEnabled={reclaudeEnabled}
-          />
+          <ProviderUsageTooltipSection view={providerUsageView} activeProviderId={provider} />
         </View>
       </TooltipContent>
     </Tooltip>
@@ -624,37 +247,5 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.xs,
     lineHeight: theme.fontSize.xs * 1.4,
-  },
-  tooltipDivider: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: theme.colors.border,
-    marginVertical: theme.spacing[1] + 1,
-  },
-  usageBarContainer: {
-    gap: 3,
-  },
-  usageBarRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  usageBarLabel: {
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
-  },
-  usageBarValue: {
-    color: theme.colors.foreground,
-    fontSize: theme.fontSize.xs,
-    fontWeight: "500",
-  },
-  usageBarTrack: {
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: theme.colors.surface3,
-    overflow: "hidden",
-  },
-  usageBarFill: {
-    height: 4,
-    borderRadius: 2,
   },
 }));

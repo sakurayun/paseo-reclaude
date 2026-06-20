@@ -7,6 +7,7 @@ import { openFileExplorer, openFileFromExplorer } from "./helpers/file-explorer"
 import {
   connectWorkspaceSetupClient,
   openHomeWithProject,
+  openProjectViaDaemon,
   seedProjectForWorkspaceSetup,
 } from "./helpers/workspace-setup";
 import { buildHostWorkspaceRoute } from "../src/utils/host-routes";
@@ -66,13 +67,10 @@ test.describe("in-pane find", () => {
 
     try {
       await seedProjectForWorkspaceSetup(client, repo.path);
-      const workspaceResult = await client.openProject(repo.path);
-      if (!workspaceResult.workspace) {
-        throw new Error(workspaceResult.error ?? `Failed to open project ${repo.path}`);
-      }
+      const workspace = await openProjectViaDaemon(client, repo.path);
 
       await openHomeWithProject(page, repo.path);
-      await navigateToWorkspaceViaSidebar(page, workspaceResult.workspace.id);
+      await navigateToWorkspaceViaSidebar(page, workspace.id);
 
       await openFileExplorer(page);
       await openFileFromExplorer(page, "src");

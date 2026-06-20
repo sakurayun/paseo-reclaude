@@ -548,12 +548,26 @@ describe("ClaudeAgentSession features", () => {
   const logger = createTestLogger();
 
   function createQueryMock() {
-    const queryReturn = vi.fn(async () => undefined);
+    let endQuery: (() => void) | null = null;
+    const queryEnded = new Promise<void>((resolve) => {
+      endQuery = resolve;
+    });
+    const queryReturn = vi.fn(async () => {
+      endQuery?.();
+    });
     const queryMock = {
       close: vi.fn(),
       return: queryReturn,
       applyFlagSettings: vi.fn(async () => undefined),
       setModel: vi.fn(async () => undefined),
+      [Symbol.asyncIterator](): AsyncIterator<SDKMessage, void> {
+        return {
+          next: async () => {
+            await queryEnded;
+            return { value: undefined, done: true };
+          },
+        };
+      },
     };
     const queryFactory = vi.fn(() => queryMock);
     return { queryFactory, queryMock };
@@ -682,6 +696,58 @@ describe("ClaudeAgentSession features", () => {
     expect(queryMock.applyFlagSettings).toHaveBeenCalledWith({
       fastMode: true,
       ultracode: false,
+    });
+
+    await session.close();
+  });
+
+  test("maps Ultracode to xhigh effort and Claude ultracode settings", async () => {
+    const { queryFactory } = createQueryMock();
+    const client = new ClaudeAgentClient({
+      logger,
+      queryFactory,
+      resolveBinary: async () => "/test/claude/bin",
+    });
+    const session = await client.createSession({
+      provider: "claude",
+      cwd: process.cwd(),
+      model: "claude-opus-4-8",
+      thinkingOptionId: "ultracode",
+    });
+
+    await expect(session.startTurn("hello")).resolves.toEqual({
+      turnId: expect.stringMatching(/^foreground-turn-/),
+    });
+
+    expect(queryFactory.mock.calls[0]?.[0].options).toMatchObject({
+      effort: "xhigh",
+      thinking: { type: "adaptive" },
+      settings: { ultracode: true },
+    });
+
+    await session.close();
+  });
+
+  test("returns a next-turn notice when changing Claude thinking during an active turn", async () => {
+    const { queryFactory } = createQueryMock();
+    const client = new ClaudeAgentClient({
+      logger,
+      queryFactory,
+      resolveBinary: async () => "/test/claude/bin",
+    });
+    const session = await client.createSession({
+      provider: "claude",
+      cwd: process.cwd(),
+      model: "claude-opus-4-8",
+    });
+
+    await expect(session.startTurn("hello")).resolves.toEqual({
+      turnId: expect.stringMatching(/^foreground-turn-/),
+    });
+
+    await expect(session.setThinkingOption?.("ultracode")).resolves.toEqual({
+      type: "info",
+      message: "This change applies next turn.",
     });
 
     await session.close();
