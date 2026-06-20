@@ -44,6 +44,7 @@ import {
   type ServiceUrlBehavior,
   type Settings,
   type SettingsDeps,
+  type WorkspaceTitleSource,
 } from "./storage";
 
 export {
@@ -79,6 +80,7 @@ export type {
   ServiceUrlBehavior,
   Settings,
   SettingsDeps,
+  WorkspaceTitleSource,
 };
 
 const productionDeps: SettingsDeps = {
@@ -183,6 +185,9 @@ export function useSettings(): UseSettingsReturn {
       }
       if (updates.syntaxTheme !== undefined) {
         appUpdates.syntaxTheme = updates.syntaxTheme;
+      }
+      if (updates.workspaceTitleSource !== undefined) {
+        appUpdates.workspaceTitleSource = updates.workspaceTitleSource;
       }
       const promises: Promise<void>[] = [];
       if (Object.keys(appUpdates).length > 0) {

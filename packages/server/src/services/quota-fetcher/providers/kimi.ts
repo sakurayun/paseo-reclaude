@@ -88,13 +88,24 @@ export class KimiQuotaProvider implements ProviderUsageFetcher {
   }
 
   private async readKimiToken(): Promise<string | null> {
-    const path = join(homedir(), ".kimi", "credentials", "kimi-code.json");
-    if (!existsSync(path)) return null;
-    try {
-      const credentials = KimiAuthSchema.parse(JSON.parse(await fs.readFile(path, "utf8")));
-      return credentials.access_token ?? null;
-    } catch {
-      return null;
+    const paths = [
+      join(
+        process.env["KIMI_CODE_HOME"] || join(homedir(), ".kimi-code"),
+        "credentials",
+        "kimi-code.json",
+      ),
+      join(homedir(), ".kimi", "credentials", "kimi-code.json"),
+    ];
+
+    for (const path of paths) {
+      if (!existsSync(path)) continue;
+      try {
+        const credentials = KimiAuthSchema.parse(JSON.parse(await fs.readFile(path, "utf8")));
+        if (credentials.access_token) return credentials.access_token;
+      } catch {
+        continue;
+      }
     }
+    return null;
   }
 }

@@ -11,6 +11,7 @@ const LEGACY_SETTINGS_KEY = "@paseo:settings";
 export type SendBehavior = "interrupt" | "queue";
 export type ReleaseChannel = "stable" | "beta";
 export type ServiceUrlBehavior = "ask" | "in-app" | "external";
+export type WorkspaceTitleSource = "title" | "branch";
 
 const VALID_THEMES = new Set<string>([...Object.keys(THEME_TO_UNISTYLES), "auto"]);
 const VALID_SERVICE_URL_BEHAVIORS = new Set<ServiceUrlBehavior>(["ask", "in-app", "external"]);
@@ -60,6 +61,7 @@ export interface AppSettings {
   terminalLetterSpacing: number; // extra inter-character spacing (px), default 0
   windowsPreferPowerShell7: boolean; // Windows: prefer pwsh7 for default terminals
   windowsLaunchAsAdmin: boolean; // Windows: launch default terminals elevated via gsudo
+  workspaceTitleSource: WorkspaceTitleSource;
 }
 
 export interface Settings extends AppSettings {
@@ -86,6 +88,7 @@ export const DEFAULT_CLIENT_SETTINGS: AppSettings = {
   terminalLetterSpacing: DEFAULT_TERMINAL_LETTER_SPACING,
   windowsPreferPowerShell7: DEFAULT_WINDOWS_PREFER_POWERSHELL7,
   windowsLaunchAsAdmin: DEFAULT_WINDOWS_LAUNCH_AS_ADMIN,
+  workspaceTitleSource: "title",
 };
 
 export const DEFAULT_APP_SETTINGS: Settings = {
@@ -196,6 +199,13 @@ function pickTerminalShellSettings(stored: Partial<AppSettings>): Partial<AppSet
   return result;
 }
 
+function parseWorkspaceTitleSource(value: unknown): WorkspaceTitleSource | null {
+  if (value === "title" || value === "branch") {
+    return value;
+  }
+  return null;
+}
+
 function pickAppSettings(stored: Partial<AppSettings>): Partial<AppSettings> {
   const result: Partial<AppSettings> = {};
   if (typeof stored.theme === "string" && VALID_THEMES.has(stored.theme)) {
@@ -259,6 +269,10 @@ function pickAppSettings(stored: Partial<AppSettings>): Partial<AppSettings> {
     if (padding !== null) {
       result[field] = padding;
     }
+  }
+  const workspaceTitleSource = parseWorkspaceTitleSource(stored.workspaceTitleSource);
+  if (workspaceTitleSource !== null) {
+    result.workspaceTitleSource = workspaceTitleSource;
   }
   return result;
 }

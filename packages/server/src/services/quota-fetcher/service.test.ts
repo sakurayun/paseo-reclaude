@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -33,6 +33,20 @@ function writeCodexAuth(dir: string, accessToken: string, refreshToken = "rt_cod
   writeFileSync(
     join(dir, "auth.json"),
     JSON.stringify({ tokens: { access_token: accessToken, refresh_token: refreshToken } }),
+  );
+}
+
+function writeKimiCredentials(dir: string, accessToken: string): void {
+  mkdirSync(join(dir, "credentials"), { recursive: true });
+  writeFileSync(
+    join(dir, "credentials", "kimi-code.json"),
+    JSON.stringify({
+      access_token: accessToken,
+      refresh_token: "rt_kimi",
+      expires_at: 1_798_812_800,
+      scope: "kimi-code",
+      token_type: "Bearer",
+    }),
   );
 }
 
@@ -299,6 +313,7 @@ describe("real provider usage fetchers", () => {
       "GROK_TOKEN",
       "KIMI_TOKEN",
       "KIMI_API_KEY",
+      "KIMI_CODE_HOME",
       "CODEX_HOME",
     ]) {
       delete process.env[key];
@@ -690,6 +705,37 @@ describe("real provider usage fetchers", () => {
           usedPct: 26,
           remainingPct: 74,
           resetsAt: "2026-02-11T17:32:50Z",
+        }),
+      ],
+    });
+  });
+
+  it("fetches Kimi usage from the CLI credential home", async () => {
+    writeKimiCredentials(join(homeDir, ".kimi-code"), "kimi_cli_token");
+    fetchApi = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
+      expect(url.toString()).toBe("https://api.kimi.com/coding/v1/usages");
+      expect((init?.headers as Record<string, string> | undefined)?.Authorization).toBe(
+        "Bearer kimi_cli_token",
+      );
+      return jsonResponse({
+        usage: {
+          limit: "200",
+          remaining: "150",
+          resetTime: "2026-06-23T05:12:17Z",
+        },
+      });
+    }) as unknown as typeof fetch;
+
+    const kimi = findProvider(await service().listUsage(), "kimi");
+
+    expect(kimi).toMatchObject({
+      status: "available",
+      windows: [
+        expect.objectContaining({
+          id: "coding_usage",
+          usedPct: 25,
+          remainingPct: 75,
+          resetsAt: "2026-06-23T05:12:17Z",
         }),
       ],
     });

@@ -19,6 +19,7 @@ type NewWorkspaceDaemonClient = Pick<
   | "getPaseoWorktreeList"
   | "getDaemonConfig"
   | "patchDaemonConfig"
+  | "removeProject"
 >;
 
 type CreateWorkspacePayload = Awaited<ReturnType<NewWorkspaceDaemonClient["createWorkspace"]>>;

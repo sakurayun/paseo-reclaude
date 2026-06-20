@@ -221,8 +221,10 @@ function renderContextWindowMeter(
   showPercentage: boolean,
   serverId: string,
   provider: string | null,
+  pending: boolean,
 ): ReactElement | null {
-  if (contextWindowMaxTokens === null || contextWindowUsedTokens === null) {
+  const hasData = contextWindowMaxTokens !== null && contextWindowUsedTokens !== null;
+  if (!hasData && !pending) {
     return null;
   }
   return (
@@ -233,6 +235,7 @@ function renderContextWindowMeter(
       showPercentage={showPercentage}
       serverId={serverId}
       provider={provider}
+      pending={pending}
     />
   );
 }
@@ -1726,6 +1729,9 @@ export function Composer({
     agentState.contextWindowUsedTokens,
   );
 
+  const contextWindowPending =
+    agentState.status === "initializing" || agentState.status === "running";
+
   const contextWindowMeter = useMemo(
     () =>
       renderContextWindowMeter(
@@ -1735,6 +1741,7 @@ export function Composer({
         isCompactLayout,
         serverId,
         agentState.provider,
+        contextWindowPending,
       ),
     [
       contextWindowMaxTokens,
@@ -1743,6 +1750,7 @@ export function Composer({
       isCompactLayout,
       serverId,
       agentState.provider,
+      contextWindowPending,
     ],
   );
   const { beforeVoiceContent, footerInlineContent } = useMemo(
