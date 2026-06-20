@@ -3,9 +3,6 @@ import { join, relative } from "node:path";
 import type { ScannedGitRepo } from "@getpaseo/protocol/messages";
 import { runGitCommand } from "../utils/run-git-command.js";
 
-const DEFAULT_MAX_DEPTH = 6;
-const MAX_REPOS = 200;
-const MAX_DIRECTORIES_VISITED = 50_000;
 const GIT_QUERY_TIMEOUT_MS = 10_000;
 
 const READ_ONLY_GIT_ENV = {
@@ -38,8 +35,6 @@ export interface ScanGitReposResult {
 
 interface WalkState {
   repoPaths: string[];
-  directoriesVisited: number;
-  truncated: boolean;
 }
 
 function shouldDescendInto(name: string): boolean {
@@ -65,24 +60,13 @@ async function walkDirectory(
   depthRemaining: number,
   state: WalkState,
 ): Promise<void> {
-  if (state.repoPaths.length >= MAX_REPOS) {
-    state.truncated = true;
-    return;
-  }
-  if (state.directoriesVisited >= MAX_DIRECTORIES_VISITED) {
-    state.truncated = true;
-    return;
-  }
-  state.directoriesVisited += 1;
-
   if (await hasGitEntry(directory)) {
     state.repoPaths.push(directory);
-    if (state.repoPaths.length >= MAX_REPOS) {
-      state.truncated = true;
-      return;
-    }
+    // Descend into the repo anyway so nested sub-repos / submodules are found.
   }
 
+  // depthRemaining defaults to Infinity (no caller-supplied maxDepth), so this
+  // only short-circuits when a caller explicitly limits the descent.
   if (depthRemaining <= 0) return;
 
   let entries;
@@ -94,10 +78,12 @@ async function walkDirectory(
   }
 
   for (const entry of entries) {
+    // Symlinked directories are skipped to avoid infinite recursion on cycles.
+    // With no depth/count ceiling, this is the only loop guard — and a real
+    // repository is never a symlink, so skipping them never drops a true repo.
     if (!entry.isDirectory() || entry.isSymbolicLink()) continue;
     if (!shouldDescendInto(entry.name)) continue;
     await walkDirectory(join(directory, entry.name), depthRemaining - 1, state);
-    if (state.truncated && state.repoPaths.length >= MAX_REPOS) return;
   }
 }
 
@@ -173,13 +159,18 @@ export async function scanGitRepos(input: ScanGitReposInput): Promise<ScanGitRep
     throw new Error(`Not a directory: ${input.rootPath}`);
   }
 
-  const maxDepth = input.maxDepth ?? DEFAULT_MAX_DEPTH;
-  const state: WalkState = { repoPaths: [], directoriesVisited: 0, truncated: false };
+  // No maxDepth means scan all the way down: every git repository under
+  // rootPath is discovered regardless of nesting depth. An explicit maxDepth
+  // still caps the descent (protocol field, kept for back-compat).
+  const maxDepth = input.maxDepth ?? Number.POSITIVE_INFINITY;
+  const state: WalkState = { repoPaths: [] };
   await walkDirectory(input.rootPath, maxDepth, state);
 
   state.repoPaths.sort((a, b) => a.localeCompare(b));
   const repos = await Promise.all(
     state.repoPaths.map((repoPath) => describeRepo(input.rootPath, repoPath)),
   );
-  return { repos, truncated: state.truncated };
+  // `truncated` is retained for protocol compatibility but is always false now
+  // that scanning has no repo/directory ceiling.
+  return { repos, truncated: false };
 }

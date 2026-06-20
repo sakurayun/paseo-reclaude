@@ -82,6 +82,20 @@ describe("scanGitRepos", () => {
     expect(deep.repos.map((repo) => repo.relativePath)).toEqual([join("a", "b", "c")]);
   });
 
+  it("finds repos nested deeper than the old default depth when no maxDepth is given", async () => {
+    // Seven levels deep — beyond the previous DEFAULT_MAX_DEPTH of 6 — under a
+    // root that is not itself a repo. Without a depth cap this must be found.
+    const deepRepo = join(rootPath, "a", "b", "c", "d", "e", "f", "g");
+    await initRepo(deepRepo, ["main"]);
+
+    const result = await scanGitRepos({ rootPath });
+
+    expect(result.truncated).toBe(false);
+    expect(result.repos.map((repo) => repo.relativePath)).toEqual([
+      join("a", "b", "c", "d", "e", "f", "g"),
+    ]);
+  });
+
   it("throws for a non-directory root", async () => {
     const filePath = join(rootPath, "file.txt");
     await writeFile(filePath, "x");
