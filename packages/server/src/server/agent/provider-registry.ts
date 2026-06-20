@@ -21,6 +21,7 @@ import {
 } from "./create-agent-mode.js";
 import { normalizeAgentModelDefinition } from "./agent-sdk-types.js";
 import type { WorkspaceGitService } from "../workspace-git-service.js";
+import type { ManagedProcessRegistry } from "../managed-processes/managed-processes.js";
 import type {
   AgentProviderRuntimeSettingsMap,
   ClaudeTransport,
@@ -73,12 +74,13 @@ export interface BuildProviderRegistryOptions {
   runtimeSettings?: AgentProviderRuntimeSettingsMap;
   providerOverrides?: Record<string, ProviderOverride>;
   workspaceGitService?: Pick<WorkspaceGitService, "resolveRepoRoot">;
+  managedProcesses?: ManagedProcessRegistry;
   isDev?: boolean;
 }
 
 interface ProviderClientFactoryOptions extends Pick<
   BuildProviderRegistryOptions,
-  "workspaceGitService"
+  "workspaceGitService" | "managedProcesses"
 > {
   providerParams?: unknown;
   customProvider?: {
@@ -132,7 +134,10 @@ const PROVIDER_CLIENT_FACTORIES: Record<string, ProviderClientFactory> = {
       command: getCursorACPCommand(runtimeSettings),
       env: runtimeSettings?.env,
     }),
-  opencode: (logger, runtimeSettings) => new OpenCodeAgentClient(logger, runtimeSettings),
+  opencode: (logger, runtimeSettings, options) =>
+    new OpenCodeAgentClient(logger, runtimeSettings, {
+      managedProcesses: options?.managedProcesses,
+    }),
   pi: (logger, runtimeSettings, options) =>
     new PiRpcAgentClient({
       logger,
@@ -534,7 +539,7 @@ function createResolvedProviderClient(
 function buildResolvedBuiltinProviders(
   providerOverrides: Record<string, ProviderOverride>,
   runtimeSettings: AgentProviderRuntimeSettingsMap | undefined,
-  options: Pick<BuildProviderRegistryOptions, "workspaceGitService">,
+  options: Pick<BuildProviderRegistryOptions, "workspaceGitService" | "managedProcesses">,
   isDev: boolean,
 ): Map<string, ResolvedProvider> {
   const resolvedProviders = new Map<string, ResolvedProvider>();
@@ -563,6 +568,7 @@ function buildResolvedBuiltinProviders(
       createBaseClient: (logger) =>
         factory(logger, mergedRuntimeSettings, {
           workspaceGitService: options.workspaceGitService,
+          managedProcesses: options.managedProcesses,
           providerParams: override?.params,
           transport: override?.transport,
         }),
@@ -575,6 +581,7 @@ function buildResolvedBuiltinProviders(
 function addDerivedProviders(
   resolvedProviders: Map<string, ResolvedProvider>,
   providerOverrides: Record<string, ProviderOverride>,
+  options: Pick<BuildProviderRegistryOptions, "managedProcesses">,
 ): void {
   for (const [providerId, override] of Object.entries(providerOverrides)) {
     if (resolvedProviders.has(providerId) || BUILTIN_PROVIDER_IDS.includes(providerId)) {
@@ -660,6 +667,7 @@ function addDerivedProviders(
       providerParams,
       createBaseClient: (logger) =>
         baseFactory(logger, mergedRuntimeSettings, {
+          managedProcesses: options.managedProcesses,
           providerParams,
           customProvider: {
             id: providerId,
@@ -682,10 +690,13 @@ export function buildProviderRegistry(
     runtimeSettings,
     {
       workspaceGitService: options?.workspaceGitService,
+      managedProcesses: options?.managedProcesses,
     },
     options?.isDev === true,
   );
-  addDerivedProviders(resolvedProviders, providerOverrides);
+  addDerivedProviders(resolvedProviders, providerOverrides, {
+    managedProcesses: options?.managedProcesses,
+  });
 
   return Object.fromEntries(
     [...resolvedProviders.entries()].map(([provider, resolved]) => [

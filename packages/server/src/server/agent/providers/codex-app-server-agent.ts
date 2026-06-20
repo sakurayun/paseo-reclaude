@@ -109,6 +109,11 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return value != null && typeof value === "object" && !Array.isArray(value);
 }
 
+function isCodexAlreadyUnarchivedError(error: unknown, threadId: string): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.includes(`no archived rollout found for thread id ${threadId}`);
+}
+
 const TURN_START_TIMEOUT_MS = 90 * 1000;
 const INTERRUPT_TIMEOUT_MS = 2_000;
 const CODEX_PROVIDER = "codex" as const;
@@ -5998,6 +6003,33 @@ export class CodexAppServerAgentClient implements AgentClient {
       await client.request("initialize", buildCodexAppServerInitializeParams());
       client.notify("initialized", {});
       await client.request("thread/archive", { threadId });
+    } finally {
+      await client.dispose();
+    }
+  }
+
+  async unarchiveNativeSession(handle: AgentPersistenceHandle): Promise<void> {
+    const threadId = handle.nativeHandle ?? handle.sessionId;
+    if (!threadId) return;
+
+    const child = await this.spawnAppServer();
+    const client = new CodexAppServerClient(child, this.logger);
+
+    try {
+      await client.request("initialize", buildCodexAppServerInitializeParams());
+      client.notify("initialized", {});
+      try {
+        await client.request("thread/unarchive", { threadId });
+      } catch (error) {
+        if (!isCodexAlreadyUnarchivedError(error, threadId)) {
+          throw error;
+        }
+        try {
+          await client.request("thread/read", { threadId });
+        } catch {
+          throw error;
+        }
+      }
     } finally {
       await client.dispose();
     }

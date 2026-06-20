@@ -18,6 +18,7 @@ import { type SheetHeader } from "@/components/adaptive-modal-sheet";
 import { Combobox, ComboboxItem, type ComboboxOption } from "@/components/ui/combobox";
 import { useSessionStore } from "@/stores/session-store";
 import { useProvidersSnapshot } from "@/hooks/use-providers-snapshot";
+import { mergeProviderPreferences, useFormPreferences } from "@/hooks/use-form-preferences";
 import { resolveProviderDefinition } from "@/utils/provider-definitions";
 import { useToast } from "@/contexts/toast-context";
 import { useIsCompactFormFactor } from "@/constants/layout";
@@ -306,6 +307,7 @@ export const AgentModeControl = memo(function AgentModeControl({
     compareAvailableModes,
   );
   const client = useSessionStore((state) => state.sessions[serverId]?.client ?? null);
+  const { updatePreferences } = useFormPreferences();
   const toast = useToast();
   const { entries: snapshotEntries } = useProvidersSnapshot(serverId, { cwd: slice?.cwd });
 
@@ -317,7 +319,18 @@ export const AgentModeControl = memo(function AgentModeControl({
 
   const handleSelectMode = useCallback(
     (modeId: string) => {
-      if (!client) return;
+      if (!client || !slice?.provider) return;
+      void updatePreferences((current) =>
+        mergeProviderPreferences({
+          preferences: current,
+          provider: slice.provider,
+          updates: {
+            mode: modeId || undefined,
+          },
+        }),
+      ).catch((error) => {
+        console.warn("[AgentModeControl] persist mode preference failed", error);
+      });
       void client
         .setAgentMode(agentId, modeId)
         .then((notice) => showProviderNoticeToast(toast, notice))
@@ -326,7 +339,7 @@ export const AgentModeControl = memo(function AgentModeControl({
           toast.error(toErrorMessage(error));
         });
     },
-    [agentId, client, toast],
+    [agentId, client, slice?.provider, toast, updatePreferences],
   );
 
   if (!slice || availableModes.length === 0) return null;

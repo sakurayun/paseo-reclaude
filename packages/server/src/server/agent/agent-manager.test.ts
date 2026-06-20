@@ -134,6 +134,28 @@ class TestAgentClient implements AgentClient {
   }
 }
 
+class NativeArchiveRecordingClient extends TestAgentClient {
+  readonly archivedHandles: AgentPersistenceHandle[] = [];
+  readonly unarchivedHandles: AgentPersistenceHandle[] = [];
+  readArchivedAtDuringUnarchive: (() => Promise<string | null | undefined>) | null = null;
+  archivedAtDuringUnarchive: string | null | undefined;
+  unarchiveFailure: Error | null = null;
+
+  async archiveNativeSession(handle: AgentPersistenceHandle): Promise<void> {
+    this.archivedHandles.push(handle);
+  }
+
+  async unarchiveNativeSession(handle: AgentPersistenceHandle): Promise<void> {
+    this.unarchivedHandles.push(handle);
+    if (this.readArchivedAtDuringUnarchive) {
+      this.archivedAtDuringUnarchive = await this.readArchivedAtDuringUnarchive();
+    }
+    if (this.unarchiveFailure) {
+      throw this.unarchiveFailure;
+    }
+  }
+}
+
 class EnvProbeAgentClient extends TestAgentClient {
   probe: Promise<{ probe: string | null; agentId: string | null }> | null = null;
 
@@ -4666,6 +4688,113 @@ test("fires onAgentArchived for stored-only snapshot archives", async () => {
 
   await manager.archiveSnapshot(storedOnly.id, new Date().toISOString());
   expect(archivedIds).toEqual([storedOnly.id]);
+});
+
+test("unarchiveSnapshot skips native provider unarchive for active records", async () => {
+  const workdir = mkdtempSync(join(tmpdir(), "agent-manager-unarchive-active-"));
+  const storagePath = join(workdir, "agents");
+  const storage = new AgentStorage(storagePath, logger);
+  const client = new NativeArchiveRecordingClient();
+  const manager = new AgentManager({
+    clients: { codex: client },
+    registry: storage,
+    logger,
+  });
+
+  const agent = await manager.createAgent({
+    provider: "codex",
+    cwd: workdir,
+    title: "Active unarchive target",
+  });
+
+  const unarchived = await manager.unarchiveSnapshot(agent.id);
+
+  expect(unarchived).toBe(false);
+  expect(client.unarchivedHandles).toEqual([]);
+});
+
+test("unarchiveSnapshot unarchives native provider storage before clearing archivedAt", async () => {
+  const workdir = mkdtempSync(join(tmpdir(), "agent-manager-native-unarchive-"));
+  const storagePath = join(workdir, "agents");
+  const storage = new AgentStorage(storagePath, logger);
+  const client = new NativeArchiveRecordingClient();
+  const manager = new AgentManager({
+    clients: { codex: client },
+    registry: storage,
+    logger,
+  });
+
+  const agent = await manager.createAgent({
+    provider: "codex",
+    cwd: workdir,
+    title: "Native unarchive target",
+  });
+  await manager.archiveAgent(agent.id);
+  client.readArchivedAtDuringUnarchive = async () => (await storage.get(agent.id))?.archivedAt;
+
+  const unarchived = await manager.unarchiveSnapshot(agent.id);
+  const stored = await storage.get(agent.id);
+
+  expect(unarchived).toBe(true);
+  expect(client.archivedHandles).toHaveLength(1);
+  expect(client.unarchivedHandles).toEqual(client.archivedHandles);
+  expect(client.archivedAtDuringUnarchive).toEqual(expect.any(String));
+  expect(stored?.archivedAt).toBeNull();
+});
+
+test("unarchiveSnapshotByHandle unarchives native provider storage for the matched snapshot", async () => {
+  const workdir = mkdtempSync(join(tmpdir(), "agent-manager-native-unarchive-handle-"));
+  const storagePath = join(workdir, "agents");
+  const storage = new AgentStorage(storagePath, logger);
+  const client = new NativeArchiveRecordingClient();
+  const manager = new AgentManager({
+    clients: { codex: client },
+    registry: storage,
+    logger,
+  });
+
+  const agent = await manager.createAgent({
+    provider: "codex",
+    cwd: workdir,
+    title: "Native unarchive by handle target",
+  });
+  await manager.archiveAgent(agent.id);
+  const archived = await storage.get(agent.id);
+  if (!archived?.persistence) {
+    throw new Error("expected archived snapshot to have persistence");
+  }
+
+  await manager.unarchiveSnapshotByHandle(archived.persistence);
+
+  const stored = await storage.get(agent.id);
+  expect(client.unarchivedHandles).toEqual(client.archivedHandles);
+  expect(stored?.archivedAt).toBeNull();
+});
+
+test("unarchiveSnapshot keeps the stored record archived when native unarchive fails", async () => {
+  const workdir = mkdtempSync(join(tmpdir(), "agent-manager-native-unarchive-failure-"));
+  const storagePath = join(workdir, "agents");
+  const storage = new AgentStorage(storagePath, logger);
+  const client = new NativeArchiveRecordingClient();
+  const manager = new AgentManager({
+    clients: { codex: client },
+    registry: storage,
+    logger,
+  });
+
+  const agent = await manager.createAgent({
+    provider: "codex",
+    cwd: workdir,
+    title: "Native unarchive failure target",
+  });
+  await manager.archiveAgent(agent.id);
+  client.unarchiveFailure = new Error("provider still archived");
+
+  await expect(manager.unarchiveSnapshot(agent.id)).rejects.toThrow("provider still archived");
+
+  const stored = await storage.get(agent.id);
+  expect(stored?.archivedAt).toEqual(expect.any(String));
+  expect(client.unarchivedHandles).toHaveLength(1);
 });
 
 test("archiveAgent cascade archives in-memory children with the full archive contract", async () => {

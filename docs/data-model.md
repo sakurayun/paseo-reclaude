@@ -28,6 +28,9 @@ $PASEO_HOME/
 │   ├── projects.json                    # Project registry
 │   ├── workspaces.json                  # Workspace registry
 │   └── workspace-layouts.json           # Desktop tab layouts per workspace, synced across desktops
+├── runtime/
+│   └── managed-processes/
+│       └── {recordId}.json              # Helper processes owned by Paseo; reconciled on daemon bootstrap
 └── push-tokens.json                     # Expo push notification tokens
 ```
 

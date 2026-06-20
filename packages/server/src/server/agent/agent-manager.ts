@@ -1605,9 +1605,12 @@ export class AgentManager {
       return false;
     }
 
+    await this.unarchiveNativeSession(record.provider, record.persistence);
+
     await registry.upsert({
       ...record,
       archivedAt: null,
+      updatedAt: new Date().toISOString(),
     });
 
     if (this.getAgent(agentId)) {
@@ -3919,6 +3922,16 @@ export class AgentManager {
         "Failed to archive native session (best-effort)",
       );
     }
+  }
+
+  private async unarchiveNativeSession(
+    provider: AgentProvider,
+    persistence: AgentPersistenceHandle | null | undefined,
+  ): Promise<void> {
+    if (!persistence) return;
+    const client = this.clients.get(provider);
+    if (!client?.unarchiveNativeSession) return;
+    await client.unarchiveNativeSession(persistence);
   }
 
   private requireAgent(id: string): LiveManagedAgent {

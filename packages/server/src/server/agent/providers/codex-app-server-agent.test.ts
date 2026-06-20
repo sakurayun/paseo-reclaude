@@ -647,6 +647,123 @@ describe("Codex app-server provider", () => {
     await session.close();
   });
 
+  test("unarchives a persisted Codex thread through app-server", async () => {
+    const threadRequests: Array<{ method: string; params: unknown }> = [];
+    const appServer = createFakeCodexAppServer({
+      "thread/unarchive": (params) => {
+        threadRequests.push({ method: "thread/unarchive", params });
+        return { thread: { id: "native-thread-id" } };
+      },
+    });
+    const provider = new CodexAppServerAgentClient(createTestLogger());
+    castInternals<{ spawnAppServer: () => Promise<ChildProcessWithoutNullStreams> }>(
+      provider,
+    ).spawnAppServer = async () => appServer.child;
+
+    await provider.unarchiveNativeSession({
+      provider: "codex",
+      sessionId: "persisted-thread-id",
+      nativeHandle: "native-thread-id",
+    });
+
+    expect(threadRequests).toEqual([
+      { method: "thread/unarchive", params: { threadId: "native-thread-id" } },
+    ]);
+    appServer.assertNoErrors();
+  });
+
+  test("unarchives a persisted Codex thread using sessionId when nativeHandle is absent", async () => {
+    const threadRequests: Array<{ method: string; params: unknown }> = [];
+    const appServer = createFakeCodexAppServer({
+      "thread/unarchive": (params) => {
+        threadRequests.push({ method: "thread/unarchive", params });
+        return { thread: { id: "persisted-thread-id" } };
+      },
+    });
+    const provider = new CodexAppServerAgentClient(createTestLogger());
+    castInternals<{ spawnAppServer: () => Promise<ChildProcessWithoutNullStreams> }>(
+      provider,
+    ).spawnAppServer = async () => appServer.child;
+
+    await provider.unarchiveNativeSession({
+      provider: "codex",
+      sessionId: "persisted-thread-id",
+    });
+
+    expect(threadRequests).toEqual([
+      { method: "thread/unarchive", params: { threadId: "persisted-thread-id" } },
+    ]);
+    appServer.assertNoErrors();
+  });
+
+  test("treats a readable Codex thread as already unarchived", async () => {
+    const threadRequests: Array<{ method: string; params: unknown }> = [];
+    const appServer = createFakeCodexAppServer({
+      "thread/unarchive": (params) => {
+        threadRequests.push({ method: "thread/unarchive", params });
+        return Promise.reject(
+          new Error(
+            "failed to unarchive thread: no archived rollout found for thread id active-thread-id",
+          ),
+        );
+      },
+      "thread/read": (params) => {
+        threadRequests.push({ method: "thread/read", params });
+        return { thread: { id: "active-thread-id", turns: [] } };
+      },
+    });
+    const provider = new CodexAppServerAgentClient(createTestLogger());
+    castInternals<{ spawnAppServer: () => Promise<ChildProcessWithoutNullStreams> }>(
+      provider,
+    ).spawnAppServer = async () => appServer.child;
+
+    await provider.unarchiveNativeSession({
+      provider: "codex",
+      sessionId: "active-thread-id",
+    });
+
+    expect(threadRequests).toEqual([
+      { method: "thread/unarchive", params: { threadId: "active-thread-id" } },
+      { method: "thread/read", params: { threadId: "active-thread-id" } },
+    ]);
+    appServer.assertNoErrors();
+  });
+
+  test("propagates Codex unarchive failure when the thread cannot be read", async () => {
+    const threadRequests: Array<{ method: string; params: unknown }> = [];
+    const appServer = createFakeCodexAppServer({
+      "thread/unarchive": (params) => {
+        threadRequests.push({ method: "thread/unarchive", params });
+        return Promise.reject(
+          new Error(
+            "failed to unarchive thread: no archived rollout found for thread id missing-thread-id",
+          ),
+        );
+      },
+      "thread/read": (params) => {
+        threadRequests.push({ method: "thread/read", params });
+        return Promise.reject(new Error("thread not found"));
+      },
+    });
+    const provider = new CodexAppServerAgentClient(createTestLogger());
+    castInternals<{ spawnAppServer: () => Promise<ChildProcessWithoutNullStreams> }>(
+      provider,
+    ).spawnAppServer = async () => appServer.child;
+
+    await expect(
+      provider.unarchiveNativeSession({
+        provider: "codex",
+        sessionId: "missing-thread-id",
+      }),
+    ).rejects.toThrow("no archived rollout found for thread id missing-thread-id");
+
+    expect(threadRequests).toEqual([
+      { method: "thread/unarchive", params: { threadId: "missing-thread-id" } },
+      { method: "thread/read", params: { threadId: "missing-thread-id" } },
+    ]);
+    appServer.assertNoErrors();
+  });
+
   test("rewinds the conversation to a freshly emitted Codex user message id", async () => {
     const appServer = createFakeCodexAppServer();
     const session = new CodexAppServerAgentSession(
