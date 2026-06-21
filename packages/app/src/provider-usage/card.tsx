@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { useTranslation } from "react-i18next";
 import { Text, View } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { getProviderIcon } from "@/components/provider-icons";
@@ -24,17 +25,31 @@ const ThemedProviderUsageIcon = withUnistyles(ProviderUsageIcon);
 
 const mutedIconColor = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
 
-function statusText(usage: ProviderUsage): string | null {
+function statusText(
+  usage: ProviderUsage,
+  t: ReturnType<typeof useTranslation>["t"],
+): string | null {
   if (usage.status === "available") return null;
-  return usage.status === "error" ? "Error" : "Unavailable";
+  return usage.status === "error"
+    ? t("providerUsage.status.error")
+    : t("providerUsage.status.unavailable");
 }
 
-function footerText(usage: ProviderUsage): string | null {
-  const updated = formatAgo(usage.fetchedAt);
-  const parts = [usage.sourceLabel, updated ? `Updated ${updated}` : null].filter(
-    (part): part is string => typeof part === "string" && part.length > 0,
-  );
-  return parts.length > 0 ? parts.join(" · ") : null;
+function footerText(
+  usage: ProviderUsage,
+  t: ReturnType<typeof useTranslation>["t"],
+): string | null {
+  const updated = formatAgo(usage.fetchedAt, t);
+  if (usage.sourceLabel && updated) {
+    return t("providerUsage.footer.sourceUpdated", {
+      source: usage.sourceLabel,
+      time: updated,
+    });
+  }
+  if (updated) {
+    return t("providerUsage.footer.updated", { time: updated });
+  }
+  return usage.sourceLabel || null;
 }
 
 export function ProviderUsageCard({
@@ -44,8 +59,9 @@ export function ProviderUsageCard({
   usage: ProviderUsage;
   compact?: boolean;
 }) {
-  const status = statusText(usage);
-  const footer = footerText(usage);
+  const { t } = useTranslation();
+  const status = statusText(usage, t);
+  const footer = footerText(usage, t);
   const balances = usage.balances ?? [];
   const details = usage.details ?? [];
 
@@ -100,22 +116,14 @@ export function ProviderUsageCard({
         <View style={styles.details}>
           {details.map((detail) => (
             <View key={detail.id} style={styles.detailRow}>
-              <Text style={styles.detailLabel} numberOfLines={1}>
-                {detail.label}
-              </Text>
-              <Text style={styles.detailValue} numberOfLines={1}>
-                {detail.value}
-              </Text>
+              <Text style={styles.detailLabel}>{detail.label}</Text>
+              <Text style={styles.detailValue}>{detail.value}</Text>
             </View>
           ))}
         </View>
       ) : null}
 
-      {footer ? (
-        <Text style={styles.footer} numberOfLines={1}>
-          {footer}
-        </Text>
-      ) : null}
+      {footer ? <Text style={styles.footer}>{footer}</Text> : null}
     </View>
   );
 }
@@ -134,6 +142,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   header: {
     flexDirection: "row",
+    flexWrap: "wrap",
     alignItems: "center",
     gap: theme.spacing[2],
   },
@@ -174,17 +183,23 @@ const styles = StyleSheet.create((theme) => ({
   },
   detailRow: {
     flexDirection: "row",
+    flexWrap: "wrap",
     justifyContent: "space-between",
     gap: theme.spacing[2],
   },
   detailLabel: {
+    flexGrow: 1,
     flexShrink: 1,
+    minWidth: 0,
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.xs,
   },
   detailValue: {
+    flexShrink: 1,
+    minWidth: 0,
     color: theme.colors.foreground,
     fontSize: theme.fontSize.xs,
+    textAlign: "right",
   },
   error: {
     color: theme.colors.palette.red[300],

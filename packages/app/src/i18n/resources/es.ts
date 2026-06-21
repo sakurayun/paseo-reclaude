@@ -1718,6 +1718,42 @@ export const es: TranslationResources = {
       kimi: { title: "Cuota de Kimi Code", noData: "No hay datos de cuota disponibles" },
     },
   },
+  providerUsage: {
+    title: "Uso del plan",
+    refresh: "Actualizar",
+    refreshing: "Actualizando...",
+    loading: "Cargando uso...",
+    empty: "No hay datos de uso",
+    errorTitle: "No se pudo cargar el uso",
+    hostUnavailable: "Conéctate a este host para ver el uso del proveedor",
+    hostUpgradeRequired: "Actualiza el host para ver el uso del proveedor",
+    clientUnavailable: "La conexión del host no está lista",
+    retry: "Intentar de nuevo",
+    tooltipLoading: "Cargando uso del plan…",
+    status: {
+      error: "Error",
+      unavailable: "No disponible",
+    },
+    reset: {
+      resettingNow: "restableciendo ahora",
+      resetsDays: "se restablece en {{value}} d",
+      resetsHours: "se restablece en {{value}} h",
+      resetsMinutes: "se restablece en {{value}} min",
+    },
+    risk: {
+      runsOutNow: "se agota ahora",
+      runsOutDays: "se agota en {{value}} d",
+      runsOutHours: "se agota en {{value}} h",
+      runsOutMinutes: "se agota en {{value}} min",
+    },
+    balance: {
+      remaining: "{{amount}} restantes",
+    },
+    footer: {
+      updated: "Actualizado {{time}}",
+      sourceUpdated: "{{source}} · Actualizado {{time}}",
+    },
+  },
   review: {
     comment: {
       add: "Agregar comentario de revisión",

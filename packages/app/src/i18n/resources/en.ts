@@ -1688,6 +1688,42 @@ export const en = {
       kimi: { title: "Kimi Code Quota", noData: "No quota data available" },
     },
   },
+  providerUsage: {
+    title: "Plan usage",
+    refresh: "Refresh",
+    refreshing: "Refreshing...",
+    loading: "Loading usage...",
+    empty: "No usage data",
+    errorTitle: "Unable to load usage",
+    hostUnavailable: "Connect to this host to see provider usage",
+    hostUpgradeRequired: "Update the host to see provider usage",
+    clientUnavailable: "Host connection is not ready",
+    retry: "Try again",
+    tooltipLoading: "Loading plan usage…",
+    status: {
+      error: "Error",
+      unavailable: "Unavailable",
+    },
+    reset: {
+      resettingNow: "resetting now",
+      resetsDays: "resets {{value}}d",
+      resetsHours: "resets {{value}}h",
+      resetsMinutes: "resets {{value}}m",
+    },
+    risk: {
+      runsOutNow: "runs out now",
+      runsOutDays: "runs out {{value}}d",
+      runsOutHours: "runs out {{value}}h",
+      runsOutMinutes: "runs out {{value}}m",
+    },
+    balance: {
+      remaining: "{{amount}} left",
+    },
+    footer: {
+      updated: "Updated {{time}}",
+      sourceUpdated: "{{source}} · Updated {{time}}",
+    },
+  },
   review: {
     comment: {
       add: "Add review comment",

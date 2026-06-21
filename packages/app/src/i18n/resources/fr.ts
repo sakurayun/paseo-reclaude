@@ -1731,6 +1731,42 @@ export const fr: TranslationResources = {
       kimi: { title: "Quota Kimi Code", noData: "Aucune donnée de quota disponible" },
     },
   },
+  providerUsage: {
+    title: "Utilisation du forfait",
+    refresh: "Actualiser",
+    refreshing: "Actualisation...",
+    loading: "Chargement de l'utilisation...",
+    empty: "Aucune donnée d'utilisation",
+    errorTitle: "Impossible de charger l'utilisation",
+    hostUnavailable: "Connectez-vous à cet hôte pour voir l'utilisation du fournisseur",
+    hostUpgradeRequired: "Mettez à jour l'hôte pour voir l'utilisation du fournisseur",
+    clientUnavailable: "La connexion à l'hôte n'est pas prête",
+    retry: "Réessayer",
+    tooltipLoading: "Chargement de l'utilisation du forfait…",
+    status: {
+      error: "Erreur",
+      unavailable: "Indisponible",
+    },
+    reset: {
+      resettingNow: "réinitialisation en cours",
+      resetsDays: "réinitialisation dans {{value}} j",
+      resetsHours: "réinitialisation dans {{value}} h",
+      resetsMinutes: "réinitialisation dans {{value}} min",
+    },
+    risk: {
+      runsOutNow: "épuisé maintenant",
+      runsOutDays: "épuisé dans {{value}} j",
+      runsOutHours: "épuisé dans {{value}} h",
+      runsOutMinutes: "épuisé dans {{value}} min",
+    },
+    balance: {
+      remaining: "{{amount}} restants",
+    },
+    footer: {
+      updated: "Mis à jour {{time}}",
+      sourceUpdated: "{{source}} · Mis à jour {{time}}",
+    },
+  },
   review: {
     comment: {
       add: "Ajouter un commentaire",

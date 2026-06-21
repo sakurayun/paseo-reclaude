@@ -1717,6 +1717,42 @@ export const ru: TranslationResources = {
       kimi: { title: "Квота Kimi Code", noData: "Нет данных о квоте" },
     },
   },
+  providerUsage: {
+    title: "Использование тарифа",
+    refresh: "Обновить",
+    refreshing: "Обновление...",
+    loading: "Загрузка использования...",
+    empty: "Нет данных об использовании",
+    errorTitle: "Не удалось загрузить использование",
+    hostUnavailable: "Подключитесь к этому хосту, чтобы увидеть использование провайдера",
+    hostUpgradeRequired: "Обновите хост, чтобы увидеть использование провайдера",
+    clientUnavailable: "Подключение к хосту ещё не готово",
+    retry: "Повторить",
+    tooltipLoading: "Загрузка использования тарифа…",
+    status: {
+      error: "Ошибка",
+      unavailable: "Недоступно",
+    },
+    reset: {
+      resettingNow: "сброс выполняется",
+      resetsDays: "сброс через {{value}} д",
+      resetsHours: "сброс через {{value}} ч",
+      resetsMinutes: "сброс через {{value}} мин",
+    },
+    risk: {
+      runsOutNow: "закончится сейчас",
+      runsOutDays: "закончится через {{value}} д",
+      runsOutHours: "закончится через {{value}} ч",
+      runsOutMinutes: "закончится через {{value}} мин",
+    },
+    balance: {
+      remaining: "осталось {{amount}}",
+    },
+    footer: {
+      updated: "Обновлено {{time}}",
+      sourceUpdated: "{{source}} · Обновлено {{time}}",
+    },
+  },
   review: {
     comment: {
       add: "Добавить комментарий к обзору",

@@ -1,4 +1,6 @@
 import { useMemo } from "react";
+import type { TFunction } from "i18next";
+import { useTranslation } from "react-i18next";
 import { Text, View, type StyleProp, type ViewStyle } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { clampPct, formatAmount, formatResetLabel } from "./format";
@@ -9,7 +11,7 @@ interface ResolvedBalance {
   usedPct: number | null;
 }
 
-function resolveBalance(balance: ProviderUsageBalance): ResolvedBalance {
+function resolveBalance(balance: ProviderUsageBalance, t: TFunction): ResolvedBalance {
   const { used, remaining, limit, unit } = balance;
   if (limit != null && limit > 0) {
     const usedAmount = used ?? (remaining != null ? limit - remaining : null);
@@ -18,7 +20,12 @@ function resolveBalance(balance: ProviderUsageBalance): ResolvedBalance {
     return { amountText: `${usedText} / ${formatAmount(limit, unit)}`, usedPct };
   }
   if (remaining != null) {
-    return { amountText: `${formatAmount(remaining, unit)} left`, usedPct: null };
+    return {
+      amountText: t("providerUsage.balance.remaining", {
+        amount: formatAmount(remaining, unit),
+      }),
+      usedPct: null,
+    };
   }
   if (used != null) {
     return { amountText: formatAmount(used, unit), usedPct: null };
@@ -40,9 +47,10 @@ function fillToneStyle(tone: ProviderUsageTone) {
 }
 
 export function ProviderUsageBalanceBar({ balance }: { balance: ProviderUsageBalance }) {
-  const { amountText, usedPct } = resolveBalance(balance);
+  const { t } = useTranslation();
+  const { amountText, usedPct } = resolveBalance(balance, t);
   const tone = balance.tone ?? "default";
-  const resetLabel = formatResetLabel(balance.resetsAt);
+  const resetLabel = formatResetLabel(balance.resetsAt, t);
 
   const fillStyle = useMemo<StyleProp<ViewStyle>>(
     () => [styles.fill, fillToneStyle(tone), { width: `${clampPct(usedPct ?? 0)}%` }],
@@ -52,9 +60,7 @@ export function ProviderUsageBalanceBar({ balance }: { balance: ProviderUsageBal
   return (
     <View style={styles.container}>
       <View style={styles.labelRow}>
-        <Text style={styles.label} numberOfLines={1}>
-          {balance.label}
-        </Text>
+        <Text style={styles.label}>{balance.label}</Text>
         <Text style={styles.value}>
           {amountText}
           {resetLabel ? <Text style={styles.reset}>{` · ${resetLabel}`}</Text> : null}
@@ -75,19 +81,25 @@ const styles = StyleSheet.create((theme) => ({
   },
   labelRow: {
     flexDirection: "row",
+    flexWrap: "wrap",
     justifyContent: "space-between",
     alignItems: "center",
     gap: theme.spacing[2],
   },
   label: {
+    flexGrow: 1,
     flexShrink: 1,
+    minWidth: 0,
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.xs,
   },
   value: {
+    flexShrink: 1,
+    minWidth: 0,
     color: theme.colors.foreground,
     fontSize: theme.fontSize.xs,
     fontWeight: theme.fontWeight.medium,
+    textAlign: "right",
   },
   reset: {
     color: theme.colors.foregroundMuted,

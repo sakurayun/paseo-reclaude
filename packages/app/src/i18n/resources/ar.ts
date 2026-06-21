@@ -1681,6 +1681,42 @@ export const ar: TranslationResources = {
       kimi: { title: "حصة Kimi Code", noData: "لا تتوفر بيانات الحصة" },
     },
   },
+  providerUsage: {
+    title: "استخدام الخطة",
+    refresh: "تحديث",
+    refreshing: "جارٍ التحديث...",
+    loading: "جارٍ تحميل الاستخدام...",
+    empty: "لا توجد بيانات استخدام",
+    errorTitle: "تعذر تحميل الاستخدام",
+    hostUnavailable: "اتصل بهذا المضيف لرؤية استخدام المزوّد",
+    hostUpgradeRequired: "حدّث المضيف لرؤية استخدام المزوّد",
+    clientUnavailable: "اتصال المضيف غير جاهز",
+    retry: "حاول مرة أخرى",
+    tooltipLoading: "جارٍ تحميل استخدام الخطة…",
+    status: {
+      error: "خطأ",
+      unavailable: "غير متاح",
+    },
+    reset: {
+      resettingNow: "تجري إعادة التعيين الآن",
+      resetsDays: "يُعاد التعيين خلال {{value}} يوم",
+      resetsHours: "يُعاد التعيين خلال {{value}} ساعة",
+      resetsMinutes: "يُعاد التعيين خلال {{value}} دقيقة",
+    },
+    risk: {
+      runsOutNow: "ينفد الآن",
+      runsOutDays: "ينفد خلال {{value}} يوم",
+      runsOutHours: "ينفد خلال {{value}} ساعة",
+      runsOutMinutes: "ينفد خلال {{value}} دقيقة",
+    },
+    balance: {
+      remaining: "متبقٍ {{amount}}",
+    },
+    footer: {
+      updated: "تم التحديث {{time}}",
+      sourceUpdated: "{{source}} · تم التحديث {{time}}",
+    },
+  },
   review: {
     comment: {
       add: "إضافة تعليق المراجعة",

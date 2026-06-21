@@ -1659,6 +1659,42 @@ export const zhCN: TranslationResources = {
       kimi: { title: "Kimi Code 额度", noData: "暂无额度数据" },
     },
   },
+  providerUsage: {
+    title: "套餐用量",
+    refresh: "刷新",
+    refreshing: "正在刷新...",
+    loading: "正在加载用量...",
+    empty: "暂无用量数据",
+    errorTitle: "无法加载用量",
+    hostUnavailable: "连接到此主机后可查看提供商用量",
+    hostUpgradeRequired: "更新主机后可查看提供商用量",
+    clientUnavailable: "主机连接尚未就绪",
+    retry: "重试",
+    tooltipLoading: "套餐用量加载中……",
+    status: {
+      error: "错误",
+      unavailable: "不可用",
+    },
+    reset: {
+      resettingNow: "即将重置",
+      resetsDays: "{{value}} 天后重置",
+      resetsHours: "{{value}} 小时后重置",
+      resetsMinutes: "{{value}} 分钟后重置",
+    },
+    risk: {
+      runsOutNow: "即将用尽",
+      runsOutDays: "{{value}} 天后用尽",
+      runsOutHours: "{{value}} 小时后用尽",
+      runsOutMinutes: "{{value}} 分钟后用尽",
+    },
+    balance: {
+      remaining: "剩余 {{amount}}",
+    },
+    footer: {
+      updated: "{{time}}更新",
+      sourceUpdated: "{{source}} · {{time}}更新",
+    },
+  },
   review: {
     comment: {
       add: "添加 review 评论",
