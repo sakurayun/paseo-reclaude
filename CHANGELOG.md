@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.102 - 2026-06-21
+
+### Fixed
+
+- Android app no longer crashes when switching to a remote terminal
+
 ## 0.1.98 - 2026-06-21
 
 ### Added
