@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.1.103 - 2026-06-21
+
+### Added
+
+- Show workspace session history in the sidebar
+
+### Fixed
+
+- Corrected the copy and layout of plan usage info in settings
+
 ## 0.1.102 - 2026-06-21
 
 ### Fixed
