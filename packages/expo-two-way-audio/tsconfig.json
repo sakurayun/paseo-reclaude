@@ -5,6 +5,7 @@
     "outDir": "./build",
     "module": "esnext",
     "moduleResolution": "bundler",
+    "types": [],
     "typeRoots": [
       "./node_modules/expo-module-scripts/ts-declarations",
       "./node_modules/@types",
