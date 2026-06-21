@@ -33,6 +33,7 @@ import type { PendingTerminalModifiers } from "../utils/terminal-keys";
 import type { TerminalRendererReadyChange } from "../utils/terminal-renderer-readiness";
 import { openExternalUrl } from "../utils/open-external-url";
 import * as Clipboard from "expo-clipboard";
+import { requestTerminalWebViewFocus } from "./terminal-webview-focus";
 
 export interface TerminalEmulatorHandle {
   writeOutput: (data: TerminalOutputData) => void;
@@ -537,7 +538,7 @@ export default function TerminalEmulator({
     if (focusRequestToken <= 0) return;
     sendToWebView({ type: "resize", streamKey, shouldClaim: true });
     sendToWebView({ type: "focus", streamKey });
-    webViewRef.current?.requestFocus();
+    requestTerminalWebViewFocus(webViewRef.current);
   }, [focusRequestToken, sendToWebView, streamKey]);
 
   useEffect(() => {
@@ -710,7 +711,7 @@ export default function TerminalEmulator({
     if (!pendingTap || pendingTap.moved) {
       return;
     }
-    webViewRef.current?.requestFocus();
+    requestTerminalWebViewFocus(webViewRef.current);
     callbacksRef.current.onFocus?.();
     sendToWebView({ type: "focus", streamKey, forceRefocus: true });
   }, [sendToWebView, streamKey]);
