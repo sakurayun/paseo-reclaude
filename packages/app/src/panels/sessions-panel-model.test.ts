@@ -94,6 +94,32 @@ describe("buildWorkspaceSessionSections", () => {
     expect(sections[1].sessions.map((agent) => agent.id)).toEqual(["worktree-agent"]);
   });
 
+  it("keeps all sessions for a workspace instead of only the latest one", () => {
+    const sections = buildWorkspaceSessionSections({
+      currentWorkspaceId: "/repo",
+      workspaces: [ROOT],
+      agents: [
+        makeAgent({
+          id: "older-session",
+          cwd: "/repo",
+          lastActivityAt: new Date("2026-06-01T00:00:00Z"),
+        }),
+        makeAgent({
+          id: "newer-session",
+          cwd: "/repo",
+          lastActivityAt: new Date("2026-06-02T00:00:00Z"),
+        }),
+      ],
+      includeArchived: false,
+      otherSectionTitle: "Other",
+    });
+
+    expect(sections[0].sessions.map((agent) => agent.id)).toEqual([
+      "newer-session",
+      "older-session",
+    ]);
+  });
+
   it("filters archived sessions by default and includes them on demand", () => {
     const agents = [
       makeAgent({ id: "live", cwd: "/repo" }),

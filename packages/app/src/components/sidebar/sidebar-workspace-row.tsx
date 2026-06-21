@@ -37,6 +37,10 @@ import {
   SidebarWorkspaceTrailingActionOverlay,
   SidebarWorkspaceTrailingActionSlot,
 } from "@/components/sidebar/sidebar-workspace-row-content";
+import {
+  SidebarWorkspaceSessions,
+  useWorkspaceSessions,
+} from "@/components/sidebar/sidebar-workspace-sessions";
 
 const foregroundColorMapping = (theme: Theme) => ({ color: theme.colors.foreground });
 const foregroundMutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
@@ -97,6 +101,10 @@ export function SidebarWorkspaceRow({
 }: SidebarWorkspaceRowProps) {
   const { t } = useTranslation();
   const toast = useToast();
+  const sessions = useWorkspaceSessions({
+    serverId: workspace.serverId,
+    workspaceId: workspace.workspaceId,
+  });
   const [isHidingWorkspace, setIsHidingWorkspace] = useState(false);
   const [isRenameOpen, setIsRenameOpen] = useState(false);
   const workspaceDirectory = resolveWorkspaceDirectory({
@@ -246,6 +254,7 @@ export function SidebarWorkspaceRow({
         onRename={handleOpenRename}
         onMarkAsRead={hasClearableAttention ? handleMarkAsRead : undefined}
         archiveShortcutKeys={selected ? archiveShortcutKeys : null}
+        sessions={sessions}
       />
       <AdaptiveRenameModal
         visible={isRenameOpen}
@@ -282,6 +291,7 @@ interface WorkspaceRowBodyProps {
   onRename?: () => void;
   onMarkAsRead?: () => void;
   archiveShortcutKeys?: ShortcutKey[][] | null;
+  sessions: ReturnType<typeof useWorkspaceSessions>;
 }
 
 function WorkspaceRowBody({
@@ -305,6 +315,7 @@ function WorkspaceRowBody({
   onRename,
   onMarkAsRead,
   archiveShortcutKeys,
+  sessions,
 }: WorkspaceRowBodyProps) {
   const isTouchPlatform = platformIsNative;
   const draggable = Boolean(drag);
@@ -373,6 +384,7 @@ function WorkspaceRowBody({
                 isCreating={isCreating}
                 shortcutNumber={shortcutNumber}
                 showShortcutBadge={showShortcutBadge}
+                sessionsCount={sessions.length}
               >
                 <WorkspaceRowTrailingActions
                   workspace={workspace}
@@ -393,6 +405,12 @@ function WorkspaceRowBody({
                 />
               </SidebarWorkspaceRowContent>
             </Pressable>
+            <SidebarWorkspaceSessions
+              serverId={workspace.serverId}
+              workspaceId={workspace.workspaceId}
+              workspaceKey={workspace.workspaceKey}
+              sessions={sessions}
+            />
           </View>
         );
       }}
