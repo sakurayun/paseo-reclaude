@@ -1,6 +1,5 @@
 import { Fragment } from "react";
 import { View } from "react-native";
-import { StyleSheet } from "react-native-unistyles";
 import { settingsStyles } from "@/styles/settings";
 import { ProviderUsageCard } from "./card";
 import { ReclaudeAuthBar } from "./reclaude-auth-bar";
@@ -14,10 +13,9 @@ export function ProviderUsageList({
   serverId: string;
 }) {
   return (
-    <View style={settingsStyles.card}>
-      {providers.map((usage, index) => (
+    <View style={settingsStyles.cardSurface}>
+      {providers.map((usage) => (
         <Fragment key={usage.providerId}>
-          {index > 0 ? <View style={styles.divider} /> : null}
           <ProviderUsageCard usage={usage} />
           {usage.providerId === "claude" ? <ReclaudeAuthBar serverId={serverId} /> : null}
         </Fragment>
@@ -25,10 +23,3 @@ export function ProviderUsageList({
     </View>
   );
 }
-
-const styles = StyleSheet.create((theme) => ({
-  divider: {
-    height: 1,
-    backgroundColor: theme.colors.border,
-  },
-}));

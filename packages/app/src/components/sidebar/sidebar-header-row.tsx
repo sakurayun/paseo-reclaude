@@ -116,7 +116,9 @@ const styles = StyleSheet.create((theme) => ({
     },
     paddingHorizontal: theme.spacing[2],
     justifyContent: "center",
-    borderBottomWidth: 1,
+    // Shell chrome-divider token: 1px in classic themes, 0 in the new theme where
+    // sidebar/chrome divider lines are removed.
+    borderBottomWidth: theme.shell.chromeDivider,
     borderBottomColor: theme.colors.border,
     userSelect: "none",
   },

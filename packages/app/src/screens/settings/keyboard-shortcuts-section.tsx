@@ -273,8 +273,8 @@ export function KeyboardShortcutsSection() {
             title={t(section.titleKey)}
             trailing={sectionIndex === 0 ? resetAllButton : undefined}
           >
-            <View style={settingsStyles.card}>
-              {section.rows.map(function (row, index) {
+            <View style={settingsStyles.cardSurface}>
+              {section.rows.map(function (row) {
                 const bindingId = getBindingIdForAction(row.id, {
                   isMac,
                   isDesktop: isDesktopApp,
@@ -297,7 +297,6 @@ export function KeyboardShortcutsSection() {
                       onCancelCapture={cancelCapture}
                       onRemoveOverride={handleRemoveOverride}
                     />
-                    {index < section.rows.length - 1 && <View style={styles.separator} />}
                   </View>
                 );
               })}
@@ -337,10 +336,6 @@ const styles = StyleSheet.create((theme) => ({
   resetText: {
     color: theme.colors.foregroundMuted,
   },
-  separator: {
-    height: 1,
-    backgroundColor: theme.colors.border,
-  },
   mobileCard: {
     padding: theme.spacing[4],
   },
@@ -350,4 +345,4 @@ const styles = StyleSheet.create((theme) => ({
   },
 }));
 
-const mobileCardStyle = [settingsStyles.card, styles.mobileCard];
+const mobileCardStyle = [settingsStyles.cardSurface, styles.mobileCard];

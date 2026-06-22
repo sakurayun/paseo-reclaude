@@ -680,11 +680,10 @@ function ProjectConfigForm({
               <Text style={styles.emptyScripts}>{t("settings.project.scripts.empty")}</Text>
             </View>
           ) : (
-            draft.scripts.map((script, index) => (
+            draft.scripts.map((script) => (
               <ScriptRow
                 key={script.id}
                 script={script}
-                isFirst={index === 0}
                 onEdit={handleEditScript}
                 onRemove={handleRemoveScript}
               />
@@ -1053,19 +1052,17 @@ function MetadataPromptSection({ promptKey, value, onChange, flush }: MetadataPr
 
 interface ScriptRowProps {
   script: ProjectScriptDraft;
-  isFirst: boolean;
   onEdit: (script: ProjectScriptDraft) => void;
   onRemove: (script: ProjectScriptDraft) => void;
 }
 
-function ScriptRow({ script, isFirst, onEdit, onRemove }: ScriptRowProps) {
+function ScriptRow({ script, onEdit, onRemove }: ScriptRowProps) {
   const { t } = useTranslation();
   const handleEdit = useCallback(() => onEdit(script), [onEdit, script]);
   const handleRemove = useCallback(() => onRemove(script), [onRemove, script]);
-  const rowStyle = isFirst ? styles.scriptRow : styles.scriptRowWithBorder;
 
   return (
-    <View style={rowStyle} testID={`script-row-${script.id}`}>
+    <View style={styles.scriptRow} testID={`script-row-${script.id}`}>
       <Pressable style={styles.scriptRowMain} onPress={handleEdit}>
         <Text style={settingsStyles.rowTitle} numberOfLines={1}>
           {script.name || t("settings.project.scripts.untitled")}
@@ -1387,15 +1384,9 @@ const styles = StyleSheet.create((theme) => ({
     justifyContent: "space-between",
     paddingVertical: theme.spacing[4],
     paddingHorizontal: theme.spacing[4],
-  },
-  scriptRowWithBorder: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingVertical: theme.spacing[4],
-    paddingHorizontal: theme.spacing[4],
-    borderTopWidth: 1,
-    borderTopColor: theme.colors.border,
+    backgroundColor: theme.colors.surface1,
+    borderRadius: theme.borderRadius.xl,
+    ...theme.shadow.sm,
   },
   scriptRowMain: {
     flex: 1,

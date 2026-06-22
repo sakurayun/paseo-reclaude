@@ -67,6 +67,7 @@ import {
   useHosts,
 } from "@/runtime/host-runtime";
 import { useSessionStore } from "@/stores/session-store";
+import { usePanelStore } from "@/stores/panel-store";
 import type { HostProfile } from "@/types/host-connection";
 import { TitlebarDragRegion } from "@/components/desktop/titlebar-drag-region";
 import { useWindowControlsPadding } from "@/utils/desktop-window";
@@ -1127,9 +1128,16 @@ function SettingsSidebar({
   const insets = useSafeAreaInsets();
   const padding = useWindowControlsPadding("sidebar");
   const isDesktop = layout === "desktop";
+  // Keep the settings sidebar the same width as the home/workspace left sidebar:
+  // both read the same resizable sidebarWidth from the panel store, so resizing
+  // one stays in sync with the other.
+  const sidebarWidth = usePanelStore((state) => state.sidebarWidth);
   const outerContainerStyle = useMemo(
-    () => [isDesktop ? sidebarStyles.desktopContainer : sidebarStyles.mobileContainer],
-    [isDesktop],
+    () =>
+      isDesktop
+        ? [sidebarStyles.desktopContainer, { width: sidebarWidth }]
+        : [sidebarStyles.mobileContainer],
+    [isDesktop, sidebarWidth],
   );
   const innerContainerStyle = useMemo(
     () => [{ flex: 1 }, isDesktop ? { paddingTop: insets.top } : null],
@@ -1159,7 +1167,8 @@ function SettingsSidebar({
           </Fragment>
         ))}
       </View>
-      <SidebarSeparator />
+      {/* New theme drops sidebar chrome dividers; classic keeps the group separator. */}
+      {theme.shell.floating ? null : <SidebarSeparator />}
       {hasHosts ? (
         <View style={sidebarStyles.list}>
           <Text style={sidebarStyles.groupLabel}>{t("settings.groups.host")}</Text>
@@ -1652,10 +1661,12 @@ export default function SettingsScreen({ view }: SettingsScreenProps) {
           activeHostServerId={activeHostServerId}
           layout="desktop"
         />
-        <View style={desktopStyles.contentPane}>
+        <View style={desktopStyles.centerColumn}>
           <ScreenHeader
             borderless={!detailHeader}
             windowControlsPaddingRole="detailHeader"
+            surfaceStyle={desktopStyles.detailHeaderSurface}
+            rowStyle={desktopStyles.detailHeaderRow}
             left={
               detailHeader ? (
                 <>
@@ -1674,9 +1685,11 @@ export default function SettingsScreen({ view }: SettingsScreenProps) {
             }
             leftStyle={desktopStyles.detailLeft}
           />
-          <ScrollView style={scrollViewStyle} contentContainerStyle={insetBottomStyle}>
-            <View style={styles.content}>{content}</View>
-          </ScrollView>
+          <View style={desktopStyles.centerCard}>
+            <ScrollView style={scrollViewStyle} contentContainerStyle={insetBottomStyle}>
+              <View style={styles.content}>{content}</View>
+            </ScrollView>
+          </View>
         </View>
       </View>
       {addHostModals}
@@ -1777,8 +1790,37 @@ const desktopStyles = StyleSheet.create((theme) => ({
     flex: 1,
     flexDirection: "row",
   },
-  contentPane: {
+  // Holds the exposed detail header (sitting on the shell underlay) above the
+  // floating content card. surfaceShell == surface0 in classic themes (so the
+  // pane stays byte-identical) and #fafafa in the new theme, so the header and
+  // the card's margins read as one continuous backdrop.
+  centerColumn: {
     flex: 1,
+    minHeight: 0,
+    backgroundColor: theme.colors.surfaceShell,
+  },
+  // Detail header exposed on the shell underlay; the bottom divider is dropped in
+  // the new theme (chromeDivider == 0) and kept in classic (== 1).
+  detailHeaderSurface: {
+    backgroundColor: theme.colors.surfaceShell,
+  },
+  detailHeaderRow: {
+    borderBottomWidth: theme.shell.chromeDivider,
+  },
+  // The floating settings card — the scrollable content sits inside it while the
+  // header is a sibling above. shell tokens are 0/0/visible in classic themes
+  // (flush, unchanged) and inset+rounded+clipped in the new theme. Margins on all
+  // four sides so the card fully floats with the title exposed on the backdrop
+  // above it; the card reads via its #fafafa margins, no shadow.
+  centerCard: {
+    flex: 1,
+    minHeight: 0,
+    backgroundColor: theme.colors.surfaceWorkspace,
+    marginTop: theme.shell.contentMargin,
+    marginHorizontal: theme.shell.contentMargin,
+    marginBottom: theme.shell.contentMargin,
+    borderRadius: theme.shell.contentRadius,
+    overflow: theme.shell.contentOverflow,
   },
   detailLeft: {
     gap: theme.spacing[2],
@@ -1787,8 +1829,11 @@ const desktopStyles = StyleSheet.create((theme) => ({
 
 const sidebarStyles = StyleSheet.create((theme) => ({
   desktopContainer: {
-    width: 320,
-    borderRightWidth: 1,
+    // Width is applied inline from the panel store (sidebarWidth) so it tracks the
+    // home/workspace left sidebar — see SettingsSidebar.
+    // Shell chrome-divider token: 1px in classic themes, 0 in the new theme
+    // (sidebar divider lines removed). Mirrors left-sidebar's desktopSidebarBorder.
+    borderRightWidth: theme.shell.chromeDivider,
     borderRightColor: theme.colors.border,
     backgroundColor: theme.colors.surfaceSidebar,
   },

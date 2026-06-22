@@ -40,13 +40,16 @@ export function SettingsTextArea({
 
 export function SettingsTextAreaCard(props: SettingsTextAreaProps) {
   return (
-    <View style={settingsStyles.card}>
+    <View style={cardStyle}>
       <SettingsTextArea {...props} />
     </View>
   );
 }
 
 const styles = StyleSheet.create((theme) => ({
+  clip: {
+    overflow: "hidden",
+  },
   input: {
     color: theme.colors.foreground,
     fontSize: theme.fontSize.sm,
@@ -56,3 +59,6 @@ const styles = StyleSheet.create((theme) => ({
     textAlignVertical: "top",
   },
 }));
+
+// Borderless rounded surface that clips the multiline input to its corners.
+const cardStyle = [settingsStyles.cardSurface, styles.clip];

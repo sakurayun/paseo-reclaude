@@ -296,7 +296,7 @@ export function ModelGatewaysSection({ serverId }: { serverId: string }) {
     >
       <View style={settingsStyles.card}>
         {entries.length === 0 ? (
-          <View style={styles.emptyState}>
+          <View style={EMPTY_STATE_CARD_STYLE}>
             <Text style={settingsStyles.rowTitle}>{t("settings.modelGateways.emptyTitle")}</Text>
             <Text style={settingsStyles.rowHint}>{t("settings.modelGateways.emptyHint")}</Text>
           </View>
@@ -601,3 +601,6 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[2],
   },
 }));
+
+// Borderless rounded surface for the empty-state panel.
+const EMPTY_STATE_CARD_STYLE = [settingsStyles.cardSurface, styles.emptyState];

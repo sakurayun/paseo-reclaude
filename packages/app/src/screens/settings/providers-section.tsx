@@ -537,4 +537,4 @@ const styles = StyleSheet.create((theme) => ({
   },
 }));
 
-const EMPTY_CARD_STYLE = [settingsStyles.card, styles.emptyCard];
+const EMPTY_CARD_STYLE = [settingsStyles.cardSurface, styles.emptyCard];

@@ -655,7 +655,7 @@ function ProviderModalBody(props: ProviderModalBodyProps) {
             title={t("settings.providers.models.discovered")}
             count={filteredDiscovered.length}
           />
-          <View style={settingsStyles.card}>
+          <View style={settingsStyles.cardSurface}>
             {filteredDiscovered.map((model) => (
               <DiscoveredModelRow key={model.id} model={model} />
             ))}
@@ -668,7 +668,7 @@ function ProviderModalBody(props: ProviderModalBodyProps) {
             title={t("settings.providers.models.custom")}
             count={filteredCustom.length}
           />
-          <View style={settingsStyles.card}>
+          <View style={settingsStyles.cardSurface}>
             {filteredCustom.map((model) => (
               <CustomModelRow
                 key={model.id}
@@ -926,8 +926,6 @@ const sheetStyles = StyleSheet.create((theme) => ({
     paddingVertical: theme.spacing[2],
     paddingHorizontal: theme.spacing[4],
     gap: theme.spacing[3],
-    borderTopWidth: 1,
-    borderTopColor: theme.colors.border,
   },
   modelTitle: {
     color: theme.colors.foreground,
@@ -1016,4 +1014,4 @@ const COMPACT_FOOTER_META_STYLE = [sheetStyles.footerMeta, sheetStyles.compactFo
 const MAIN_SNAP_POINTS = ["65%", "92%"];
 const ADD_SNAP_POINTS = ["40%"];
 const DIAGNOSTIC_SNAP_POINTS = ["50%", "85%"];
-const DIAGNOSTIC_CARD_STYLE = [settingsStyles.card, sheetStyles.diagnosticCard];
+const DIAGNOSTIC_CARD_STYLE = [settingsStyles.cardSurface, sheetStyles.diagnosticCard];

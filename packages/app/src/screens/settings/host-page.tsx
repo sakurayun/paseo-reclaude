@@ -1031,7 +1031,7 @@ function DictationModelCard({ serverId }: { serverId: string }) {
           <Text style={settingsStyles.rowHint}>{t("settings.host.dictation.hint")}</Text>
         </View>
       </View>
-      <View style={styles.dictationList}>
+      <View style={DICTATION_LIST_CARD_STYLE}>
         {query.isLoading && models.length === 0 ? (
           <Text style={styles.dictationOptionStatus}>{t("settings.host.dictation.loading")}</Text>
         ) : (
@@ -1807,12 +1807,10 @@ function TerminalProfilesSection({ serverId }: { serverId: string }) {
 
   if (!isConnected) {
     return (
-      <View style={settingsStyles.card} testID="terminal-profiles-unavailable">
-        <View style={terminalProfileStyles.emptyCard}>
-          <Text style={terminalProfileStyles.emptyText}>
-            {t("settings.host.terminalProfiles.unavailable")}
-          </Text>
-        </View>
+      <View style={TERMINAL_PROFILES_EMPTY_CARD_STYLE} testID="terminal-profiles-unavailable">
+        <Text style={terminalProfileStyles.emptyText}>
+          {t("settings.host.terminalProfiles.unavailable")}
+        </Text>
       </View>
     );
   }
@@ -1839,7 +1837,7 @@ function TerminalProfilesSection({ serverId }: { serverId: string }) {
               />
             ))
           ) : (
-            <View style={terminalProfileStyles.emptyCard}>
+            <View style={TERMINAL_PROFILES_EMPTY_CARD_STYLE}>
               <Text style={terminalProfileStyles.emptyText}>
                 {t("settings.host.terminalProfiles.emptyState")}
               </Text>
@@ -2059,4 +2057,12 @@ const styles = StyleSheet.create((theme) => ({
 }));
 
 const FLEX_1_STYLE = { flex: 1 };
-const EMPTY_CARD_STYLE = [settingsStyles.card, styles.emptyCard];
+const EMPTY_CARD_STYLE = [settingsStyles.cardSurface, styles.emptyCard];
+// Borderless rounded surface panels for the dictation model list and the
+// terminal-profiles empty/unavailable states (hoisted so the JSX style prop
+// isn't a fresh array each render).
+const DICTATION_LIST_CARD_STYLE = [settingsStyles.cardSurface, styles.dictationList];
+const TERMINAL_PROFILES_EMPTY_CARD_STYLE = [
+  settingsStyles.cardSurface,
+  terminalProfileStyles.emptyCard,
+];

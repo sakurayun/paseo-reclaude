@@ -129,7 +129,7 @@ export function PairDeviceSection() {
 
   return (
     <View style={settingsStyles.section} testID="host-page-pair-device-card">
-      <View style={settingsStyles.card}>
+      <View style={settingsStyles.cardSurface}>
         <PairDeviceBody
           viewState={viewState}
           theme={theme}

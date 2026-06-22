@@ -524,7 +524,7 @@ const styles = StyleSheet.create((theme) => ({
   },
 }));
 
-const LOADING_CARD_STYLE = [settingsStyles.card, styles.loadingCard];
+const LOADING_CARD_STYLE = [settingsStyles.cardSurface, styles.loadingCard];
 const ROW_WITH_BORDER_STYLE = [settingsStyles.row, settingsStyles.rowBorder];
 const LOGS_MODAL_SNAP_POINTS = ["70%", "92%"];
 const CLI_STATUS_MODAL_SNAP_POINTS = ["60%", "85%"];

@@ -112,6 +112,74 @@ typed ones; the test asserts the literal list):
 (`THEME_TO_UNISTYLES` / `VALID_THEMES` are only for dropdown `ThemeName`s —
 `newTheme` is not a dropdown option, so it stays out of both.)
 
+## Settings: borderless nested cards
+
+Settings detail pages dropped the bordered-card-with-divider-lines look in favour
+of a **flat stack of independent rounded cards** — each setting is its own
+`surface1` rounded card (`borderRadius.xl`) on the white content column with a
+soft `theme.shadow.sm`, separated by gap, grouped under the muted
+`<SettingsSection>` label. It mirrors the home message stream's `#fafafa` bubbles
+(`message.tsx`, the `theme.shell.floating ? surface1` user bubble) and reads as
+"外边距的圆角矩形" cards instead of one boxed list. No structural borders, no row
+dividers anywhere.
+
+**The whole thing pivots on the shared primitives in
+`packages/app/src/styles/settings.ts` — change those, not the call sites:**
+
+- `card` — was a bordered `surface1` box; now a **transparent vertical stack**
+  (`{ gap }`). The dozens of `<View style={settingsStyles.card}>` sites that wrap
+  `settingsStyles.row` children keep working: the rows inside become the cards.
+- `row` — now an **independent rounded surface card** (`surface1` +
+  `borderRadius.xl` + `padding 16` + `...theme.shadow.sm`, no border).
+- `rowBorder` — now a **no-op `{}`**, so the many `[row, rowBorder]` / `isFirst`
+  call sites stay valid untouched; the divider is gone, gap separates rows.
+- `cardSurface` — **new**. A single borderless rounded panel (`surface1` +
+  `borderRadius.xl` + `shadow.sm`, no padding/layout) for **custom (non-row)**
+  card content: empty/loading states, text areas, code blocks, bespoke lists.
+
+Theme-aware and global (not gated to `newTheme`): the `theme.shadow.*` tokens
+carry their own per-theme values, so dark themes get a stronger shadow and the
+borderless cards still separate. Classic themes lose the card border but gain the
+shadow.
+
+**Consumers that don't wrap `settingsStyles.row` had to be migrated by hand** —
+their custom content used to lean on the old card surface, so the structural
+borders/dividers they hand-rolled (`styles.separator`, `styles.divider`,
+`borderTopWidth` baked into a local `modelRow`/`scriptRow`/`rowWithBorder`) were
+removed and the panel switched to `cardSurface`: `settings-textarea`,
+`provider-diagnostic-sheet`, `provider-usage/{list,settings-section}`,
+`pair-device-section`, `keyboard-shortcuts-section`, `project-settings-screen`
+(each script → its own card), `appearance-section` (`rowWithBorder` → `row`), plus
+the empty/loading-state cards in `host-page`, `providers-section`,
+`model-gateways-section`, `desktop-updates-section`. Inline `style={[cardSurface,
+…]}` arrays are hoisted to module consts (react-perf `jsx-no-new-array-as-prop`).
+
+**Desktop: the whole detail pane floats too.** On desktop the settings detail
+column mirrors the workspace floating-card pattern (`workspace-screen.tsx`): the
+detail pane (`settings-screen.tsx` `desktopStyles.centerColumn`) paints
+`surfaceShell`, the `<ScreenHeader>` (icon + title) sits **exposed on that
+underlay above the card** (via its `surfaceStyle`/`rowStyle` overrides —
+`detailHeaderSurface` = `surfaceShell`, `detailHeaderRow` borderBottom =
+`theme.shell.chromeDivider`), and the scrollable content lives inside a floating
+`centerCard` (`surfaceWorkspace` white card, `marginTop`/`marginHorizontal`/
+`marginBottom` = `theme.shell.contentMargin`, `borderRadius` =
+`contentRadius`, `overflow` = `contentOverflow`). The card adds a softer-but-
+stronger-than-the-inner-cards shadow (`...(theme.shell.floating ?
+theme.shadow.lg : null)`) so it reads as one floating "component with margins" on
+the `#fafafa` backdrop — the inner setting cards (`surface1` + `shadow.sm`) nest
+inside it. Classic themes are flush/unchanged (shell tokens 0/0/visible, no
+shadow). **Settings sidebar dividers are removed in the new theme:** the right
+border (`sidebarStyles.desktopContainer`) and the back-row divider
+(`sidebar-header-row.tsx` `container`) are driven by `theme.shell.chromeDivider`
+(1 classic / 0 new), and the group `<SidebarSeparator />` between the app and host
+groups is render-gated `{theme.shell.floating ? null : <SidebarSeparator />}` (a
+render gate rather than a 0px border, so the element doesn't linger in the tree).
+
+**Out of scope on purpose:** functional control outlines stay — text inputs,
+dropdown/menu triggers, color swatches, `<StatusBadge>` pills, selection chips.
+Only the structural card/divider borders were removed. A future pass could soften
+those control outlines too if a fully borderless look is wanted.
+
 ## i18n
 
 `settings.appearance.newTheme.{title,label,hint,accessibilityLabel}` in all six

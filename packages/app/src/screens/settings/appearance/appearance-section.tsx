@@ -211,7 +211,6 @@ interface FontFamilyRowProps {
   placeholder: string;
   value: string;
   draft: string;
-  withBorder: boolean;
   onChangeDraft: (value: string) => void;
   onCommit: (value: string) => void;
 }
@@ -223,7 +222,6 @@ function FontFamilyRow({
   placeholder,
   value,
   draft,
-  withBorder,
   onChangeDraft,
   onCommit,
 }: FontFamilyRowProps) {
@@ -239,7 +237,7 @@ function FontFamilyRow({
   }, [value]);
 
   return (
-    <View style={withBorder ? styles.rowWithBorder : settingsStyles.row}>
+    <View style={settingsStyles.row}>
       <View style={settingsStyles.rowContent}>
         <Text style={settingsStyles.rowTitle}>{title}</Text>
         <Text style={settingsStyles.rowHint}>{hint}</Text>
@@ -265,7 +263,6 @@ interface FontSizeRowProps {
   title: string;
   accessibilityLabel: string;
   draft: string;
-  withBorder?: boolean;
   onChangeDraft: (value: string) => void;
   onCommit: () => void;
 }
@@ -274,12 +271,11 @@ function FontSizeRow({
   title,
   accessibilityLabel,
   draft,
-  withBorder = true,
   onChangeDraft,
   onCommit,
 }: FontSizeRowProps) {
   return (
-    <View style={withBorder ? styles.rowWithBorder : settingsStyles.row}>
+    <View style={settingsStyles.row}>
       <View style={settingsStyles.rowContent}>
         <Text style={settingsStyles.rowTitle}>{title}</Text>
       </View>
@@ -398,7 +394,7 @@ function TerminalLetterSpacingRow({
   }, [draft, onCommit, value]);
 
   return (
-    <View style={styles.rowWithBorder}>
+    <View style={settingsStyles.row}>
       <View style={settingsStyles.rowContent}>
         <Text style={settingsStyles.rowTitle}>{title}</Text>
       </View>
@@ -784,7 +780,6 @@ export function AppearanceSection() {
               placeholder={uiFontPlaceholder}
               value={settings.uiFontFamily}
               draft={uiFontDraft}
-              withBorder={false}
               onChangeDraft={setUiFontDraft}
               onCommit={commitUiFontFamily}
             />
@@ -793,7 +788,6 @@ export function AppearanceSection() {
             title={t("settings.appearance.fonts.interfaceSize")}
             accessibilityLabel={t("settings.appearance.fonts.interfaceSizeAccessibility")}
             draft={uiSizeDraft}
-            withBorder={showFontFamilyRows}
             onChangeDraft={handleUiSizeChange}
             onCommit={commitUiSize}
           />
@@ -805,7 +799,6 @@ export function AppearanceSection() {
               placeholder={monoFontPlaceholder}
               value={settings.monoFontFamily}
               draft={monoFontDraft}
-              withBorder
               onChangeDraft={setMonoFontDraft}
               onCommit={commitMonoFontFamily}
             />
@@ -825,7 +818,7 @@ export function AppearanceSection() {
             value={settings.terminalColorScheme}
             onChange={handleTerminalColorSchemeChange}
           />
-          <View style={styles.rowWithBorder}>
+          <View style={settingsStyles.row}>
             <View style={settingsStyles.rowContent}>
               <Text style={settingsStyles.rowTitle}>
                 {t("settings.appearance.terminal.ligatures")}
@@ -885,7 +878,7 @@ export function AppearanceSection() {
               </Text>
             </View>
           </View>
-          <View style={styles.rowWithBorder}>
+          <View style={settingsStyles.row}>
             <View style={settingsStyles.rowContent}>
               <Text style={settingsStyles.rowTitle}>
                 {t("settings.appearance.windowsTerminal.preferPowerShell7")}
@@ -902,7 +895,7 @@ export function AppearanceSection() {
               )}
             />
           </View>
-          <View style={styles.rowWithBorder}>
+          <View style={settingsStyles.row}>
             <View style={settingsStyles.rowContent}>
               <Text style={settingsStyles.rowTitle}>
                 {t("settings.appearance.windowsTerminal.launchAsAdmin")}
@@ -936,15 +929,6 @@ export function AppearanceSection() {
 const styles = StyleSheet.create((theme) => ({
   preview: {
     marginTop: theme.spacing[4],
-  },
-  rowWithBorder: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingVertical: theme.spacing[4],
-    paddingHorizontal: theme.spacing[4],
-    borderTopWidth: theme.borderWidth[1],
-    borderTopColor: theme.colors.border,
   },
   trigger: {
     flexDirection: "row",
