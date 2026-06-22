@@ -1,5 +1,9 @@
 import { isSyntaxThemeId, type SyntaxThemeId } from "@getpaseo/highlight";
 import type { QueryClient } from "@tanstack/react-query";
+import {
+  VALID_TERMINAL_COLOR_SCHEMES,
+  type TerminalColorSchemeId,
+} from "@/constants/terminal-color-presets";
 import type { DesktopSettings } from "@/desktop/settings/desktop-settings";
 import { parseAppLanguage, type AppLanguage } from "@/i18n/locales";
 import { THEME_TO_UNISTYLES, type ThemeName } from "@/styles/theme";
@@ -27,6 +31,8 @@ export const MAX_CODE_FONT_SIZE = 22; // line-height 1.5×22=33 stays safe
 export const MAX_FONT_FAMILY_LENGTH = 200;
 // Ligatures were always-on before the setting existed, so the default keeps that behavior.
 export const DEFAULT_TERMINAL_LIGATURES_ENABLED = true;
+// "auto" follows the app theme's terminal palette — the pre-feature behavior.
+export const DEFAULT_TERMINAL_COLOR_SCHEME: TerminalColorSchemeId = "auto";
 export const DEFAULT_TERMINAL_PADDING = 5;
 export const MIN_TERMINAL_PADDING = 0;
 export const MAX_TERMINAL_PADDING = 64;
@@ -54,6 +60,7 @@ export interface AppSettings {
   codeFontSize: number; // clamped px, default 12
   syntaxTheme: SyntaxThemeId; // default "one"
   terminalLigaturesEnabled: boolean; // render programming ligatures in the terminal
+  terminalColorScheme: TerminalColorSchemeId; // "auto" follows the app theme, else a named preset
   terminalPaddingTop: number; // clamped px, default 0
   terminalPaddingBottom: number;
   terminalPaddingLeft: number;
@@ -81,6 +88,7 @@ export const DEFAULT_CLIENT_SETTINGS: AppSettings = {
   codeFontSize: DEFAULT_CODE_FONT_SIZE,
   syntaxTheme: "one",
   terminalLigaturesEnabled: DEFAULT_TERMINAL_LIGATURES_ENABLED,
+  terminalColorScheme: DEFAULT_TERMINAL_COLOR_SCHEME,
   terminalPaddingTop: DEFAULT_TERMINAL_PADDING,
   terminalPaddingBottom: DEFAULT_TERMINAL_PADDING,
   terminalPaddingLeft: DEFAULT_TERMINAL_PADDING,
@@ -182,10 +190,16 @@ export async function loadSettingsFromStorage(deps: SettingsDeps): Promise<Setti
   };
 }
 
-// Letter spacing + Windows shell toggles, factored out of pickAppSettings to
-// keep its cyclomatic complexity under the lint ceiling.
+// Color scheme + letter spacing + Windows shell toggles, factored out of
+// pickAppSettings to keep its cyclomatic complexity under the lint ceiling.
 function pickTerminalShellSettings(stored: Partial<AppSettings>): Partial<AppSettings> {
   const result: Partial<AppSettings> = {};
+  if (
+    typeof stored.terminalColorScheme === "string" &&
+    VALID_TERMINAL_COLOR_SCHEMES.has(stored.terminalColorScheme)
+  ) {
+    result.terminalColorScheme = stored.terminalColorScheme as TerminalColorSchemeId;
+  }
   const terminalLetterSpacing = parseTerminalLetterSpacing(stored.terminalLetterSpacing);
   if (terminalLetterSpacing !== null) {
     result.terminalLetterSpacing = terminalLetterSpacing;
@@ -273,6 +287,40 @@ function pickAppSettings(stored: Partial<AppSettings>): Partial<AppSettings> {
   const workspaceTitleSource = parseWorkspaceTitleSource(stored.workspaceTitleSource);
   if (workspaceTitleSource !== null) {
     result.workspaceTitleSource = workspaceTitleSource;
+  }
+  return result;
+}
+
+// The appearance fields synced across a user's devices: app theme + code syntax
+// theme + terminal color scheme. Deliberately theme/colors only — font sizes and
+// other AppSettings stay device-local (a phone and a desktop want different sizes).
+// The return type is left inferred (an anonymous object-literal type) so it stays
+// assignable to the opaque `Record<string, unknown>` push payload — a named
+// interface would lack the index signature that assignment needs.
+export function extractSyncedAppearance(settings: AppSettings) {
+  return {
+    theme: settings.theme,
+    syntaxTheme: settings.syntaxTheme,
+    terminalColorScheme: settings.terminalColorScheme,
+  };
+}
+
+// Validate an opaque synced blob received from a peer into a Partial<AppSettings>,
+// reusing the same per-field checks as on-load so a malformed or older peer can't
+// inject invalid values. Unknown/missing fields are simply skipped.
+export function pickSyncedAppearance(raw: Record<string, unknown>): Partial<AppSettings> {
+  const result: Partial<AppSettings> = {};
+  if (typeof raw.theme === "string" && VALID_THEMES.has(raw.theme)) {
+    result.theme = raw.theme as AppSettings["theme"];
+  }
+  if (typeof raw.syntaxTheme === "string" && isSyntaxThemeId(raw.syntaxTheme)) {
+    result.syntaxTheme = raw.syntaxTheme;
+  }
+  if (
+    typeof raw.terminalColorScheme === "string" &&
+    VALID_TERMINAL_COLOR_SCHEMES.has(raw.terminalColorScheme)
+  ) {
+    result.terminalColorScheme = raw.terminalColorScheme as TerminalColorSchemeId;
   }
   return result;
 }

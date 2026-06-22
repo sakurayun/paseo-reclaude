@@ -36,6 +36,7 @@ import type { AgentLifecycleStatus } from "@getpaseo/protocol/agent-lifecycle";
 import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
 import { startWorkspaceLayoutSync } from "@/stores/workspace-layout-sync";
 import { startPromptPresetsSync } from "@/stores/prompt-presets-sync";
+import { startAppearanceSettingsSync } from "@/stores/appearance-settings-sync";
 import type { AgentSessionConfig } from "@getpaseo/protocol/agent-types";
 import type { GitSetupOptions } from "@getpaseo/protocol/messages";
 import type { AgentPermissionResponse } from "@getpaseo/protocol/agent-types";
@@ -591,6 +592,12 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
 
   useEffect(() => {
     return startPromptPresetsSync({ serverId, client });
+  }, [serverId, client]);
+
+  // Appearance sync: theme + syntax theme + terminal color scheme mirrored to the
+  // daemon and applied from peers. Unlike layout sync this includes mobile.
+  useEffect(() => {
+    return startAppearanceSettingsSync({ serverId, client });
   }, [serverId, client]);
 
   useEffect(() => {

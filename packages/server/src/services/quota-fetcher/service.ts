@@ -1,5 +1,6 @@
 import type { Logger } from "pino";
 import type { ProviderUsage } from "../../server/messages.js";
+import type { ReclaudeAccountService } from "../reclaude/reclaude-account-service.js";
 import { createProviderUsageFetchers } from "./manifest.js";
 import type { ProviderApiFetch, ProviderUsageFetcher } from "./provider.js";
 import { unavailableUsage } from "./usage.js";
@@ -10,6 +11,7 @@ export interface ProviderUsageServiceOptions {
   fetch?: ProviderApiFetch;
   cacheTtlMs?: number;
   now?: () => number;
+  reclaude?: ReclaudeAccountService;
 }
 
 export interface ProviderUsageListResult {
@@ -34,9 +36,16 @@ export class ProviderUsageService {
       createProviderUsageFetchers({
         logger: this.logger,
         fetch: options.fetch,
+        reclaude: options.reclaude,
       });
     this.cacheTtlMs = options.cacheTtlMs ?? DEFAULT_PROVIDER_USAGE_CACHE_TTL_MS;
     this.now = options.now ?? Date.now;
+  }
+
+  // Drop the cached snapshot so the next listUsage() re-fetches. Called after a
+  // reclaude sign-in/out so the Claude card reflects the new auth state promptly.
+  invalidateCache(): void {
+    this.cached = null;
   }
 
   async listUsage(options?: { forceRefresh?: boolean }): Promise<ProviderUsageListResult> {

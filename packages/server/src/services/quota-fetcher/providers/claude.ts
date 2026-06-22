@@ -10,6 +10,7 @@ import type {
   ProviderUsageDetail,
   ProviderUsageWindow,
 } from "../../../server/messages.js";
+import type { ReclaudeAccountService } from "../../reclaude/reclaude-account-service.js";
 import type { ProviderApiFetch, ProviderUsageFetcher } from "../provider.js";
 import {
   ApiNumberSchema,
@@ -72,6 +73,7 @@ interface ClaudeQuotaProviderOptions {
   claudeKeychainReader?: () => Promise<unknown | null>;
   platform?: typeof process.platform;
   fetch?: ProviderApiFetch;
+  reclaude?: ReclaudeAccountService;
 }
 
 function buildClaudePlan(
@@ -107,6 +109,7 @@ export class ClaudeQuotaProvider implements ProviderUsageFetcher {
   private readonly readKeychainCredentials: () => Promise<unknown | null>;
   private readonly platform: typeof process.platform;
   private readonly fetchApi: ProviderApiFetch;
+  private readonly reclaude: ReclaudeAccountService | undefined;
 
   constructor(options: ClaudeQuotaProviderOptions) {
     this.claudeHome =
@@ -114,9 +117,20 @@ export class ClaudeQuotaProvider implements ProviderUsageFetcher {
     this.readKeychainCredentials = options.claudeKeychainReader ?? readClaudeKeychainCredentials;
     this.platform = options.platform ?? process.platform;
     this.fetchApi = options.fetch ?? fetch;
+    this.reclaude = options.reclaude;
   }
 
   async fetchUsage(): Promise<ProviderUsage> {
+    // When reclaude is the active Claude binary, usage comes from reclaude.ai
+    // (which passes through the official OAuth usage) instead of querying
+    // Anthropic directly. See docs/reclaude-integration.md.
+    if (this.reclaude?.isActive()) {
+      return this.fetchReclaudeUsage(this.reclaude);
+    }
+    return this.fetchAnthropicUsage();
+  }
+
+  private async fetchAnthropicUsage(): Promise<ProviderUsage> {
     const credentials = await this.readCredentials();
     if (!credentials) {
       return unavailableUsage(this);
@@ -214,6 +228,17 @@ export class ClaudeQuotaProvider implements ProviderUsageFetcher {
       details,
       error: null,
     };
+  }
+
+  private fetchReclaudeUsage(reclaude: ReclaudeAccountService): ProviderUsage {
+    // Read-only: the last-synced cached snapshot (or an "unavailable"
+    // placeholder when not signed in / not yet synced). This NEVER hits
+    // reclaude.ai — the live fetch is the dedicated provider.reclaude.sync RPC —
+    // so the unified usage list and its refresh button stay reclaude-quiet.
+    return reclaude.getCachedUsage({
+      providerId: this.providerId,
+      displayName: this.displayName,
+    });
   }
 
   private async readCredentials(): Promise<ClaudeCredentialRecord | null> {

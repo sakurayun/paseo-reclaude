@@ -1,10 +1,29 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Text, View, type StyleProp, type ViewStyle } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
-import { clampPct, formatPct, formatResetLabel, formatRunsOutLabel } from "./format";
+import {
+  clampPct,
+  formatFullResetLabel,
+  formatPct,
+  formatResetLabel,
+  formatRunsOutLabel,
+} from "./format";
 import { deriveTone } from "./tone";
 import type { ProviderUsageTone, ProviderUsageWindow } from "./types";
+
+// Re-renders once per second while enabled, so a live countdown ticks down to
+// the second. Returns the current epoch ms (frozen when disabled).
+function useSecondTick(enabled: boolean): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!enabled) return;
+    setNow(Date.now());
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [enabled]);
+  return now;
+}
 
 function resolveUsedPct(window: ProviderUsageWindow): number | null {
   if (window.usedPct != null) return window.usedPct;
@@ -37,9 +56,17 @@ export function ProviderUsageWindowBar({ window }: { window: ProviderUsageWindow
   );
 
   const isAtRisk = window.runsOutAt != null && window.shortfallPct != null;
-  const trailing = isAtRisk
-    ? formatRunsOutLabel(window.runsOutAt, t)
-    : formatResetLabel(window.resetsAt, t);
+  const useFullCountdown = window.fullCountdown === true && !isAtRisk && window.resetsAt != null;
+  // Tick every second only for live full countdowns; other labels stay static.
+  const nowMs = useSecondTick(useFullCountdown);
+  let trailing: string | null;
+  if (isAtRisk) {
+    trailing = formatRunsOutLabel(window.runsOutAt, t);
+  } else if (useFullCountdown) {
+    trailing = formatFullResetLabel(window.resetsAt, t, nowMs);
+  } else {
+    trailing = formatResetLabel(window.resetsAt, t);
+  }
 
   return (
     <View style={styles.container}>

@@ -13,9 +13,11 @@ import type { ProviderUsageView } from "./types";
 export function ProviderUsageSettingsSection({
   view,
   onRefresh,
+  serverId,
 }: {
   view: ProviderUsageView;
   onRefresh: () => void;
+  serverId: string;
 }) {
   const { t } = useTranslation();
   const busy = view.kind === "loading" || (view.kind === "ready" && view.isRefreshing);
@@ -42,7 +44,7 @@ export function ProviderUsageSettingsSection({
       testID="provider-usage-card"
       trailing={refreshButton}
     >
-      <ProviderUsageBody view={view} onRefresh={onRefresh} />
+      <ProviderUsageBody view={view} onRefresh={onRefresh} serverId={serverId} />
     </SettingsSection>
   );
 }
@@ -50,9 +52,11 @@ export function ProviderUsageSettingsSection({
 function ProviderUsageBody({
   view,
   onRefresh,
+  serverId,
 }: {
   view: ProviderUsageView;
   onRefresh: () => void;
+  serverId: string;
 }) {
   const { t } = useTranslation();
 
@@ -82,7 +86,7 @@ function ProviderUsageBody({
     );
   }
 
-  return <ProviderUsageList providers={view.payload.providers} />;
+  return <ProviderUsageList providers={view.payload.providers} serverId={serverId} />;
 }
 
 const styles = StyleSheet.create((theme) => ({

@@ -1283,6 +1283,44 @@ export const ProviderUsageListRequestMessageSchema = z.object({
   requestId: z.string(),
 });
 
+// ReClaude account login/usage RPCs. The daemon owns the session cookie; the
+// client only ferries credentials through to the daemon, which logs in against
+// reclaude.ai and stores the cookie locally. See docs/reclaude-integration.md.
+export const ReclaudeStatusRequestMessageSchema = z.object({
+  type: z.literal("provider.reclaude.status.request"),
+  requestId: z.string(),
+});
+
+export const ReclaudeLoginRequestMessageSchema = z.object({
+  type: z.literal("provider.reclaude.login.request"),
+  email: z.string(),
+  password: z.string(),
+  requestId: z.string(),
+});
+
+export const ReclaudeVerifyMfaRequestMessageSchema = z.object({
+  type: z.literal("provider.reclaude.mfa.request"),
+  challengeToken: z.string(),
+  code: z.string(),
+  requestId: z.string(),
+});
+
+export const ReclaudeLogoutRequestMessageSchema = z.object({
+  type: z.literal("provider.reclaude.logout.request"),
+  requestId: z.string(),
+});
+
+// Manual, on-demand live fetch of reclaude usage. This is the ONLY path that
+// hits reclaude.ai for usage; the regular provider.usage.list returns the
+// last-synced cached snapshot. See docs/reclaude-integration.md.
+export const ReclaudeSyncUsageRequestMessageSchema = z.object({
+  type: z.literal("provider.reclaude.sync.request"),
+  requestId: z.string(),
+  // Explicit user action (the "sync usage" button) bypasses the server-side
+  // 5-minute throttle; automatic triggers omit it / pass false.
+  force: z.boolean().optional(),
+});
+
 export const ResumeAgentRequestMessageSchema = z.object({
   type: z.literal("resume_agent_request"),
   handle: AgentPersistenceHandleSchema,
@@ -2075,6 +2113,29 @@ export const PromptPresetsGetRequestSchema = z.object({
   requestId: z.string(),
 });
 
+// COMPAT(appearanceSettingsSync): added in v0.1.104, remove gate after 2026-12-22.
+// Global user appearance settings (app theme, syntax theme, terminal color scheme)
+// synced through the daemon so every connected client — including mobile — shares the
+// same theme/colors. Stored as an opaque blob: the daemon never parses it, and the
+// client picks/validates fields on apply, so new synced fields need no protocol change.
+export const AppearanceSettingsEnvelopeSchema = z.object({
+  revision: z.number().int().nonnegative(),
+  updatedAt: z.string(),
+  settings: z.record(z.string(), z.unknown()),
+});
+
+export const AppearanceSettingsPushRequestSchema = z.object({
+  type: z.literal("appearance.settings.push.request"),
+  revision: z.number().int().nonnegative(),
+  settings: z.record(z.string(), z.unknown()),
+  requestId: z.string(),
+});
+
+export const AppearanceSettingsGetRequestSchema = z.object({
+  type: z.literal("appearance.settings.get.request"),
+  requestId: z.string(),
+});
+
 // Highlighted diff token schema
 // Note: style can be a compound class name (e.g., "heading meta") from the syntax highlighter
 const HighlightTokenSchema = z.object({
@@ -2450,6 +2511,11 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   RefreshProvidersSnapshotRequestMessageSchema,
   ProviderDiagnosticRequestMessageSchema,
   ProviderUsageListRequestMessageSchema,
+  ReclaudeStatusRequestMessageSchema,
+  ReclaudeLoginRequestMessageSchema,
+  ReclaudeVerifyMfaRequestMessageSchema,
+  ReclaudeLogoutRequestMessageSchema,
+  ReclaudeSyncUsageRequestMessageSchema,
   ResumeAgentRequestMessageSchema,
   ImportAgentRequestMessageSchema,
   RefreshAgentRequestMessageSchema,
@@ -2512,6 +2578,8 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   WorkspaceLayoutGetRequestSchema,
   PromptPresetsPushRequestSchema,
   PromptPresetsGetRequestSchema,
+  AppearanceSettingsPushRequestSchema,
+  AppearanceSettingsGetRequestSchema,
   FileExplorerRequestSchema,
   ProjectIconRequestSchema,
   FileDownloadTokenRequestSchema,
@@ -2760,6 +2828,8 @@ export const ServerInfoStatusPayloadSchema = z
         workspaceFileSearch: z.boolean().optional(),
         // COMPAT(promptPresetsSync): added in v0.1.102, remove gate after 2026-12-21.
         promptPresetsSync: z.boolean().optional(),
+        // COMPAT(appearanceSettingsSync): added in v0.1.104, remove gate after 2026-12-22.
+        appearanceSettingsSync: z.boolean().optional(),
         // COMPAT(projectRemove): added in v0.1.97, drop the gate when floor >= v0.1.97.
         projectRemove: z.boolean().optional(),
         // COMPAT(projectAdd): added in v0.1.97, drop the gate when floor >= v0.1.97.
@@ -2768,6 +2838,8 @@ export const ServerInfoStatusPayloadSchema = z
         worktreeRestore: z.boolean().optional(),
         // COMPAT(providerUsageList): added in v0.1.98, drop the gate when daemon floor >= v0.1.98.
         providerUsageList: z.boolean().optional(),
+        // COMPAT(reclaudeUsage): added in v0.1.105, remove gate after 2026-12-22.
+        reclaudeUsage: z.boolean().optional(),
         // COMPAT(agentDetach): added in v0.1.98, remove gate after 2026-12-19 once daemon floor >= v0.1.98.
         agentDetach: z.boolean().optional(),
       })
@@ -3468,6 +3540,28 @@ export const PromptPresetsGetResponseSchema = z.object({
 export const PromptPresetsChangedSchema = z.object({
   type: z.literal("prompt.presets.changed"),
   payload: PromptPresetsEnvelopeSchema,
+});
+
+export const AppearanceSettingsPushResponseSchema = z.object({
+  type: z.literal("appearance.settings.push.response"),
+  payload: z.object({
+    requestId: z.string(),
+    accepted: z.boolean(),
+    revision: z.number().int().nonnegative(),
+  }),
+});
+
+export const AppearanceSettingsGetResponseSchema = z.object({
+  type: z.literal("appearance.settings.get.response"),
+  payload: z.object({
+    requestId: z.string(),
+    envelope: AppearanceSettingsEnvelopeSchema,
+  }),
+});
+
+export const AppearanceSettingsChangedSchema = z.object({
+  type: z.literal("appearance.settings.changed"),
+  payload: AppearanceSettingsEnvelopeSchema,
 });
 
 export const SendAgentMessageResponseMessageSchema = z.object({
@@ -4559,6 +4653,10 @@ export const ProviderUsageWindowSchema = z.object({
   runsOutAt: z.string().nullable().optional(),
   shortfallPct: z.number().nullable().optional(),
   tone: ProviderUsageToneSchema.optional(),
+  // When true, the client renders the reset time as a full countdown
+  // (days+hours+minutes) instead of the abbreviated single-unit label. Set by
+  // the reclaude usage source. COMPAT: optional, older clients ignore it.
+  fullCountdown: z.boolean().optional(),
 });
 
 export const ProviderUsageBalanceSchema = z.object({
@@ -4599,6 +4697,51 @@ export const ProviderUsageListResponseMessageSchema = z.object({
     requestId: z.string(),
     fetchedAt: z.string(),
     providers: z.array(ProviderUsageSchema),
+  }),
+});
+
+export const ReclaudeStatusResponseMessageSchema = z.object({
+  type: z.literal("provider.reclaude.status.response"),
+  payload: z.object({
+    requestId: z.string(),
+    // Whether the Claude provider is currently configured to use the reclaude binary.
+    active: z.boolean(),
+    // Whether the daemon holds a stored (non-expired) reclaude session cookie.
+    loggedIn: z.boolean(),
+    email: z.string().nullable(),
+  }),
+});
+
+export const ReclaudeLoginResponseMessageSchema = z.object({
+  type: z.literal("provider.reclaude.login.response"),
+  payload: z.object({
+    requestId: z.string(),
+    step: z.enum(["completed", "mfa_required"]),
+    mfaChallengeToken: z.string().nullable().optional(),
+  }),
+});
+
+export const ReclaudeVerifyMfaResponseMessageSchema = z.object({
+  type: z.literal("provider.reclaude.mfa.response"),
+  payload: z.object({
+    requestId: z.string(),
+    step: z.literal("completed"),
+  }),
+});
+
+export const ReclaudeLogoutResponseMessageSchema = z.object({
+  type: z.literal("provider.reclaude.logout.response"),
+  payload: z.object({
+    requestId: z.string(),
+    ok: z.boolean(),
+  }),
+});
+
+export const ReclaudeSyncUsageResponseMessageSchema = z.object({
+  type: z.literal("provider.reclaude.sync.response"),
+  payload: z.object({
+    requestId: z.string(),
+    usage: ProviderUsageSchema,
   }),
 });
 
@@ -4914,6 +5057,9 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   PromptPresetsPushResponseSchema,
   PromptPresetsGetResponseSchema,
   PromptPresetsChangedSchema,
+  AppearanceSettingsPushResponseSchema,
+  AppearanceSettingsGetResponseSchema,
+  AppearanceSettingsChangedSchema,
   SendAgentMessageResponseMessageSchema,
   SetVoiceModeResponseMessageSchema,
   DaemonGetStatusResponseSchema,
@@ -4986,6 +5132,11 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   RefreshProvidersSnapshotResponseMessageSchema,
   ProviderDiagnosticResponseMessageSchema,
   ProviderUsageListResponseMessageSchema,
+  ReclaudeStatusResponseMessageSchema,
+  ReclaudeLoginResponseMessageSchema,
+  ReclaudeVerifyMfaResponseMessageSchema,
+  ReclaudeLogoutResponseMessageSchema,
+  ReclaudeSyncUsageResponseMessageSchema,
   ListCommandsResponseSchema,
   ListTerminalsResponseSchema,
   TerminalsChangedSchema,
@@ -5150,6 +5301,15 @@ export type ProviderUsageBalance = z.infer<typeof ProviderUsageBalanceSchema>;
 export type ProviderUsageDetail = z.infer<typeof ProviderUsageDetailSchema>;
 export type ProviderUsageListResponseMessage = z.infer<
   typeof ProviderUsageListResponseMessageSchema
+>;
+export type ReclaudeStatusResponseMessage = z.infer<typeof ReclaudeStatusResponseMessageSchema>;
+export type ReclaudeLoginResponseMessage = z.infer<typeof ReclaudeLoginResponseMessageSchema>;
+export type ReclaudeVerifyMfaResponseMessage = z.infer<
+  typeof ReclaudeVerifyMfaResponseMessageSchema
+>;
+export type ReclaudeLogoutResponseMessage = z.infer<typeof ReclaudeLogoutResponseMessageSchema>;
+export type ReclaudeSyncUsageResponseMessage = z.infer<
+  typeof ReclaudeSyncUsageResponseMessageSchema
 >;
 export type ChatCreateResponse = z.infer<typeof ChatCreateResponseSchema>;
 export type ChatListResponse = z.infer<typeof ChatListResponseSchema>;
@@ -5377,6 +5537,12 @@ export type PromptPresetsPushResponse = z.infer<typeof PromptPresetsPushResponse
 export type PromptPresetsGetRequest = z.infer<typeof PromptPresetsGetRequestSchema>;
 export type PromptPresetsGetResponse = z.infer<typeof PromptPresetsGetResponseSchema>;
 export type PromptPresetsChanged = z.infer<typeof PromptPresetsChangedSchema>;
+export type AppearanceSettingsEnvelope = z.infer<typeof AppearanceSettingsEnvelopeSchema>;
+export type AppearanceSettingsPushRequest = z.infer<typeof AppearanceSettingsPushRequestSchema>;
+export type AppearanceSettingsPushResponse = z.infer<typeof AppearanceSettingsPushResponseSchema>;
+export type AppearanceSettingsGetRequest = z.infer<typeof AppearanceSettingsGetRequestSchema>;
+export type AppearanceSettingsGetResponse = z.infer<typeof AppearanceSettingsGetResponseSchema>;
+export type AppearanceSettingsChanged = z.infer<typeof AppearanceSettingsChangedSchema>;
 export type ClientHeartbeatMessage = z.infer<typeof ClientHeartbeatMessageSchema>;
 export type ListCommandsRequest = z.infer<typeof ListCommandsRequestSchema>;
 export type ListCommandsResponse = z.infer<typeof ListCommandsResponseSchema>;

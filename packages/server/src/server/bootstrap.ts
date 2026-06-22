@@ -111,6 +111,7 @@ import { WorkspaceReconciliationService } from "./workspace-reconciliation-servi
 import { FileBackedProjectRegistry, FileBackedWorkspaceRegistry } from "./workspace-registry.js";
 import { FileBackedWorkspaceLayoutStore } from "./workspace-layout-store.js";
 import { FileBackedPromptPresetsStore } from "./prompt-presets-store.js";
+import { FileBackedAppearanceSettingsStore } from "./appearance-settings-store.js";
 import { FileBackedChatService } from "./chat/chat-service.js";
 import { CheckoutDiffManager } from "./checkout-diff-manager.js";
 import { LoopService } from "./loop-service.js";
@@ -693,6 +694,11 @@ export async function createPaseoDaemon(
     logger,
   );
   await promptPresetsStore.initialize();
+  const appearanceSettingsStore = new FileBackedAppearanceSettingsStore(
+    path.join(config.paseoHome, "appearance-settings.json"),
+    logger,
+  );
+  await appearanceSettingsStore.initialize();
   const chatService = new FileBackedChatService({
     paseoHome: config.paseoHome,
     logger,
@@ -1208,6 +1214,7 @@ export async function createPaseoDaemon(
               portForwardManager,
               workspaceLayoutStore,
               promptPresetsStore,
+              appearanceSettingsStore,
             );
 
             if (relayEnabled) {

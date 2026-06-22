@@ -29,6 +29,7 @@ import { resolveTerminalRestoreOptions } from "@/terminal/runtime/terminal-resto
 import { usePanelStore } from "@/stores/panel-store";
 import { useSessionStore } from "@/stores/session-store";
 import { toXtermTheme } from "@/utils/to-xterm-theme";
+import { resolveTerminalPalette } from "@/constants/terminal-color-presets";
 import TerminalEmulator, { type TerminalEmulatorHandle } from "./terminal-emulator";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import {
@@ -211,17 +212,29 @@ export function TerminalPane({
   const isAppVisible = useAppVisible();
   const { theme } = useUnistyles();
   const { settings } = useAppSettings();
-  const xtermTheme = useMemo(() => toXtermTheme(theme.colors.terminal), [theme]);
+  // The terminal palette follows the app theme by default, but the user can pin
+  // a named scheme (e.g. High Contrast) to stay legible against oh-my-zsh and
+  // other shell prompts. `terminalColorScheme` must be a dep: when only the
+  // scheme changes the `theme` reference is unchanged, so the memo would not
+  // recompute without it.
+  const xtermTheme = useMemo(
+    () => toXtermTheme(resolveTerminalPalette(settings.terminalColorScheme, theme.colors.terminal)),
+    [theme, settings.terminalColorScheme],
+  );
   const terminalFontFamily = useMemo(() => {
     const trimmed = settings.monoFontFamily.trim();
     return trimmed.length > 0 ? trimmed : undefined;
   }, [settings.monoFontFamily]);
   // User-configured fixed padding around the terminal content. The fit addon
   // measures the inner container, so padding here shrinks the grid correctly.
+  // The container is filled with the terminal background so the padding gutter
+  // matches the terminal — not the surrounding UI surface — instead of framing
+  // the content with a mismatched color.
   const terminalPaddingStyle = useMemo(
     () => [
       styles.terminalGestureContainer,
       {
+        backgroundColor: xtermTheme.background,
         paddingTop: settings.terminalPaddingTop,
         paddingBottom: settings.terminalPaddingBottom,
         paddingLeft: settings.terminalPaddingLeft,
@@ -229,6 +242,7 @@ export function TerminalPane({
       },
     ],
     [
+      xtermTheme.background,
       settings.terminalPaddingTop,
       settings.terminalPaddingBottom,
       settings.terminalPaddingLeft,

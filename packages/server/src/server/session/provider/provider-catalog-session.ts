@@ -13,6 +13,7 @@ import type {
 } from "../../agent/agent-sdk-types.js";
 import type { ProviderAvailability } from "../../agent/agent-manager.js";
 import type { ProviderUsageService } from "../../../services/quota-fetcher/service.js";
+import type { ReclaudeAccountService } from "../../../services/reclaude/reclaude-account-service.js";
 import { expandTilde } from "../../../utils/path.js";
 
 // COMPAT(customModeIcons): the only mode icons known to clients before v0.1.84. Any
@@ -47,6 +48,7 @@ export interface ProviderCatalogSessionOptions {
   host: ProviderCatalogSessionHost;
   providerSnapshotManager: ProviderSnapshotManager;
   providerUsageService: ProviderUsageService;
+  reclaude: ReclaudeAccountService;
   logger: pino.Logger;
 }
 
@@ -61,6 +63,7 @@ export class ProviderCatalogSession {
   private readonly host: ProviderCatalogSessionHost;
   private readonly providerSnapshotManager: ProviderSnapshotManager;
   private readonly providerUsageService: ProviderUsageService;
+  private readonly reclaude: ReclaudeAccountService;
   private readonly logger: pino.Logger;
   private unsubscribeSnapshotEvents: (() => void) | null = null;
 
@@ -68,6 +71,7 @@ export class ProviderCatalogSession {
     this.host = options.host;
     this.providerSnapshotManager = options.providerSnapshotManager;
     this.providerUsageService = options.providerUsageService;
+    this.reclaude = options.reclaude;
     this.logger = options.logger;
   }
 
@@ -447,6 +451,130 @@ export class ProviderCatalogSession {
           requestType: msg.type,
           error: `Failed to list provider usage: ${err.message}`,
           code: "provider_usage_list_failed",
+        },
+      });
+    }
+  }
+
+  async handleReclaudeStatusRequest(
+    msg: Extract<SessionInboundMessage, { type: "provider.reclaude.status.request" }>,
+  ): Promise<void> {
+    const status = this.reclaude.status();
+    this.host.emit({
+      type: "provider.reclaude.status.response",
+      payload: {
+        requestId: msg.requestId,
+        active: status.active,
+        loggedIn: status.loggedIn,
+        email: status.email,
+      },
+    });
+  }
+
+  async handleReclaudeLoginRequest(
+    msg: Extract<SessionInboundMessage, { type: "provider.reclaude.login.request" }>,
+  ): Promise<void> {
+    try {
+      const result = await this.reclaude.login({ email: msg.email, password: msg.password });
+      // Signing in only stores the session cookie. We deliberately do NOT touch
+      // the provider-usage cache here so other providers (e.g. Codex) are not
+      // re-fetched; reclaude usage is pulled separately via the sync RPC.
+      this.host.emit({
+        type: "provider.reclaude.login.response",
+        payload: {
+          requestId: msg.requestId,
+          step: result.step,
+          mfaChallengeToken: result.step === "mfa_required" ? result.mfaChallengeToken : null,
+        },
+      });
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
+      this.logger.error({ err }, "ReClaude sign-in failed");
+      this.host.emit({
+        type: "rpc_error",
+        payload: {
+          requestId: msg.requestId,
+          requestType: msg.type,
+          error: err.message,
+          code: "provider_reclaude_login_failed",
+        },
+      });
+    }
+  }
+
+  async handleReclaudeVerifyMfaRequest(
+    msg: Extract<SessionInboundMessage, { type: "provider.reclaude.mfa.request" }>,
+  ): Promise<void> {
+    try {
+      await this.reclaude.verifyMfa({ challengeToken: msg.challengeToken, code: msg.code });
+      this.host.emit({
+        type: "provider.reclaude.mfa.response",
+        payload: { requestId: msg.requestId, step: "completed" },
+      });
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
+      this.logger.error({ err }, "ReClaude MFA verification failed");
+      this.host.emit({
+        type: "rpc_error",
+        payload: {
+          requestId: msg.requestId,
+          requestType: msg.type,
+          error: err.message,
+          code: "provider_reclaude_mfa_failed",
+        },
+      });
+    }
+  }
+
+  async handleReclaudeLogoutRequest(
+    msg: Extract<SessionInboundMessage, { type: "provider.reclaude.logout.request" }>,
+  ): Promise<void> {
+    try {
+      await this.reclaude.logout();
+      this.host.emit({
+        type: "provider.reclaude.logout.response",
+        payload: { requestId: msg.requestId, ok: true },
+      });
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
+      this.logger.error({ err }, "ReClaude sign-out failed");
+      this.host.emit({
+        type: "rpc_error",
+        payload: {
+          requestId: msg.requestId,
+          requestType: msg.type,
+          error: err.message,
+          code: "provider_reclaude_logout_failed",
+        },
+      });
+    }
+  }
+
+  async handleReclaudeSyncUsageRequest(
+    msg: Extract<SessionInboundMessage, { type: "provider.reclaude.sync.request" }>,
+  ): Promise<void> {
+    try {
+      // The only path that live-fetches usage from reclaude.ai. Driven by the
+      // dedicated "sync usage" button (force) or the context-window meter
+      // (throttled), never by the list refresh.
+      const usage = await this.reclaude.syncUsage(
+        { providerId: "claude", displayName: "Claude" },
+        { force: msg.force === true },
+      );
+      this.host.emit({
+        type: "provider.reclaude.sync.response",
+        payload: { requestId: msg.requestId, usage },
+      });
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
+      this.logger.error({ err }, "ReClaude usage sync failed");
+      this.host.emit({
+        type: "rpc_error",
+        payload: {
+          requestId: msg.requestId,
+          requestType: msg.type,
+          error: err.message,
+          code: "provider_reclaude_sync_failed",
         },
       });
     }

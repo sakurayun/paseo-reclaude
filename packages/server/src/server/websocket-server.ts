@@ -14,6 +14,12 @@ import type { FileBackedChatService } from "./chat/chat-service.js";
 import type { LoopService } from "./loop-service.js";
 import type { WorkspaceLayoutStore } from "./workspace-layout-store.js";
 import type { PromptPresetsStore } from "./prompt-presets-store.js";
+import type { AppearanceSettingsStore } from "./appearance-settings-store.js";
+import {
+  FileBackedReclaudeCredentialsStore,
+  type ReclaudeCredentialsStore,
+} from "./reclaude-credentials-store.js";
+import { ReclaudeAccountService } from "../services/reclaude/reclaude-account-service.js";
 import type { ScheduleService } from "./schedule/service.js";
 import type { CheckoutDiffManager, CheckoutDiffMetrics } from "./checkout-diff-manager.js";
 import type { DaemonConfigStore, MutableDaemonConfig } from "./daemon-config-store.js";
@@ -22,6 +28,7 @@ import {
   type WorkspaceSetupSnapshot,
   type WorkspaceLayoutEnvelope,
   type PromptPresetsEnvelope,
+  type AppearanceSettingsEnvelope,
   type WSHelloMessage,
   type WSInboundMessage,
   WSInboundMessageSchema,
@@ -382,6 +389,7 @@ export class VoiceAssistantWebSocketServer {
   private readonly workspaceRegistry: WorkspaceRegistry;
   private readonly workspaceLayoutStore: WorkspaceLayoutStore | null;
   private readonly promptPresetsStore: PromptPresetsStore | null;
+  private readonly appearanceSettingsStore: AppearanceSettingsStore | null;
   private readonly chatService: FileBackedChatService;
   private readonly loopService: LoopService;
   private readonly scheduleService: ScheduleService;
@@ -426,6 +434,8 @@ export class VoiceAssistantWebSocketServer {
   private readonly agentStatuses = new Map<string, string>();
   private unsubscribeAgentManager: (() => void) | null = null;
   private readonly providerUsageService: ProviderUsageService;
+  private readonly reclaudeCredentialsStore: ReclaudeCredentialsStore;
+  private readonly reclaudeAccountService: ReclaudeAccountService;
   private unsubscribeTerminalActivity: (() => void) | null = null;
 
   constructor(
@@ -483,6 +493,7 @@ export class VoiceAssistantWebSocketServer {
     portForwardManager?: PortForwardManager | null,
     workspaceLayoutStore?: WorkspaceLayoutStore | null,
     promptPresetsStore?: PromptPresetsStore | null,
+    appearanceSettingsStore?: AppearanceSettingsStore | null,
   ) {
     this.logger = logger.child({ module: "websocket-server" });
     this.serverId = serverId;
@@ -497,6 +508,7 @@ export class VoiceAssistantWebSocketServer {
     this.workspaceRegistry = workspaceRegistry ?? createNoopWorkspaceRegistry();
     this.workspaceLayoutStore = workspaceLayoutStore ?? null;
     this.promptPresetsStore = promptPresetsStore ?? null;
+    this.appearanceSettingsStore = appearanceSettingsStore ?? null;
     const requiredServices = requireWebSocketServices({
       chatService,
       loopService,
@@ -588,8 +600,23 @@ export class VoiceAssistantWebSocketServer {
       }
     });
 
+    // ReClaude account: stored session cookie + login client, shared by the
+    // Claude usage provider and the provider.reclaude.* RPC handlers. Reclaude is
+    // "active" when the Claude binary is overridden to `reclaude`.
+    this.reclaudeCredentialsStore = new FileBackedReclaudeCredentialsStore(
+      join(this.paseoHome, "reclaude-credentials.json"),
+      this.logger,
+    );
+    void this.reclaudeCredentialsStore.initialize();
+    this.reclaudeAccountService = new ReclaudeAccountService({
+      store: this.reclaudeCredentialsStore,
+      isActive: () => this.daemonConfigStore.get().providers?.claude?.command?.[0] === "reclaude",
+      logger: this.logger,
+    });
+
     this.providerUsageService = new ProviderUsageService({
       logger: this.logger,
+      reclaude: this.reclaudeAccountService,
     });
 
     this.wss = this.createWebSocketServer(server, wsConfig, auth);
@@ -1030,6 +1057,7 @@ export class VoiceAssistantWebSocketServer {
       workspaceRegistry: this.workspaceRegistry,
       workspaceLayoutStore: this.workspaceLayoutStore,
       promptPresetsStore: this.promptPresetsStore,
+      appearanceSettingsStore: this.appearanceSettingsStore,
       onWorkspaceLayoutPushed: (envelope) => {
         if (!connection) {
           return;
@@ -1041,6 +1069,12 @@ export class VoiceAssistantWebSocketServer {
           return;
         }
         this.broadcastPromptPresetsChanged(envelope, connection);
+      },
+      onAppearanceSettingsPushed: (envelope) => {
+        if (!connection) {
+          return;
+        }
+        this.broadcastAppearanceSettingsChanged(envelope, connection);
       },
       chatService: this.chatService,
       loopService: this.loopService,
@@ -1057,6 +1091,7 @@ export class VoiceAssistantWebSocketServer {
       portForwardManager: this.portForwardManager,
       providerSnapshotManager: this.providerSnapshotManager,
       providerUsageService: this.providerUsageService,
+      reclaude: this.reclaudeAccountService,
       serviceProxy: this.serviceProxy ?? undefined,
       scriptRuntimeStore: this.scriptRuntimeStore ?? undefined,
       workspaceSetupSnapshots: this.workspaceSetupSnapshots,
@@ -1272,6 +1307,8 @@ export class VoiceAssistantWebSocketServer {
         workspaceFileSearch: true,
         // COMPAT(promptPresetsSync): added in v0.1.102, remove gate after 2026-12-21.
         promptPresetsSync: true,
+        // COMPAT(appearanceSettingsSync): added in v0.1.104, remove gate after 2026-12-22.
+        appearanceSettingsSync: true,
         // COMPAT(projectRemove): added in v0.1.97, drop the gate when floor >= v0.1.97.
         projectRemove: true,
         // COMPAT(projectAdd): added in v0.1.97, drop the gate when floor >= v0.1.97.
@@ -1280,6 +1317,8 @@ export class VoiceAssistantWebSocketServer {
         worktreeRestore: true,
         // COMPAT(providerUsageList): added in v0.1.98, drop the gate when daemon floor >= v0.1.98.
         providerUsageList: true,
+        // COMPAT(reclaudeUsage): added in v0.1.105, remove gate after 2026-12-22.
+        reclaudeUsage: true,
         // COMPAT(agentDetach): added in v0.1.98, remove gate after 2026-12-19 once daemon floor >= v0.1.98.
         agentDetach: true,
       },
@@ -1913,6 +1952,22 @@ export class VoiceAssistantWebSocketServer {
     senderConnection: SessionConnection,
   ): void {
     const message = wrapSessionMessage({ type: "prompt.presets.changed", payload: envelope });
+    for (const [ws, connection] of this.sessions) {
+      if (connection === senderConnection) {
+        continue;
+      }
+      this.sendToClient(ws, message);
+    }
+  }
+
+  // Fan appearance settings out to every connected client except the pusher.
+  // Unlike workspace-layout sync, there is NO deviceType filter: appearance
+  // (theme + colors) is a global user preference that mobile must share too.
+  private broadcastAppearanceSettingsChanged(
+    envelope: AppearanceSettingsEnvelope,
+    senderConnection: SessionConnection,
+  ): void {
+    const message = wrapSessionMessage({ type: "appearance.settings.changed", payload: envelope });
     for (const [ws, connection] of this.sessions) {
       if (connection === senderConnection) {
         continue;

@@ -1023,7 +1023,13 @@ function DesktopSidebar({
     [insetsTop],
   );
   const resizeHandleStyle = useMemo(
-    () => [styles.resizeHandle, isWeb && ({ cursor: "col-resize" } as object)],
+    // The resize handle is a plain View, so the whole-sidebar drag region below
+    // would otherwise treat it as a window-drag handle. Opt it out of dragging so
+    // the resize gesture keeps working (no-op outside Electron).
+    () => [
+      styles.resizeHandle,
+      isWeb && ({ cursor: "col-resize", WebkitAppRegion: "no-drag" } as object),
+    ],
     [],
   );
 
@@ -1034,8 +1040,14 @@ function DesktopSidebar({
   return (
     <Animated.View style={desktopSidebarStyle}>
       <View style={desktopSidebarBorderStyle}>
+        {/* Whole-sidebar window drag region (Electron). Every non-interactive
+            area of the sidebar — gaps, section headers, empty list space — acts
+            as a window-drag handle. Pressables render with a tabIndex on web, so
+            the global no-drag backstop in public/index.html carves them out
+            automatically; the only plain-View control that needs an explicit
+            no-drag is the resize handle below. */}
+        <TitlebarDragRegion />
         <View style={styles.sidebarDragArea}>
-          <TitlebarDragRegion />
           {padding.top > 0 ? <View style={paddingTopSpacerStyle} /> : null}
           <View style={styles.sidebarHeaderGroup}>
             <SidebarHeaderRow

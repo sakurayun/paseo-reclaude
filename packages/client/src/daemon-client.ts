@@ -75,6 +75,11 @@ import type {
   RefreshProvidersSnapshotResponseMessage,
   ProviderDiagnosticResponseMessage,
   ProviderUsageListResponseMessage,
+  ReclaudeStatusResponseMessage,
+  ReclaudeLoginResponseMessage,
+  ReclaudeVerifyMfaResponseMessage,
+  ReclaudeLogoutResponseMessage,
+  ReclaudeSyncUsageResponseMessage,
   DaemonGetStatusResponse,
   DaemonGetPairingOfferResponse,
   AgentRewindResponseMessage,
@@ -112,6 +117,7 @@ import type {
   SpeechDictationSetModelResponse,
   WorkspaceLayoutEnvelope,
   PromptPresetsEnvelope,
+  AppearanceSettingsEnvelope,
 } from "@getpaseo/protocol/messages";
 import { isRelayClientWebSocketUrl } from "@getpaseo/protocol/daemon-endpoints";
 import { terminalSubscriptionKey } from "@getpaseo/protocol/terminal-subscription-key";
@@ -383,6 +389,11 @@ type GetProvidersSnapshotPayload = GetProvidersSnapshotResponseMessage["payload"
 type RefreshProvidersSnapshotPayload = RefreshProvidersSnapshotResponseMessage["payload"];
 type ProviderDiagnosticPayload = ProviderDiagnosticResponseMessage["payload"];
 type ProviderUsageListPayload = ProviderUsageListResponseMessage["payload"];
+type ReclaudeStatusPayload = ReclaudeStatusResponseMessage["payload"];
+type ReclaudeLoginPayload = ReclaudeLoginResponseMessage["payload"];
+type ReclaudeVerifyMfaPayload = ReclaudeVerifyMfaResponseMessage["payload"];
+type ReclaudeLogoutPayload = ReclaudeLogoutResponseMessage["payload"];
+type ReclaudeSyncUsagePayload = ReclaudeSyncUsageResponseMessage["payload"];
 type DaemonStatusPayload = DaemonGetStatusResponse["payload"];
 type DictationListModelsPayload = SpeechDictationListModelsResponse["payload"];
 type DictationSetModelPayload = SpeechDictationSetModelResponse["payload"];
@@ -1742,6 +1753,60 @@ export class DaemonClient {
       options: { skipQueue: true },
       select: (msg) => {
         if (msg.type !== "prompt.presets.get.response") {
+          return null;
+        }
+        if (msg.payload.requestId !== requestId) {
+          return null;
+        }
+        return msg.payload;
+      },
+    });
+    return response.envelope;
+  }
+
+  // COMPAT(appearanceSettingsSync): gated on server_info.features.appearanceSettingsSync.
+  async pushAppearanceSettings(params: {
+    revision: number;
+    settings: Record<string, unknown>;
+  }): Promise<{ accepted: boolean; revision: number }> {
+    const requestId = this.createRequestId();
+    const message = SessionInboundMessageSchema.parse({
+      type: "appearance.settings.push.request",
+      revision: params.revision,
+      settings: params.settings,
+      requestId,
+    });
+    const response = await this.sendRequest({
+      requestId,
+      message,
+      timeout: 15000,
+      options: { skipQueue: true },
+      select: (msg) => {
+        if (msg.type !== "appearance.settings.push.response") {
+          return null;
+        }
+        if (msg.payload.requestId !== requestId) {
+          return null;
+        }
+        return msg.payload;
+      },
+    });
+    return { accepted: response.accepted, revision: response.revision };
+  }
+
+  async getAppearanceSettings(): Promise<AppearanceSettingsEnvelope> {
+    const requestId = this.createRequestId();
+    const message = SessionInboundMessageSchema.parse({
+      type: "appearance.settings.get.request",
+      requestId,
+    });
+    const response = await this.sendRequest({
+      requestId,
+      message,
+      timeout: 15000,
+      options: { skipQueue: true },
+      select: (msg) => {
+        if (msg.type !== "appearance.settings.get.response") {
           return null;
         }
         if (msg.payload.requestId !== requestId) {
@@ -4210,6 +4275,72 @@ export class DaemonClient {
       requestId: options?.requestId,
       message: {
         type: "provider.usage.list.request",
+      },
+      timeout: 30000,
+    });
+  }
+
+  async reclaudeStatus(options?: { requestId?: string }): Promise<ReclaudeStatusPayload> {
+    return this.sendNamespacedCorrelatedSessionRequest({
+      requestId: options?.requestId,
+      message: {
+        type: "provider.reclaude.status.request",
+      },
+      timeout: 30000,
+    });
+  }
+
+  async reclaudeLogin(params: {
+    email: string;
+    password: string;
+    requestId?: string;
+  }): Promise<ReclaudeLoginPayload> {
+    return this.sendNamespacedCorrelatedSessionRequest({
+      requestId: params.requestId,
+      message: {
+        type: "provider.reclaude.login.request",
+        email: params.email,
+        password: params.password,
+      },
+      timeout: 30000,
+    });
+  }
+
+  async reclaudeVerifyMfa(params: {
+    challengeToken: string;
+    code: string;
+    requestId?: string;
+  }): Promise<ReclaudeVerifyMfaPayload> {
+    return this.sendNamespacedCorrelatedSessionRequest({
+      requestId: params.requestId,
+      message: {
+        type: "provider.reclaude.mfa.request",
+        challengeToken: params.challengeToken,
+        code: params.code,
+      },
+      timeout: 30000,
+    });
+  }
+
+  async reclaudeLogout(options?: { requestId?: string }): Promise<ReclaudeLogoutPayload> {
+    return this.sendNamespacedCorrelatedSessionRequest({
+      requestId: options?.requestId,
+      message: {
+        type: "provider.reclaude.logout.request",
+      },
+      timeout: 30000,
+    });
+  }
+
+  async reclaudeSyncUsage(options?: {
+    requestId?: string;
+    force?: boolean;
+  }): Promise<ReclaudeSyncUsagePayload> {
+    return this.sendNamespacedCorrelatedSessionRequest({
+      requestId: options?.requestId,
+      message: {
+        type: "provider.reclaude.sync.request",
+        ...(options?.force === true ? { force: true } : {}),
       },
       timeout: 30000,
     });

@@ -6,6 +6,7 @@ import { useTranslation } from "react-i18next";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { ProviderUsageTooltipSection } from "@/provider-usage/tooltip-section";
 import { useProviderUsage } from "@/provider-usage/use-provider-usage";
+import { useReclaude } from "@/provider-usage/use-reclaude";
 import { formatTokenCount } from "./context-window-meter.utils";
 
 interface ContextWindowMeterProps {
@@ -111,16 +112,31 @@ export function ContextWindowMeter({
     serverId ?? null,
     { enabled: isTooltipOpen },
   );
+  const {
+    active: reclaudeActive,
+    loggedIn: reclaudeLoggedIn,
+    syncUsage: syncReclaudeUsage,
+  } = useReclaude(serverId ?? null);
+  // For a reclaude-backed Claude agent, opening the meter triggers a one-shot
+  // ReClaude usage sync (server-throttled to once per 5 min) instead of the
+  // generic list refresh, so the tooltip shows fresh ReClaude data without
+  // re-fetching other providers.
+  const isReclaudeClaude = provider === "claude" && reclaudeActive && reclaudeLoggedIn;
   const percentage =
     maxTokens !== null && usedTokens !== null ? getUsagePercentage(maxTokens, usedTokens) : null;
   const handleTooltipOpenChange = useCallback(
     (nextOpen: boolean) => {
       setIsTooltipOpen(nextOpen);
-      if (nextOpen) {
+      if (!nextOpen) {
+        return;
+      }
+      if (isReclaudeClaude) {
+        void syncReclaudeUsage().catch(() => undefined);
+      } else {
         void refreshProviderUsage();
       }
     },
-    [refreshProviderUsage],
+    [isReclaudeClaude, refreshProviderUsage, syncReclaudeUsage],
   );
 
   const geometry = getMeterGeometry(showPercentage);

@@ -38,6 +38,11 @@ import {
   type Theme,
 } from "@/styles/theme";
 import { isNative } from "@/constants/platform";
+import {
+  TERMINAL_COLOR_PRESETS,
+  TERMINAL_COLOR_SCHEME_IDS,
+  type TerminalColorSchemeId,
+} from "@/constants/terminal-color-presets";
 import { settingsStyles } from "@/styles/settings";
 import { AppearancePreview } from "./appearance-preview";
 
@@ -484,6 +489,110 @@ function SyntaxRow({ value, onChange }: SyntaxRowProps) {
 }
 
 // ---------------------------------------------------------------------------
+// Terminal color scheme picker (commits immediately)
+// ---------------------------------------------------------------------------
+
+// Brand-name schemes render verbatim (like "Claude Light"); only the
+// theme-relative ("auto") and High Contrast labels are localized.
+const TERMINAL_SCHEME_BRAND_LABELS: Partial<Record<TerminalColorSchemeId, string>> = {
+  oneDark: "One Dark",
+  dracula: "Dracula",
+  solarizedDark: "Solarized Dark",
+  gruvboxDark: "Gruvbox Dark",
+  nord: "Nord",
+  monokai: "Monokai",
+  catppuccinMocha: "Catppuccin Mocha",
+  solarizedLight: "Solarized Light",
+  githubLight: "GitHub Light",
+};
+
+function getTerminalSchemeLabel(t: TFunction, id: TerminalColorSchemeId): string {
+  switch (id) {
+    case "auto":
+      return t("settings.appearance.terminal.colorScheme.options.auto");
+    case "highContrastDark":
+      return t("settings.appearance.terminal.colorScheme.options.highContrastDark");
+    case "highContrastLight":
+      return t("settings.appearance.terminal.colorScheme.options.highContrastLight");
+    default:
+      return TERMINAL_SCHEME_BRAND_LABELS[id] ?? id;
+  }
+}
+
+function TerminalSchemeLeading({ scheme }: { scheme: TerminalColorSchemeId }) {
+  // "auto" follows the live theme, so show the system/monitor glyph (matching
+  // the theme picker) rather than a fixed swatch. Presets preview their bg.
+  if (scheme === "auto") {
+    return <ThemedMonitor size={ICON_SIZE.md} uniProps={mutedColorMapping} />;
+  }
+  return <ThemeSwatch color={TERMINAL_COLOR_PRESETS[scheme].background} />;
+}
+
+interface TerminalSchemeMenuItemProps {
+  scheme: TerminalColorSchemeId;
+  selected: boolean;
+  onChange: (scheme: TerminalColorSchemeId) => void;
+}
+
+function TerminalSchemeMenuItem({ scheme, selected, onChange }: TerminalSchemeMenuItemProps) {
+  const { t } = useTranslation();
+  const handleSelect = useCallback(() => {
+    onChange(scheme);
+  }, [onChange, scheme]);
+  const leading = useMemo(() => <TerminalSchemeLeading scheme={scheme} />, [scheme]);
+  return (
+    <DropdownMenuItem selected={selected} onSelect={handleSelect} leading={leading}>
+      {getTerminalSchemeLabel(t, scheme)}
+    </DropdownMenuItem>
+  );
+}
+
+interface TerminalColorSchemeRowProps {
+  value: TerminalColorSchemeId;
+  onChange: (scheme: TerminalColorSchemeId) => void;
+}
+
+function TerminalColorSchemeRow({ value, onChange }: TerminalColorSchemeRowProps) {
+  const { t } = useTranslation();
+  const selectedLabel = getTerminalSchemeLabel(t, value);
+  return (
+    <View style={settingsStyles.row}>
+      <View style={settingsStyles.rowContent}>
+        <Text style={settingsStyles.rowTitle}>
+          {t("settings.appearance.terminal.colorScheme.title")}
+        </Text>
+        <Text style={settingsStyles.rowHint}>
+          {t("settings.appearance.terminal.colorScheme.hint")}
+        </Text>
+      </View>
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          style={dropdownTriggerStyle}
+          accessibilityLabel={t("settings.appearance.terminal.colorScheme.accessibilityLabel", {
+            value: selectedLabel,
+          })}
+        >
+          <TerminalSchemeLeading scheme={value} />
+          <Text style={styles.triggerText}>{selectedLabel}</Text>
+          <ThemedChevronDown size={ICON_SIZE.sm} uniProps={mutedColorMapping} />
+        </DropdownMenuTrigger>
+        {/* 12 entries — scrollable so the bottom presets stay reachable on short viewports. */}
+        <DropdownMenuContent side="bottom" align="end" width={220} scrollable maxHeight={360}>
+          {TERMINAL_COLOR_SCHEME_IDS.map((scheme) => (
+            <TerminalSchemeMenuItem
+              key={scheme}
+              scheme={scheme}
+              selected={value === scheme}
+              onChange={onChange}
+            />
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </View>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------------------
 
@@ -517,6 +626,13 @@ export function AppearanceSection() {
   const handleSyntaxThemeChange = useCallback(
     (syntaxTheme: SyntaxThemeId) => {
       void updateSettings({ syntaxTheme });
+    },
+    [updateSettings],
+  );
+
+  const handleTerminalColorSchemeChange = useCallback(
+    (terminalColorScheme: TerminalColorSchemeId) => {
+      void updateSettings({ terminalColorScheme });
     },
     [updateSettings],
   );
@@ -683,7 +799,11 @@ export function AppearanceSection() {
       </SettingsSection>
       <SettingsSection title={t("settings.appearance.terminal.title")}>
         <View style={settingsStyles.card}>
-          <View style={settingsStyles.row}>
+          <TerminalColorSchemeRow
+            value={settings.terminalColorScheme}
+            onChange={handleTerminalColorSchemeChange}
+          />
+          <View style={styles.rowWithBorder}>
             <View style={settingsStyles.rowContent}>
               <Text style={settingsStyles.rowTitle}>
                 {t("settings.appearance.terminal.ligatures")}

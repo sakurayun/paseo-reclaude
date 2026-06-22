@@ -15,6 +15,7 @@ import {
   ExternalLink,
   Folder,
   FolderGit2,
+  GitBranch,
   GitPullRequest,
   Globe,
   Monitor,
@@ -53,6 +54,7 @@ const redColorMapping = (theme: Theme) => ({ color: theme.colors.palette.red[500
 const purpleColorMapping = (theme: Theme) => ({ color: theme.colors.palette.purple[500] });
 
 const ThemedExternalLink = withUnistyles(ExternalLink);
+const ThemedGitBranch = withUnistyles(GitBranch);
 const ThemedGitPullRequest = withUnistyles(GitPullRequest);
 const ThemedGitHubIcon = withUnistyles(GitHubIcon);
 const ThemedActivityIndicator = withUnistyles(ActivityIndicator);
@@ -124,6 +126,10 @@ export const SidebarWorkspaceRowContent = memo(function SidebarWorkspaceRowConte
     settings: { workspaceTitleSource },
   } = useAppSettings();
   const workspaceLabel = resolveSidebarWorkspacePrimaryLabel({ workspace, workspaceTitleSource });
+  // Git checkouts (worktrees and local checkouts) get a branch glyph to the left
+  // of their name so a git workspace reads as one at a glance — including when
+  // idle, where the status column is blank. Plain directory workspaces stay bare.
+  const isGitWorkspace = workspace.projectKind === "git";
   const workspaceBranchTextStyle = useMemo(
     () => [
       styles.workspaceBranchText,
@@ -152,6 +158,7 @@ export const SidebarWorkspaceRowContent = memo(function SidebarWorkspaceRowConte
         <View style={styles.workspaceContentColumn}>
           <View style={styles.workspaceTitleRow}>
             <View style={styles.workspaceTitleLeft}>
+              {isGitWorkspace ? <WorkspaceGitBranchIcon isHovered={isHovered} /> : null}
               <Text style={workspaceBranchTextStyle} numberOfLines={1}>
                 {workspaceLabel}
               </Text>
@@ -220,6 +227,17 @@ function SessionsCountToggle({
         {count}
       </Text>
     </Pressable>
+  );
+}
+
+function WorkspaceGitBranchIcon({ isHovered }: { isHovered: boolean }) {
+  return (
+    <View style={styles.workspaceTitleAccessory} testID="workspace-git-branch-icon">
+      <ThemedGitBranch
+        size={12}
+        uniProps={isHovered ? foregroundColorMapping : foregroundMutedColorMapping}
+      />
+    </View>
   );
 }
 

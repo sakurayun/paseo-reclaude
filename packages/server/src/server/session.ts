@@ -29,6 +29,7 @@ import {
   type WorkspaceDescriptorPayload,
   type WorkspaceLayoutEnvelope,
   type PromptPresetsEnvelope,
+  type AppearanceSettingsEnvelope,
 } from "./messages.js";
 import type {
   TerminalManager,
@@ -37,6 +38,7 @@ import type {
 import type { PortForwardManager } from "../port-forward/port-forward-manager.js";
 import type { WorkspaceLayoutStore } from "./workspace-layout-store.js";
 import type { PromptPresetsStore } from "./prompt-presets-store.js";
+import type { AppearanceSettingsStore } from "./appearance-settings-store.js";
 import { TerminalSessionController } from "../terminal/terminal-session-controller.js";
 import { TunnelForwarder } from "./tunnel-forwarder.js";
 import type { TerminalActivity } from "@getpaseo/protocol/terminal-activity";
@@ -209,6 +211,7 @@ import { ScheduleService } from "./schedule/service.js";
 import { execCommand } from "../utils/spawn.js";
 import { createGitHubService, type GitHubService } from "../services/github-service.js";
 import type { ProviderUsageService } from "../services/quota-fetcher/service.js";
+import type { ReclaudeAccountService } from "../services/reclaude/reclaude-account-service.js";
 import {
   summarizeFetchWorkspacesEntries,
   workspaceIdsOnCheckout,
@@ -436,6 +439,14 @@ type PromptPresetsGetRequestMessage = Extract<
   SessionInboundMessage,
   { type: "prompt.presets.get.request" }
 >;
+type AppearanceSettingsPushRequestMessage = Extract<
+  SessionInboundMessage,
+  { type: "appearance.settings.push.request" }
+>;
+type AppearanceSettingsGetRequestMessage = Extract<
+  SessionInboundMessage,
+  { type: "appearance.settings.get.request" }
+>;
 interface WorkspaceUpdatesSubscriptionState {
   subscriptionId: string;
   filter?: WorkspaceUpdatesFilter;
@@ -515,8 +526,11 @@ export interface SessionOptions {
   // envelope out to other desktop clients. The session itself has no socket handle.
   onWorkspaceLayoutPushed?: (envelope: WorkspaceLayoutEnvelope) => void;
   onPromptPresetsPushed?: (envelope: PromptPresetsEnvelope) => void;
+  appearanceSettingsStore?: AppearanceSettingsStore | null;
+  onAppearanceSettingsPushed?: (envelope: AppearanceSettingsEnvelope) => void;
   providerSnapshotManager: ProviderSnapshotManager;
   providerUsageService: ProviderUsageService;
+  reclaude: ReclaudeAccountService;
   serviceProxy?: ServiceProxySubsystem;
   scriptRuntimeStore?: WorkspaceScriptRuntimeStore;
   workspaceSetupSnapshots?: Map<string, WorkspaceSetupSnapshot>;
@@ -631,6 +645,8 @@ export class Session {
   private readonly onWorkspaceLayoutPushed?: (envelope: WorkspaceLayoutEnvelope) => void;
   private readonly promptPresetsStore?: PromptPresetsStore | null;
   private readonly onPromptPresetsPushed?: (envelope: PromptPresetsEnvelope) => void;
+  private readonly appearanceSettingsStore?: AppearanceSettingsStore | null;
+  private readonly onAppearanceSettingsPushed?: (envelope: AppearanceSettingsEnvelope) => void;
   private readonly filesystem: SessionFileSystem;
   private readonly github: GitHubService;
   private readonly renameCurrentBranch: typeof renameCurrentBranchDefault;
@@ -712,8 +728,10 @@ export class Session {
       workspaceRegistry,
       workspaceLayoutStore,
       promptPresetsStore,
+      appearanceSettingsStore,
       onWorkspaceLayoutPushed,
       onPromptPresetsPushed,
+      onAppearanceSettingsPushed,
       filesystem,
       chatService,
       scheduleService,
@@ -732,6 +750,7 @@ export class Session {
       portForwardManager,
       providerSnapshotManager,
       providerUsageService,
+      reclaude,
       serviceProxy,
       scriptRuntimeStore,
       workspaceSetupSnapshots,
@@ -782,6 +801,8 @@ export class Session {
     this.onWorkspaceLayoutPushed = onWorkspaceLayoutPushed;
     this.promptPresetsStore = promptPresetsStore;
     this.onPromptPresetsPushed = onPromptPresetsPushed;
+    this.appearanceSettingsStore = appearanceSettingsStore;
+    this.onAppearanceSettingsPushed = onAppearanceSettingsPushed;
     this.filesystem = filesystem ?? nodeSessionFileSystem;
     this.github = github ?? createGitHubService();
     this.renameCurrentBranch = renameCurrentBranch ?? renameCurrentBranchDefault;
@@ -840,6 +861,7 @@ export class Session {
       },
       providerSnapshotManager,
       providerUsageService,
+      reclaude,
       logger: this.sessionLogger,
     });
     this.agentConfigSession = new AgentConfigSession({
@@ -1728,6 +1750,7 @@ export class Session {
       this.dispatchWorkspaceAndProjectMessage(msg) ??
       this.dispatchWorkspaceLayoutMessage(msg) ??
       this.dispatchPromptPresetsMessage(msg) ??
+      this.dispatchAppearanceSettingsMessage(msg) ??
       this.dispatchProjectMessage(msg) ??
       this.dispatchProviderMessage(msg) ??
       this.dispatchTerminalMessage(msg) ??
@@ -2126,6 +2149,19 @@ export class Session {
     }
   }
 
+  private dispatchAppearanceSettingsMessage(msg: SessionInboundMessage): Promise<void> | undefined {
+    switch (msg.type) {
+      case "appearance.settings.push.request":
+        this.handleAppearanceSettingsPushRequest(msg);
+        return undefined;
+      case "appearance.settings.get.request":
+        this.handleAppearanceSettingsGetRequest(msg);
+        return undefined;
+      default:
+        return undefined;
+    }
+  }
+
   private dispatchPromptPresetsMessage(msg: SessionInboundMessage): Promise<void> | undefined {
     switch (msg.type) {
       case "prompt.presets.push.request":
@@ -2219,6 +2255,16 @@ export class Session {
         return this.providerCatalogSession.handleProviderDiagnosticRequest(msg);
       case "provider.usage.list.request":
         return this.providerCatalogSession.handleProviderUsageListRequest(msg);
+      case "provider.reclaude.status.request":
+        return this.providerCatalogSession.handleReclaudeStatusRequest(msg);
+      case "provider.reclaude.login.request":
+        return this.providerCatalogSession.handleReclaudeLoginRequest(msg);
+      case "provider.reclaude.mfa.request":
+        return this.providerCatalogSession.handleReclaudeVerifyMfaRequest(msg);
+      case "provider.reclaude.logout.request":
+        return this.providerCatalogSession.handleReclaudeLogoutRequest(msg);
+      case "provider.reclaude.sync.request":
+        return this.providerCatalogSession.handleReclaudeSyncUsageRequest(msg);
       default:
         return undefined;
     }
@@ -2999,6 +3045,37 @@ export class Session {
     };
     this.emit({
       type: "prompt.presets.get.response",
+      payload: { requestId: msg.requestId, envelope },
+    });
+  }
+
+  private handleAppearanceSettingsPushRequest(msg: AppearanceSettingsPushRequestMessage): void {
+    const { revision, settings, requestId } = msg;
+    if (!this.appearanceSettingsStore) {
+      this.emit({
+        type: "appearance.settings.push.response",
+        payload: { requestId, accepted: false, revision: 0 },
+      });
+      return;
+    }
+    const { accepted, current } = this.appearanceSettingsStore.applyPush({ revision, settings });
+    this.emit({
+      type: "appearance.settings.push.response",
+      payload: { requestId, accepted, revision: current.revision },
+    });
+    if (accepted) {
+      this.onAppearanceSettingsPushed?.(current);
+    }
+  }
+
+  private handleAppearanceSettingsGetRequest(msg: AppearanceSettingsGetRequestMessage): void {
+    const envelope = this.appearanceSettingsStore?.get() ?? {
+      revision: 0,
+      updatedAt: new Date(0).toISOString(),
+      settings: {},
+    };
+    this.emit({
+      type: "appearance.settings.get.response",
       payload: { requestId: msg.requestId, envelope },
     });
   }
