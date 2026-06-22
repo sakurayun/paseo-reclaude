@@ -87,6 +87,9 @@ export const zhCN: TranslationResources = {
     },
   },
   composer: {
+    runDir: {
+      select: "选择运行目录",
+    },
     promptHistory: {
       title: "历史发言",
       switchHint: "切换到预设",

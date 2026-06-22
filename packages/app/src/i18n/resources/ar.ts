@@ -87,6 +87,9 @@ export const ar: TranslationResources = {
     },
   },
   composer: {
+    runDir: {
+      select: "اختيار دليل التشغيل",
+    },
     promptHistory: {
       title: "سجل الإدخالات",
       switchHint: "التبديل إلى المعدة مسبقًا",

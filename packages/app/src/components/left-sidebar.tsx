@@ -43,7 +43,11 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { isWeb } from "@/constants/platform";
 import { useSidebarAnimation } from "@/contexts/sidebar-animation-context";
+import { useToast } from "@/contexts/toast-context";
+import { pickDirectory } from "@/desktop/pick-directory";
 import { agentHistoryQueryKey } from "@/hooks/agent-history-query-key";
+import { useIsLocalDaemon } from "@/hooks/use-is-local-daemon";
+import { useOpenProject } from "@/hooks/use-open-project";
 import { useOpenProjectPicker } from "@/hooks/use-open-project-picker";
 import { useShortcutKeys } from "@/hooks/use-shortcut-keys";
 import { useSidebarShortcutModel } from "@/hooks/use-sidebar-shortcut-model";
@@ -112,6 +116,8 @@ interface SidebarSharedProps {
   handleHostSelect: (nextServerId: string) => void;
   handleNewWorkspaceNavigate: () => void;
   handleOpenProject: () => void;
+  /** New-theme toolbar: pick a folder → open it in the New conversation flow. */
+  handleOpenProjectFolder: () => void;
   handleHome: () => void;
   handleSettings: () => void;
   labels: SidebarLabels;
@@ -259,6 +265,9 @@ export const LeftSidebar = memo(function LeftSidebar({
   }, [isRevalidating, isManualRefresh]);
 
   const openProjectPicker = useOpenProjectPicker(activeServerId);
+  const openProject = useOpenProject(activeServerId);
+  const toast = useToast();
+  const isLocalDaemon = useIsLocalDaemon(activeServerId ?? "");
 
   const handleOpenProjectMobile = useCallback(() => {
     showMobileAgent();
@@ -268,6 +277,45 @@ export const LeftSidebar = memo(function LeftSidebar({
   const handleOpenProjectDesktop = useCallback(() => {
     void openProjectPicker();
   }, [openProjectPicker]);
+
+  // New theme: the flat sidebar shows sessions, not projects, so the classic
+  // "add an empty project" outcome is invisible. Instead, picking a folder
+  // registers it as a project (so it lands in the Choose project list) and then
+  // deep-links into the New workspace screen with that project preselected —
+  // closing the loop. Web has no native picker, so go straight to the screen and
+  // pick a project there.
+  const openProjectFolder = useCallback(async () => {
+    if (!activeServerId) return;
+    if (!isLocalDaemon) {
+      router.navigate(buildHostNewWorkspaceRoute(activeServerId));
+      return;
+    }
+    try {
+      const path = await pickDirectory();
+      if (!path) return;
+      const result = await openProject(path);
+      if (!result.ok) {
+        toast.error(result.error ?? t("sidebar.project.toasts.hostDisconnected"));
+        return;
+      }
+      router.navigate(
+        buildHostNewWorkspaceRoute(activeServerId, result.projectRootPath, {
+          projectId: result.projectKey,
+        }),
+      );
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : String(error));
+    }
+  }, [activeServerId, isLocalDaemon, openProject, toast, t]);
+
+  const handleOpenProjectFolderMobile = useCallback(() => {
+    showMobileAgent();
+    void openProjectFolder();
+  }, [showMobileAgent, openProjectFolder]);
+
+  const handleOpenProjectFolderDesktop = useCallback(() => {
+    void openProjectFolder();
+  }, [openProjectFolder]);
 
   const handleNewWorkspaceNavigate = useCallback(() => {
     if (!activeServerId) return;
@@ -377,6 +425,7 @@ export const LeftSidebar = memo(function LeftSidebar({
         closeSidebar={showMobileAgent}
         handleNewWorkspaceNavigate={handleNewWorkspaceNavigate}
         handleOpenProject={handleOpenProjectMobile}
+        handleOpenProjectFolder={handleOpenProjectFolderMobile}
         handleHome={handleHomeMobile}
         handleSettings={handleSettingsMobile}
         handleViewMoreNavigate={handleViewMoreNavigate}
@@ -391,6 +440,7 @@ export const LeftSidebar = memo(function LeftSidebar({
       isOpen={isOpen}
       handleNewWorkspaceNavigate={handleNewWorkspaceNavigate}
       handleOpenProject={handleOpenProjectDesktop}
+      handleOpenProjectFolder={handleOpenProjectFolderDesktop}
       handleHome={handleHomeDesktop}
       handleSettings={handleSettingsDesktop}
       handleViewMore={handleViewMoreNavigate}
@@ -678,6 +728,7 @@ function MobileSidebar({
   newWorkspaceKeys,
   handleNewWorkspaceNavigate,
   handleOpenProject,
+  handleOpenProjectFolder,
   handleHome,
   handleSettings,
   labels,
@@ -894,7 +945,7 @@ function MobileSidebar({
                 <SidebarSessionsToolbar
                   labels={toolbarLabels}
                   onNewConversation={handleNewWorkspace}
-                  onOpenProject={handleOpenProject}
+                  onOpenProject={handleOpenProjectFolder}
                   onHistory={handleViewMore}
                   isHistoryActive={isSessionsActive}
                   onClose={closeSidebar}
@@ -1013,6 +1064,7 @@ function DesktopSidebar({
   newWorkspaceKeys,
   handleNewWorkspaceNavigate,
   handleOpenProject,
+  handleOpenProjectFolder,
   handleHome,
   handleSettings,
   labels,
@@ -1116,7 +1168,7 @@ function DesktopSidebar({
               <SidebarSessionsToolbar
                 labels={toolbarLabels}
                 onNewConversation={handleNewWorkspaceNavigate}
-                onOpenProject={handleOpenProject}
+                onOpenProject={handleOpenProjectFolder}
                 onHistory={handleViewMore}
                 isHistoryActive={isSessionsActive}
               />

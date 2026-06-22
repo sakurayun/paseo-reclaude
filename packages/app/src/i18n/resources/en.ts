@@ -85,6 +85,9 @@ export const en = {
     },
   },
   composer: {
+    runDir: {
+      select: "Select run directory",
+    },
     promptHistory: {
       title: "Prompt history",
       switchHint: "Switch to presets",

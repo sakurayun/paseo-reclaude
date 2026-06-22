@@ -88,6 +88,9 @@ export const fr: TranslationResources = {
     },
   },
   composer: {
+    runDir: {
+      select: "Choisir le répertoire d'exécution",
+    },
     promptHistory: {
       title: "Historique des saisies",
       switchHint: "Basculer vers les préréglages",

@@ -10,6 +10,13 @@ type OpenProjectErrorCode = NonNullable<OpenProjectPayload["errorCode"]>;
 
 export interface OpenProjectSuccess {
   ok: true;
+  /**
+   * Identifies the registered project. `projectKey` matches the host project
+   * list's key (so callers can preselect it), and `projectRootPath` is its
+   * canonical root — both are needed to deep-link into the New workspace screen.
+   */
+  projectKey: string;
+  projectRootPath: string;
 }
 
 export interface OpenProjectFailure {
@@ -56,10 +63,10 @@ export async function openProjectDirectly(
     };
   }
 
-  input.addEmptyProject(
-    normalizedServerId,
-    normalizeProjectWithoutWorkspacesDescriptor(payload.project),
-  );
+  const project = normalizeProjectWithoutWorkspacesDescriptor(payload.project);
+  input.addEmptyProject(normalizedServerId, project);
   input.setHasHydratedWorkspaces(normalizedServerId, true);
-  return { ok: true };
+  // projectKey === projectId for empty (workspace-less) projects — see
+  // workspace-structure's emptyProject branch.
+  return { ok: true, projectKey: project.projectId, projectRootPath: project.projectRootPath };
 }

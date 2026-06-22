@@ -87,6 +87,9 @@ export const es: TranslationResources = {
     },
   },
   composer: {
+    runDir: {
+      select: "Seleccionar directorio de ejecución",
+    },
     promptHistory: {
       title: "Historial de mensajes",
       switchHint: "Cambiar a predefinidos",

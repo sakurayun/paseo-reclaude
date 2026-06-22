@@ -10,6 +10,7 @@ import invariant from "tiny-invariant";
 import { Composer } from "@/composer";
 import { DraftAgentModeControl } from "@/composer/agent-controls/mode-control";
 import { ComposerImportPill } from "@/composer/draft/import-pill";
+import { ComposerRunDirPill } from "@/composer/draft/run-dir-pill";
 import { FileDropZone } from "@/components/file-drop-zone";
 import { AgentStreamView } from "@/agent-stream/view";
 import { composerWorkspaceAttachment } from "@/composer/attachments/workspace";
@@ -53,7 +54,9 @@ import {
   MAX_CONTENT_WIDTH,
   useIsCompactFormFactor,
 } from "@/constants/layout";
-import { isWeb } from "@/constants/platform";
+import { getIsElectron, isWeb } from "@/constants/platform";
+import { useToast } from "@/contexts/toast-context";
+import { pickDirectory } from "@/desktop/pick-directory";
 import type { WorkspaceDraftTabSetup } from "@/stores/workspace-tabs-store";
 
 const EMPTY_PENDING_PERMISSIONS = new Map();
@@ -496,6 +499,7 @@ export function WorkspaceDraftAgentTab({
   onOpenImportSheet,
 }: WorkspaceDraftAgentTabProps) {
   const { t } = useTranslation();
+  const toast = useToast();
   const insets = useSafeAreaInsets();
   const client = useHostRuntimeClient(serverId);
   const isConnected = useHostRuntimeIsConnected(serverId);
@@ -505,10 +509,16 @@ export function WorkspaceDraftAgentTab({
   }));
   const workspaceDirectory = workspaceFields?.workspaceDirectory || null;
   const draftSetup = initialSetup ?? null;
-  const draftWorkingDirectory = resolveDraftWorkingDirectory({
-    workspaceDirectory,
-    initialSetup: draftSetup,
-  });
+  // User-chosen run directory for this draft agent. Null → run in the workspace
+  // directory (the default). This single value feeds every create path below
+  // (validation, snapshot, the locked composer cwd, and the create request).
+  const [runDirOverride, setRunDirOverride] = useState<string | null>(null);
+  const draftWorkingDirectory =
+    runDirOverride ??
+    resolveDraftWorkingDirectory({
+      workspaceDirectory,
+      initialSetup: draftSetup,
+    });
   const draftInitialValues = buildDraftInitialValues({
     workingDir: draftWorkingDirectory,
     initialSetup: draftSetup,
@@ -539,6 +549,21 @@ export function WorkspaceDraftAgentTab({
   if (!composerState) {
     throw new Error("Workspace draft composer state is required");
   }
+
+  // Only desktop has a native folder picker; the pill is hidden elsewhere.
+  const canPickRunDir = getIsElectron();
+  const handlePickRunDir = useCallback(() => {
+    void (async () => {
+      try {
+        const path = await pickDirectory();
+        if (path) {
+          setRunDirOverride(path);
+        }
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : String(error));
+      }
+    })();
+  }, [toast]);
   const {
     modelGateway: selectedModelGateway,
     modelDefinitions: selectedModelGatewayModels,
@@ -901,6 +926,13 @@ export function WorkspaceDraftAgentTab({
             <View style={styles.importPillRow}>
               <View style={styles.importPillContent}>
                 <ComposerImportPill onPress={importPillPress} />
+                {canPickRunDir ? (
+                  <ComposerRunDirPill
+                    runDir={draftWorkingDirectory}
+                    onPress={handlePickRunDir}
+                    disabled={isSubmitting}
+                  />
+                ) : null}
               </View>
             </View>
           ) : null}
@@ -973,6 +1005,8 @@ const styles = StyleSheet.create((theme) => ({
     width: "100%",
     maxWidth: MAX_CONTENT_WIDTH,
     flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[2],
   },
   errorContainer: {
     marginTop: theme.spacing[2],

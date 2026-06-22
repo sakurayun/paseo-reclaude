@@ -26,6 +26,9 @@ import { navigateToAgentDirectoryEntry } from "@/utils/navigate-to-agent-directo
 import { navigateToPreparedWorkspaceTab } from "@/utils/workspace-navigation";
 
 const MAX_SIDEBAR_SESSIONS = 5;
+// The new-theme flat sessions list is primary navigation, so its rows get a
+// larger leading provider icon than the nested per-workspace session rows.
+const FLAT_SESSION_ICON_SIZE = 16;
 const EMPTY_WORKSPACES: WorkspaceDescriptor[] = [];
 const EMPTY_SESSIONS: AgentDirectoryEntry[] = [];
 
@@ -212,7 +215,11 @@ export const SidebarSessionRow = memo(function SidebarSessionRow({
         accessibilityRole="button"
         testID={`sidebar-session-${session.id}`}
       >
-        <SessionStatusIcon provider={session.provider} stateBucket={stateBucket} />
+        <SessionStatusIcon
+          provider={session.provider}
+          stateBucket={stateBucket}
+          size={variant === "flat" ? FLAT_SESSION_ICON_SIZE : undefined}
+        />
         <View style={styles.sessionTextColumn}>
           <Text style={titleStyle} numberOfLines={1}>
             {session.title ?? t("sessions.workspacePanel.untitled")}

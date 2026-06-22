@@ -60,7 +60,7 @@ describe("openProjectDirectly", () => {
       setHasHydratedWorkspaces: session.setHasHydratedWorkspaces,
     });
 
-    expect(result).toEqual({ ok: true });
+    expect(result).toEqual({ ok: true, projectKey: "project-1", projectRootPath: PROJECT_PATH });
     expect(session.projects).toEqual([
       {
         serverId: SERVER_ID,

@@ -2092,7 +2092,7 @@ export function NewWorkspaceScreen({
   return (
     <FileDropZone onFilesDropped={handleFilesDropped}>
       <View style={styles.container}>
-        <ScreenHeader left={screenHeaderLeft} borderless />
+        <ScreenHeader left={screenHeaderLeft} borderless surfaceStyle={styles.headerSurface} />
         <View style={contentStyle}>
           <TitlebarDragRegion />
           <ReanimatedAnimated.View style={centeredStyle}>
@@ -2124,6 +2124,7 @@ export function NewWorkspaceScreen({
               agentControls={agentControlsWithDisabled}
               onAddImages={handleAddImagesCallback}
               footer={composerFooter}
+              inputWrapperStyle={styles.composerInputWrapper}
             />
             {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
           </ReanimatedAnimated.View>
@@ -2136,13 +2137,32 @@ export function NewWorkspaceScreen({
 const styles = StyleSheet.create((theme) => ({
   container: {
     flex: 1,
-    backgroundColor: theme.colors.surface0,
+    // New theme: paint the shell underlay so the content floats as a card on it.
+    // Classic: surfaceShell === surface0, so this stays byte-identical.
+    backgroundColor: { xs: theme.colors.surface0, md: theme.colors.surfaceShell },
     userSelect: "none",
   },
   content: {
     position: "relative",
     flex: 1,
     alignItems: "center",
+    // New theme (desktop): float the content as a rounded card inset on all four
+    // sides from the #fafafa underlay. Classic stays full-bleed (shell tokens are
+    // 0 and surfaceWorkspace shows through transparently → byte-identical).
+    backgroundColor: theme.shell.floating ? theme.colors.surfaceWorkspace : "transparent",
+    marginTop: { xs: 0, md: theme.shell.contentMargin },
+    marginHorizontal: { xs: 0, md: theme.shell.contentMargin },
+    marginBottom: { xs: 0, md: theme.shell.contentMargin },
+    borderRadius: { xs: 0, md: theme.shell.contentRadius },
+  },
+  // New theme: header sits on the #fafafa underlay above the floating card
+  // (classic: surfaceShell === surface0, byte-identical).
+  headerSurface: {
+    backgroundColor: { xs: theme.colors.surface0, md: theme.colors.surfaceShell },
+  },
+  // Drops the input box's extra inner bottom padding on this page only.
+  composerInputWrapper: {
+    paddingBottom: 0,
   },
   contentCentered: {
     justifyContent: "center",

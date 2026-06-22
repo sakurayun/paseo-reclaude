@@ -87,6 +87,9 @@ export const ru: TranslationResources = {
     },
   },
   composer: {
+    runDir: {
+      select: "Выбрать рабочий каталог",
+    },
     promptHistory: {
       title: "История ввода",
       switchHint: "К шаблонам",
