@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.1.104 - 2026-06-22
+
+### Added
+
+- New theme: a flat list of conversations and history in the sidebar
+
+### Changed
+
+- Redesigned settings as a clean stack of rounded cards — no divider lines, and on desktop the content floats as a panel with the title exposed above it
+- The settings sidebar now matches the main sidebar's width
+
 ## 0.1.103 - 2026-06-21
 
 ### Added
