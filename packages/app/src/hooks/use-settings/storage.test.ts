@@ -362,6 +362,22 @@ describe("appearance settings", () => {
     expect((await loadAppSettingsFromStorage(bogus)).windowsLaunchAsAdmin).toBe(true);
   });
 
+  it("reads the new-theme toggle and ignores non-booleans (defaults on)", async () => {
+    const off = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({ newThemeEnabled: false }),
+      }),
+    });
+    expect((await loadAppSettingsFromStorage(off)).newThemeEnabled).toBe(false);
+
+    const bogus = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({ newThemeEnabled: "yes" }),
+      }),
+    });
+    expect((await loadAppSettingsFromStorage(bogus)).newThemeEnabled).toBe(true);
+  });
+
   it("clamps the UI font size into range and rejects non-numeric values", async () => {
     const deps = makeDeps({
       storage: createInMemoryKeyValueStorage({

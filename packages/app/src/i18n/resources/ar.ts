@@ -1932,6 +1932,12 @@ export const ar: TranslationResources = {
       },
     },
     appearance: {
+      newTheme: {
+        title: "سمة جديدة",
+        label: "استخدام السمة الجديدة",
+        hint: "تطبيق المظهر الفاتح المُعاد تصميمه على التطبيق بالكامل، بشكل مستقل عن السمة أدناه",
+        accessibilityLabel: "استخدام السمة الجديدة",
+      },
       theme: {
         title: "سمة",
         accessibilityLabel: "الموضوع:{{value}}",

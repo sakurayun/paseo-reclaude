@@ -47,6 +47,9 @@ export const MAX_TERMINAL_LETTER_SPACING = 10;
 // daemon on every non-Windows host.
 export const DEFAULT_WINDOWS_PREFER_POWERSHELL7 = true;
 export const DEFAULT_WINDOWS_LAUNCH_AS_ADMIN = true;
+// The standalone "new theme" ships on by default — new and existing installs
+// alike start on the redesigned look (the toggle lets a user opt back out).
+export const DEFAULT_NEW_THEME_ENABLED = true;
 
 export interface AppSettings {
   theme: ThemeName | "auto";
@@ -69,6 +72,7 @@ export interface AppSettings {
   windowsPreferPowerShell7: boolean; // Windows: prefer pwsh7 for default terminals
   windowsLaunchAsAdmin: boolean; // Windows: launch default terminals elevated via gsudo
   workspaceTitleSource: WorkspaceTitleSource;
+  newThemeEnabled: boolean; // standalone redesigned "new theme", independent of `theme`
 }
 
 export interface Settings extends AppSettings {
@@ -97,6 +101,7 @@ export const DEFAULT_CLIENT_SETTINGS: AppSettings = {
   windowsPreferPowerShell7: DEFAULT_WINDOWS_PREFER_POWERSHELL7,
   windowsLaunchAsAdmin: DEFAULT_WINDOWS_LAUNCH_AS_ADMIN,
   workspaceTitleSource: "title",
+  newThemeEnabled: DEFAULT_NEW_THEME_ENABLED,
 };
 
 export const DEFAULT_APP_SETTINGS: Settings = {
@@ -220,6 +225,22 @@ function parseWorkspaceTitleSource(value: unknown): WorkspaceTitleSource | null 
   return null;
 }
 
+// Workspace title source + the device-local new-theme toggle, factored out of
+// pickAppSettings to keep its cyclomatic complexity under the lint ceiling.
+function pickMiscAppSettings(stored: Partial<AppSettings>): Partial<AppSettings> {
+  const result: Partial<AppSettings> = {};
+  const workspaceTitleSource = parseWorkspaceTitleSource(stored.workspaceTitleSource);
+  if (workspaceTitleSource !== null) {
+    result.workspaceTitleSource = workspaceTitleSource;
+  }
+  // Device-local: deliberately NOT part of extractSyncedAppearance, so toggling
+  // the new theme on one device does not propagate to others.
+  if (typeof stored.newThemeEnabled === "boolean") {
+    result.newThemeEnabled = stored.newThemeEnabled;
+  }
+  return result;
+}
+
 function pickAppSettings(stored: Partial<AppSettings>): Partial<AppSettings> {
   const result: Partial<AppSettings> = {};
   if (typeof stored.theme === "string" && VALID_THEMES.has(stored.theme)) {
@@ -284,10 +305,7 @@ function pickAppSettings(stored: Partial<AppSettings>): Partial<AppSettings> {
       result[field] = padding;
     }
   }
-  const workspaceTitleSource = parseWorkspaceTitleSource(stored.workspaceTitleSource);
-  if (workspaceTitleSource !== null) {
-    result.workspaceTitleSource = workspaceTitleSource;
-  }
+  Object.assign(result, pickMiscAppSettings(stored));
   return result;
 }
 

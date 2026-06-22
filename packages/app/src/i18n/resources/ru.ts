@@ -1971,6 +1971,12 @@ export const ru: TranslationResources = {
       },
     },
     appearance: {
+      newTheme: {
+        title: "Новая тема",
+        label: "Использовать новую тему",
+        hint: "Применяет переработанный светлый вид во всём приложении, независимо от темы ниже",
+        accessibilityLabel: "Использовать новую тему",
+      },
       theme: {
         title: "Тема",
         accessibilityLabel: "Тема:{{value}}",

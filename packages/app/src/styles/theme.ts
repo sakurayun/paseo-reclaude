@@ -168,6 +168,7 @@ const lightSemanticColors = {
   surfaceSidebar: "#f4f4f5", // Sidebar background (darker than main)
   surfaceSidebarHover: "#e9e9ec", // Sidebar hover (darker in light mode)
   surfaceWorkspace: "#ffffff", // Workspace main background
+  surfaceShell: "#ffffff", // Shell underlay + exposed-header surface (= surface0 in classic)
   surfaceGlass: withAlpha("#fafafa", 0.62), // Frosted composer (web, behind backdrop blur)
   surfaceGlassStrong: withAlpha("#fafafa", 0.94), // Dense glass fallback for non-blurred surfaces
 
@@ -257,6 +258,7 @@ const claudeLightSemanticColors = {
   surfaceSidebar: "#f0eee6", // Sidebar background (darker than main)
   surfaceSidebarHover: "#e6e3d8", // Sidebar hover
   surfaceWorkspace: "#faf9f5", // Workspace main background
+  surfaceShell: "#faf9f5", // Shell underlay + exposed-header surface (= surface0 in classic)
   surfaceGlass: withAlpha("#f5f4ee", 0.62), // Frosted composer (web, behind backdrop blur)
   surfaceGlassStrong: withAlpha("#f5f4ee", 0.94), // Dense glass fallback for non-blurred surfaces
 
@@ -333,6 +335,21 @@ const claudeLightSemanticColors = {
   },
 } as const;
 
+// New theme — a standalone light look toggled independently of the theme
+// dropdown (see `settings.newThemeEnabled`). Derived from the default light
+// theme so it inherits every token by default; only the deltas of the new
+// design live here. This is the single place to grow the new theme — add
+// overrides to this object as the redesign expands beyond the sidebar.
+const newThemeSemanticColors = {
+  ...lightSemanticColors,
+  // All non-content sidebar/chrome surfaces sit on a near-white #fafafa, one
+  // hair off the #ffffff main content area for a quiet, modern separation.
+  surfaceSidebar: "#fafafa",
+  // The shell underlay (behind the floating content card) is the same #fafafa,
+  // so sidebars + the margins around the card read as one continuous backdrop.
+  surfaceShell: "#fafafa",
+} as const;
+
 // ---------------------------------------------------------------------------
 // Dark theme variant builder
 // ---------------------------------------------------------------------------
@@ -385,6 +402,7 @@ function buildDarkSemanticColors(tint: DarkThemeConfig) {
     surfaceSidebar: tint.surfaceSidebar,
     surfaceSidebarHover: tint.surfaceSidebarHover,
     surfaceWorkspace: tint.surface1,
+    surfaceShell: tint.surface0, // Shell underlay + exposed-header surface (= surface0 in classic)
     surfaceGlass: withAlpha(tint.surface1, 0.62),
     surfaceGlassStrong: withAlpha(tint.surface1, 0.94),
 
@@ -640,6 +658,17 @@ interface CommonTheme {
   borderRadius: typeof BORDER_RADIUS;
   borderWidth: typeof BORDER_WIDTH;
   opacity: typeof OPACITY;
+  // Shell chrome layout — drives whether the content (tabs + panes) floats as an
+  // inset rounded card with bordered-less sidebars (new theme) or fills edge-to-edge
+  // with bordered sidebars (classic). Patched per-theme so the layout reacts through
+  // Unistyles with no React re-render, gated to whichever theme is active.
+  shell: {
+    contentMargin: number; // margin around the floating content card
+    contentRadius: number; // content card corner radius
+    contentOverflow: "visible" | "hidden"; // clip card children to the radius
+    chromeDivider: number; // chrome divider border width — sidebars + workspace header (0 hides them)
+    floating: boolean; // true in the new theme — lets stylesheets branch the floating look
+  };
 }
 
 const commonTheme: CommonTheme = {
@@ -652,6 +681,14 @@ const commonTheme: CommonTheme = {
   borderRadius: BORDER_RADIUS,
   borderWidth: BORDER_WIDTH,
   opacity: OPACITY,
+  // Classic shell: flush full-bleed content, 1px sidebar dividers.
+  shell: {
+    contentMargin: SPACING[0],
+    contentRadius: BORDER_RADIUS.none,
+    contentOverflow: "visible",
+    chromeDivider: BORDER_WIDTH[1],
+    floating: false,
+  },
 };
 
 const darkShadow = {
@@ -738,6 +775,19 @@ function buildLightTheme(semanticColors: LightSemanticColors) {
 
 export const lightTheme = buildLightTheme(lightSemanticColors);
 export const lightClaudeTheme = buildLightTheme(claudeLightSemanticColors);
+// Independent "new theme" — registered as its own Unistyles key (not a dropdown
+// ThemeName); applied when `settings.newThemeEnabled` is on, overriding whatever
+// the theme dropdown selected. Floats the content (tabs + panes) as an inset
+// rounded card on the #fafafa shell underlay, and drops the sidebar dividers.
+const newThemeShell = {
+  contentMargin: SPACING[2], // 8 — gap around the floating card
+  contentRadius: BORDER_RADIUS.xl, // 12
+  contentOverflow: "hidden", // clip tab row + panes to the rounded corners
+  chromeDivider: BORDER_WIDTH[0], // 0 — no sidebar / header divider lines
+  floating: true,
+} as const;
+
+export const newTheme = { ...buildLightTheme(newThemeSemanticColors), shell: newThemeShell };
 
 // Keep compatibility with existing code
 export const theme = darkTheme;

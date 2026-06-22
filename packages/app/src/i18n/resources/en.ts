@@ -1938,6 +1938,12 @@ export const en = {
       },
     },
     appearance: {
+      newTheme: {
+        title: "New theme",
+        label: "Use new theme",
+        hint: "Apply the redesigned light look across the app, independent of the theme below",
+        accessibilityLabel: "Use new theme",
+      },
       theme: {
         title: "Theme",
         accessibilityLabel: "Theme: {{value}}",

@@ -14,6 +14,7 @@ import { applyRootUiFont } from "./apply-root-font";
 const ALL_THEME_KEYS = [
   "light",
   "lightClaude",
+  "newTheme",
   "dark",
   "darkZinc",
   "darkMidnight",

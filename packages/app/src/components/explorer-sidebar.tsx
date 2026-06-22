@@ -603,7 +603,7 @@ const explorerStaticStyles = RNStyleSheet.create({
 
 const styles = StyleSheet.create((theme) => ({
   desktopSidebarBorder: {
-    borderLeftWidth: 1,
+    borderLeftWidth: theme.shell.chromeDivider,
     borderLeftColor: theme.colors.border,
     backgroundColor: theme.colors.surfaceSidebar,
   },

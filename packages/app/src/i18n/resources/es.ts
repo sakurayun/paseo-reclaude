@@ -1973,6 +1973,12 @@ export const es: TranslationResources = {
       },
     },
     appearance: {
+      newTheme: {
+        title: "Tema nuevo",
+        label: "Usar el tema nuevo",
+        hint: "Aplica el nuevo aspecto claro rediseñado en toda la app, independiente del tema de abajo",
+        accessibilityLabel: "Usar el tema nuevo",
+      },
       theme: {
         title: "Tema",
         accessibilityLabel: "Tema:{{value}}",

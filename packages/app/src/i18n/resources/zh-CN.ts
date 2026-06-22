@@ -1907,6 +1907,12 @@ export const zhCN: TranslationResources = {
       },
     },
     appearance: {
+      newTheme: {
+        title: "新主题",
+        label: "启用新主题",
+        hint: "在整个应用中启用重新设计的浅色外观，独立于下方的主题选择",
+        accessibilityLabel: "启用新主题",
+      },
       theme: {
         title: "主题",
         accessibilityLabel: "主题：{{value}}",

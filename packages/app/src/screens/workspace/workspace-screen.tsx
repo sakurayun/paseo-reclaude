@@ -171,7 +171,12 @@ import {
   closeBulkWorkspaceTabs,
 } from "@/screens/workspace/workspace-bulk-close";
 import { findAdjacentPane } from "@/utils/split-navigation";
-import { useIsCompactFormFactor, supportsDesktopPaneSplits } from "@/constants/layout";
+import {
+  HEADER_INNER_HEIGHT,
+  HEADER_INNER_HEIGHT_MOBILE,
+  useIsCompactFormFactor,
+  supportsDesktopPaneSplits,
+} from "@/constants/layout";
 import { getIsElectron, isNative, isWeb } from "@/constants/platform";
 import { useContainerWidthBelow } from "@/hooks/use-container-width";
 import {
@@ -3698,11 +3703,28 @@ function WorkspaceScreenContent({
   ]);
   const desktopContent = desktopSplitContent ?? content;
 
+  const centerPaneContent = (
+    <View style={styles.centerContent}>
+      {isMobile ? (
+        <MobileExplorerOpenGestureSurface
+          enabled={Boolean(activeExplorerCheckout)}
+          onOpenExplorer={openExplorerForWorkspace}
+        >
+          {content}
+        </MobileExplorerOpenGestureSurface>
+      ) : (
+        <View style={styles.content}>{desktopContent}</View>
+      )}
+    </View>
+  );
+
   const workspaceCenterColumn = (
     <View style={styles.centerColumn}>
       {showScreenHeader && (
         <ScreenHeader
           onRowLayout={onHeaderLayout}
+          surfaceStyle={styles.workspaceHeaderSurface}
+          rowStyle={styles.workspaceHeaderRow}
           left={
             <>
               <SidebarMenuToggle />
@@ -3748,70 +3770,61 @@ function WorkspaceScreenContent({
         />
       )}
 
-      {isMobile ? (
-        <MobileWorkspaceTabSwitcher
-          tabs={tabs}
-          activeTabKey={activeTabKey}
-          activeTab={activeTabDescriptor}
-          tabSwitcherOptions={tabSwitcherOptions}
-          tabByKey={tabByKey}
-          normalizedServerId={normalizedServerId}
-          normalizedWorkspaceId={normalizedWorkspaceId}
-          onSelectSwitcherTab={handleSelectSwitcherTab}
-          onCopyResumeCommand={handleCopyResumeCommand}
-          onCopyAgentId={handleCopyAgentId}
-          onCopyFilePath={handleCopyFilePath}
-          onReloadAgent={handleReloadAgent}
-          onRenameTab={handleRenameTab}
-          onCloseTab={handleCloseTabById}
-          onCloseTabsAbove={handleCloseTabsToLeft}
-          onCloseTabsBelow={handleCloseTabsToRight}
-          onCloseOtherTabs={handleCloseOtherTabs}
-        />
-      ) : null}
-
-      {shouldRenderDesktopPaneFallback ? (
-        <WorkspaceDesktopTabsRow
-          paneId={focusedPaneIdOrUndefined}
-          isFocused={isRouteFocused}
-          tabs={desktopTabRowItems}
-          normalizedServerId={normalizedServerId}
-          normalizedWorkspaceId={normalizedWorkspaceId}
-          setHoveredCloseTabKey={setHoveredCloseTabKey}
-          onNavigateTab={navigateToTabId}
-          onCloseTab={handleCloseTabById}
-          onCopyResumeCommand={handleCopyResumeCommand}
-          onCopyAgentId={handleCopyAgentId}
-          onCopyFilePath={handleCopyFilePath}
-          onReloadAgent={handleReloadAgent}
-          onRenameTab={handleRenameTab}
-          onCloseTabsToLeft={handleCloseTabsToLeft}
-          onCloseTabsToRight={handleCloseTabsToRight}
-          onCloseOtherTabs={handleCloseOtherTabs}
-          onCreateDraftTab={handleCreateDraftTab}
-          onCreateTerminalTab={handleCreateTerminal}
-          onCreateBrowserTab={handleCreateBrowserTab}
-          showCreateBrowserTab={showCreateBrowserTab}
-          disableCreateTerminal={createTerminalMutation.isPending}
-          isWaitingOnTerminalReadiness={pendingTerminalCreateInput !== null}
-          onReorderTabs={handleReorderTabsInFocusedPane}
-          onSplitRight={noop}
-          onSplitDown={noop}
-          showPaneSplitActions={false}
-        />
-      ) : null}
-
-      <View style={styles.centerContent}>
+      <View style={styles.centerCard}>
         {isMobile ? (
-          <MobileExplorerOpenGestureSurface
-            enabled={Boolean(activeExplorerCheckout)}
-            onOpenExplorer={openExplorerForWorkspace}
-          >
-            {content}
-          </MobileExplorerOpenGestureSurface>
-        ) : (
-          <View style={styles.content}>{desktopContent}</View>
-        )}
+          <MobileWorkspaceTabSwitcher
+            tabs={tabs}
+            activeTabKey={activeTabKey}
+            activeTab={activeTabDescriptor}
+            tabSwitcherOptions={tabSwitcherOptions}
+            tabByKey={tabByKey}
+            normalizedServerId={normalizedServerId}
+            normalizedWorkspaceId={normalizedWorkspaceId}
+            onSelectSwitcherTab={handleSelectSwitcherTab}
+            onCopyResumeCommand={handleCopyResumeCommand}
+            onCopyAgentId={handleCopyAgentId}
+            onCopyFilePath={handleCopyFilePath}
+            onReloadAgent={handleReloadAgent}
+            onRenameTab={handleRenameTab}
+            onCloseTab={handleCloseTabById}
+            onCloseTabsAbove={handleCloseTabsToLeft}
+            onCloseTabsBelow={handleCloseTabsToRight}
+            onCloseOtherTabs={handleCloseOtherTabs}
+          />
+        ) : null}
+
+        {shouldRenderDesktopPaneFallback ? (
+          <WorkspaceDesktopTabsRow
+            paneId={focusedPaneIdOrUndefined}
+            isFocused={isRouteFocused}
+            tabs={desktopTabRowItems}
+            normalizedServerId={normalizedServerId}
+            normalizedWorkspaceId={normalizedWorkspaceId}
+            setHoveredCloseTabKey={setHoveredCloseTabKey}
+            onNavigateTab={navigateToTabId}
+            onCloseTab={handleCloseTabById}
+            onCopyResumeCommand={handleCopyResumeCommand}
+            onCopyAgentId={handleCopyAgentId}
+            onCopyFilePath={handleCopyFilePath}
+            onReloadAgent={handleReloadAgent}
+            onRenameTab={handleRenameTab}
+            onCloseTabsToLeft={handleCloseTabsToLeft}
+            onCloseTabsToRight={handleCloseTabsToRight}
+            onCloseOtherTabs={handleCloseOtherTabs}
+            onCreateDraftTab={handleCreateDraftTab}
+            onCreateTerminalTab={handleCreateTerminal}
+            onCreateBrowserTab={handleCreateBrowserTab}
+            showCreateBrowserTab={showCreateBrowserTab}
+            disableCreateTerminal={createTerminalMutation.isPending}
+            isWaitingOnTerminalReadiness={pendingTerminalCreateInput !== null}
+            onReorderTabs={handleReorderTabsInFocusedPane}
+            onSplitRight={noop}
+            onSplitDown={noop}
+            showPaneSplitActions={false}
+          />
+        ) : null}
+
+        {centerPaneContent}
       </View>
     </View>
   );
@@ -3878,10 +3891,49 @@ const styles = StyleSheet.create((theme) => ({
     minHeight: 0,
     flexDirection: "row",
     alignItems: "stretch",
+    // Underlay revealed in the margins around the floating content card (and the
+    // gaps to the sidebars). Equals the workspace bg in classic themes (so it's
+    // invisible behind the flush, full-bleed content) and #fafafa in the new theme.
+    backgroundColor: theme.colors.surfaceShell,
   },
   centerColumn: {
     flex: 1,
     minHeight: 0,
+    // Holds the workspace header (exposed, sitting directly on this) above the
+    // floating content card. Desktop new theme paints the #fafafa shell underlay
+    // here so the header reads as part of the backdrop; classic + compact keep the
+    // header on the workspace bg (surfaceShell == surface0 in classic themes).
+    backgroundColor: { xs: theme.colors.surfaceWorkspace, md: theme.colors.surfaceShell },
+  },
+  // Workspace header overrides (passed to the shared ScreenHeader): on desktop new
+  // theme the header sits exposed on the #fafafa underlay with no bottom divider;
+  // classic + compact are byte-identical (surfaceShell == surface0, chromeDivider == 1).
+  workspaceHeaderSurface: {
+    backgroundColor: { xs: theme.colors.surface0, md: theme.colors.surfaceShell },
+  },
+  workspaceHeaderRow: {
+    borderBottomWidth: { xs: theme.borderWidth[1], md: theme.shell.chromeDivider },
+    // New theme: a shorter, tighter header on desktop. Classic + mobile unchanged.
+    height: { xs: HEADER_INNER_HEIGHT_MOBILE, md: theme.shell.floating ? 40 : HEADER_INNER_HEIGHT },
+  },
+  // The floating content card — tabs + panes only (the header is a sibling above
+  // it, exposed on the underlay). The card only exists on desktop (md+); compact
+  // (xs/sm) stays full-bleed since it has no pinned sidebars. The shell tokens are
+  // 0/0/visible in classic themes (so desktop is unchanged) and inset+rounded+
+  // clipped in the new theme. Breakpoint objects keep the desktop gate in the
+  // stylesheet, with no React re-render.
+  centerCard: {
+    flex: 1,
+    minHeight: 0,
+    backgroundColor: theme.colors.surfaceWorkspace,
+    // No top margin — the card butts directly against the exposed header (the
+    // earlier double gap between header and content is gone). Inset on the other
+    // three sides on desktop new theme; classic + compact stay flush (margins 0).
+    marginTop: 0,
+    marginHorizontal: { xs: 0, md: theme.shell.contentMargin },
+    marginBottom: { xs: 0, md: theme.shell.contentMargin },
+    borderRadius: { xs: 0, md: theme.shell.contentRadius },
+    overflow: { xs: "visible", md: theme.shell.contentOverflow },
   },
   headerTitle: {
     fontSize: theme.fontSize.base,

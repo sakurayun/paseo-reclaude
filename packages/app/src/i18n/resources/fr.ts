@@ -1987,6 +1987,12 @@ export const fr: TranslationResources = {
       },
     },
     appearance: {
+      newTheme: {
+        title: "Nouveau thème",
+        label: "Utiliser le nouveau thème",
+        hint: "Applique le nouveau rendu clair repensé dans toute l'app, indépendamment du thème ci-dessous",
+        accessibilityLabel: "Utiliser le nouveau thème",
+      },
       theme: {
         title: "Thème",
         accessibilityLabel: "Thème:{{value}}",

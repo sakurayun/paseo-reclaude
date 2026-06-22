@@ -8,10 +8,11 @@ import { applyAppearance, type AppearanceInput } from "./apply-appearance";
 const { updateTheme } = vi.hoisted(() => ({ updateTheme: vi.fn() }));
 vi.mock("react-native-unistyles", () => ({ UnistylesRuntime: { updateTheme } }));
 
-// The six registered Unistyles theme keys, in the order applyAppearance patches them.
+// The registered Unistyles theme keys, in the order applyAppearance patches them.
 const ALL_THEME_KEYS = [
   "light",
   "lightClaude",
+  "newTheme",
   "dark",
   "darkZinc",
   "darkMidnight",

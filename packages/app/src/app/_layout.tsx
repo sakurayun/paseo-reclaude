@@ -654,13 +654,20 @@ function ProvidersWrapper({ children }: { children: ReactNode }) {
   // Apply theme setting on mount and when it changes
   useEffect(() => {
     if (settingsLoading) return;
+    // The standalone new theme overrides the dropdown selection entirely: when
+    // it's on, pin the dedicated `newTheme` key and ignore `settings.theme`.
+    if (settings.newThemeEnabled) {
+      UnistylesRuntime.setAdaptiveThemes(false);
+      UnistylesRuntime.setTheme("newTheme");
+      return;
+    }
     if (settings.theme === "auto") {
       UnistylesRuntime.setAdaptiveThemes(true);
     } else {
       UnistylesRuntime.setAdaptiveThemes(false);
       UnistylesRuntime.setTheme(THEME_TO_UNISTYLES[settings.theme]);
     }
-  }, [settingsLoading, settings.theme]);
+  }, [settingsLoading, settings.theme, settings.newThemeEnabled]);
 
   // Apply font / size / syntax appearance settings on mount and when they change.
   // Sibling to the theme effect above; order is irrelevant because both patch all

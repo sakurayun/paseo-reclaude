@@ -18,6 +18,10 @@ interface ScreenHeaderProps {
   leftStyle?: StyleProp<ViewStyle>;
   rightStyle?: StyleProp<ViewStyle>;
   borderless?: boolean;
+  // Override the outer header surface (e.g. expose it on a different backdrop).
+  surfaceStyle?: StyleProp<ViewStyle>;
+  // Override the inner row (e.g. drop the bottom divider). Applied last so it wins.
+  rowStyle?: StyleProp<ViewStyle>;
   windowControlsPaddingRole?: "header" | "detailHeader";
   onRowLayout?: (event: LayoutChangeEvent) => void;
 }
@@ -32,6 +36,8 @@ export function ScreenHeader({
   leftStyle,
   rightStyle,
   borderless,
+  surfaceStyle,
+  rowStyle,
   windowControlsPaddingRole = "header",
   onRowLayout,
 }: ScreenHeaderProps) {
@@ -47,7 +53,7 @@ export function ScreenHeader({
     () => [styles.inner, { paddingTop: insets.top + topPadding }],
     [insets.top, topPadding],
   );
-  const rowStyle = useMemo(
+  const rowCombinedStyle = useMemo(
     () => [
       styles.row,
       {
@@ -55,16 +61,18 @@ export function ScreenHeader({
         paddingRight: baseHorizontalPadding + padding.right,
       },
       borderless && styles.borderless,
+      rowStyle,
     ],
-    [baseHorizontalPadding, padding.left, padding.right, borderless],
+    [baseHorizontalPadding, padding.left, padding.right, borderless, rowStyle],
   );
   const leftCombinedStyle = useMemo(() => [styles.left, leftStyle], [leftStyle]);
   const rightCombinedStyle = useMemo(() => [styles.right, rightStyle], [rightStyle]);
+  const headerCombinedStyle = useMemo(() => [styles.header, surfaceStyle], [surfaceStyle]);
 
   return (
-    <View style={styles.header}>
+    <View style={headerCombinedStyle}>
       <View style={innerStyle}>
-        <View onLayout={onRowLayout} style={rowStyle}>
+        <View onLayout={onRowLayout} style={rowCombinedStyle}>
           <TitlebarDragRegion />
           <View style={leftCombinedStyle}>{left}</View>
           <View style={rightCombinedStyle}>{right}</View>
