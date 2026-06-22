@@ -210,7 +210,10 @@ export function StreamRuler({ marks, onPressMark }: StreamRulerProps): ReactElem
 const styles = StyleSheet.create((theme) => ({
   container: {
     position: "absolute",
-    left: 0,
+    // New theme: inset the rail (and its hover panel) from the left edge by the
+    // same 8px the tab chips use, so the floating window lines up with the tabs
+    // and matches the rail's existing 8px top inset. Classic stays flush (0).
+    left: theme.shell.floating ? theme.spacing[2] : 0,
     top: theme.spacing[2],
     bottom: 0,
     justifyContent: "flex-start",

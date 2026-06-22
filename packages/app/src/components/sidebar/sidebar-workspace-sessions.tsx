@@ -118,7 +118,24 @@ function useMergedAgentHistory(serverId: string): AgentDirectoryEntry[] {
   }, [agents, liveAgentsMap]);
 }
 
-function SidebarSessionRow({ session }: { session: AgentDirectoryEntry }) {
+export const SidebarSessionRow = memo(function SidebarSessionRow({
+  session,
+  subtitle = null,
+  timeOverride = null,
+  variant = "default",
+}: {
+  session: AgentDirectoryEntry;
+  /** Secondary line under the title — the flat sessions list shows the project. */
+  subtitle?: string | null;
+  /** Time to display + the caller already sorted by (e.g. last user message). */
+  timeOverride?: Date | null;
+  /**
+   * "flat" rounds the hover/press background to the content-card radius so the
+   * new-theme flat sessions list reads as part of the same rounded surface as
+   * the right pane. "default" keeps the tighter nested-row radius.
+   */
+  variant?: "default" | "flat";
+}) {
   const { t } = useTranslation();
   const toast = useToast();
   const queryClient = useQueryClient();
@@ -165,9 +182,10 @@ function SidebarSessionRow({ session }: { session: AgentDirectoryEntry }) {
   const pressableStyle = useCallback(
     ({ hovered, pressed }: PressableStateCallbackType & { hovered?: boolean }) => [
       styles.sessionRow,
+      variant === "flat" && styles.sessionRowFlatRadius,
       (Boolean(hovered) || pressed) && styles.rowHovered,
     ],
-    [],
+    [variant],
   );
 
   const stateBucket = deriveSidebarStateBucket({
@@ -195,11 +213,18 @@ function SidebarSessionRow({ session }: { session: AgentDirectoryEntry }) {
         testID={`sidebar-session-${session.id}`}
       >
         <SessionStatusIcon provider={session.provider} stateBucket={stateBucket} />
-        <Text style={titleStyle} numberOfLines={1}>
-          {session.title ?? t("sessions.workspacePanel.untitled")}
-        </Text>
+        <View style={styles.sessionTextColumn}>
+          <Text style={titleStyle} numberOfLines={1}>
+            {session.title ?? t("sessions.workspacePanel.untitled")}
+          </Text>
+          {subtitle ? (
+            <Text style={styles.sessionSubtitle} numberOfLines={1}>
+              {subtitle}
+            </Text>
+          ) : null}
+        </View>
         <Text style={styles.sessionTime} numberOfLines={1}>
-          {formatTimeAgo(session.lastActivityAt)}
+          {formatTimeAgo(timeOverride ?? session.lastActivityAt)}
         </Text>
       </ContextMenuTrigger>
       <ContextMenuContent
@@ -235,7 +260,7 @@ function SidebarSessionRow({ session }: { session: AgentDirectoryEntry }) {
       />
     </ContextMenu>
   );
-}
+});
 
 export const SidebarWorkspaceSessions = memo(function SidebarWorkspaceSessions({
   serverId,
@@ -308,11 +333,23 @@ const styles = StyleSheet.create((theme) => ({
     paddingHorizontal: theme.spacing[2],
     borderRadius: theme.borderRadius.md,
   },
-  sessionTitle: {
+  // Match the floating content card's corner radius so the new-theme flat list
+  // hover/press surface reads as part of the same rounded language as the right pane.
+  sessionRowFlatRadius: {
+    borderRadius: theme.shell.contentRadius,
+  },
+  sessionTextColumn: {
     flex: 1,
     minWidth: 0,
+  },
+  sessionTitle: {
     fontSize: theme.fontSize.xs,
     color: theme.colors.foreground,
+  },
+  sessionSubtitle: {
+    fontSize: theme.fontSize.xs,
+    color: theme.colors.foregroundMuted,
+    marginTop: 1,
   },
   sessionTitleFailed: {
     color: theme.colors.palette.red[500],

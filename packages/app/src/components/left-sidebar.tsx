@@ -73,6 +73,9 @@ import {
   mapPathnameToServer,
 } from "@/utils/host-routes";
 import type { ShortcutKey } from "@/utils/format-shortcut";
+import { useAppSettings } from "@/hooks/use-settings";
+import { SidebarSessionsToolbar } from "@/components/sidebar/sidebar-sessions-toolbar";
+import { SidebarSessionsList } from "@/components/sidebar/sidebar-sessions-list";
 import { SidebarAgentListSkeleton } from "./sidebar-agent-list-skeleton";
 import { SidebarCalloutSlot } from "./sidebar-callout-slot";
 import { SidebarWorkspaceList } from "./sidebar-workspace-list";
@@ -100,6 +103,8 @@ interface SidebarSharedProps {
   isRevalidating: boolean;
   isManualRefresh: boolean;
   groupMode: SidebarGroupMode;
+  /** Fork "new theme": render the flat recency sessions layout instead of the grouped list. */
+  isNewThemeSidebar: boolean;
   collapsedProjectKeys: SidebarShortcutModel["collapsedProjectKeys"];
   shortcutIndexByWorkspaceKey: SidebarShortcutModel["shortcutIndexByWorkspaceKey"];
   toggleProjectCollapsed: SidebarShortcutModel["toggleProjectCollapsed"];
@@ -123,11 +128,13 @@ interface SidebarLabels {
   addProject: string;
   openProject: string;
   newWorkspace: string;
+  newConversation: string;
   home: string;
   settings: string;
   switchHost: string;
   searchHosts: string;
   sessions: string;
+  history: string;
   closeSidebar: string;
 }
 
@@ -152,6 +159,11 @@ export const LeftSidebar = memo(function LeftSidebar({
 
   const { theme } = useUnistyles();
   const { t } = useTranslation();
+  const { settings } = useAppSettings();
+  // Fork "new theme" swaps the project-grouped list for a flat recency sessions
+  // list + top toolbar. Read the device-local setting that drives the theme so
+  // the layout branch tracks it reactively (see docs/new-theme.md).
+  const isNewThemeSidebar = settings.newThemeEnabled;
   const insets = useSafeAreaInsets();
   const isCompactLayout = useIsCompactFormFactor();
   const isOpen = usePanelStore((state) =>
@@ -318,11 +330,13 @@ export const LeftSidebar = memo(function LeftSidebar({
       addProject: t("sidebar.actions.addProject"),
       openProject: t("sidebar.actions.openProject"),
       newWorkspace: t("sidebar.actions.newWorkspace"),
+      newConversation: t("sidebar.sessionsList.newConversation"),
       home: t("sidebar.actions.home"),
       settings: t("sidebar.actions.settings"),
       switchHost: t("sidebar.host.switchTitle"),
       searchHosts: t("sidebar.host.searchPlaceholder"),
       sessions: t("sidebar.sections.sessions"),
+      history: t("sidebar.sessionsList.history"),
       closeSidebar: t("sidebar.actions.closeSidebar"),
     }),
     [t],
@@ -342,6 +356,7 @@ export const LeftSidebar = memo(function LeftSidebar({
     isRevalidating,
     isManualRefresh,
     groupMode,
+    isNewThemeSidebar,
     collapsedProjectKeys,
     shortcutIndexByWorkspaceKey,
     toggleProjectCollapsed,
@@ -548,6 +563,7 @@ function SidebarFooter({
   handleHome,
   handleSettings,
   labels,
+  isNewThemeSidebar,
 }: {
   theme: SidebarTheme;
   activeServerId: string | null;
@@ -569,10 +585,12 @@ function SidebarFooter({
     switchHost: string;
     searchHosts: string;
   };
+  isNewThemeSidebar: boolean;
 }) {
   const newAgentKeys = useShortcutKeys("new-agent");
   return (
-    <View style={styles.sidebarFooter}>
+    // New theme drops the top divider for the clean #fafafa look.
+    <View style={isNewThemeSidebar ? styles.sidebarFooterFlat : styles.sidebarFooter}>
       <View style={styles.footerHostSlot}>
         <HostPickerTrigger
           triggerRef={hostTriggerRef}
@@ -583,27 +601,34 @@ function SidebarFooter({
         />
       </View>
       <View style={styles.footerIconRow}>
-        <Tooltip delayDuration={300}>
-          <TooltipTrigger asChild>
+        {/* New theme hides Open project + Home here — both are already reachable
+            from the top toolbar (open project) and history, so they'd be
+            redundant. Settings stays. */}
+        {!isNewThemeSidebar ? (
+          <>
+            <Tooltip delayDuration={300}>
+              <TooltipTrigger asChild>
+                <FooterIconButton
+                  onPress={handleOpenProject}
+                  testID="sidebar-add-project"
+                  accessibilityLabel={labels.addProject}
+                  icon={FolderPlus}
+                  theme={theme}
+                />
+              </TooltipTrigger>
+              <TooltipContent side="top" align="center" offset={8}>
+                <AddProjectTooltipContent newAgentKeys={newAgentKeys} label={labels.addProject} />
+              </TooltipContent>
+            </Tooltip>
             <FooterIconButton
-              onPress={handleOpenProject}
-              testID="sidebar-add-project"
-              accessibilityLabel={labels.addProject}
-              icon={FolderPlus}
+              onPress={handleHome}
+              testID="sidebar-home"
+              accessibilityLabel={labels.home}
+              icon={Home}
               theme={theme}
             />
-          </TooltipTrigger>
-          <TooltipContent side="top" align="center" offset={8}>
-            <AddProjectTooltipContent newAgentKeys={newAgentKeys} label={labels.addProject} />
-          </TooltipContent>
-        </Tooltip>
-        <FooterIconButton
-          onPress={handleHome}
-          testID="sidebar-home"
-          accessibilityLabel={labels.home}
-          icon={Home}
-          theme={theme}
-        />
+          </>
+        ) : null}
         <FooterIconButton
           onPress={handleSettings}
           testID="sidebar-settings"
@@ -643,6 +668,7 @@ function MobileSidebar({
   isRevalidating,
   isManualRefresh,
   groupMode,
+  isNewThemeSidebar,
   collapsedProjectKeys,
   shortcutIndexByWorkspaceKey,
   toggleProjectCollapsed,
@@ -663,6 +689,15 @@ function MobileSidebar({
 }: MobileSidebarProps) {
   const pathname = usePathname();
   const isSessionsActive = pathname.includes("/sessions");
+  const toolbarLabels = useMemo(
+    () => ({
+      newConversation: labels.newConversation,
+      openProject: labels.openProject,
+      history: labels.history,
+      close: labels.closeSidebar,
+    }),
+    [labels],
+  );
   const {
     translateX,
     backdropOpacity,
@@ -854,64 +889,80 @@ function MobileSidebar({
       <GestureDetector gesture={closeGesture} touchAction="pan-y">
         <Animated.View style={mobileSidebarStyle} pointerEvents="auto">
           <View style={styles.sidebarContent} pointerEvents="auto">
-            <View style={styles.sidebarHeaderGroup}>
-              <SidebarHeaderRow
-                icon={FolderPlus}
-                label={labels.openProject}
-                onPress={handleOpenProject}
-                testID="sidebar-global-open-project"
-                variant="compact"
-                shortcutKeys={newWorkspaceKeys}
-              />
-              <SidebarHeaderRow
-                icon={History}
-                label={labels.sessions}
-                onPress={handleViewMore}
-                isActive={isSessionsActive}
-                testID="sidebar-sessions"
-                variant="compact"
-              />
-            </View>
-            <WorkspacesSectionHeader
-              serverId={activeServerId}
-              onNewWorkspacePress={handleNewWorkspace}
-            />
-            <Pressable
-              style={styles.mobileCloseButton}
-              onPress={closeSidebar}
-              testID="sidebar-close"
-              nativeID="sidebar-close"
-              accessible
-              accessibilityRole="button"
-              accessibilityLabel={labels.closeSidebar}
-              hitSlop={8}
-            >
-              {({ hovered, pressed }) => (
-                <X
-                  size={theme.iconSize.md}
-                  color={
-                    hovered || pressed ? theme.colors.foreground : theme.colors.foregroundMuted
-                  }
+            {isNewThemeSidebar ? (
+              <>
+                <SidebarSessionsToolbar
+                  labels={toolbarLabels}
+                  onNewConversation={handleNewWorkspace}
+                  onOpenProject={handleOpenProject}
+                  onHistory={handleViewMore}
+                  isHistoryActive={isSessionsActive}
+                  onClose={closeSidebar}
                 />
-              )}
-            </Pressable>
-
-            {isInitialLoad ? (
-              <SidebarAgentListSkeleton />
+                <SidebarSessionsList serverId={activeServerId} parentGestureRef={closeGestureRef} />
+              </>
             ) : (
-              <SidebarWorkspaceList
-                serverId={activeServerId}
-                collapsedProjectKeys={collapsedProjectKeys}
-                onToggleProjectCollapsed={toggleProjectCollapsed}
-                shortcutIndexByWorkspaceKey={shortcutIndexByWorkspaceKey}
-                groupMode={groupMode}
-                projects={projects}
-                isRefreshing={isManualRefresh && isRevalidating}
-                onRefresh={handleRefresh}
-                onWorkspacePress={handleWorkspacePress}
-                onAddProject={handleOpenProject}
-                parentGestureRef={closeGestureRef}
-              />
+              <>
+                <View style={styles.sidebarHeaderGroup}>
+                  <SidebarHeaderRow
+                    icon={FolderPlus}
+                    label={labels.openProject}
+                    onPress={handleOpenProject}
+                    testID="sidebar-global-open-project"
+                    variant="compact"
+                    shortcutKeys={newWorkspaceKeys}
+                  />
+                  <SidebarHeaderRow
+                    icon={History}
+                    label={labels.sessions}
+                    onPress={handleViewMore}
+                    isActive={isSessionsActive}
+                    testID="sidebar-sessions"
+                    variant="compact"
+                  />
+                </View>
+                <WorkspacesSectionHeader
+                  serverId={activeServerId}
+                  onNewWorkspacePress={handleNewWorkspace}
+                />
+                <Pressable
+                  style={styles.mobileCloseButton}
+                  onPress={closeSidebar}
+                  testID="sidebar-close"
+                  nativeID="sidebar-close"
+                  accessible
+                  accessibilityRole="button"
+                  accessibilityLabel={labels.closeSidebar}
+                  hitSlop={8}
+                >
+                  {({ hovered, pressed }) => (
+                    <X
+                      size={theme.iconSize.md}
+                      color={
+                        hovered || pressed ? theme.colors.foreground : theme.colors.foregroundMuted
+                      }
+                    />
+                  )}
+                </Pressable>
+
+                {isInitialLoad ? (
+                  <SidebarAgentListSkeleton />
+                ) : (
+                  <SidebarWorkspaceList
+                    serverId={activeServerId}
+                    collapsedProjectKeys={collapsedProjectKeys}
+                    onToggleProjectCollapsed={toggleProjectCollapsed}
+                    shortcutIndexByWorkspaceKey={shortcutIndexByWorkspaceKey}
+                    groupMode={groupMode}
+                    projects={projects}
+                    isRefreshing={isManualRefresh && isRevalidating}
+                    onRefresh={handleRefresh}
+                    onWorkspacePress={handleWorkspacePress}
+                    onAddProject={handleOpenProject}
+                    parentGestureRef={closeGestureRef}
+                  />
+                )}
+              </>
             )}
 
             <SidebarFooter
@@ -929,6 +980,7 @@ function MobileSidebar({
               handleHome={handleHome}
               handleSettings={handleSettings}
               labels={labels}
+              isNewThemeSidebar={isNewThemeSidebar}
             />
           </View>
         </Animated.View>
@@ -951,6 +1003,7 @@ function DesktopSidebar({
   isRevalidating,
   isManualRefresh,
   groupMode,
+  isNewThemeSidebar,
   collapsedProjectKeys,
   shortcutIndexByWorkspaceKey,
   toggleProjectCollapsed,
@@ -969,6 +1022,15 @@ function DesktopSidebar({
 }: DesktopSidebarProps) {
   const pathname = usePathname();
   const isSessionsActive = pathname.includes("/sessions");
+  const toolbarLabels = useMemo(
+    () => ({
+      newConversation: labels.newConversation,
+      openProject: labels.openProject,
+      history: labels.history,
+      close: labels.closeSidebar,
+    }),
+    [labels],
+  );
   const padding = useWindowControlsPadding("sidebar");
   const sidebarWidth = usePanelStore((state) => state.sidebarWidth);
   const setSidebarWidth = usePanelStore((state) => state.setSidebarWidth);
@@ -1047,46 +1109,64 @@ function DesktopSidebar({
             automatically; the only plain-View control that needs an explicit
             no-drag is the resize handle below. */}
         <TitlebarDragRegion />
-        <View style={styles.sidebarDragArea}>
-          {padding.top > 0 ? <View style={paddingTopSpacerStyle} /> : null}
-          <View style={styles.sidebarHeaderGroup}>
-            <SidebarHeaderRow
-              icon={FolderPlus}
-              label={labels.openProject}
-              onPress={handleOpenProject}
-              testID="sidebar-global-open-project"
-              variant="compact"
-              shortcutKeys={newWorkspaceKeys}
-            />
-            <SidebarHeaderRow
-              icon={History}
-              label={labels.sessions}
-              onPress={handleViewMore}
-              isActive={isSessionsActive}
-              testID="sidebar-sessions"
-              variant="compact"
-            />
-          </View>
-        </View>
-        <WorkspacesSectionHeader
-          serverId={activeServerId}
-          onNewWorkspacePress={handleNewWorkspaceNavigate}
-        />
-
-        {isInitialLoad ? (
-          <SidebarAgentListSkeleton />
+        {isNewThemeSidebar ? (
+          <>
+            <View style={styles.sidebarDragArea}>
+              {padding.top > 0 ? <View style={paddingTopSpacerStyle} /> : null}
+              <SidebarSessionsToolbar
+                labels={toolbarLabels}
+                onNewConversation={handleNewWorkspaceNavigate}
+                onOpenProject={handleOpenProject}
+                onHistory={handleViewMore}
+                isHistoryActive={isSessionsActive}
+              />
+            </View>
+            <SidebarSessionsList serverId={activeServerId} />
+          </>
         ) : (
-          <SidebarWorkspaceList
-            serverId={activeServerId}
-            collapsedProjectKeys={collapsedProjectKeys}
-            onToggleProjectCollapsed={toggleProjectCollapsed}
-            shortcutIndexByWorkspaceKey={shortcutIndexByWorkspaceKey}
-            groupMode={groupMode}
-            projects={projects}
-            isRefreshing={isManualRefresh && isRevalidating}
-            onRefresh={handleRefresh}
-            onAddProject={handleOpenProject}
-          />
+          <>
+            <View style={styles.sidebarDragArea}>
+              {padding.top > 0 ? <View style={paddingTopSpacerStyle} /> : null}
+              <View style={styles.sidebarHeaderGroup}>
+                <SidebarHeaderRow
+                  icon={FolderPlus}
+                  label={labels.openProject}
+                  onPress={handleOpenProject}
+                  testID="sidebar-global-open-project"
+                  variant="compact"
+                  shortcutKeys={newWorkspaceKeys}
+                />
+                <SidebarHeaderRow
+                  icon={History}
+                  label={labels.sessions}
+                  onPress={handleViewMore}
+                  isActive={isSessionsActive}
+                  testID="sidebar-sessions"
+                  variant="compact"
+                />
+              </View>
+            </View>
+            <WorkspacesSectionHeader
+              serverId={activeServerId}
+              onNewWorkspacePress={handleNewWorkspaceNavigate}
+            />
+
+            {isInitialLoad ? (
+              <SidebarAgentListSkeleton />
+            ) : (
+              <SidebarWorkspaceList
+                serverId={activeServerId}
+                collapsedProjectKeys={collapsedProjectKeys}
+                onToggleProjectCollapsed={toggleProjectCollapsed}
+                shortcutIndexByWorkspaceKey={shortcutIndexByWorkspaceKey}
+                groupMode={groupMode}
+                projects={projects}
+                isRefreshing={isManualRefresh && isRevalidating}
+                onRefresh={handleRefresh}
+                onAddProject={handleOpenProject}
+              />
+            )}
+          </>
         )}
 
         <SidebarCalloutSlot />
@@ -1106,6 +1186,7 @@ function DesktopSidebar({
           handleHome={handleHome}
           handleSettings={handleSettings}
           labels={labels}
+          isNewThemeSidebar={isNewThemeSidebar}
         />
 
         {/* Resize handle - absolutely positioned over right border */}
@@ -1337,6 +1418,14 @@ const styles = StyleSheet.create((theme) => ({
     paddingVertical: theme.spacing[3],
     borderTopWidth: 1,
     borderTopColor: theme.colors.border,
+  },
+  // New theme: same footer without the top divider.
+  sidebarFooterFlat: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: theme.spacing[4],
+    paddingVertical: theme.spacing[3],
   },
   footerHostSlot: {
     flexGrow: 0,

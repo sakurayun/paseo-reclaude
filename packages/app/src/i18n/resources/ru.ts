@@ -1053,6 +1053,11 @@ export const ru: TranslationResources = {
       sessions: "История",
       workspaces: "Рабочие пространства",
     },
+    sessionsList: {
+      newConversation: "Новый чат",
+      history: "История",
+      empty: "Пока нет сессий",
+    },
     worktreeSetup: {
       title: "Настройка сценариев рабочего дерева",
       description:

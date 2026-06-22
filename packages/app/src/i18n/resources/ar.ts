@@ -1026,6 +1026,11 @@ export const ar: TranslationResources = {
       sessions: "السجل",
       workspaces: "مساحات العمل",
     },
+    sessionsList: {
+      newConversation: "محادثة جديدة",
+      history: "السجل",
+      empty: "لا توجد جلسات بعد",
+    },
     worktreeSetup: {
       title: "إعداد البرامج النصية لشجرة العمل",
       description:

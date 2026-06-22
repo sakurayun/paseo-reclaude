@@ -456,7 +456,9 @@ const userMessageStylesheet = StyleSheet.create((theme) => ({
     marginBottom: theme.spacing[4],
   },
   bubble: {
-    backgroundColor: theme.colors.surface3,
+    // New theme: a #fafafa (surface1) bubble to match the light look. Classic
+    // themes keep surface3 (a near-white bubble would read as broken in dark mode).
+    backgroundColor: theme.shell.floating ? theme.colors.surface1 : theme.colors.surface3,
     borderRadius: theme.borderRadius["2xl"],
     borderTopRightRadius: theme.borderRadius.sm,
     paddingHorizontal: theme.spacing[4],

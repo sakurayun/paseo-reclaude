@@ -1054,6 +1054,11 @@ export const es: TranslationResources = {
       sessions: "Historial",
       workspaces: "Espacios de trabajo",
     },
+    sessionsList: {
+      newConversation: "Nuevo chat",
+      history: "Historial",
+      empty: "Aún no hay sesiones",
+    },
     worktreeSetup: {
       title: "Configurar secuencias de comandos del árbol de trabajo",
       description:

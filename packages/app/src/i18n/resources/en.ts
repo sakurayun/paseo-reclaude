@@ -1033,6 +1033,11 @@ export const en = {
       sessions: "History",
       workspaces: "Workspaces",
     },
+    sessionsList: {
+      newConversation: "New chat",
+      history: "History",
+      empty: "No sessions yet",
+    },
     worktreeSetup: {
       title: "Set up worktree scripts",
       description:

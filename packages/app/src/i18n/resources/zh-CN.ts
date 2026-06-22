@@ -1016,6 +1016,11 @@ export const zhCN: TranslationResources = {
       sessions: "历史",
       workspaces: "工作区",
     },
+    sessionsList: {
+      newConversation: "新建对话",
+      history: "历史会话",
+      empty: "暂无会话",
+    },
     worktreeSetup: {
       title: "设置 worktree scripts",
       description: "添加 setup 命令，让新的 worktree 自动安装依赖并完成准备。",
