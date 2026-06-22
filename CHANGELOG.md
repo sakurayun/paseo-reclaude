@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.1.106 - 2026-06-23
+
+### Added
+
+- Pick a run directory when starting a new agent — a new control next to "Import session" at the top of the composer (desktop)
+
+### Changed
+
+- New theme: the New workspace screen now floats as a rounded card inset on all sides, matching the rest of the app
+- New theme: larger leading icons in the sidebar's conversation list
+
+### Fixed
+
+- "Open project" now works end to end — the picked folder is registered and preselected on the New workspace screen
+
 ## 0.1.105 - 2026-06-22
 
 ### Changed
