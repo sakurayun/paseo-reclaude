@@ -1233,7 +1233,9 @@ const styles = StyleSheet.create((theme) => ({
     opacity: 0,
   },
   divider: {
-    height: 1,
+    // New theme collapses the section divider lines (chromeDivider = 0); the
+    // sections keep their own padding so they stay visually separated.
+    height: theme.shell.chromeDivider,
     backgroundColor: theme.colors.border,
   },
   sectionHeader: {
@@ -1346,11 +1348,15 @@ const styles = StyleSheet.create((theme) => ({
   card: {
     marginHorizontal: theme.spacing[3],
     marginBottom: theme.spacing[3],
-    borderWidth: 1,
+    // New theme: borderless white card with a soft shadow (shadows over borders),
+    // floating on the #fafafa panel to echo the center content card. Classic
+    // keeps its 1px outline on the sidebar surface.
+    borderWidth: theme.shell.chromeDivider,
     borderColor: theme.colors.border,
-    borderRadius: theme.borderRadius.lg,
-    backgroundColor: theme.colors.surfaceSidebar,
+    borderRadius: theme.shell.floating ? theme.shell.contentRadius : theme.borderRadius.lg,
+    backgroundColor: theme.shell.floating ? theme.colors.surface0 : theme.colors.surfaceSidebar,
     overflow: "hidden",
+    ...(theme.shell.floating ? theme.shadow.sm : null),
   },
   entryHeaderPressable: {
     flexDirection: "row",
@@ -1429,7 +1435,9 @@ const styles = StyleSheet.create((theme) => ({
   nestedThread: {
     marginHorizontal: theme.spacing[3],
     marginBottom: theme.spacing[2],
-    borderWidth: 1,
+    // New theme drops the outline; the surface1 header tint keeps the nested
+    // group readable on the white parent card.
+    borderWidth: theme.shell.chromeDivider,
     borderColor: theme.colors.border,
     borderRadius: theme.borderRadius.md,
     overflow: "hidden",
@@ -1455,7 +1463,7 @@ const styles = StyleSheet.create((theme) => ({
     gap: 3,
   },
   threadComment: {
-    borderTopWidth: 1,
+    borderTopWidth: theme.shell.chromeDivider,
     borderTopColor: theme.colors.border,
     paddingBottom: theme.spacing[2],
   },
@@ -1477,7 +1485,7 @@ const styles = StyleSheet.create((theme) => ({
     marginTop: theme.spacing[2],
   },
   replyCard: {
-    borderWidth: 1,
+    borderWidth: theme.shell.chromeDivider,
     borderColor: theme.colors.border,
     borderRadius: theme.borderRadius.md,
     backgroundColor: theme.colors.surface1,

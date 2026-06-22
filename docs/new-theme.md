@@ -7,7 +7,14 @@ feature, meant to grow. So far it: (1) paints sidebars/chrome `#fafafa`;
 that `#fafafa` underlay, vertical sidebar dividers removed; (3) exposes the
 workspace header on the `#fafafa` backdrop above the card (shorter, no divider);
 (4) restyles the tab row — each tab a `#fafafa` rounded chip, no inter-tab
-dividers, create/right buttons as `#fafafa` rounded squares.
+dividers, create/right buttons as `#fafafa` rounded squares; (5) replaces the
+left sidebar's project-grouped list with a flat, recency-sorted **sessions**
+list + a 3-button top toolbar (new conversation / open project / history), with
+the footer divider and the redundant open-project/home footer buttons dropped
+(see "Left sidebar — flat sessions"); and (6) harmonizes the **right panel**
+(ExplorerSidebar) to match — all dividers gone, rounded 12px hovers, PR/Git
+activity cards floating as borderless white cards (see "Right panel — echo the
+left").
 
 ## What the user sees
 
@@ -179,6 +186,64 @@ render gate rather than a 0px border, so the element doesn't linger in the tree)
 dropdown/menu triggers, color swatches, `<StatusBadge>` pills, selection chips.
 Only the structural card/divider borders were removed. A future pass could soften
 those control outlines too if a fully borderless look is wanted.
+
+## Left sidebar — flat sessions
+
+Under the new theme the left sidebar drops the project/workspace-grouped tree for
+a **flat, recency-sorted list of every non-archived agent session** (one row =
+one conversation), with a **3-button top toolbar**: new conversation
+(`buildHostNewWorkspaceRoute`), open project (`useOpenProjectPicker`), history
+(`buildHostSessionsRoute`) — the same handlers the classic sidebar already had.
+
+- **Gate** — `left-sidebar.tsx` reads `useAppSettings().settings.newThemeEnabled`
+  into `isNewThemeSidebar` and branches `DesktopSidebar`/`MobileSidebar` between
+  the toolbar+flat-list and the classic grouped list. Classic is untouched.
+- **Data** — `hooks/use-sidebar-sessions-list.ts`: merges the per-server agent
+  history cache (`useAgentHistory`) with the live session store, filters
+  archived, sorts by `lastUserMessageAt ?? lastActivityAt` (the user's most
+  recent message), exposes `recencyAt` + `projectName` per row.
+- **Rows** — reuse `SidebarSessionRow` (`sidebar-workspace-sessions.tsx`) with
+  `variant="flat"` → hover/press radius = `theme.shell.contentRadius` (12, the
+  content-card radius), plus `subtitle` (project) and `timeOverride` (recencyAt).
+- **Components** — `components/sidebar/sidebar-sessions-toolbar.tsx` (icon-over-
+  label buttons, press `scale 0.96`, `FadeInDown` stagger; inline close on
+  compact) and `components/sidebar/sidebar-sessions-list.tsx`.
+- **Footer** — `SidebarFooter` drops its top divider (`sidebarFooterFlat`) and
+  hides the now-redundant open-project + home buttons in the new theme; the
+  device picker + settings stay.
+- i18n: `sidebar.sessionsList.{newConversation,history,empty}` in all six
+  resources.
+
+## Right panel — echo the left
+
+The right panel (`ExplorerSidebar` — the changes/files/git/pr tab nav + the file
+tree / Source Control / Pull Request panes) is harmonized to the left's look,
+all token-driven and classic-identical:
+
+- **Dividers** — every structural line becomes `borderWidth: theme.shell.chromeDivider`
+  (the PR section `divider` view uses `height: theme.shell.chromeDivider`) → 0 in
+  the new theme, 1 in classic. Sites: explorer tab-bar underline, file-explorer
+  pane header + tree/preview split + sheet header, Source Control commit-box top
+  line, PR section/thread lines, and the **diff viewer** (`git/diff-pane.tsx`) —
+  its header/file-section lines _and_ the structural diff rules (line-number
+  gutter, split-view center divider) are gated too, since the user wanted every
+  line gone; in the new theme the diff leans on its line-tint / gutter / empty-
+  cell background colors for structure instead. Functional separators keep their
+  padding so the separation survives as whitespace. Control/input/badge outlines
+  stay (same rule as the settings cards section above).
+- **Rounded hovers** — interactive rows/tabs use
+  `theme.shell.floating ? theme.shell.contentRadius : <classic md/0>` so the
+  new-theme hover/active surfaces round to 12 like the left.
+- **Floating cards** — PR/Git activity cards switch to borderless white
+  (`theme.shell.floating ? surface0 : surfaceSidebar`) + `theme.shadow.sm`, so
+  they float on the `#fafafa` panel instead of relying on an outline (shadows
+  over borders). `overflow: hidden` stays for corner clipping (its shadow is
+  web-visible; native leans on the white-on-`#fafafa` contrast).
+- **Tab nav** — `ExplorerTabButton` gains the left toolbar's press `scale 0.96`
+  (reanimated transform on a plain Animated.View; theme styles stay on the
+  Pressable/Text). Files: `explorer-sidebar.tsx`, `file-explorer-pane.tsx`,
+  `git/source-control-pane.tsx`, `git/pull-request-panel/pane.tsx`,
+  `git/diff-pane.tsx`.
 
 ## i18n
 

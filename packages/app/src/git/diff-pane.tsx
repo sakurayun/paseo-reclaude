@@ -2323,9 +2323,47 @@ export function GitDiffPane({
     />
   );
 
+  const branchHeaderVisible = !hideHeaderRow && isGit && Boolean(currentBranchName || isMobile);
+  // The diff-mode (uncommitted/committed) picker rides at the trailing edge of
+  // the branch row; if that row isn't shown it falls back to the status row.
+  const diffModeDropdown = (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        style={diffModeTriggerStyle}
+        testID="changes-diff-status"
+        accessibilityRole="button"
+        accessibilityLabel={t("workspace.git.diff.diffMode")}
+      >
+        <Text style={styles.diffStatusText} numberOfLines={1}>
+          {diffMode === "uncommitted" ? uncommittedLabel : committedLabel}
+        </Text>
+        <ThemedChevronDown size={12} uniProps={foregroundMutedIconColorMapping} />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" width={260} testID="changes-diff-status-menu">
+        <DropdownMenuItem
+          testID="changes-diff-mode-uncommitted"
+          selected={diffMode === "uncommitted"}
+          onSelect={handleSelectUncommitted}
+        >
+          {uncommittedLabel}
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          testID="changes-diff-mode-committed"
+          selected={diffMode === "base"}
+          description={committedDiffDescription}
+          onSelect={handleSelectBase}
+        >
+          {committedLabel}
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+  const diffStatusInnerStyle = pickDiffStatusInnerStyle(branchHeaderVisible);
+
   return (
     <View style={styles.container}>
-      {!hideHeaderRow && isGit && (currentBranchName || isMobile) ? (
+      {branchHeaderVisible ? (
         <View style={styles.header} testID="changes-header">
           <BranchSwitcher
             currentBranchName={currentBranchName}
@@ -2335,44 +2373,25 @@ export function GitDiffPane({
             isGitCheckout={isGit}
             testID="changes-branch-switcher"
           />
-          {isMobile ? <GitActionsSplitButton gitActions={gitActions} /> : null}
+          <View style={styles.headerTrailing}>
+            {isMobile ? <GitActionsSplitButton gitActions={gitActions} /> : null}
+            {diffModeDropdown}
+          </View>
         </View>
       ) : null}
 
+      {prErrorMessage ? <Text style={styles.actionErrorText}>{prErrorMessage}</Text> : null}
+
+      <View style={styles.diffContainer}>
+        {bodyContent}
+        {hasChanges ? scrollbar.overlay : null}
+      </View>
+
+      {/* Diff layout controls pinned to the bottom of the pane. */}
       {isGit ? (
         <View style={styles.diffStatusContainer}>
-          <View style={styles.diffStatusInner}>
-            <DropdownMenu>
-              <DropdownMenuTrigger
-                style={diffModeTriggerStyle}
-                testID="changes-diff-status"
-                accessibilityRole="button"
-                accessibilityLabel={t("workspace.git.diff.diffMode")}
-              >
-                <Text style={styles.diffStatusText} numberOfLines={1}>
-                  {diffMode === "uncommitted" ? uncommittedLabel : committedLabel}
-                </Text>
-                <ThemedChevronDown size={12} uniProps={foregroundMutedIconColorMapping} />
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" width={260} testID="changes-diff-status-menu">
-                <DropdownMenuItem
-                  testID="changes-diff-mode-uncommitted"
-                  selected={diffMode === "uncommitted"}
-                  onSelect={handleSelectUncommitted}
-                >
-                  {uncommittedLabel}
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  testID="changes-diff-mode-committed"
-                  selected={diffMode === "base"}
-                  description={committedDiffDescription}
-                  onSelect={handleSelectBase}
-                >
-                  {committedLabel}
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+          <View style={diffStatusInnerStyle}>
+            {branchHeaderVisible ? null : diffModeDropdown}
             <View style={styles.diffStatusButtons}>
               {canUseSplitLayout ? (
                 <DiffLayoutToggleGroup
@@ -2411,13 +2430,6 @@ export function GitDiffPane({
           </View>
         </View>
       ) : null}
-
-      {prErrorMessage ? <Text style={styles.actionErrorText}>{prErrorMessage}</Text> : null}
-
-      <View style={styles.diffContainer}>
-        {bodyContent}
-        {hasChanges ? scrollbar.overlay : null}
-      </View>
     </View>
   );
 }
@@ -2434,13 +2446,21 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[2],
     paddingHorizontal: theme.spacing[3],
     paddingVertical: theme.spacing[2],
-    borderBottomWidth: 1,
+    borderBottomWidth: theme.shell.chromeDivider,
     borderBottomColor: theme.colors.border,
+  },
+  headerTrailing: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[1],
+    flexShrink: 0,
   },
   diffStatusContainer: {
     height: WORKSPACE_SECONDARY_HEADER_HEIGHT,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.border,
+    // Pinned to the bottom of the pane — the divider sits on top, separating the
+    // toolbar from the diff above (0 in the new theme, so no line there).
+    borderTopWidth: theme.shell.chromeDivider,
+    borderTopColor: theme.colors.border,
   },
   diffStatusInner: {
     flex: 1,
@@ -2448,6 +2468,12 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     justifyContent: "space-between",
     paddingRight: theme.spacing[3],
+  },
+  // When the diff-mode picker has moved up to the branch row, the bottom bar
+  // holds only the toolbar buttons — park them in the bottom-right corner
+  // (the base paddingRight keeps them inset from the edge).
+  diffStatusInnerTrailing: {
+    justifyContent: "flex-end",
   },
   diffModeTrigger: {
     flexDirection: "row",
@@ -2604,7 +2630,7 @@ const styles = StyleSheet.create((theme) => ({
   fileSection: {
     overflow: "hidden",
     backgroundColor: theme.colors.surface2,
-    borderBottomWidth: 1,
+    borderBottomWidth: theme.shell.chromeDivider,
     borderBottomColor: theme.colors.border,
   },
   fileSectionHeaderContainer: {
@@ -2618,7 +2644,7 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor: theme.colors.surface2,
   },
   fileSectionBorder: {
-    borderBottomWidth: 1,
+    borderBottomWidth: theme.shell.chromeDivider,
     borderBottomColor: theme.colors.border,
   },
   fileHeader: {
@@ -2699,7 +2725,7 @@ const styles = StyleSheet.create((theme) => ({
   submoduleBody: {
     padding: theme.spacing[4],
     gap: theme.spacing[3],
-    borderTopWidth: theme.borderWidth[1],
+    borderTopWidth: theme.shell.chromeDivider,
     borderTopColor: theme.colors.border,
     backgroundColor: theme.colors.surface1,
   },
@@ -2711,7 +2737,7 @@ const styles = StyleSheet.create((theme) => ({
   nestedDiffList: {
     marginTop: theme.spacing[2],
     borderRadius: theme.borderRadius.base,
-    borderWidth: theme.borderWidth[1],
+    borderWidth: theme.shell.chromeDivider,
     borderColor: theme.colors.border,
     overflow: "hidden",
   },
@@ -2728,7 +2754,7 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.foregroundMuted,
   },
   diffContent: {
-    borderTopWidth: theme.borderWidth[1],
+    borderTopWidth: theme.shell.chromeDivider,
     borderTopColor: theme.colors.border,
     backgroundColor: theme.colors.surface1,
   },
@@ -2749,7 +2775,7 @@ const styles = StyleSheet.create((theme) => ({
     overflow: "visible",
   },
   gutterCell: {
-    borderRightWidth: theme.borderWidth[1],
+    borderRightWidth: theme.shell.chromeDivider,
     borderRightColor: theme.colors.border,
     justifyContent: "flex-start",
     zIndex: 4,
@@ -2762,7 +2788,7 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor: theme.colors.surface1,
   },
   inlineReviewGutterSpacer: {
-    borderRightWidth: theme.borderWidth[1],
+    borderRightWidth: theme.shell.chromeDivider,
     borderRightColor: theme.colors.border,
     backgroundColor: theme.colors.surface1,
     flexShrink: 0,
@@ -2796,7 +2822,7 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor: theme.colors.surfaceDiffEmpty,
   },
   splitCellWithDivider: {
-    borderLeftWidth: theme.borderWidth[1],
+    borderLeftWidth: theme.shell.chromeDivider,
     borderLeftColor: theme.colors.border,
   },
   diffLineContainer: {
@@ -2805,7 +2831,7 @@ const styles = StyleSheet.create((theme) => ({
     overflow: "visible",
   },
   lineNumberGutter: {
-    borderRightWidth: theme.borderWidth[1],
+    borderRightWidth: theme.shell.chromeDivider,
     borderRightColor: theme.colors.border,
     marginRight: theme.spacing[2],
     alignSelf: "stretch",
@@ -2866,7 +2892,7 @@ const styles = StyleSheet.create((theme) => ({
     color: "transparent",
   },
   statusMessageContainer: {
-    borderTopWidth: theme.borderWidth[1],
+    borderTopWidth: theme.shell.chromeDivider,
     borderTopColor: theme.colors.border,
     backgroundColor: theme.colors.surface1,
     paddingHorizontal: theme.spacing[3],
@@ -2887,4 +2913,11 @@ const HEADER_LINE_TEXT_STYLE = [styles.diffTextMetrics, styles.diffLineText, sty
 const FILE_SECTION_BODY_STYLE = [styles.fileSectionBodyContainer, styles.fileSectionBorder];
 const DIFF_CONTENT_SPLIT_ROW_STYLE = [styles.diffContent, styles.splitRow];
 const DIFF_CONTENT_ROW_STYLE = [styles.diffContent, styles.diffContentRow];
+const DIFF_STATUS_INNER_TRAILING = [styles.diffStatusInner, styles.diffStatusInnerTrailing];
+
+// Bottom bar is right-aligned (buttons only) when the diff-mode picker has moved
+// up to the branch row; otherwise it keeps the space-between picker+buttons row.
+function pickDiffStatusInnerStyle(buttonsOnly: boolean) {
+  return buttonsOnly ? DIFF_STATUS_INNER_TRAILING : styles.diffStatusInner;
+}
 const DIFF_HEIGHT_CHANGE_EPSILON = 0.5;

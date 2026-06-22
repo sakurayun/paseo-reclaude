@@ -1170,7 +1170,9 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[1],
   },
   changesFooter: {
-    borderTopWidth: 1,
+    // New theme drops the line above the commit box; the paddingTop keeps the
+    // separation as whitespace, echoing the left sidebar's borderless look.
+    borderTopWidth: theme.shell.chromeDivider,
     borderTopColor: theme.colors.border,
     paddingTop: theme.spacing[3],
   },
@@ -1247,6 +1249,9 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[2],
     minHeight: 32,
     paddingHorizontal: theme.spacing[3],
+    // Round the hover surface in the new theme to echo the left list; classic
+    // keeps its flush square hover (0 radius) unchanged.
+    borderRadius: theme.shell.floating ? theme.shell.contentRadius : 0,
   },
   listRowHovered: {
     backgroundColor: theme.colors.surfaceSidebarHover,

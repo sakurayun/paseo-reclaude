@@ -8,7 +8,13 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useIsFocused } from "@react-navigation/native";
-import Animated, { useAnimatedStyle, useSharedValue, runOnJS } from "react-native-reanimated";
+import Animated, {
+  runOnJS,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+  withTiming,
+} from "react-native-reanimated";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { X } from "lucide-react-native";
@@ -411,10 +417,30 @@ function ExplorerTabButton({
   const handlePress = useCallback(() => onTabPress(tab), [onTabPress, tab]);
   const tabStyle = useMemo(() => [styles.tab, active && styles.tabActive], [active]);
   const tabTextStyle = useMemo(() => [styles.tabText, active && styles.tabTextActive], [active]);
+  // Tactile press feedback to echo the left toolbar buttons (make-interfaces:
+  // subtle scale on press). Plain RN style + animated transform only on the
+  // Animated.View; theme styles stay on the Pressable/Text (unistyles rule).
+  const scale = useSharedValue(1);
+  const scaleStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
+  const innerStyle = useMemo(() => [explorerStaticStyles.tabInner, scaleStyle], [scaleStyle]);
+  const handlePressIn = useCallback(() => {
+    scale.value = withTiming(0.96, { duration: 90 });
+  }, [scale]);
+  const handlePressOut = useCallback(() => {
+    scale.value = withSpring(1, { damping: 18, stiffness: 320, mass: 0.5 });
+  }, [scale]);
   return (
-    <Pressable testID={testID} style={tabStyle} onPress={handlePress}>
-      {children}
-      {label !== undefined ? <Text style={tabTextStyle}>{label}</Text> : null}
+    <Pressable
+      testID={testID}
+      style={tabStyle}
+      onPress={handlePress}
+      onPressIn={handlePressIn}
+      onPressOut={handlePressOut}
+    >
+      <Animated.View style={innerStyle}>
+        {children}
+        {label !== undefined ? <Text style={tabTextStyle}>{label}</Text> : null}
+      </Animated.View>
     </Pressable>
   );
 }
@@ -599,6 +625,13 @@ const explorerStaticStyles = RNStyleSheet.create({
   desktopSidebar: {
     position: "relative" as const,
   },
+  // Content row for a tab button — the press-scale Animated.View. Plain styles
+  // only (no Unistyles) so the animated node never carries a theme style.
+  tabInner: {
+    flexDirection: "row" as const,
+    alignItems: "center" as const,
+    gap: 8,
+  },
 });
 
 const styles = StyleSheet.create((theme) => ({
@@ -627,7 +660,8 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: theme.spacing[2],
-    borderBottomWidth: 1,
+    // New theme drops the tab-bar underline (chromeDivider = 0); classic keeps 1.
+    borderBottomWidth: theme.shell.chromeDivider,
     borderBottomColor: theme.colors.border,
   },
   tabsContainer: {
@@ -640,7 +674,8 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[2],
     paddingVertical: theme.spacing[2],
     paddingHorizontal: theme.spacing[3],
-    borderRadius: theme.borderRadius.md,
+    // Echo the left sidebar's rounded hover/active surfaces in the new theme.
+    borderRadius: theme.shell.floating ? theme.shell.contentRadius : theme.borderRadius.md,
   },
   tabActive: {
     backgroundColor: theme.colors.surfaceSidebarHover,
