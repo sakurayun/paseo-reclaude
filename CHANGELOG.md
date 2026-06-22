@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.105 - 2026-06-22
+
+### Changed
+
+- New theme: the right-hand panel (file explorer, source control, pull requests, and diffs) now echoes the sidebar — divider lines removed, rounded hover surfaces, and floating cards
+- Reorganized the changes view — the uncommitted/committed picker now sits next to the branch, and the diff layout controls are pinned to the bottom-right
+
 ## 0.1.104 - 2026-06-22
 
 ### Added
