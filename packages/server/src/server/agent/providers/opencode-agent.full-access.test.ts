@@ -19,6 +19,12 @@ function mockOpenCodeClient(options: MockOpenCodeClientOptions = {}) {
   const openCodeClient = new TestOpenCodeClient();
   openCodeClient.appAgentsResponse = { data: options.agents ?? [] };
   openCodeClient.sessionPromptAsyncEvents = options.events ?? [idleEvent()];
+  openCodeClient.providerListResponse = {
+    data: {
+      connected: ["openai"],
+      all: [{ id: "openai", source: "env", models: {} }],
+    },
+  };
   runtime.enqueueClient(openCodeClient);
 
   return { openCodeClient, runtime };
@@ -72,7 +78,7 @@ describe("OpenCode auto_accept feature", () => {
     });
 
     const client = new OpenCodeAgentClient(createTestLogger(), undefined, { runtime });
-    const modes = await client.listModes({ cwd: "/tmp/project", force: false });
+    const { modes } = await client.fetchCatalog({ cwd: "/tmp/project", force: false });
 
     expect(modes.map((mode) => mode.id)).toEqual(["build", "paseo-custom"]);
   });
@@ -81,7 +87,7 @@ describe("OpenCode auto_accept feature", () => {
     const { runtime } = mockOpenCodeClient({ agents: [] });
 
     const client = new OpenCodeAgentClient(createTestLogger(), undefined, { runtime });
-    const modes = await client.listModes({ cwd: "/tmp/project", force: false });
+    const { modes } = await client.fetchCatalog({ cwd: "/tmp/project", force: false });
 
     expect(modes.map((mode) => mode.id)).toEqual(["build", "plan"]);
   });

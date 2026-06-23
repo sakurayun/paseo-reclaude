@@ -1000,6 +1000,9 @@ export const ru: TranslationResources = {
         failedOpen: "Не удалось открыть рабочую область",
       },
       pr: {
+        actions: {
+          viewPullRequest: "Открыть",
+        },
         sections: {
           checks: "Чеки",
           reviews: "Отзывы",

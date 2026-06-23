@@ -372,7 +372,7 @@ describe("decorateClaudeModelsWithSdkEfforts", () => {
   });
 });
 
-describe("ClaudeAgentClient.listModels", () => {
+describe("ClaudeAgentClient.fetchCatalog", () => {
   it("decorates static and settings models with SDK effort levels", async () => {
     const configDir = await createClaudeConfigDir({
       model: "openrouter/anthropic/claude-sonnet-4.6",
@@ -399,7 +399,7 @@ describe("ClaudeAgentClient.listModels", () => {
       resolveBinary: async () => "/bin/claude",
     });
 
-    const models = await client.listModels({ cwd: os.tmpdir(), force: true });
+    const { models } = await client.fetchCatalog({ cwd: os.tmpdir(), force: true });
 
     expect(inputs).toHaveLength(1);
     expect(inputs[0].options).toMatchObject({
@@ -457,7 +457,7 @@ describe("ClaudeAgentClient.listModels", () => {
       resolveBinary: async () => "/bin/claude",
     });
 
-    const models = await client.listModels({ cwd: os.tmpdir(), force: true });
+    const { models } = await client.fetchCatalog({ cwd: os.tmpdir(), force: true });
 
     expect(
       models.find((model) => model.id === "openrouter/anthropic/claude-sonnet-4.5")
@@ -480,7 +480,7 @@ describe("ClaudeAgentClient.listModels", () => {
       resolveBinary: async () => "/bin/claude",
     });
 
-    const models = await client.listModels({ cwd: os.tmpdir(), force: true });
+    const { models } = await client.fetchCatalog({ cwd: os.tmpdir(), force: true });
 
     expect(models).toEqual(getClaudeModels());
     expect(handle.returnQuery).toHaveBeenCalledTimes(1);
@@ -496,11 +496,12 @@ describe("ClaudeAgentClient.listModels", () => {
       resolveBinary: async () => "/bin/claude",
     });
 
-    const modelsPromise = client.listModels({ cwd: os.tmpdir(), force: true });
+    const catalogPromise = client.fetchCatalog({ cwd: os.tmpdir(), force: true });
     await vi.waitFor(() => expect(handle.supportedModels).toHaveBeenCalledTimes(1));
     await vi.advanceTimersByTimeAsync(15_000);
 
-    await expect(modelsPromise).resolves.toEqual(getClaudeModels());
+    const { models } = await catalogPromise;
+    expect(models).toEqual(getClaudeModels());
     expect(handle.returnQuery).toHaveBeenCalledTimes(1);
   });
 
@@ -514,12 +515,13 @@ describe("ClaudeAgentClient.listModels", () => {
       resolveBinary: async () => "/bin/claude",
     });
 
-    const modelsPromise = client.listModels({ cwd: os.tmpdir(), force: true });
+    const catalogPromise = client.fetchCatalog({ cwd: os.tmpdir(), force: true });
     await vi.waitFor(() => expect(handle.supportedModels).toHaveBeenCalledTimes(1));
 
     await client.shutdown();
     await vi.advanceTimersByTimeAsync(15_000);
-    await expect(modelsPromise).resolves.toEqual(getClaudeModels());
+    const { models } = await catalogPromise;
+    expect(models).toEqual(getClaudeModels());
     expect(handle.returnQuery).toHaveBeenCalledTimes(1);
   });
 
@@ -537,7 +539,7 @@ describe("ClaudeAgentClient.listModels", () => {
     vi.stubEnv("CLAUDE_CONFIG_DIR", configDir);
     const client = createStaticFallbackClaudeClient();
 
-    const models = await client.listModels({ cwd: os.tmpdir(), force: true });
+    const { models } = await client.fetchCatalog({ cwd: os.tmpdir(), force: true });
 
     expect(models).toEqual([
       ...getClaudeModels(),
@@ -599,7 +601,7 @@ describe("ClaudeAgentClient.listModels", () => {
     vi.stubEnv("CLAUDE_CONFIG_DIR", configDir);
     const client = createStaticFallbackClaudeClient();
 
-    const models = await client.listModels({ cwd: os.tmpdir(), force: true });
+    const { models } = await client.fetchCatalog({ cwd: os.tmpdir(), force: true });
 
     expect(models).toEqual(getClaudeModels());
   });
@@ -609,7 +611,7 @@ describe("ClaudeAgentClient.listModels", () => {
     vi.stubEnv("CLAUDE_CONFIG_DIR", configDir);
     const client = createStaticFallbackClaudeClient();
 
-    const models = await client.listModels({ cwd: os.tmpdir(), force: true });
+    const { models } = await client.fetchCatalog({ cwd: os.tmpdir(), force: true });
 
     expect(models).toEqual(getClaudeModels());
   });
@@ -625,7 +627,7 @@ describe("ClaudeAgentClient.listModels", () => {
     vi.stubEnv("CLAUDE_CONFIG_DIR", configDir);
     const client = createStaticFallbackClaudeClient();
 
-    const models = await client.listModels({ cwd: os.tmpdir(), force: true });
+    const { models } = await client.fetchCatalog({ cwd: os.tmpdir(), force: true });
 
     expect(models).toEqual(getClaudeModels());
   });
@@ -641,7 +643,7 @@ describe("ClaudeAgentClient.listModels", () => {
     vi.stubEnv("CLAUDE_CONFIG_DIR", configDir);
     const client = createStaticFallbackClaudeClient();
 
-    const models = await client.listModels({ cwd: os.tmpdir(), force: true });
+    const { models } = await client.fetchCatalog({ cwd: os.tmpdir(), force: true });
 
     expect(models.map((model) => model.id)).toEqual([
       ...getClaudeModels().map((model) => model.id),

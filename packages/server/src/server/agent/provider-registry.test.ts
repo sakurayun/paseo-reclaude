@@ -1,7 +1,12 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
 import { createTestLogger } from "../../test-utils/test-logger.js";
-import type { AgentModelDefinition } from "./agent-sdk-types.js";
+import type {
+  AgentClient,
+  AgentModelDefinition,
+  AgentMode,
+  ProviderCatalog,
+} from "./agent-sdk-types.js";
 
 const mockState = vi.hoisted(() => {
   interface ConstructorEntry {
@@ -78,12 +83,11 @@ vi.mock("./providers/claude/agent.js", () => ({
       throw new Error("not implemented");
     }
 
-    async listModels(): Promise<AgentModelDefinition[]> {
-      return mockState.runtimeModels.get(this.provider) ?? [];
-    }
-
-    async listModes(): Promise<[]> {
-      return [];
+    async fetchCatalog(): Promise<ProviderCatalog> {
+      return {
+        models: mockState.runtimeModels.get(this.provider) ?? [],
+        modes: [],
+      };
     }
 
     async isAvailable(): Promise<boolean> {
@@ -173,12 +177,11 @@ vi.mock("./providers/codex-app-server-agent.js", () => ({
       throw new Error("not implemented");
     }
 
-    async listModels(): Promise<AgentModelDefinition[]> {
-      return mockState.runtimeModels.get(this.provider) ?? [];
-    }
-
-    async listModes(): Promise<[]> {
-      return [];
+    async fetchCatalog(): Promise<ProviderCatalog> {
+      return {
+        models: mockState.runtimeModels.get(this.provider) ?? [],
+        modes: [],
+      };
     }
 
     async isAvailable(): Promise<boolean> {
@@ -224,12 +227,11 @@ vi.mock("./providers/copilot-acp-agent.js", () => ({
       throw new Error("not implemented");
     }
 
-    async listModels(): Promise<AgentModelDefinition[]> {
-      return mockState.runtimeModels.get(this.provider) ?? [];
-    }
-
-    async listModes(): Promise<[]> {
-      return [];
+    async fetchCatalog(): Promise<ProviderCatalog> {
+      return {
+        models: mockState.runtimeModels.get(this.provider) ?? [],
+        modes: [],
+      };
     }
 
     async isAvailable(): Promise<boolean> {
@@ -276,12 +278,11 @@ vi.mock("./providers/pi/agent.js", () => ({
       throw new Error("not implemented");
     }
 
-    async listModels(): Promise<AgentModelDefinition[]> {
-      return mockState.runtimeModels.get(this.provider) ?? [];
-    }
-
-    async listModes(): Promise<[]> {
-      return [];
+    async fetchCatalog(): Promise<ProviderCatalog> {
+      return {
+        models: mockState.runtimeModels.get(this.provider) ?? [],
+        modes: [],
+      };
     }
 
     async isAvailable(): Promise<boolean> {
@@ -347,12 +348,11 @@ vi.mock("./providers/generic-acp-agent.js", () => ({
       throw new Error("not implemented");
     }
 
-    async listModels(): Promise<AgentModelDefinition[]> {
-      return mockState.runtimeModels.get(this.provider) ?? [];
-    }
-
-    async listModes(): Promise<[]> {
-      return [];
+    async fetchCatalog(): Promise<ProviderCatalog> {
+      return {
+        models: mockState.runtimeModels.get(this.provider) ?? [],
+        modes: [],
+      };
     }
 
     async isAvailable(): Promise<boolean> {
@@ -401,12 +401,11 @@ vi.mock("./providers/cursor-acp-agent.js", () => ({
       throw new Error("not implemented");
     }
 
-    async listModels(): Promise<AgentModelDefinition[]> {
-      return mockState.runtimeModels.get(this.provider) ?? [];
-    }
-
-    async listModes(): Promise<[]> {
-      return [];
+    async fetchCatalog(): Promise<ProviderCatalog> {
+      return {
+        models: mockState.runtimeModels.get(this.provider) ?? [],
+        modes: [],
+      };
     }
 
     async isAvailable(): Promise<boolean> {
@@ -876,7 +875,7 @@ describe("model merging", () => {
       },
     });
 
-    const models = await registry.codex.fetchModels({
+    const { models } = await registry.codex.fetchCatalog({
       cwd: "/tmp/registry-models",
       force: false,
     });
@@ -911,7 +910,7 @@ describe("model merging", () => {
       },
     });
 
-    const models = await registry.codex.fetchModels({
+    const { models } = await registry.codex.fetchCatalog({
       cwd: "/tmp/registry-models",
       force: false,
     });
@@ -949,7 +948,7 @@ describe("model merging", () => {
       },
     });
 
-    const models = await registry.codex.fetchModels({
+    const { models } = await registry.codex.fetchCatalog({
       cwd: "/tmp/registry-models",
       force: false,
     });
@@ -983,7 +982,7 @@ describe("model merging", () => {
       },
     });
 
-    const models = await registry.codex.fetchModels({
+    const { models } = await registry.codex.fetchCatalog({
       cwd: "/tmp/registry-models",
       force: false,
     });
@@ -1025,7 +1024,7 @@ describe("model merging", () => {
       },
     });
 
-    const models = await registry.claude.fetchModels({
+    const { models } = await registry.claude.fetchCatalog({
       cwd: "/tmp/registry-models",
       force: false,
     });
@@ -1075,7 +1074,7 @@ describe("model merging", () => {
       },
     });
 
-    const models = await registry.claude.fetchModels({
+    const { models } = await registry.claude.fetchCatalog({
       cwd: "/tmp/registry-models",
       force: false,
     });
@@ -1122,7 +1121,7 @@ describe("model merging", () => {
       },
     });
 
-    const models = await registry.codex.fetchModels({
+    const { models } = await registry.codex.fetchCatalog({
       cwd: "/tmp/registry-models",
       force: false,
     });
@@ -1161,7 +1160,7 @@ describe("model merging", () => {
       },
     });
 
-    const models = await registry.claude.fetchModels({
+    const { models } = await registry.claude.fetchCatalog({
       cwd: "/tmp/registry-models",
       force: false,
     });
@@ -1213,7 +1212,7 @@ describe("model merging", () => {
       },
     });
 
-    const models = await registry.claude.fetchModels({
+    const { models } = await registry.claude.fetchCatalog({
       cwd: "/tmp/registry-models",
       force: false,
     });
@@ -1251,7 +1250,7 @@ describe("model merging", () => {
     ]);
 
     const registry = buildProviderRegistry(logger);
-    const models = await registry.claude.fetchModels({
+    const { models } = await registry.claude.fetchCatalog({
       cwd: "/tmp/registry-models",
       force: false,
     });
@@ -1266,7 +1265,7 @@ describe("model merging", () => {
     ]);
   });
 
-  test("built-in createClient().listModels() honors profile model replacement (issue #579)", async () => {
+  test("built-in createClient().fetchCatalog() honors profile model replacement (issue #579)", async () => {
     mockState.runtimeModels.set("codex", [
       {
         provider: "codex",
@@ -1291,16 +1290,16 @@ describe("model merging", () => {
     });
 
     const client = registry.codex.createClient(logger);
-    const models = await client.listModels({
+    const catalog = await client.fetchCatalog({
       cwd: "/tmp/registry-models",
       force: false,
     });
 
-    expect(models.map((model) => model.id)).toEqual(["profile-fast"]);
-    expect(models.find((model) => model.isDefault)?.id).toBe("profile-fast");
+    expect(catalog.models.map((model) => model.id)).toEqual(["profile-fast"]);
+    expect(catalog.models.find((model) => model.isDefault)?.id).toBe("profile-fast");
   });
 
-  test("built-in createClient().listModels() honors additionalModels default (issue #579)", async () => {
+  test("built-in createClient().fetchCatalog() honors additionalModels default (issue #579)", async () => {
     mockState.runtimeModels.set("claude", [
       {
         provider: "claude",
@@ -1325,12 +1324,12 @@ describe("model merging", () => {
     });
 
     const client = registry.claude.createClient(logger);
-    const models = await client.listModels({
+    const catalog = await client.fetchCatalog({
       cwd: "/tmp/registry-models",
       force: false,
     });
 
-    const defaultModel = models.find((model) => model.isDefault) ?? models[0];
+    const defaultModel = catalog.models.find((model) => model.isDefault) ?? catalog.models[0];
     expect(defaultModel?.id).toBe("profile-default");
   });
 
@@ -1353,12 +1352,120 @@ describe("model merging", () => {
       },
     });
 
-    const models = await registry.claude.fetchModels({
+    const { models } = await registry.claude.fetchCatalog({
       cwd: "/tmp/registry-models",
       force: false,
     });
 
     expect(models.map((model) => model.id)).toEqual(["MiniMax-M2.7", "MiniMax-M3"]);
     expect(models.find((model) => model.isDefault)?.id).toBe("MiniMax-M3");
+  });
+});
+
+describe("fetchCatalog", () => {
+  test("returns merged models and modes from fetchCatalog", async () => {
+    mockState.runtimeModels.set("codex", [
+      { provider: "codex", id: "codex-runtime", label: "Codex Runtime" },
+    ]);
+
+    const registry = buildProviderRegistry(logger);
+    const catalog = await registry.codex.fetchCatalog({
+      cwd: "/tmp/catalog",
+      force: false,
+    });
+
+    expect(catalog.models.map((model) => model.id)).toEqual(["codex-runtime"]);
+    expect(catalog.modes).toEqual([]);
+  });
+
+  test("replacement models skip runtime model discovery but preserve additionalModels", async () => {
+    mockState.runtimeModels.set("codex", [
+      { provider: "codex", id: "codex-runtime", label: "Codex Runtime" },
+    ]);
+
+    const registry = buildProviderRegistry(logger, {
+      providerOverrides: {
+        codex: {
+          models: [{ id: "profile-model", label: "Profile Model" }],
+          additionalModels: [{ id: "extra-model", label: "Extra Model" }],
+        },
+      },
+    });
+
+    const catalog = await registry.codex.fetchCatalog({
+      cwd: "/tmp/catalog",
+      force: false,
+    });
+
+    expect(catalog.models.map((model) => model.id)).toEqual(["profile-model", "extra-model"]);
+  });
+
+  test("additionalModels can override replacement model fields", async () => {
+    const registry = buildProviderRegistry(logger, {
+      providerOverrides: {
+        codex: {
+          models: [{ id: "shared-model", label: "Profile Label" }],
+          additionalModels: [{ id: "shared-model", label: "Additional Label" }],
+        },
+      },
+    });
+
+    const catalog = await registry.codex.fetchCatalog({
+      cwd: "/tmp/catalog",
+      force: false,
+    });
+
+    expect(catalog.models).toEqual([
+      {
+        provider: "codex",
+        id: "shared-model",
+        label: "Additional Label",
+      },
+    ]);
+  });
+
+  test("uses injected client instead of base client when provided", async () => {
+    const injectedModels: AgentModelDefinition[] = [
+      { provider: "codex", id: "injected-model", label: "Injected Model" },
+    ];
+    const injectedModes: AgentMode[] = [{ id: "agent", label: "Agent" }];
+    const injectedClient = {
+      provider: "codex",
+      capabilities: {},
+      fetchCatalog: vi.fn(async () => ({ models: injectedModels, modes: injectedModes })),
+      isAvailable: vi.fn(async () => true),
+    } satisfies Partial<AgentClient> as AgentClient;
+
+    const registry = buildProviderRegistry(logger);
+    const catalog = await registry.codex.fetchCatalog(
+      { cwd: "/tmp/catalog", force: false },
+      injectedClient,
+    );
+
+    expect(injectedClient.fetchCatalog).toHaveBeenCalledTimes(1);
+    expect(catalog.models.map((model) => model.id)).toEqual(["injected-model"]);
+    expect(catalog.modes).toEqual(injectedModes);
+  });
+
+  test("uses injected client fetchCatalog when available", async () => {
+    const injectedClient = {
+      provider: "codex",
+      capabilities: {},
+      fetchCatalog: vi.fn(async () => ({
+        models: [{ provider: "codex", id: "catalog-model", label: "Catalog Model" }],
+        modes: [{ id: "ask", label: "Ask" }],
+      })),
+      isAvailable: vi.fn(async () => true),
+    } satisfies Partial<AgentClient> as AgentClient;
+
+    const registry = buildProviderRegistry(logger);
+    const catalog = await registry.codex.fetchCatalog(
+      { cwd: "/tmp/catalog", force: false },
+      injectedClient,
+    );
+
+    expect(injectedClient.fetchCatalog).toHaveBeenCalledTimes(1);
+    expect(catalog.models.map((model) => model.id)).toEqual(["catalog-model"]);
+    expect(catalog.modes.map((mode) => mode.id)).toEqual(["ask"]);
   });
 });

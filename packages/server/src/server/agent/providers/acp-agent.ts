@@ -81,13 +81,13 @@ import {
   type AgentStreamEvent,
   type AgentTimelineItem,
   type AgentUsage,
+  type FetchCatalogOptions,
   type ImportableProviderSession,
   type ImportProviderSessionContext,
   type ImportProviderSessionInput,
   type ListImportableSessionsOptions,
-  type ListModesOptions,
-  type ListModelsOptions,
   type McpServerConfig,
+  type ProviderCatalog,
   type ToolCallDetail,
   type ToolCallTimelineItem,
 } from "../agent-sdk-types.js";
@@ -712,7 +712,7 @@ export class ACPAgentClient implements AgentClient {
     return session;
   }
 
-  async listModels(options: ListModelsOptions): Promise<AgentModelDefinition[]> {
+  async fetchCatalog(options: FetchCatalogOptions): Promise<ProviderCatalog> {
     const { cwd } = options;
     const probe = await this.spawnProcess(PROBE_ENV);
     try {
@@ -728,29 +728,15 @@ export class ACPAgentClient implements AgentClient {
         transformed.models,
         transformed.configOptions,
       );
-      return this.modelTransformer ? this.modelTransformer(models) : models;
-    } finally {
-      await this.closeProbe(probe);
-    }
-  }
-
-  async listModes(options: ListModesOptions): Promise<AgentMode[]> {
-    const { cwd } = options;
-    const probe = await this.spawnProcess(PROBE_ENV);
-    try {
-      const response = await this.runACPRequest(() =>
-        probe.connection.newSession({
-          cwd,
-          mcpServers: [],
-        }),
-      );
-      const transformed = this.transformSessionResponse(response);
       const modeInfo = deriveModesFromACP(
         this.defaultModes,
         transformed.modes,
         transformed.configOptions,
       );
-      return modeInfo.modes;
+      return {
+        models: this.modelTransformer ? this.modelTransformer(models) : models,
+        modes: modeInfo.modes,
+      };
     } finally {
       await this.closeProbe(probe);
     }

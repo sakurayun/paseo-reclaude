@@ -395,7 +395,7 @@ describe("convertClaudeHistoryEntry", () => {
 // "interrupting message should produce coherent text without garbling from race condition"
 // in daemon.e2e.test.ts which exercises the full flow through the WebSocket API.
 
-describe("ClaudeAgentClient.listModels", () => {
+describe("ClaudeAgentClient.fetchCatalog", () => {
   const logger = createTestLogger();
 
   test("returns hardcoded claude models", async () => {
@@ -406,7 +406,7 @@ describe("ClaudeAgentClient.listModels", () => {
         resolveBinary: async () => "/test/claude/bin",
         configDir: emptyConfigDir,
       });
-      const models = await client.listModels({ cwd: "/tmp/claude-models", force: false });
+      const { models } = await client.fetchCatalog({ cwd: "/tmp/claude-models", force: false });
 
       expect(models.map((m) => m.id)).toEqual([
         "claude-fable-5[1m]",
@@ -443,7 +443,7 @@ describe("ClaudeAgentClient.listModels", () => {
         resolveBinary: async () => "/test/claude/bin",
         configDir: emptyConfigDir,
       });
-      const models = await client.listModels({ cwd: "/tmp/claude-models", force: false });
+      const { models } = await client.fetchCatalog({ cwd: "/tmp/claude-models", force: false });
 
       expect(models.map((m) => m.id)).toEqual(["opus", "sonnet", "haiku"]);
 

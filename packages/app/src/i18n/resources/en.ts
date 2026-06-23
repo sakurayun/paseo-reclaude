@@ -980,6 +980,9 @@ export const en = {
         failedOpen: "Failed to open workspace",
       },
       pr: {
+        actions: {
+          viewPullRequest: "View",
+        },
         sections: {
           checks: "Checks",
           reviews: "Reviews",

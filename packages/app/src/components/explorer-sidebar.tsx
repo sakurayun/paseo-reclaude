@@ -21,9 +21,13 @@ import { useTranslation } from "react-i18next";
 import {
   formatPrTabLabel,
   PullRequestPane,
+  PullRequestPaneError,
+  PullRequestPaneSkeleton,
   PullRequestTabIcon,
   usePrPaneData,
 } from "@/git/pull-request-panel";
+import { useCheckoutGitActionsStore } from "@/git/actions-store";
+import type { UsePrPaneDataResult } from "@/git/pull-request-panel/use-data";
 import {
   usePanelStore,
   selectIsFileExplorerOpen,
@@ -33,6 +37,7 @@ import {
 } from "@/stores/panel-store";
 import { useExplorerSidebarAnimation } from "@/contexts/explorer-sidebar-animation-context";
 import { useSidebarAnimation } from "@/contexts/sidebar-animation-context";
+import { useToast } from "@/contexts/toast-context";
 import { canCloseRightSidebarGesture } from "@/utils/sidebar-animation-state";
 import { HEADER_INNER_HEIGHT } from "@/constants/layout";
 import { GitDiffPane } from "@/git/diff-pane";
@@ -457,16 +462,16 @@ function ExplorerTabButton({
   );
 }
 
-// Non-git checkouts only have a files view; the PR tab needs an open PR.
+// Non-git checkouts only have a files view; the PR tab needs an open PR (or one still loading).
 function resolveVisibleExplorerTab(
   activeTab: ExplorerTab,
   isGit: boolean,
-  hasPullRequest: boolean,
+  showPrTab: boolean,
 ): ExplorerTab {
   if (!isGit && activeTab !== "files") {
     return "files";
   }
-  if (activeTab === "pr" && !hasPullRequest) {
+  if (activeTab === "pr" && !showPrTab) {
     return "changes";
   }
   return activeTab;
@@ -501,6 +506,7 @@ function ExplorerSidebarContent({
 }: SidebarContentProps) {
   const { theme } = useUnistyles();
   const { t } = useTranslation();
+  const toast = useToast();
   const padding = useWindowControlsPadding("explorerSidebar");
   const canQueryPullRequest = isGit && Boolean(workspaceRoot);
   const prPane = usePrPaneData({
@@ -510,8 +516,15 @@ function ExplorerSidebarContent({
     timelineEnabled: activeTab === "pr" && canQueryPullRequest && isOpen,
   });
   const hasPullRequest = prPane.prNumber !== null;
-  const resolvedTab = resolveVisibleExplorerTab(activeTab, isGit, hasPullRequest);
+  const showPrTab = hasPullRequest || (activeTab === "pr" && prPane.isLoading);
+  const resolvedTab = resolveVisibleExplorerTab(activeTab, isGit, showPrTab);
   const prTabLabel = formatPrTabLabel(prPane.prNumber);
+  const refreshGitActions = useCheckoutGitActionsStore((s) => s.refresh);
+  const handlePrRetry = useCallback(() => {
+    refreshGitActions({ serverId, cwd: workspaceRoot }).catch((error) => {
+      toast.error(error instanceof Error ? error.message : t("workspace.git.diff.failedRefresh"));
+    });
+  }, [refreshGitActions, serverId, t, toast, workspaceRoot]);
   const workspaceAttachmentScopeKey = useMemo(
     () => buildWorkspaceAttachmentScopeKey({ serverId, workspaceId, cwd: workspaceRoot }),
     [serverId, workspaceId, workspaceRoot],
@@ -553,7 +566,7 @@ function ExplorerSidebarContent({
               testID="explorer-tab-git"
             />
           )}
-          {isGit && hasPullRequest && (
+          {isGit && showPrTab && (
             <ExplorerTabButton
               tab="pr"
               active={resolvedTab === "pr"}
@@ -597,12 +610,13 @@ function ExplorerSidebarContent({
             onOpenFile={onOpenFile}
           />
         )}
-        {resolvedTab === "pr" && prPane.data && (
-          <PullRequestPane
+        {resolvedTab === "pr" && (
+          <PrTabContent
             serverId={serverId}
             cwd={workspaceRoot}
-            data={prPane.data}
+            prPane={prPane}
             workspaceAttachmentScopeKey={workspaceAttachmentScopeKey}
+            onRetry={handlePrRetry}
           />
         )}
         {resolvedTab === "git" && (
@@ -617,6 +631,38 @@ function ExplorerSidebarContent({
       </View>
     </View>
   );
+}
+
+interface PrTabContentProps {
+  serverId: string;
+  cwd: string;
+  prPane: UsePrPaneDataResult;
+  workspaceAttachmentScopeKey: string;
+  onRetry: () => void;
+}
+
+function PrTabContent({
+  serverId,
+  cwd,
+  prPane,
+  workspaceAttachmentScopeKey,
+  onRetry,
+}: PrTabContentProps) {
+  if (prPane.data) {
+    return (
+      <PullRequestPane
+        serverId={serverId}
+        cwd={cwd}
+        data={prPane.data}
+        activityLoading={prPane.activityLoading}
+        workspaceAttachmentScopeKey={workspaceAttachmentScopeKey}
+      />
+    );
+  }
+  if (prPane.error) {
+    return <PullRequestPaneError onRetry={onRetry} />;
+  }
+  return <PullRequestPaneSkeleton />;
 }
 
 // Static styles for Animated.Views — must NOT use Unistyles dynamic theme to

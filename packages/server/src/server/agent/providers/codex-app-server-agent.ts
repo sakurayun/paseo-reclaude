@@ -26,15 +26,15 @@ import {
   type AgentTimelineItem,
   type ToolCallTimelineItem,
   type AgentUsage,
+  type FetchCatalogOptions,
   type ImportableProviderSession,
   type ImportProviderSessionContext,
   type ImportProviderSessionInput,
   type ListImportableSessionsOptions,
-  type ListModelsOptions,
+  type ProviderCatalog,
 } from "../agent-sdk-types.js";
 import { importSessionFromPersistence } from "../provider-session-import.js";
 import type { Logger } from "pino";
-import { homedir } from "node:os";
 
 import type { ChildProcess, ChildProcessWithoutNullStreams } from "node:child_process";
 import { randomUUID } from "node:crypto";
@@ -84,13 +84,11 @@ import {
 } from "./provider-image-output.js";
 import { normalizeProviderReplayTimestamp } from "../provider-history-timestamps.js";
 import {
-  formatDiagnosticStatus,
   formatProviderDiagnostic,
   formatProviderDiagnosticError,
   buildBinaryDiagnosticRows,
   buildCommandResolutionDiagnosticRows,
   resolveBinaryVersion,
-  toDiagnosticErrorMessage,
 } from "./diagnostic-utils.js";
 import { runProviderTurn } from "./provider-runner.js";
 import { resolvePaseoHome } from "../../paseo-home.js";
@@ -5961,7 +5959,12 @@ export class CodexAppServerAgentClient implements AgentClient {
     });
   }
 
-  async listModels(_options: ListModelsOptions): Promise<AgentModelDefinition[]> {
+  async fetchCatalog(_options: FetchCatalogOptions): Promise<ProviderCatalog> {
+    const models = await this.fetchModelsFromAppServer();
+    return { models, modes: CODEX_MODES };
+  }
+
+  private async fetchModelsFromAppServer(): Promise<AgentModelDefinition[]> {
     // Codex model/list is global to the app server in this flow; cwd/force are intentionally ignored.
     const child = await this.spawnAppServer();
     const client = new CodexAppServerClient(child, this.logger);
@@ -6045,34 +6048,12 @@ export class CodexAppServerAgentClient implements AgentClient {
     try {
       const launch = await resolveCodexLaunch(this.runtimeSettings);
       const availability = await checkCodexLaunchAvailable(launch);
-      const available = availability.available;
       const entries: Array<{ label: string; value: string }> = [
         ...(await buildCommandResolutionDiagnosticRows(launch, {
           knownBinaryNames: ["codex"],
         })),
         ...(await buildBinaryDiagnosticRows(launch, availability)),
       ];
-      let status = formatDiagnosticStatus(available);
-
-      if (!available) {
-        entries.push({ label: "Models", value: "Not checked" });
-      } else {
-        try {
-          const models = await this.listModels({ cwd: homedir(), force: false });
-          entries.push({ label: "Models", value: String(models.length) });
-        } catch (error) {
-          entries.push({
-            label: "Models",
-            value: `Error - ${toDiagnosticErrorMessage(error)}`,
-          });
-          status = formatDiagnosticStatus(available, {
-            source: "model fetch",
-            cause: error,
-          });
-        }
-      }
-
-      entries.push({ label: "Status", value: status });
 
       return {
         diagnostic: formatProviderDiagnostic("Codex", entries),

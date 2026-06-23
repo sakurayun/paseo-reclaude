@@ -4,7 +4,6 @@ import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Logger } from "pino";
 import { z } from "zod";
-import { withTimeout } from "../../../../utils/promise-timeout.js";
 
 import {
   type AgentCapabilityFlags,
@@ -27,12 +26,12 @@ import {
   type AgentSlashCommandKind,
   type AgentStreamEvent,
   type AgentUsage,
+  type FetchCatalogOptions,
   type ImportableProviderSession,
   type ImportProviderSessionContext,
   type ImportProviderSessionInput,
   type ListImportableSessionsOptions,
-  type ListModesOptions,
-  type ListModelsOptions,
+  type ProviderCatalog,
 } from "../../agent-sdk-types.js";
 import { importSessionFromPersistence } from "../../provider-session-import.js";
 import { runProviderTurn } from "../provider-runner.js";
@@ -47,7 +46,6 @@ import { composeSystemPromptParts } from "../../system-prompt.js";
 import {
   buildBinaryDiagnosticRows,
   buildCommandResolutionDiagnosticRows,
-  formatDiagnosticStatus,
   formatProviderDiagnostic,
   formatProviderDiagnosticError,
   toDiagnosticErrorMessage,
@@ -84,6 +82,7 @@ import {
 const PI_PROVIDER = "pi";
 const DEFAULT_PI_THINKING_LEVEL: PiThinkingLevel = "medium";
 const PI_BINARY_COMMAND = process.env.PI_COMMAND ?? process.env.PI_ACP_PI_COMMAND ?? "pi";
+const PI_CATALOG_REQUEST_TIMEOUT_MS = 120_000;
 const PASEO_PI_TREE_EXTENSION_COMMAND = "paseo_tree";
 const PASEO_PI_CAPTURE_EXTENSION_COMMAND = "paseo_capture_entries";
 const PASEO_PI_ENTRY_CAPTURE_MARKER = "PASEO_ENTRY_CAPTURE";
@@ -1962,17 +1961,16 @@ export class PiRpcAgentClient implements AgentClient {
     }
   }
 
-  async listModels(options: ListModelsOptions): Promise<AgentModelDefinition[]> {
+  async fetchCatalog(options: FetchCatalogOptions): Promise<ProviderCatalog> {
     const runtimeSession = await this.runtime.startSession({ cwd: options.cwd });
     try {
-      return transformPiModels((await runtimeSession.getAvailableModels()).map(mapPiModel));
+      const models = transformPiModels(
+        (await runtimeSession.getAvailableModels(PI_CATALOG_REQUEST_TIMEOUT_MS)).map(mapPiModel),
+      );
+      return { models, modes: [] };
     } finally {
       await runtimeSession.close();
     }
-  }
-
-  async listModes(_options: ListModesOptions): Promise<AgentMode[]> {
-    return [];
   }
 
   async listImportableSessions(
@@ -1998,30 +1996,9 @@ export class PiRpcAgentClient implements AgentClient {
 
   async isAvailable(): Promise<boolean> {
     try {
-      return await withTimeout(
-        (async () => {
-          const launch = await this.resolvePiLaunch();
-          const availability = await checkProviderLaunchAvailable(launch);
-          if (!availability.available) {
-            return false;
-          }
-          const runtimeSession = await this.runtime
-            .startSession({ cwd: homedir() })
-            .catch(() => null);
-          if (!runtimeSession) {
-            return false;
-          }
-          try {
-            return (await runtimeSession.getAvailableModels()).length > 0;
-          } catch {
-            return false;
-          } finally {
-            await runtimeSession.close().catch(() => undefined);
-          }
-        })(),
-        2000,
-        "Pi availability check timed out",
-      );
+      const launch = await this.resolvePiLaunch();
+      const availability = await checkProviderLaunchAvailable(launch);
+      return availability.available;
     } catch {
       return false;
     }
@@ -2031,48 +2008,7 @@ export class PiRpcAgentClient implements AgentClient {
     try {
       const launch = await this.resolvePiLaunch();
       const availability = await checkProviderLaunchAvailable(launch);
-      const available = availability.available;
       const authConfigPath = join(homedir(), ".pi", "agent", "auth.json");
-      let modelsValue = "Not checked";
-      let configuredProvidersValue = "none";
-      let mcpToolsValue = "Not checked";
-      let status = formatDiagnosticStatus(available);
-
-      if (availability.available) {
-        const runtimeSession = await this.runtime
-          .startSession({ cwd: homedir() })
-          .catch((error) => {
-            status = formatDiagnosticStatus(false, {
-              source: "startup",
-              cause: error,
-            });
-            return null;
-          });
-        if (runtimeSession) {
-          try {
-            const models = await runtimeSession.getAvailableModels();
-            modelsValue = String(models.length);
-            const configuredProviders = Array.from(
-              new Set(models.map((model) => model.provider)),
-            ).sort();
-            configuredProvidersValue =
-              configuredProviders.length > 0 ? configuredProviders.join(", ") : "none";
-            const commands = await runtimeSession.getCommands();
-            mcpToolsValue = commands.some(isPiMcpAdapterCommand)
-              ? "yes (pi-mcp-adapter loaded)"
-              : "no (install pi-mcp-adapter)";
-          } catch (error) {
-            modelsValue = `Error - ${toDiagnosticErrorMessage(error)}`;
-            mcpToolsValue = `Error - ${toDiagnosticErrorMessage(error)}`;
-            status = formatDiagnosticStatus(available, {
-              source: "model fetch",
-              cause: error,
-            });
-          } finally {
-            await runtimeSession.close().catch(() => undefined);
-          }
-        }
-      }
 
       return {
         diagnostic: formatProviderDiagnostic("Pi", [
@@ -2080,14 +2016,10 @@ export class PiRpcAgentClient implements AgentClient {
             knownBinaryNames: [launch.command],
           })),
           ...(await buildBinaryDiagnosticRows(launch, availability)),
-          { label: "Configured providers", value: configuredProvidersValue },
           {
             label: "Auth config (~/.pi/agent/auth.json)",
             value: existsSync(authConfigPath) ? "found" : "not found",
           },
-          { label: "Models", value: modelsValue },
-          { label: "Paseo MCP tools", value: mcpToolsValue },
-          { label: "Status", value: status },
         ]),
       };
     } catch (error) {
