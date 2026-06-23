@@ -113,6 +113,13 @@ export interface ComboboxProps {
   desktopFixedHeight?: number;
   /** Content rendered above the scroll area on desktop (sticky header). */
   stickyHeader?: ReactNode;
+  /**
+   * Persistent content rendered directly below the search input and above the
+   * options list. Unlike an option, it is never filtered by the search query
+   * and stays visible when the list is empty — use it for actions such as
+   * "Add project" that should always be reachable from the dropdown.
+   */
+  listHeader?: ReactNode;
   /** When true, selecting an option does not close the picker (multi-select mode). */
   keepOpenOnSelect?: boolean;
   anchorRef: React.RefObject<View | null>;
@@ -969,6 +976,7 @@ interface MobileBodyProps {
   header: SheetHeader | undefined;
   onClose: () => void;
   stickyHeader: ReactNode;
+  listHeader: ReactNode;
   searchable: boolean;
   hasChildren: boolean;
   mobileChildrenScrollEnabled: boolean;
@@ -1054,6 +1062,7 @@ function MobileComboboxBody(props: MobileBodyProps): ReactElement {
               resetKey={props.searchResetKey}
             />
           ) : null}
+          {!props.hasChildren ? props.listHeader : null}
         </>
       )}
       {props.hasChildren && !props.mobileChildrenScrollEnabled ? (
@@ -1080,6 +1089,7 @@ interface DesktopBodyProps {
   handleDesktopContentLayout: (event: LayoutChangeEvent) => void;
   header: SheetHeader | undefined;
   stickyHeader: ReactNode;
+  listHeader: ReactNode;
   searchable: boolean;
   searchPlaceholder: string;
   searchQuery: string;
@@ -1122,6 +1132,7 @@ function DesktopComboboxChildrenBody(props: {
 function DesktopComboboxOptionsBody(props: {
   header: SheetHeader | undefined;
   stickyHeader: ReactNode;
+  listHeader: ReactNode;
   searchable: boolean;
   searchPlaceholder: string;
   searchQuery: string;
@@ -1161,6 +1172,7 @@ function DesktopComboboxOptionsBody(props: {
           useBottomSheetInput={false}
         />
       )}
+      {props.listHeader}
       {props.effectiveOptionsPosition === "above-search" ? (
         <ScrollView
           ref={props.desktopOptionsScrollRef}
@@ -1214,6 +1226,7 @@ function DesktopComboboxBody(props: DesktopBodyProps): ReactElement {
             <DesktopComboboxOptionsBody
               header={props.header}
               stickyHeader={props.stickyHeader}
+              listHeader={props.listHeader}
               searchable={props.searchable}
               searchPlaceholder={props.searchPlaceholder}
               searchQuery={props.searchQuery}
@@ -1265,6 +1278,7 @@ export function Combobox({
   desktopMinWidth,
   desktopFixedHeight,
   stickyHeader,
+  listHeader,
   keepOpenOnSelect = false,
   anchorRef,
   children,
@@ -1546,6 +1560,7 @@ export function Combobox({
         header={header}
         onClose={handleClose}
         stickyHeader={stickyHeader}
+        listHeader={listHeader}
         searchable={searchable}
         hasChildren={hasChildren}
         mobileChildrenScrollEnabled={mobileChildrenScrollEnabled}
@@ -1579,6 +1594,7 @@ export function Combobox({
       handleDesktopContentLayout={handleDesktopContentLayout}
       header={header}
       stickyHeader={stickyHeader}
+      listHeader={listHeader}
       searchable={searchable}
       searchPlaceholder={effectiveSearchPlaceholder}
       searchQuery={searchQuery}

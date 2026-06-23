@@ -1,5 +1,6 @@
-import { describe, it, expect } from "vitest";
-import { formatDuration, formatMessageTimestamp } from "./time";
+import { afterEach, describe, expect, it } from "vitest";
+import { i18n } from "@/i18n/i18next";
+import { formatDuration, formatMessageTimestamp, formatTimeAgo } from "./time";
 
 describe("formatDuration", () => {
   it("renders sub-minute durations as whole seconds", () => {
@@ -25,6 +26,35 @@ describe("formatDuration", () => {
   it("guards against negative and NaN", () => {
     expect(formatDuration(-1)).toBe("0s");
     expect(formatDuration(Number.NaN)).toBe("0s");
+  });
+});
+
+describe("formatTimeAgo", () => {
+  // 2026-06-23 is "now"; 2026-06-15 is 8 days back → the older-date branch that
+  // renders an absolute "month day" label in the active locale.
+  const now = new Date(2026, 5, 23, 12, 0);
+  const olderDate = new Date(2026, 5, 15, 9, 0);
+
+  afterEach(async () => {
+    await i18n.changeLanguage("en");
+  });
+
+  it("renders the abbreviated month and day in English", () => {
+    expect(formatTimeAgo(olderDate, now)).toBe("Jun 15");
+  });
+
+  it("keeps the localized day suffix in Chinese (regression: '6月15日', not '6月 15')", async () => {
+    await i18n.changeLanguage("zh-CN");
+    const result = formatTimeAgo(olderDate, now);
+    expect(result).toBe("6月15日");
+    // The old hand-concatenation produced "6月 15": day number with no 日 suffix.
+    expect(result).toContain("日");
+    expect(result).not.toMatch(/月\s/);
+  });
+
+  it("still shows relative labels for recent timestamps", () => {
+    const fiveMinAgo = new Date(now.getTime() - 5 * 60 * 1000);
+    expect(formatTimeAgo(fiveMinAgo, now)).toBe("5m ago");
   });
 });
 

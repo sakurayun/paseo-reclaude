@@ -155,3 +155,14 @@ ReClaude 用量天然契合现有 `ProviderUsage`（`packages/protocol/src/messa
 - 密码只在「app → daemon → reclaude.ai」链路上传一次，**不落盘、不进日志、不写 memory**。
 - 落盘的只有会话 cookie `rc_sid`（`0o600`）。cookie 失效（401）时 UI 回到「需登录」态。
 - `rc_sid` 是 HttpOnly/Secure/SameSite=Lax、约 7 天有效，到期需重新登录。
+
+## 8. 跨端实时广播（`COMPAT(reclaudeUsageBroadcast)`，v0.1.108）
+
+凭据（cookie）与用量缓存（`cachedUsage`）本就**只在 daemon 端**、由同一 daemon 的所有客户端共享——任一端登录/登出/同步用量，改的都是这一份共享状态。但此前所有 reclaude 响应都是**按连接点对点**（`this.host.emit` + requestId），不广播；于是其它已连接的客户端只能等自己的 React Query `staleTime`（status 60s / usage 5min）过期或重新挂载才刷新。
+
+本功能补上这道广播，让「某端同步用量后，其它桌面端和 app 端**实时**更新」：
+
+- **server**：`ReclaudeAccountService` 新增 `onChange(listener)` 订阅 + 私有 `emitChange()`。在每个会改变共享状态的点调用 `emitChange()`：`login`（completed 分支）、`verifyMfa`、`logout`、`syncUsage`（实时拉取成功 + cookie 被拒 `NEEDS_AUTH` 清理两条路径）；节流早退/无 cookie 早退**不触发**（无状态变化）。`emitChange` 在无监听者时短路。
+- **server**：`WebSocketServer` 构造时 `this.reclaudeAccountService.onChange(...)` 订阅一次，回调里 `broadcastReclaudeChanged(payload)` 把 `{active, loggedIn, email, usage}` 发给**所有**会话（**不排除发起方**：事件源自共享的 daemon 服务、无连接上下文，且重复应用同值经 React Query 结构共享是幂等的）。**只广播派生数据，绝不含 cookie**。
+- **protocol**：新增 outbound `provider.reclaude.changed`（`ReclaudeUsageChangedMessageSchema`，payload `{active, loggedIn, email, usage: ProviderUsage|null}`）+ 能力位 `server_info.features.reclaudeUsageBroadcast`。旧客户端收到未知消息类型经 `WSOutboundMessageSchema.safeParse` 失败被忽略，向后兼容。
+- **app**：新增桥接 `packages/app/src/provider-usage/reclaude-usage-sync.ts`，在 `session-context.tsx` 挂载。监听 `provider.reclaude.changed`，按 `serverId` 把 status 写入 `reclaudeStatusQueryKey` 缓存、把 `usage` 原地 patch 进 `providerUsageQueryKey` 列表的 Claude 条目（复刻 `useReclaude` 的 `patchClaudeUsage`，不动 Codex 等其它 provider）。无需 daemon 往返；旧 daemon 不发该事件，桥接为纯 no-op。

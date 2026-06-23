@@ -1023,6 +1023,8 @@ export const zhCN: TranslationResources = {
       newConversation: "新建对话",
       history: "历史会话",
       empty: "暂无会话",
+      unknownWorkspace: "其他",
+      renameWorkspace: "重命名工作区",
     },
     worktreeSetup: {
       title: "设置 worktree scripts",
@@ -1105,6 +1107,7 @@ export const zhCN: TranslationResources = {
   newWorkspace: {
     title: "新建 workspace",
     create: "创建",
+    addProject: "添加项目",
     isolation: {
       local: "本地",
       worktree: "新建 worktree",

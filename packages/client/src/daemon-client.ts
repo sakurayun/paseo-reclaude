@@ -118,6 +118,7 @@ import type {
   WorkspaceLayoutEnvelope,
   PromptPresetsEnvelope,
   AppearanceSettingsEnvelope,
+  ModelPreferencesEnvelope,
 } from "@getpaseo/protocol/messages";
 import { isRelayClientWebSocketUrl } from "@getpaseo/protocol/daemon-endpoints";
 import { terminalSubscriptionKey } from "@getpaseo/protocol/terminal-subscription-key";
@@ -1807,6 +1808,59 @@ export class DaemonClient {
       options: { skipQueue: true },
       select: (msg) => {
         if (msg.type !== "appearance.settings.get.response") {
+          return null;
+        }
+        if (msg.payload.requestId !== requestId) {
+          return null;
+        }
+        return msg.payload;
+      },
+    });
+    return response.envelope;
+  }
+
+  async pushModelPreferences(params: {
+    revision: number;
+    preferences: Record<string, unknown>;
+  }): Promise<{ accepted: boolean; revision: number }> {
+    const requestId = this.createRequestId();
+    const message = SessionInboundMessageSchema.parse({
+      type: "model.preferences.push.request",
+      revision: params.revision,
+      preferences: params.preferences,
+      requestId,
+    });
+    const response = await this.sendRequest({
+      requestId,
+      message,
+      timeout: 15000,
+      options: { skipQueue: true },
+      select: (msg) => {
+        if (msg.type !== "model.preferences.push.response") {
+          return null;
+        }
+        if (msg.payload.requestId !== requestId) {
+          return null;
+        }
+        return msg.payload;
+      },
+    });
+    return { accepted: response.accepted, revision: response.revision };
+  }
+
+  async getModelPreferences(): Promise<ModelPreferencesEnvelope> {
+    const requestId = this.createRequestId();
+    const message = SessionInboundMessageSchema.parse({
+      type: "model.preferences.get.request",
+      requestId,
+    });
+    const response = await this.sendRequest({
+      requestId,
+      message,
+      timeout: 15000,
+      options: { skipQueue: true },
+      select: (msg) => {
+        if (msg.type !== "model.preferences.get.response") {
           return null;
         }
         if (msg.payload.requestId !== requestId) {

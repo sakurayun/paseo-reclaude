@@ -16,7 +16,7 @@ import {
   type FormPreferenceUpdate,
 } from "@/create-agent-preferences/service";
 
-const FORM_PREFERENCES_QUERY_KEY = ["form-preferences"];
+export const FORM_PREFERENCES_QUERY_KEY = ["form-preferences"];
 
 export type { FavoriteModelPreference, FavoriteModelRow, FormPreferences, ProviderPreferences };
 

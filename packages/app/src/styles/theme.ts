@@ -348,6 +348,11 @@ const newThemeSemanticColors = {
   // The shell underlay (behind the floating content card) is the same #fafafa,
   // so sidebars + the margins around the card read as one continuous backdrop.
   surfaceShell: "#fafafa",
+  // Scrollbar handle is #fafafa too, so the native + overlay scrollbars melt
+  // into the #fafafa chrome instead of cutting a darker bar across it. Both the
+  // CSS scrollbar (use-web-scrollbar-style.web.ts) and the desktop overlay
+  // (web-desktop-scrollbar.tsx) read this token, so the new theme owns both.
+  scrollbarHandle: "#fafafa",
 } as const;
 
 // ---------------------------------------------------------------------------

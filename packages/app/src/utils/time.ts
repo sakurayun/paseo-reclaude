@@ -5,8 +5,7 @@ import { getActiveLocale } from "@/i18n/use-locale";
  * Format a date as a human-friendly relative time string
  * Examples: "just now", "5m ago", "2h ago", "3d ago", "Jan 15" (localized via active locale)
  */
-export function formatTimeAgo(date: Date): string {
-  const now = new Date();
+export function formatTimeAgo(date: Date, now: Date = new Date()): string {
   const diffMs = now.getTime() - date.getTime();
   const diffSec = Math.floor(diffMs / 1000);
   const diffMin = Math.floor(diffSec / 60);
@@ -33,10 +32,12 @@ export function formatTimeAgo(date: Date): string {
     return i18n.t("time.relative.daysAgo", { value: diffDay });
   }
 
-  // For older dates, show abbreviated month and day in the active locale.
-  const month = date.toLocaleDateString(getActiveLocale(), { month: "short" });
-  const day = date.getDate();
-  return `${month} ${day}`;
+  // For older dates, show abbreviated month and day in the active locale. Let the
+  // locale lay out month and day in a single call — hand-concatenating
+  // `${month} ${day}` drops the day suffix and word order some locales require:
+  // it rendered "6月 15" in Chinese instead of "6月15日", and "juin 15" instead of
+  // "15 juin".
+  return date.toLocaleDateString(getActiveLocale(), { month: "short", day: "numeric" });
 }
 
 function isSameLocalDay(a: Date, b: Date): boolean {

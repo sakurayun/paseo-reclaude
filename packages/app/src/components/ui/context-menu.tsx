@@ -39,6 +39,7 @@ import {
   useIsolatedBottomSheetVisibility,
 } from "@/components/ui/isolated-bottom-sheet-modal";
 import { FloatingScrollView, FloatingSurface } from "@/components/ui/floating";
+import { GlassSurfaceBackdrop } from "@/components/ui/glass-surface";
 import { isWeb, isNative } from "@/constants/platform";
 import { useWebScrollbarStyle } from "@/hooks/use-web-scrollbar-style";
 
@@ -576,6 +577,7 @@ export function ContextMenuContent({
           style={styles.content}
           frameStyle={frameStyle}
         >
+          <GlassSurfaceBackdrop style={styles.contentBackdrop} />
           <FloatingScrollView
             bounces={false}
             showsVerticalScrollIndicator
@@ -812,11 +814,25 @@ const styles = StyleSheet.create((theme) => ({
     left: 0,
   },
   content: {
-    backgroundColor: theme.colors.surface0,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
+    // Frosted glass: web uses a CSS backdrop-filter over a translucent surface;
+    // native paints the blur via GlassSurfaceBackdrop below. No border.
+    backgroundColor: isWeb ? theme.colors.surfaceGlass : "transparent",
     borderRadius: theme.borderRadius.lg,
     ...theme.shadow.md,
+    overflow: "hidden",
+    ...(isWeb
+      ? ({
+          backdropFilter: "blur(20px) saturate(1.5)",
+          WebkitBackdropFilter: "blur(20px) saturate(1.5)",
+        } as object)
+      : {}),
+  },
+  contentBackdrop: {
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    borderRadius: theme.borderRadius.lg,
     overflow: "hidden",
   },
   sheetBackground: {

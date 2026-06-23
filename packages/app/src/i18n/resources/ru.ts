@@ -1060,6 +1060,8 @@ export const ru: TranslationResources = {
       newConversation: "Новый чат",
       history: "История",
       empty: "Пока нет сессий",
+      unknownWorkspace: "Прочее",
+      renameWorkspace: "Переименовать рабочее пространство",
     },
     worktreeSetup: {
       title: "Настройка сценариев рабочего дерева",
@@ -1145,6 +1147,7 @@ export const ru: TranslationResources = {
   newWorkspace: {
     title: "Новое рабочее пространство",
     create: "Создавать",
+    addProject: "Добавить проект",
     isolation: {
       local: "Локально",
       worktree: "Новый worktree",

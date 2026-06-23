@@ -1040,6 +1040,8 @@ export const en = {
       newConversation: "New chat",
       history: "History",
       empty: "No sessions yet",
+      unknownWorkspace: "Other",
+      renameWorkspace: "Rename workspace",
     },
     worktreeSetup: {
       title: "Set up worktree scripts",
@@ -1125,6 +1127,7 @@ export const en = {
   newWorkspace: {
     title: "New workspace",
     create: "Create",
+    addProject: "Add project",
     isolation: {
       local: "Local",
       worktree: "New worktree",

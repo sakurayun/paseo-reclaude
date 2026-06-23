@@ -2136,6 +2136,30 @@ export const AppearanceSettingsGetRequestSchema = z.object({
   requestId: z.string(),
 });
 
+// COMPAT(modelPreferencesSync): added in v0.1.108, remove gate after 2026-12-23.
+// Global user model preferences (per-provider selection habits, favorite models,
+// per-model thinking/feature settings) synced through the daemon so every connected
+// client — including mobile — shares the same model choices. Stored as an opaque
+// blob: the daemon never parses it, and the client picks/validates fields on apply,
+// so new synced fields need no protocol change.
+export const ModelPreferencesEnvelopeSchema = z.object({
+  revision: z.number().int().nonnegative(),
+  updatedAt: z.string(),
+  preferences: z.record(z.string(), z.unknown()),
+});
+
+export const ModelPreferencesPushRequestSchema = z.object({
+  type: z.literal("model.preferences.push.request"),
+  revision: z.number().int().nonnegative(),
+  preferences: z.record(z.string(), z.unknown()),
+  requestId: z.string(),
+});
+
+export const ModelPreferencesGetRequestSchema = z.object({
+  type: z.literal("model.preferences.get.request"),
+  requestId: z.string(),
+});
+
 // Highlighted diff token schema
 // Note: style can be a compound class name (e.g., "heading meta") from the syntax highlighter
 const HighlightTokenSchema = z.object({
@@ -2580,6 +2604,8 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   PromptPresetsGetRequestSchema,
   AppearanceSettingsPushRequestSchema,
   AppearanceSettingsGetRequestSchema,
+  ModelPreferencesPushRequestSchema,
+  ModelPreferencesGetRequestSchema,
   FileExplorerRequestSchema,
   ProjectIconRequestSchema,
   FileDownloadTokenRequestSchema,
@@ -2830,6 +2856,8 @@ export const ServerInfoStatusPayloadSchema = z
         promptPresetsSync: z.boolean().optional(),
         // COMPAT(appearanceSettingsSync): added in v0.1.104, remove gate after 2026-12-22.
         appearanceSettingsSync: z.boolean().optional(),
+        // COMPAT(modelPreferencesSync): added in v0.1.108, remove gate after 2026-12-23.
+        modelPreferencesSync: z.boolean().optional(),
         // COMPAT(projectRemove): added in v0.1.97, drop the gate when floor >= v0.1.97.
         projectRemove: z.boolean().optional(),
         // COMPAT(projectAdd): added in v0.1.97, drop the gate when floor >= v0.1.97.
@@ -2840,6 +2868,8 @@ export const ServerInfoStatusPayloadSchema = z
         providerUsageList: z.boolean().optional(),
         // COMPAT(reclaudeUsage): added in v0.1.105, remove gate after 2026-12-22.
         reclaudeUsage: z.boolean().optional(),
+        // COMPAT(reclaudeUsageBroadcast): added in v0.1.108, remove gate after 2026-12-23.
+        reclaudeUsageBroadcast: z.boolean().optional(),
         // COMPAT(agentDetach): added in v0.1.98, remove gate after 2026-12-19 once daemon floor >= v0.1.98.
         agentDetach: z.boolean().optional(),
       })
@@ -3562,6 +3592,28 @@ export const AppearanceSettingsGetResponseSchema = z.object({
 export const AppearanceSettingsChangedSchema = z.object({
   type: z.literal("appearance.settings.changed"),
   payload: AppearanceSettingsEnvelopeSchema,
+});
+
+export const ModelPreferencesPushResponseSchema = z.object({
+  type: z.literal("model.preferences.push.response"),
+  payload: z.object({
+    requestId: z.string(),
+    accepted: z.boolean(),
+    revision: z.number().int().nonnegative(),
+  }),
+});
+
+export const ModelPreferencesGetResponseSchema = z.object({
+  type: z.literal("model.preferences.get.response"),
+  payload: z.object({
+    requestId: z.string(),
+    envelope: ModelPreferencesEnvelopeSchema,
+  }),
+});
+
+export const ModelPreferencesChangedSchema = z.object({
+  type: z.literal("model.preferences.changed"),
+  payload: ModelPreferencesEnvelopeSchema,
 });
 
 export const SendAgentMessageResponseMessageSchema = z.object({
@@ -4745,6 +4797,22 @@ export const ReclaudeSyncUsageResponseMessageSchema = z.object({
   }),
 });
 
+// COMPAT(reclaudeUsageBroadcast): added in v0.1.108, remove gate after 2026-12-23.
+// Daemon-pushed reclaude auth/usage change. The reclaude session cookie and the
+// cached usage snapshot live on the daemon and are shared by every client; a
+// login / logout / "sync usage" on any device mutates that shared state. This
+// broadcast fans the new status + usage out to all connected clients so they
+// update live instead of waiting for their own React Query staleTime to lapse.
+export const ReclaudeUsageChangedMessageSchema = z.object({
+  type: z.literal("provider.reclaude.changed"),
+  payload: z.object({
+    active: z.boolean(),
+    loggedIn: z.boolean(),
+    email: z.string().nullable(),
+    usage: ProviderUsageSchema.nullable(),
+  }),
+});
+
 const AgentSlashCommandSchema = z.object({
   name: z.string(),
   description: z.string(),
@@ -5060,6 +5128,9 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   AppearanceSettingsPushResponseSchema,
   AppearanceSettingsGetResponseSchema,
   AppearanceSettingsChangedSchema,
+  ModelPreferencesPushResponseSchema,
+  ModelPreferencesGetResponseSchema,
+  ModelPreferencesChangedSchema,
   SendAgentMessageResponseMessageSchema,
   SetVoiceModeResponseMessageSchema,
   DaemonGetStatusResponseSchema,
@@ -5137,6 +5208,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   ReclaudeVerifyMfaResponseMessageSchema,
   ReclaudeLogoutResponseMessageSchema,
   ReclaudeSyncUsageResponseMessageSchema,
+  ReclaudeUsageChangedMessageSchema,
   ListCommandsResponseSchema,
   ListTerminalsResponseSchema,
   TerminalsChangedSchema,
@@ -5311,6 +5383,7 @@ export type ReclaudeLogoutResponseMessage = z.infer<typeof ReclaudeLogoutRespons
 export type ReclaudeSyncUsageResponseMessage = z.infer<
   typeof ReclaudeSyncUsageResponseMessageSchema
 >;
+export type ReclaudeUsageChangedMessage = z.infer<typeof ReclaudeUsageChangedMessageSchema>;
 export type ChatCreateResponse = z.infer<typeof ChatCreateResponseSchema>;
 export type ChatListResponse = z.infer<typeof ChatListResponseSchema>;
 export type ChatInspectResponse = z.infer<typeof ChatInspectResponseSchema>;
@@ -5543,6 +5616,12 @@ export type AppearanceSettingsPushResponse = z.infer<typeof AppearanceSettingsPu
 export type AppearanceSettingsGetRequest = z.infer<typeof AppearanceSettingsGetRequestSchema>;
 export type AppearanceSettingsGetResponse = z.infer<typeof AppearanceSettingsGetResponseSchema>;
 export type AppearanceSettingsChanged = z.infer<typeof AppearanceSettingsChangedSchema>;
+export type ModelPreferencesEnvelope = z.infer<typeof ModelPreferencesEnvelopeSchema>;
+export type ModelPreferencesPushRequest = z.infer<typeof ModelPreferencesPushRequestSchema>;
+export type ModelPreferencesPushResponse = z.infer<typeof ModelPreferencesPushResponseSchema>;
+export type ModelPreferencesGetRequest = z.infer<typeof ModelPreferencesGetRequestSchema>;
+export type ModelPreferencesGetResponse = z.infer<typeof ModelPreferencesGetResponseSchema>;
+export type ModelPreferencesChanged = z.infer<typeof ModelPreferencesChangedSchema>;
 export type ClientHeartbeatMessage = z.infer<typeof ClientHeartbeatMessageSchema>;
 export type ListCommandsRequest = z.infer<typeof ListCommandsRequestSchema>;
 export type ListCommandsResponse = z.infer<typeof ListCommandsResponseSchema>;

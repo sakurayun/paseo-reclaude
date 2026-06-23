@@ -50,6 +50,7 @@ import { generateMessageId } from "@/types/stream";
 import { toErrorMessage } from "@/utils/error-messages";
 import { projectIconPlaceholderLabelFromDisplayName } from "@/utils/project-display-name";
 import { navigateToPreparedWorkspaceTab } from "@/utils/workspace-navigation";
+import { ProjectPickerAddProjectRow } from "@/screens/new-workspace-add-project-row";
 import {
   hostProjectFromRoute,
   hostProjectFromWorkspace,
@@ -1299,6 +1300,15 @@ export function NewWorkspaceScreen({
   });
   const projectIconDataByProjectKey = useProjectIconDataByProjectKey({ serverId, projects });
 
+  // "Add project" lives below the search box in the Choose project dropdown.
+  // The row owns its own gating + open-project flow (see the component); here we
+  // just hand it a way to close the dropdown before the native picker opens.
+  const closeProjectPicker = useCallback(() => setProjectPickerOpen(false), []);
+  const projectPickerListHeader = useMemo(
+    () => <ProjectPickerAddProjectRow serverId={serverId} onActivate={closeProjectPicker} />,
+    [closeProjectPicker, serverId],
+  );
+
   const handleRepoSelected = useCallback(() => {
     setManualPickerSelection(null);
   }, []);
@@ -1877,6 +1887,7 @@ export function NewWorkspaceScreen({
           anchorRef={projectPickerAnchorRef}
           emptyText="No projects available."
           renderOption={renderProjectOption}
+          listHeader={projectPickerListHeader}
         />
       </View>
     );
@@ -2026,6 +2037,7 @@ export function NewWorkspaceScreen({
     pickerEmptyText,
     pickerOpen,
     projectIconDataByProjectKey,
+    projectPickerListHeader,
     projectPickerOpen,
     projectPickerOptions,
     projectTriggerLabel,
@@ -2052,10 +2064,18 @@ export function NewWorkspaceScreen({
     triggerLabel,
   ]);
 
-  const composerFooter = useMemo(
-    () => (
+  const composerFooter = useMemo(() => {
+    // The agent mode control only renders in the footer on compact layouts; on
+    // desktop it lives inline on the toolbar row (placement gate in
+    // DraftAgentModeControl). When neither the mode control nor a checkout hint
+    // has anything to show, return null instead of an empty fragment — otherwise
+    // the composer still reserves an empty secondary row below the toolbar, which
+    // is what left an oversized gap under the toolbar on this page.
+    const hasModeControl = isCompact && Boolean(agentControlsWithDisabled);
+    if (!hasModeControl && !checkoutHintPrAttachment) return null;
+    return (
       <>
-        {agentControlsWithDisabled ? (
+        {isCompact && agentControlsWithDisabled ? (
           <DraftAgentModeControl placement="footer" {...agentControlsWithDisabled} />
         ) : null}
         {checkoutHintPrAttachment ? (
@@ -2076,17 +2096,17 @@ export function NewWorkspaceScreen({
           />
         ) : null}
       </>
-    ),
-    [
-      acceptCheckoutHint,
-      agentControlsWithDisabled,
-      checkoutHintPrAttachment,
-      dismissCheckoutHint,
-      t,
-      theme.colors.foregroundMuted,
-      theme.iconSize.sm,
-    ],
-  );
+    );
+  }, [
+    acceptCheckoutHint,
+    agentControlsWithDisabled,
+    checkoutHintPrAttachment,
+    dismissCheckoutHint,
+    isCompact,
+    t,
+    theme.colors.foregroundMuted,
+    theme.iconSize.sm,
+  ]);
   const screenHeaderLeft = useMemo(() => <SidebarMenuToggle />, []);
 
   return (
@@ -2124,7 +2144,6 @@ export function NewWorkspaceScreen({
               agentControls={agentControlsWithDisabled}
               onAddImages={handleAddImagesCallback}
               footer={composerFooter}
-              inputWrapperStyle={styles.composerInputWrapper}
             />
             {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
           </ReanimatedAnimated.View>
@@ -2159,10 +2178,6 @@ const styles = StyleSheet.create((theme) => ({
   // (classic: surfaceShell === surface0, byte-identical).
   headerSurface: {
     backgroundColor: { xs: theme.colors.surface0, md: theme.colors.surfaceShell },
-  },
-  // Drops the input box's extra inner bottom padding on this page only.
-  composerInputWrapper: {
-    paddingBottom: 0,
   },
   contentCentered: {
     justifyContent: "center",

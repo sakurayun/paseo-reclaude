@@ -1033,6 +1033,8 @@ export const ar: TranslationResources = {
       newConversation: "محادثة جديدة",
       history: "السجل",
       empty: "لا توجد جلسات بعد",
+      unknownWorkspace: "أخرى",
+      renameWorkspace: "إعادة تسمية مساحة العمل",
     },
     worktreeSetup: {
       title: "إعداد البرامج النصية لشجرة العمل",
@@ -1118,6 +1120,7 @@ export const ar: TranslationResources = {
   newWorkspace: {
     title: "مساحة عمل جديدة",
     create: "يخلق",
+    addProject: "إضافة مشروع",
     isolation: {
       local: "محلي",
       worktree: "شجرة عمل جديدة",

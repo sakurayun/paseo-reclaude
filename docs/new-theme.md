@@ -14,7 +14,9 @@ the footer divider and the redundant open-project/home footer buttons dropped
 (see "Left sidebar — flat sessions"); and (6) harmonizes the **right panel**
 (ExplorerSidebar) to match — all dividers gone, rounded 12px hovers, PR/Git
 activity cards floating as borderless white cards (see "Right panel — echo the
-left").
+left"); and (7) tints the scrollbars `#fafafa` (`scrollbarHandle` override) so
+the native and overlay scrollbars melt into the `#fafafa` chrome instead of
+cutting a darker bar across it.
 
 ## What the user sees
 

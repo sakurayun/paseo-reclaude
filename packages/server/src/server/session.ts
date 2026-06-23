@@ -30,6 +30,7 @@ import {
   type WorkspaceLayoutEnvelope,
   type PromptPresetsEnvelope,
   type AppearanceSettingsEnvelope,
+  type ModelPreferencesEnvelope,
 } from "./messages.js";
 import type {
   TerminalManager,
@@ -39,6 +40,7 @@ import type { PortForwardManager } from "../port-forward/port-forward-manager.js
 import type { WorkspaceLayoutStore } from "./workspace-layout-store.js";
 import type { PromptPresetsStore } from "./prompt-presets-store.js";
 import type { AppearanceSettingsStore } from "./appearance-settings-store.js";
+import type { ModelPreferencesStore } from "./model-preferences-store.js";
 import { TerminalSessionController } from "../terminal/terminal-session-controller.js";
 import { TunnelForwarder } from "./tunnel-forwarder.js";
 import type { TerminalActivity } from "@getpaseo/protocol/terminal-activity";
@@ -447,6 +449,14 @@ type AppearanceSettingsGetRequestMessage = Extract<
   SessionInboundMessage,
   { type: "appearance.settings.get.request" }
 >;
+type ModelPreferencesPushRequestMessage = Extract<
+  SessionInboundMessage,
+  { type: "model.preferences.push.request" }
+>;
+type ModelPreferencesGetRequestMessage = Extract<
+  SessionInboundMessage,
+  { type: "model.preferences.get.request" }
+>;
 interface WorkspaceUpdatesSubscriptionState {
   subscriptionId: string;
   filter?: WorkspaceUpdatesFilter;
@@ -528,6 +538,8 @@ export interface SessionOptions {
   onPromptPresetsPushed?: (envelope: PromptPresetsEnvelope) => void;
   appearanceSettingsStore?: AppearanceSettingsStore | null;
   onAppearanceSettingsPushed?: (envelope: AppearanceSettingsEnvelope) => void;
+  modelPreferencesStore?: ModelPreferencesStore | null;
+  onModelPreferencesPushed?: (envelope: ModelPreferencesEnvelope) => void;
   providerSnapshotManager: ProviderSnapshotManager;
   providerUsageService: ProviderUsageService;
   reclaude: ReclaudeAccountService;
@@ -647,6 +659,8 @@ export class Session {
   private readonly onPromptPresetsPushed?: (envelope: PromptPresetsEnvelope) => void;
   private readonly appearanceSettingsStore?: AppearanceSettingsStore | null;
   private readonly onAppearanceSettingsPushed?: (envelope: AppearanceSettingsEnvelope) => void;
+  private readonly modelPreferencesStore?: ModelPreferencesStore | null;
+  private readonly onModelPreferencesPushed?: (envelope: ModelPreferencesEnvelope) => void;
   private readonly filesystem: SessionFileSystem;
   private readonly github: GitHubService;
   private readonly renameCurrentBranch: typeof renameCurrentBranchDefault;
@@ -729,9 +743,11 @@ export class Session {
       workspaceLayoutStore,
       promptPresetsStore,
       appearanceSettingsStore,
+      modelPreferencesStore,
       onWorkspaceLayoutPushed,
       onPromptPresetsPushed,
       onAppearanceSettingsPushed,
+      onModelPreferencesPushed,
       filesystem,
       chatService,
       scheduleService,
@@ -803,6 +819,8 @@ export class Session {
     this.onPromptPresetsPushed = onPromptPresetsPushed;
     this.appearanceSettingsStore = appearanceSettingsStore;
     this.onAppearanceSettingsPushed = onAppearanceSettingsPushed;
+    this.modelPreferencesStore = modelPreferencesStore;
+    this.onModelPreferencesPushed = onModelPreferencesPushed;
     this.filesystem = filesystem ?? nodeSessionFileSystem;
     this.github = github ?? createGitHubService();
     this.renameCurrentBranch = renameCurrentBranch ?? renameCurrentBranchDefault;
@@ -1751,6 +1769,7 @@ export class Session {
       this.dispatchWorkspaceLayoutMessage(msg) ??
       this.dispatchPromptPresetsMessage(msg) ??
       this.dispatchAppearanceSettingsMessage(msg) ??
+      this.dispatchModelPreferencesMessage(msg) ??
       this.dispatchProjectMessage(msg) ??
       this.dispatchProviderMessage(msg) ??
       this.dispatchTerminalMessage(msg) ??
@@ -2156,6 +2175,19 @@ export class Session {
         return undefined;
       case "appearance.settings.get.request":
         this.handleAppearanceSettingsGetRequest(msg);
+        return undefined;
+      default:
+        return undefined;
+    }
+  }
+
+  private dispatchModelPreferencesMessage(msg: SessionInboundMessage): Promise<void> | undefined {
+    switch (msg.type) {
+      case "model.preferences.push.request":
+        this.handleModelPreferencesPushRequest(msg);
+        return undefined;
+      case "model.preferences.get.request":
+        this.handleModelPreferencesGetRequest(msg);
         return undefined;
       default:
         return undefined;
@@ -3076,6 +3108,37 @@ export class Session {
     };
     this.emit({
       type: "appearance.settings.get.response",
+      payload: { requestId: msg.requestId, envelope },
+    });
+  }
+
+  private handleModelPreferencesPushRequest(msg: ModelPreferencesPushRequestMessage): void {
+    const { revision, preferences, requestId } = msg;
+    if (!this.modelPreferencesStore) {
+      this.emit({
+        type: "model.preferences.push.response",
+        payload: { requestId, accepted: false, revision: 0 },
+      });
+      return;
+    }
+    const { accepted, current } = this.modelPreferencesStore.applyPush({ revision, preferences });
+    this.emit({
+      type: "model.preferences.push.response",
+      payload: { requestId, accepted, revision: current.revision },
+    });
+    if (accepted) {
+      this.onModelPreferencesPushed?.(current);
+    }
+  }
+
+  private handleModelPreferencesGetRequest(msg: ModelPreferencesGetRequestMessage): void {
+    const envelope = this.modelPreferencesStore?.get() ?? {
+      revision: 0,
+      updatedAt: new Date(0).toISOString(),
+      preferences: {},
+    };
+    this.emit({
+      type: "model.preferences.get.response",
       payload: { requestId: msg.requestId, envelope },
     });
   }

@@ -15,6 +15,7 @@ import type { LoopService } from "./loop-service.js";
 import type { WorkspaceLayoutStore } from "./workspace-layout-store.js";
 import type { PromptPresetsStore } from "./prompt-presets-store.js";
 import type { AppearanceSettingsStore } from "./appearance-settings-store.js";
+import type { ModelPreferencesStore } from "./model-preferences-store.js";
 import {
   FileBackedReclaudeCredentialsStore,
   type ReclaudeCredentialsStore,
@@ -29,6 +30,8 @@ import {
   type WorkspaceLayoutEnvelope,
   type PromptPresetsEnvelope,
   type AppearanceSettingsEnvelope,
+  type ModelPreferencesEnvelope,
+  type ReclaudeUsageChangedMessage,
   type WSHelloMessage,
   type WSInboundMessage,
   WSInboundMessageSchema,
@@ -390,6 +393,7 @@ export class VoiceAssistantWebSocketServer {
   private readonly workspaceLayoutStore: WorkspaceLayoutStore | null;
   private readonly promptPresetsStore: PromptPresetsStore | null;
   private readonly appearanceSettingsStore: AppearanceSettingsStore | null;
+  private readonly modelPreferencesStore: ModelPreferencesStore | null;
   private readonly chatService: FileBackedChatService;
   private readonly loopService: LoopService;
   private readonly scheduleService: ScheduleService;
@@ -494,6 +498,7 @@ export class VoiceAssistantWebSocketServer {
     workspaceLayoutStore?: WorkspaceLayoutStore | null,
     promptPresetsStore?: PromptPresetsStore | null,
     appearanceSettingsStore?: AppearanceSettingsStore | null,
+    modelPreferencesStore?: ModelPreferencesStore | null,
   ) {
     this.logger = logger.child({ module: "websocket-server" });
     this.serverId = serverId;
@@ -509,6 +514,7 @@ export class VoiceAssistantWebSocketServer {
     this.workspaceLayoutStore = workspaceLayoutStore ?? null;
     this.promptPresetsStore = promptPresetsStore ?? null;
     this.appearanceSettingsStore = appearanceSettingsStore ?? null;
+    this.modelPreferencesStore = modelPreferencesStore ?? null;
     const requiredServices = requireWebSocketServices({
       chatService,
       loopService,
@@ -617,6 +623,13 @@ export class VoiceAssistantWebSocketServer {
     this.providerUsageService = new ProviderUsageService({
       logger: this.logger,
       reclaude: this.reclaudeAccountService,
+    });
+
+    // Fan reclaude auth/usage changes (login/logout/sync from any client) out to
+    // every connected client so they update live. The cookie + cached usage are
+    // daemon-shared; this only broadcasts the derived status + usage, never the cookie.
+    this.reclaudeAccountService.onChange((payload) => {
+      this.broadcastReclaudeChanged(payload);
     });
 
     this.wss = this.createWebSocketServer(server, wsConfig, auth);
@@ -1076,6 +1089,13 @@ export class VoiceAssistantWebSocketServer {
         }
         this.broadcastAppearanceSettingsChanged(envelope, connection);
       },
+      modelPreferencesStore: this.modelPreferencesStore,
+      onModelPreferencesPushed: (envelope) => {
+        if (!connection) {
+          return;
+        }
+        this.broadcastModelPreferencesChanged(envelope, connection);
+      },
       chatService: this.chatService,
       loopService: this.loopService,
       scheduleService: this.scheduleService,
@@ -1309,6 +1329,8 @@ export class VoiceAssistantWebSocketServer {
         promptPresetsSync: true,
         // COMPAT(appearanceSettingsSync): added in v0.1.104, remove gate after 2026-12-22.
         appearanceSettingsSync: true,
+        // COMPAT(modelPreferencesSync): added in v0.1.108, remove gate after 2026-12-23.
+        modelPreferencesSync: true,
         // COMPAT(projectRemove): added in v0.1.97, drop the gate when floor >= v0.1.97.
         projectRemove: true,
         // COMPAT(projectAdd): added in v0.1.97, drop the gate when floor >= v0.1.97.
@@ -1319,6 +1341,8 @@ export class VoiceAssistantWebSocketServer {
         providerUsageList: true,
         // COMPAT(reclaudeUsage): added in v0.1.105, remove gate after 2026-12-22.
         reclaudeUsage: true,
+        // COMPAT(reclaudeUsageBroadcast): added in v0.1.108, remove gate after 2026-12-23.
+        reclaudeUsageBroadcast: true,
         // COMPAT(agentDetach): added in v0.1.98, remove gate after 2026-12-19 once daemon floor >= v0.1.98.
         agentDetach: true,
       },
@@ -1972,6 +1996,33 @@ export class VoiceAssistantWebSocketServer {
       if (connection === senderConnection) {
         continue;
       }
+      this.sendToClient(ws, message);
+    }
+  }
+
+  // Fan model preferences out to every connected client except the pusher. Like
+  // appearance settings (and unlike workspace-layout sync) there is NO deviceType
+  // filter: model selection habits / favorites are a global user preference that
+  // mobile must share too.
+  private broadcastModelPreferencesChanged(
+    envelope: ModelPreferencesEnvelope,
+    senderConnection: SessionConnection,
+  ): void {
+    const message = wrapSessionMessage({ type: "model.preferences.changed", payload: envelope });
+    for (const [ws, connection] of this.sessions) {
+      if (connection === senderConnection) {
+        continue;
+      }
+      this.sendToClient(ws, message);
+    }
+  }
+
+  // Fan a reclaude auth/usage change out to every connected client (no sender
+  // exclusion: the change originates from the shared daemon-side account service,
+  // not a specific connection, and re-applying the same status/usage is idempotent).
+  private broadcastReclaudeChanged(payload: ReclaudeUsageChangedMessage["payload"]): void {
+    const message = wrapSessionMessage({ type: "provider.reclaude.changed", payload });
+    for (const [ws] of this.sessions) {
       this.sendToClient(ws, message);
     }
   }

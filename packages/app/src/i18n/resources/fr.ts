@@ -1069,6 +1069,8 @@ export const fr: TranslationResources = {
       newConversation: "Nouveau chat",
       history: "Historique",
       empty: "Aucune session pour le moment",
+      unknownWorkspace: "Autre",
+      renameWorkspace: "Renommer l'espace de travail",
     },
     worktreeSetup: {
       title: "Configurer les scripts d'arbre de travail",
@@ -1154,6 +1156,7 @@ export const fr: TranslationResources = {
   newWorkspace: {
     title: "Nouvel espace de travail",
     create: "Créer",
+    addProject: "Ajouter un projet",
     isolation: {
       local: "Local",
       worktree: "Nouveau worktree",

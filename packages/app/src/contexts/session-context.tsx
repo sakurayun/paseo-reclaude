@@ -37,6 +37,8 @@ import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
 import { startWorkspaceLayoutSync } from "@/stores/workspace-layout-sync";
 import { startPromptPresetsSync } from "@/stores/prompt-presets-sync";
 import { startAppearanceSettingsSync } from "@/stores/appearance-settings-sync";
+import { startModelPreferencesSync } from "@/stores/model-preferences-sync";
+import { startReclaudeUsageSync } from "@/provider-usage/reclaude-usage-sync";
 import type { AgentSessionConfig } from "@getpaseo/protocol/agent-types";
 import type { GitSetupOptions } from "@getpaseo/protocol/messages";
 import type { AgentPermissionResponse } from "@getpaseo/protocol/agent-types";
@@ -598,6 +600,19 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
   // daemon and applied from peers. Unlike layout sync this includes mobile.
   useEffect(() => {
     return startAppearanceSettingsSync({ serverId, client });
+  }, [serverId, client]);
+
+  // Model preferences sync: last-used provider/model/mode, favorite models, and
+  // per-model thinking/feature settings mirrored to the daemon and applied from
+  // peers. Like appearance sync, this includes mobile.
+  useEffect(() => {
+    return startModelPreferencesSync({ serverId, client });
+  }, [serverId, client]);
+
+  // ReClaude usage sync: live-apply the daemon's broadcast of auth/usage changes
+  // (login/logout/sync from any client) so an open usage card updates immediately.
+  useEffect(() => {
+    return startReclaudeUsageSync({ serverId, client });
   }, [serverId, client]);
 
   useEffect(() => {

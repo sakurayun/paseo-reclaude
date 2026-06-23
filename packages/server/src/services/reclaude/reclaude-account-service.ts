@@ -20,6 +20,21 @@ export interface ReclaudeStatus {
   email: string | null;
 }
 
+// Emitted whenever the shared auth state or cached usage changes (login, MFA,
+// logout, or a live usage sync). The daemon broadcasts this to every connected
+// client so they update live. It carries only derived data — never the cookie.
+export interface ReclaudeUsageChange {
+  active: boolean;
+  loggedIn: boolean;
+  email: string | null;
+  usage: ProviderUsage | null;
+}
+
+const CLAUDE_USAGE_IDENTITY: ReclaudeUsageIdentity = {
+  providerId: "claude",
+  displayName: "Claude",
+};
+
 export type ReclaudeLoginStep =
   | { step: "completed" }
   | { step: "mfa_required"; mfaChallengeToken: string };
@@ -48,6 +63,7 @@ export class ReclaudeAccountService {
   // and the card prompts the user to sync again.
   private cachedUsage: ProviderUsage | null = null;
   private lastSyncAtMs = 0;
+  private readonly changeListeners = new Set<(change: ReclaudeUsageChange) => void>();
 
   constructor(options: ReclaudeAccountServiceOptions) {
     this.store = options.store;
@@ -58,6 +74,44 @@ export class ReclaudeAccountService {
 
   isActive(): boolean {
     return this.isActiveFn();
+  }
+
+  // Subscribe to auth/usage changes. Returns an unsubscribe function.
+  onChange(listener: (change: ReclaudeUsageChange) => void): () => void {
+    this.changeListeners.add(listener);
+    return () => {
+      this.changeListeners.delete(listener);
+    };
+  }
+
+  private emitChange(): void {
+    if (this.changeListeners.size === 0) {
+      return;
+    }
+    const status = this.status();
+    // Usage semantics for the receiver (reclaude-usage-sync preserves its entry when
+    // usage is null, and patches it otherwise):
+    // - signed out (logout / rejected cookie): send the unavailable placeholder so peers
+    //   clear their card, mirroring useReclaude.logout's patchClaudeUsage.
+    // - signed in with a fresh snapshot (sync success): send the real usage.
+    // - signed in but not yet synced (right after login / MFA): send null so peers keep
+    //   whatever they have, mirroring the in-process login handler which deliberately
+    //   never touches the usage list.
+    const usage: ProviderUsage | null =
+      !status.loggedIn || this.cachedUsage ? this.getCachedUsage(CLAUDE_USAGE_IDENTITY) : null;
+    const change: ReclaudeUsageChange = {
+      active: status.active,
+      loggedIn: status.loggedIn,
+      email: status.email,
+      usage,
+    };
+    for (const listener of this.changeListeners) {
+      try {
+        listener(change);
+      } catch (error) {
+        this.logger.error({ err: error }, "reclaude change listener failed");
+      }
+    }
   }
 
   status(): ReclaudeStatus {
@@ -73,6 +127,7 @@ export class ReclaudeAccountService {
     const outcome = await this.client.login(params);
     if (outcome.step === "completed") {
       await this.store.set({ cookie: outcome.cookie, email: params.email });
+      this.emitChange();
       return { step: "completed" };
     }
     this.pendingEmailByChallenge.set(outcome.mfaChallengeToken, params.email);
@@ -85,6 +140,7 @@ export class ReclaudeAccountService {
       this.pendingEmailByChallenge.get(params.challengeToken) ?? this.store.get()?.email ?? "";
     await this.store.set({ cookie, email });
     this.pendingEmailByChallenge.delete(params.challengeToken);
+    this.emitChange();
   }
 
   async logout(): Promise<void> {
@@ -95,6 +151,7 @@ export class ReclaudeAccountService {
     await this.store.clear();
     this.cachedUsage = null;
     this.lastSyncAtMs = 0;
+    this.emitChange();
   }
 
   // Read-only: returns the last synced snapshot (re-tagged with the caller's
@@ -145,10 +202,12 @@ export class ReclaudeAccountService {
       await this.store.clear();
       this.cachedUsage = null;
       this.lastSyncAtMs = 0;
+      this.emitChange();
       return this.placeholder(identity);
     }
     this.cachedUsage = result;
     this.lastSyncAtMs = Date.now();
+    this.emitChange();
     return result;
   }
 
