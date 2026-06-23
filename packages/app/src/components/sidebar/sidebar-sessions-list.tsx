@@ -6,7 +6,7 @@ import type { GestureType } from "react-native-gesture-handler";
 import { NestableScrollContainer } from "react-native-draggable-flatlist";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { useQueryClient } from "@tanstack/react-query";
-import { ChevronDown, ChevronRight, Folder } from "lucide-react-native";
+import { ChevronDown, ChevronRight, Folder, FolderGit2 } from "lucide-react-native";
 import { isNative as platformIsNative } from "@/constants/platform";
 import {
   useSidebarSessionsList,
@@ -31,6 +31,7 @@ import { isSidebarActiveAgent } from "@/utils/sidebar-agent-state";
 import type { Theme } from "@/styles/theme";
 import { useProjectNamesMap } from "@/hooks/use-status-mode-workspaces";
 import { projectsQueryKey } from "@/hooks/use-projects";
+import { GitHubIcon } from "@/components/icons/github-icon";
 
 interface SidebarSessionsListProps {
   serverId: string | null;
@@ -43,6 +44,8 @@ const foregroundMutedColorMapping = (theme: Theme) => ({ color: theme.colors.for
 const ThemedChevronDown = withUnistyles(ChevronDown);
 const ThemedChevronRight = withUnistyles(ChevronRight);
 const ThemedFolder = withUnistyles(Folder);
+const ThemedFolderGit = withUnistyles(FolderGit2);
+const ThemedGitHubIcon = withUnistyles(GitHubIcon);
 
 /** A session counts as "kept visible while collapsed" until it is fully done. */
 function isSessionActive(session: SidebarSessionEntry): boolean {
@@ -54,9 +57,23 @@ function isSessionActive(session: SidebarSessionEntry): boolean {
   });
 }
 
-/** Folder by default; swaps to the collapse chevron on hover (web only). */
-function GroupLeadingIcon({ hovered, expanded }: { hovered: boolean; expanded: boolean }) {
+/** Project icon by default; swaps to the collapse chevron on hover (web only). */
+function GroupLeadingIcon({
+  hovered,
+  expanded,
+  iconKind,
+}: {
+  hovered: boolean;
+  expanded: boolean;
+  iconKind: SidebarSessionGroup["iconKind"];
+}) {
   if (!hovered) {
+    if (iconKind === "github") {
+      return <ThemedGitHubIcon size={14} uniProps={foregroundMutedColorMapping} />;
+    }
+    if (iconKind === "git-folder") {
+      return <ThemedFolderGit size={14} uniProps={foregroundMutedColorMapping} />;
+    }
     return <ThemedFolder size={14} uniProps={foregroundMutedColorMapping} />;
   }
   if (expanded) {
@@ -242,7 +259,7 @@ const SidebarSessionsGroupView = memo(function SidebarSessionsGroupView({
             testID={`sidebar-sessions-group-${group.key}`}
           >
             <View style={styles.groupHeaderLeadingSlot}>
-              <GroupLeadingIcon hovered={isHovered} expanded={expanded} />
+              <GroupLeadingIcon hovered={isHovered} expanded={expanded} iconKind={group.iconKind} />
             </View>
             <Text style={styles.groupLabel} numberOfLines={1}>
               {displayLabel}

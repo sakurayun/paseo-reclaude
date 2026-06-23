@@ -210,7 +210,9 @@ one conversation), with a **3-button top toolbar**: new conversation
   display as `owner/repo` (for example `sakurayun/paseo-reclaude`). Project
   groups can be renamed from the right-click menu; when a custom name is active,
   the header appends the canonical `owner/repo` in muted text so the underlying
-  repo identity remains visible.
+  repo identity remains visible. Group icons encode the project source: GitHub
+  remotes use the GitHub mark, non-GitHub git repos use `FolderGit2`, and
+  non-git folders use the plain folder icon.
 - **Rows** — reuse `SidebarSessionRow` (`sidebar-workspace-sessions.tsx`) with
   `variant="flat"` → hover/press radius = `theme.shell.contentRadius` (12, the
   content-card radius), plus `subtitle` (project) and `timeOverride` (recencyAt).

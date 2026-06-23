@@ -7,20 +7,35 @@ function placement(input: {
   projectKey?: string;
   projectName?: string;
   workspaceName?: string | null;
+  isGit?: boolean;
+  remoteUrl?: string | null;
 }): ProjectPlacementPayload {
+  const checkout: ProjectPlacementPayload["checkout"] =
+    input.isGit === true
+      ? {
+          cwd: "/repo",
+          isGit: true,
+          currentBranch: "main",
+          remoteUrl: input.remoteUrl ?? null,
+          worktreeRoot: "/repo",
+          isPaseoOwnedWorktree: false,
+          mainRepoRoot: null,
+        }
+      : {
+          cwd: "/repo",
+          isGit: false,
+          currentBranch: null,
+          remoteUrl: null,
+          worktreeRoot: null,
+          isPaseoOwnedWorktree: false,
+          mainRepoRoot: null,
+        };
+
   return {
     projectKey: input.projectKey ?? "proj",
     projectName: input.projectName ?? "Project",
     workspaceName: input.workspaceName ?? null,
-    checkout: {
-      cwd: "/repo",
-      isGit: false,
-      currentBranch: null,
-      remoteUrl: null,
-      worktreeRoot: null,
-      isPaseoOwnedWorktree: false,
-      mainRepoRoot: null,
-    },
+    checkout,
   };
 }
 
@@ -76,6 +91,7 @@ describe("groupSidebarSessionsByProject", () => {
     expect(groups[0].projectKey).toBe("remote:github.com/sakurayun/paseo-reclaude");
     expect(groups[0].label).toBe("sakurayun/paseo-reclaude");
     expect(groups[0].baseLabel).toBe("sakurayun/paseo-reclaude");
+    expect(groups[0].iconKind).toBe("github");
     expect(groups[0].sessions.map((s) => s.id)).toEqual(["a"]);
   });
 
@@ -97,17 +113,40 @@ describe("groupSidebarSessionsByProject", () => {
     expect(groups).toHaveLength(1);
     expect(groups[0].label).toBe("Paseo 本地分支");
     expect(groups[0].baseLabel).toBe("sakurayun/paseo-reclaude");
+    expect(groups[0].iconKind).toBe("github");
   });
 
-  it("falls back to the local project name when the project is not remote-backed", () => {
+  it("falls back to the local folder name when the project is not git-backed", () => {
     const groups = groupSidebarSessionsByProject([
       session({
         id: "a",
         recencyMs: 10,
-        projectPlacement: placement({ projectName: "Paseo", workspaceName: null }),
+        projectPlacement: placement({
+          projectKey: "/Users/me/work/paseo-reclaude",
+          projectName: "paseo-reclaude",
+          workspaceName: null,
+        }),
       }),
     ]);
-    expect(groups[0].label).toBe("Paseo");
+    expect(groups[0].label).toBe("paseo-reclaude");
+    expect(groups[0].iconKind).toBe("folder");
+  });
+
+  it("uses the git-folder icon for non-GitHub git projects", () => {
+    const groups = groupSidebarSessionsByProject([
+      session({
+        id: "a",
+        recencyMs: 10,
+        projectPlacement: placement({
+          projectKey: "remote:gitlab.com/acme/repo",
+          projectName: "acme/repo",
+          isGit: true,
+          remoteUrl: "https://gitlab.com/acme/repo.git",
+        }),
+      }),
+    ]);
+    expect(groups[0].label).toBe("acme/repo");
+    expect(groups[0].iconKind).toBe("git-folder");
   });
 
   it("does not expose a workspace id for project groups", () => {

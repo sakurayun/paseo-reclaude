@@ -1,7 +1,9 @@
 import type { SidebarSessionEntry } from "@/hooks/use-sidebar-sessions-list";
 import { deriveProjectDisplayName } from "@/utils/agent-grouping";
+import { parseGitHubRepoFromRemote } from "@/git/github-url";
 
 export type SidebarProjectNameOverrides = ReadonlyMap<string, string>;
+export type SidebarSessionGroupIconKind = "folder" | "git-folder" | "github";
 
 /** One project group in the new-theme sessions sidebar. */
 export interface SidebarSessionGroup {
@@ -26,6 +28,8 @@ export interface SidebarSessionGroup {
    * hiding the real repository identity.
    */
   baseLabel: string;
+  /** Project icon shown in the group header. */
+  iconKind: SidebarSessionGroupIconKind;
   /** Sessions in this group, preserving the caller's recency order. */
   sessions: SidebarSessionEntry[];
 }
@@ -50,6 +54,23 @@ function resolveBaseLabel(session: SidebarSessionEntry, projectKey: string | nul
     projectKey,
     projectName: "",
   });
+}
+
+function resolveIconKind(
+  session: SidebarSessionEntry,
+  projectKey: string | null,
+): SidebarSessionGroupIconKind {
+  const checkout = session.projectPlacement?.checkout;
+  if (
+    projectKey?.startsWith("remote:github.com/") ||
+    parseGitHubRepoFromRemote(checkout?.remoteUrl)
+  ) {
+    return "github";
+  }
+  if (checkout?.isGit) {
+    return "git-folder";
+  }
+  return "folder";
 }
 
 /**
@@ -110,6 +131,7 @@ export function groupSidebarSessionsByProject(
     const projectKey = resolveProjectKey(session);
     const label = resolveGroupLabel(session, projectKey, projectNameOverrides);
     const baseLabel = resolveBaseLabel(session, projectKey);
+    const iconKind = resolveIconKind(session, projectKey);
     const key = resolveGroupKey(session, label);
     const existing = groups.get(key);
     if (existing) {
@@ -121,6 +143,7 @@ export function groupSidebarSessionsByProject(
         workspaceId: null,
         label,
         baseLabel,
+        iconKind,
         sessions: [session],
       });
     }
