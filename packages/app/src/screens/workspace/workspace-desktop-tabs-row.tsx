@@ -99,6 +99,7 @@ import { PinnedTargetsRow } from "@/workspace-pins/pinned-targets-row";
 import { PinnableMenuItem } from "@/workspace-pins/pinnable-menu-item";
 import { useWorkspaceLayoutStore } from "@/stores/workspace-layout-store";
 import { buildWorkspaceTabPersistenceKey } from "@/stores/workspace-tabs-store";
+import { resolveWorkspaceTabWheelScroll } from "@/screens/workspace/workspace-tab-wheel-scroll";
 
 const DROPDOWN_WIDTH = 220;
 const LOADING_TAB_LABEL_SKELETON_WIDTH = 80;
@@ -857,6 +858,39 @@ function TabChip({
   );
 }
 
+function useWheelToHorizontalScroll(
+  scrollRef: React.RefObject<ScrollView | null>,
+  enabled: boolean,
+): void {
+  useEffect(() => {
+    if (!isWeb || !enabled) {
+      return () => {};
+    }
+    const rawRef: unknown = scrollRef.current;
+    if (!(rawRef instanceof HTMLElement)) {
+      return () => {};
+    }
+    const node = rawRef;
+    const handleWheel = (event: WheelEvent) => {
+      const result = resolveWorkspaceTabWheelScroll({
+        scrollLeft: node.scrollLeft,
+        scrollWidth: node.scrollWidth,
+        clientWidth: node.clientWidth,
+        deltaX: event.deltaX,
+        deltaY: event.deltaY,
+      });
+      node.scrollLeft = result.nextScrollLeft;
+      if (result.shouldPreventDefault) {
+        event.preventDefault();
+      }
+    };
+    node.addEventListener("wheel", handleWheel, { passive: false });
+    return () => {
+      node.removeEventListener("wheel", handleWheel);
+    };
+  }, [scrollRef, enabled]);
+}
+
 export function WorkspaceDesktopTabsRow({
   paneId,
   isFocused = false,
@@ -896,6 +930,7 @@ export function WorkspaceDesktopTabsRow({
   const [tabsContainerWidth, setTabsContainerWidth] = useState<number>(0);
   const [tabsActionsWidth, setTabsActionsWidth] = useState<number>(0);
   const [inlineAddButtonWidth, setInlineAddButtonWidth] = useState<number>(0);
+  const tabsScrollRef = useRef<ScrollView | null>(null);
 
   const handleTabsContainerLayout = useCallback((event: LayoutChangeEvent) => {
     updateMeasuredWidth(setTabsContainerWidth, event);
@@ -967,6 +1002,8 @@ export function WorkspaceDesktopTabsRow({
     viewportWidthOverride: tabsContainerWidth > 0 ? tabsContainerWidth : null,
     metrics: layoutMetrics,
   });
+
+  useWheelToHorizontalScroll(tabsScrollRef, layout.requiresHorizontalScrollFallback);
 
   const handleDragEnd = useCallback(
     (nextTabs: WorkspaceDesktopTabRowItem[]) => {
@@ -1103,6 +1140,15 @@ export function WorkspaceDesktopTabsRow({
     [layout.requiresHorizontalScrollFallback],
   );
 
+  const inlineAddTabButton = (
+    <WorkspaceInlineAddTabButton
+      shortcutKeys={newTabKeys}
+      onCreateAgentTab={handleCreateAgentTab}
+      onLayout={handleInlineAddButtonLayout}
+    />
+  );
+  const isTabsOverflowing = layout.requiresHorizontalScrollFallback;
+
   const row = (
     <View
       style={styles.tabsContainer}
@@ -1110,6 +1156,7 @@ export function WorkspaceDesktopTabsRow({
       onLayout={handleTabsContainerLayout}
     >
       <ScrollView
+        ref={tabsScrollRef}
         horizontal
         scrollEnabled={layout.requiresHorizontalScrollFallback}
         testID="workspace-tabs-scroll"
@@ -1128,13 +1175,10 @@ export function WorkspaceDesktopTabsRow({
           getItemData={getTabDragData}
           renderItem={renderTab}
         />
-        <WorkspaceInlineAddTabButton
-          shortcutKeys={newTabKeys}
-          onCreateAgentTab={handleCreateAgentTab}
-          onLayout={handleInlineAddButtonLayout}
-        />
+        {isTabsOverflowing ? null : inlineAddTabButton}
       </ScrollView>
       <View style={styles.tabsActions} onLayout={handleTabsActionsLayout}>
+        {isTabsOverflowing ? inlineAddTabButton : null}
         <WorkspaceTabRowExtras
           onCreateAgentTab={handleCreateAgentTab}
           onCreateTerminal={handleCreateTerminal}
