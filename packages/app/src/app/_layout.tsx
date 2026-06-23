@@ -33,6 +33,7 @@ import { DownloadToast } from "@/components/download-toast";
 import { QuittingOverlay } from "@/components/quitting-overlay";
 import { KeyboardShortcutsDialog } from "@/components/keyboard-shortcuts-dialog";
 import { LeftSidebar } from "@/components/left-sidebar";
+import { CompactExplorerSidebarHost } from "@/components/compact-explorer-sidebar-host";
 import { ProjectPickerModal } from "@/components/project-picker-modal";
 import { ProviderSettingsHost } from "@/components/provider-settings-host";
 import { WorkspaceSetupDialog } from "@/components/workspace-setup-dialog";
@@ -45,6 +46,7 @@ import {
   useHorizontalScrollOptional,
 } from "@/contexts/horizontal-scroll-context";
 import { SessionProvider } from "@/contexts/session-context";
+import { ExplorerSidebarAnimationProvider } from "@/contexts/explorer-sidebar-animation-context";
 import {
   SidebarAnimationProvider,
   useSidebarAnimation,
@@ -477,14 +479,26 @@ function AppContainer({
   useActiveWorktreeNewAction();
   useGlobalNewWorkspaceAction();
 
+  const workspaceChrome = (
+    <View style={rowStyle}>
+      {!isCompactLayout && chromeEnabled && !isFocusModeEnabled && (
+        <LeftSidebar selectedAgentId={selectedAgentId} />
+      )}
+      {isCompactLayout && chromeEnabled ? (
+        <ExplorerSidebarAnimationProvider>
+          <CompactExplorerSidebarHost enabled={chromeEnabled}>
+            <View style={flexStyle}>{children}</View>
+          </CompactExplorerSidebarHost>
+        </ExplorerSidebarAnimationProvider>
+      ) : (
+        <View style={flexStyle}>{children}</View>
+      )}
+    </View>
+  );
+
   const content = (
     <View style={layoutStyles.surfaceFill}>
-      <View style={rowStyle}>
-        {!isCompactLayout && chromeEnabled && !isFocusModeEnabled && (
-          <LeftSidebar selectedAgentId={selectedAgentId} />
-        )}
-        <View style={flexStyle}>{children}</View>
-      </View>
+      {workspaceChrome}
       <FloatingPanelPortalHost />
       {isCompactLayout && chromeEnabled && <LeftSidebar selectedAgentId={selectedAgentId} />}
       <DownloadToast />
