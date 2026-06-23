@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { useSessionStore } from "@/stores/session-store";
 import type { AgentDirectoryEntry } from "@/types/agent-directory";
 import { useAgentHistory } from "@/hooks/use-agent-history";
+import { applySidebarSessionPlacements } from "./sidebar-session-placements";
 
 /**
  * One row in the new-theme flat sessions sidebar: a single agent session
@@ -88,7 +89,7 @@ export function useSidebarSessionsList(serverId: string | null): SidebarSessions
       return EMPTY_SESSIONS;
     }
 
-    return Array.from(byId.values()).sort(
+    return applySidebarSessionPlacements(Array.from(byId.values())).sort(
       (left, right) => right.recencyAt.getTime() - left.recencyAt.getTime(),
     );
   }, [agents, liveAgentsMap]);

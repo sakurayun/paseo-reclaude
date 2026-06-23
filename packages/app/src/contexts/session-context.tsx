@@ -1201,7 +1201,14 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
             serverId,
             agent: {
               ...normalized,
-              projectPlacement: session?.agents.get(agentId)?.projectPlacement ?? null,
+              // Keep an already-known placement; otherwise derive one from the
+              // cwd so a freshly created session never enters the store without
+              // a placement (which would group it under "Other" until the
+              // daemon reports the real project a few seconds later).
+              projectPlacement: resolveProjectPlacement({
+                projectPlacement: session?.agents.get(agentId)?.projectPlacement,
+                cwd: normalized.cwd,
+              }),
             },
           }),
         );
