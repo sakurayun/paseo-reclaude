@@ -207,7 +207,10 @@ one conversation), with a **3-button top toolbar**: new conversation
 - **Grouping** — `hooks/sidebar-sessions-grouping.ts`: the flat sessions list is
   grouped by **project key**, not workspace id/name. A new conversation may create
   a new workspace, but it must stay under the same repo header. GitHub projects
-  display as `owner/repo` (for example `sakurayun/paseo-reclaude`).
+  display as `owner/repo` (for example `sakurayun/paseo-reclaude`). Project
+  groups can be renamed from the right-click menu; when a custom name is active,
+  the header appends the canonical `owner/repo` in muted text so the underlying
+  repo identity remains visible.
 - **Rows** — reuse `SidebarSessionRow` (`sidebar-workspace-sessions.tsx`) with
   `variant="flat"` → hover/press radius = `theme.shell.contentRadius` (12, the
   content-card radius), plus `subtitle` (project) and `timeOverride` (recencyAt).

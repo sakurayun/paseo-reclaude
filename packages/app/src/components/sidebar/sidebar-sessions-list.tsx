@@ -29,6 +29,8 @@ import { useSessionStore } from "@/stores/session-store";
 import { agentHistoryQueryKey } from "@/hooks/agent-history-query-key";
 import { isSidebarActiveAgent } from "@/utils/sidebar-agent-state";
 import type { Theme } from "@/styles/theme";
+import { useProjectNamesMap } from "@/hooks/use-status-mode-workspaces";
+import { projectsQueryKey } from "@/hooks/use-projects";
 
 interface SidebarSessionsListProps {
   serverId: string | null;
@@ -75,8 +77,12 @@ function GroupLeadingIcon({ hovered, expanded }: { hovered: boolean; expanded: b
 export function SidebarSessionsList({ serverId, parentGestureRef }: SidebarSessionsListProps) {
   const { t } = useTranslation();
   const { sessions, isInitialLoad } = useSidebarSessionsList(serverId);
+  const projectNamesByKey = useProjectNamesMap(serverId);
 
-  const groups = useMemo(() => groupSidebarSessionsByProject(sessions), [sessions]);
+  const groups = useMemo(
+    () => groupSidebarSessionsByProject(sessions, projectNamesByKey),
+    [projectNamesByKey, sessions],
+  );
   // Expanded-by-key set, empty by default → all groups start collapsed. Newly
   // appearing groups are absent from the set, so they stay collapsed too.
   const [expandedKeys, setExpandedKeys] = useState<ReadonlySet<string>>(EMPTY_EXPANDED);
@@ -164,7 +170,9 @@ const SidebarSessionsGroupView = memo(function SidebarSessionsGroupView({
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const displayLabel = group.label.length > 0 ? group.label : unknownLabel;
-  const canRename = group.workspaceId !== null && serverId !== null;
+  const baseLabel = group.baseLabel.length > 0 ? group.baseLabel : null;
+  const showBaseLabel = Boolean(baseLabel && displayLabel !== baseLabel);
+  const canRename = group.projectKey !== null && serverId !== null;
 
   // Hover lives on a plain View (canonical pattern, see docs/hover.md): the
   // header's leading icon is a folder by default and swaps to the collapse
@@ -184,7 +192,7 @@ const SidebarSessionsGroupView = memo(function SidebarSessionsGroupView({
 
   const handleRenameSubmit = useCallback(
     async (nextTitle: string) => {
-      if (!group.workspaceId || !serverId) {
+      if (!group.projectKey || !serverId) {
         return;
       }
       const client = useSessionStore.getState().sessions[serverId]?.client ?? null;
@@ -192,12 +200,14 @@ const SidebarSessionsGroupView = memo(function SidebarSessionsGroupView({
         throw new Error(t("workspace.terminal.hostDisconnected"));
       }
       const trimmed = nextTitle.trim();
-      await client.setWorkspaceTitle(group.workspaceId, trimmed.length === 0 ? null : trimmed);
-      // Refresh history-derived placement labels so the rename surfaces here even
-      // for sessions that aren't live in the session store.
+      const customName = trimmed === baseLabel ? null : trimmed;
+      await client.renameProject(group.projectKey, customName);
+      void queryClient.invalidateQueries({ queryKey: projectsQueryKey });
+      // Refresh history-derived placement labels so the rename surfaces for
+      // sessions that aren't live in the session store.
       void queryClient.invalidateQueries({ queryKey: agentHistoryQueryKey(serverId) });
     },
-    [group.workspaceId, serverId, queryClient, t],
+    [baseLabel, group.projectKey, serverId, queryClient, t],
   );
 
   const headerStyle = useCallback(
@@ -236,6 +246,7 @@ const SidebarSessionsGroupView = memo(function SidebarSessionsGroupView({
             </View>
             <Text style={styles.groupLabel} numberOfLines={1}>
               {displayLabel}
+              {showBaseLabel ? <Text style={styles.groupBaseLabel}> {baseLabel}</Text> : null}
             </Text>
             <Text style={styles.groupCount}>{group.sessions.length}</Text>
           </ContextMenuTrigger>
@@ -250,7 +261,7 @@ const SidebarSessionsGroupView = memo(function SidebarSessionsGroupView({
                 testID={`sidebar-sessions-group-context-${group.key}-rename`}
                 onSelect={handleOpenRename}
               >
-                {t("sidebar.sessionsList.renameWorkspace")}
+                {t("settings.project.rename.renameLabel")}
               </ContextMenuItem>
             </ContextMenuContent>
           ) : null}
@@ -271,8 +282,9 @@ const SidebarSessionsGroupView = memo(function SidebarSessionsGroupView({
       {canRename ? (
         <AdaptiveRenameModal
           visible={isRenameOpen}
-          title={t("sidebar.sessionsList.renameWorkspace")}
+          title={t("settings.project.rename.renameLabel")}
           initialValue={displayLabel}
+          placeholder={baseLabel ?? undefined}
           onClose={handleCloseRename}
           onSubmit={handleRenameSubmit}
           testID={`sidebar-sessions-group-rename-${group.key}`}
@@ -333,6 +345,11 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.sm,
     fontWeight: theme.fontWeight.medium,
     color: theme.colors.foreground,
+  },
+  groupBaseLabel: {
+    fontSize: theme.fontSize.xs,
+    fontWeight: theme.fontWeight.normal,
+    color: theme.colors.foregroundMuted,
   },
   groupCount: {
     fontSize: theme.fontSize.xs,

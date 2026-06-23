@@ -73,8 +73,30 @@ describe("groupSidebarSessionsByProject", () => {
       }),
     ]);
     expect(groups).toHaveLength(1);
+    expect(groups[0].projectKey).toBe("remote:github.com/sakurayun/paseo-reclaude");
     expect(groups[0].label).toBe("sakurayun/paseo-reclaude");
+    expect(groups[0].baseLabel).toBe("sakurayun/paseo-reclaude");
     expect(groups[0].sessions.map((s) => s.id)).toEqual(["a"]);
+  });
+
+  it("uses a project rename override while preserving the canonical repo label", () => {
+    const groups = groupSidebarSessionsByProject(
+      [
+        session({
+          id: "a",
+          recencyMs: 10,
+          projectPlacement: placement({
+            projectKey: "remote:github.com/sakurayun/paseo-reclaude",
+            projectName: "sakurayun/paseo-reclaude",
+            workspaceName: "feature-x",
+          }),
+        }),
+      ],
+      new Map([["remote:github.com/sakurayun/paseo-reclaude", "Paseo 本地分支"]]),
+    );
+    expect(groups).toHaveLength(1);
+    expect(groups[0].label).toBe("Paseo 本地分支");
+    expect(groups[0].baseLabel).toBe("sakurayun/paseo-reclaude");
   });
 
   it("falls back to the local project name when the project is not remote-backed", () => {
@@ -104,9 +126,11 @@ describe("groupSidebarSessionsByProject", () => {
       }),
     ]);
     expect(groups).toHaveLength(1);
+    expect(groups[0].projectKey).toBe("proj");
     expect(groups[0].workspaceId).toBeNull();
     expect(groups[0].key).toBe("project:proj");
     expect(groups[0].label).toBe("Project");
+    expect(groups[0].baseLabel).toBe("Project");
     expect(groups[0].sessions.map((s) => s.id)).toEqual(["newer", "older"]);
   });
 
@@ -137,6 +161,7 @@ describe("groupSidebarSessionsByProject", () => {
     expect(groups[0].key).toBe("project:remote:github.com/sakurayun/paseo-reclaude");
     expect(groups[0].workspaceId).toBeNull();
     expect(groups[0].label).toBe("sakurayun/paseo-reclaude");
+    expect(groups[0].baseLabel).toBe("sakurayun/paseo-reclaude");
     expect(groups[0].sessions.map((s) => s.id)).toEqual(["a", "b"]);
   });
 

@@ -1,10 +1,14 @@
 import type { SidebarSessionEntry } from "@/hooks/use-sidebar-sessions-list";
 import { deriveProjectDisplayName } from "@/utils/agent-grouping";
 
+export type SidebarProjectNameOverrides = ReadonlyMap<string, string>;
+
 /** One project group in the new-theme sessions sidebar. */
 export interface SidebarSessionGroup {
   /** Stable identity used for collapse state + React keys. */
   key: string;
+  /** Project identity used for project-level actions such as rename. */
+  projectKey: string | null;
   /**
    * Project groups do not map one-to-one to a live workspace, so they are not
    * renameable through the workspace-title API.
@@ -16,8 +20,36 @@ export interface SidebarSessionGroup {
    * sakurayun/paseo-reclaude), otherwise the local project name.
    */
   label: string;
+  /**
+   * Canonical project label derived from the stable project key. When `label`
+   * is a user override, the UI shows this as muted supporting text to avoid
+   * hiding the real repository identity.
+   */
+  baseLabel: string;
   /** Sessions in this group, preserving the caller's recency order. */
   sessions: SidebarSessionEntry[];
+}
+
+function resolveProjectKey(session: SidebarSessionEntry): string | null {
+  const projectKey = session.projectPlacement?.projectKey?.trim();
+  return projectKey && projectKey.length > 0 ? projectKey : null;
+}
+
+function resolveBaseLabel(session: SidebarSessionEntry, projectKey: string | null): string {
+  if (!projectKey) {
+    return session.projectName?.trim() ?? "";
+  }
+  if (!projectKey.startsWith("remote:")) {
+    const projectName =
+      session.projectPlacement?.projectName?.trim() ?? session.projectName?.trim();
+    if (projectName) {
+      return projectName;
+    }
+  }
+  return deriveProjectDisplayName({
+    projectKey,
+    projectName: "",
+  });
 }
 
 /**
@@ -25,7 +57,17 @@ export interface SidebarSessionGroup {
  * custom/local; `deriveProjectDisplayName` makes remote keys display as
  * owner/repo instead of per-workspace titles.
  */
-function resolveGroupLabel(session: SidebarSessionEntry): string {
+function resolveGroupLabel(
+  session: SidebarSessionEntry,
+  projectKey: string | null,
+  projectNameOverrides: SidebarProjectNameOverrides | undefined,
+): string {
+  if (projectKey) {
+    const override = projectNameOverrides?.get(projectKey)?.trim();
+    if (override) {
+      return override;
+    }
+  }
   const placement = session.projectPlacement;
   if (placement) {
     return deriveProjectDisplayName({
@@ -43,8 +85,7 @@ function resolveGroupLabel(session: SidebarSessionEntry): string {
  * conversation create a new group.
  */
 function resolveGroupKey(session: SidebarSessionEntry, label: string): string {
-  const placement = session.projectPlacement;
-  const projectKey = placement?.projectKey?.trim();
+  const projectKey = resolveProjectKey(session);
   if (projectKey) {
     return `project:${projectKey}`;
   }
@@ -62,16 +103,26 @@ function resolveGroupKey(session: SidebarSessionEntry, label: string): string {
  */
 export function groupSidebarSessionsByProject(
   sessions: SidebarSessionEntry[],
+  projectNameOverrides?: SidebarProjectNameOverrides,
 ): SidebarSessionGroup[] {
   const groups = new Map<string, SidebarSessionGroup>();
   for (const session of sessions) {
-    const label = resolveGroupLabel(session);
+    const projectKey = resolveProjectKey(session);
+    const label = resolveGroupLabel(session, projectKey, projectNameOverrides);
+    const baseLabel = resolveBaseLabel(session, projectKey);
     const key = resolveGroupKey(session, label);
     const existing = groups.get(key);
     if (existing) {
       existing.sessions.push(session);
     } else {
-      groups.set(key, { key, workspaceId: null, label, sessions: [session] });
+      groups.set(key, {
+        key,
+        projectKey,
+        workspaceId: null,
+        label,
+        baseLabel,
+        sessions: [session],
+      });
     }
   }
   return Array.from(groups.values());
