@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.1.110 - 2026-06-23
+
+### Changed
+
+- Provider diagnostics and model lists now stay in sync
+- Improved the GitHub pull-request panel toolbar and loading states
+
+### Fixed
+
+- New theme: colored tool-call names now match their icons — the new theme's light look previously mis-tinted them as dark; failed tool calls now tint their name red as well
+
 ## 0.1.106 - 2026-06-23
 
 ### Added
