@@ -1,100 +1,77 @@
 import type { SidebarSessionEntry } from "@/hooks/use-sidebar-sessions-list";
+import { deriveProjectDisplayName } from "@/utils/agent-grouping";
 
-/** One workspace group in the new-theme sessions sidebar. */
+/** One project group in the new-theme sessions sidebar. */
 export interface SidebarSessionGroup {
   /** Stable identity used for collapse state + React keys. */
   key: string;
   /**
-   * The workspace this group represents, when the sessions are tied to a live
-   * workspace. `null` for aggregate/orphan groups (history sessions whose
-   * workspace is gone, or sessions with no workspace id) — those can't be
-   * renamed because there is no single workspace to write the title to.
+   * Project groups do not map one-to-one to a live workspace, so they are not
+   * renameable through the workspace-title API.
    */
   workspaceId: string | null;
   /**
-   * Display label for the group header. The workspace name when the daemon
-   * knows it, otherwise the project name (which is always present, derived from
-   * the cwd as a last resort), otherwise an empty string for the caller to
-   * localize.
+   * Display label for the group header. Git-backed projects use their stable
+   * project display name (for GitHub remotes: owner/repo, e.g.
+   * sakurayun/paseo-reclaude), otherwise the local project name.
    */
   label: string;
   /** Sessions in this group, preserving the caller's recency order. */
   sessions: SidebarSessionEntry[];
 }
 
-// Separates the project key from the workspace name in an aggregate group key.
-// A NUL byte can't appear in either part, so collisions are impossible.
-const PLACEMENT_KEY_SEPARATOR = "\u0000";
-
 /**
- * The visible workspace name for a session. Prefers the daemon-provided
- * `workspaceName` (a worktree's title or branch), then the project name. Both
- * come from `projectPlacement`, which `useSidebarSessionsList` always resolves
- * (falling back to a cwd-derived placement), so this is history-safe.
+ * The visible project name for a session. `projectPlacement.projectName` may be
+ * custom/local; `deriveProjectDisplayName` makes remote keys display as
+ * owner/repo instead of per-workspace titles.
  */
 function resolveGroupLabel(session: SidebarSessionEntry): string {
   const placement = session.projectPlacement;
-  const workspaceName = placement?.workspaceName?.trim();
-  if (workspaceName) {
-    return workspaceName;
-  }
-  const projectName = placement?.projectName?.trim();
-  if (projectName) {
-    return projectName;
+  if (placement) {
+    return deriveProjectDisplayName({
+      projectKey: placement.projectKey,
+      projectName: placement.projectName,
+    });
   }
   return session.projectName?.trim() ?? "";
 }
 
-function resolveWorkspaceId(session: SidebarSessionEntry): string | null {
-  const workspaceId = session.workspaceId;
-  return typeof workspaceId === "string" && workspaceId.length > 0 ? workspaceId : null;
-}
-
 /**
- * Group identity. Sessions tied to a live workspace key on its `workspaceId` so
- * the group maps one-to-one to a renameable workspace. Sessions without one
- * (history whose workspace is gone) fall back to `(projectKey, workspaceName)`,
- * which is stable across the live and history copies of the same session, then
- * to the bare label as a last resort.
+ * Group identity. New-theme session navigation is project-first: opening a new
+ * conversation creates a new workspace/session, but it should remain under the
+ * same repository/project header. Keying on workspaceId would make every new
+ * conversation create a new group.
  */
-function resolveGroupKey(
-  session: SidebarSessionEntry,
-  workspaceId: string | null,
-  label: string,
-): string {
-  if (workspaceId) {
-    return `ws:${workspaceId}`;
-  }
+function resolveGroupKey(session: SidebarSessionEntry, label: string): string {
   const placement = session.projectPlacement;
   const projectKey = placement?.projectKey?.trim();
   if (projectKey) {
-    const workspaceName = placement?.workspaceName?.trim() ?? "";
-    return `pp:${projectKey}${PLACEMENT_KEY_SEPARATOR}${workspaceName}`;
+    return `project:${projectKey}`;
   }
   return `lb:${label}`;
 }
 
 /**
- * Group an already recency-sorted flat session list by workspace.
+ * Group an already recency-sorted flat session list by project.
  *
  * Group order follows first appearance, so the group containing the single
  * most-recent session leads. Within a group the incoming order is preserved
- * (still recency-sorted). The label comes from the group's first (most recent)
- * session, so a fresh rename surfaces immediately. Pure and order-deterministic.
+ * (still recency-sorted). The label comes from the group's project placement,
+ * so all sessions in one repository collapse under the same owner/repo-style
+ * header. Pure and order-deterministic.
  */
-export function groupSidebarSessionsByWorkspace(
+export function groupSidebarSessionsByProject(
   sessions: SidebarSessionEntry[],
 ): SidebarSessionGroup[] {
   const groups = new Map<string, SidebarSessionGroup>();
   for (const session of sessions) {
-    const workspaceId = resolveWorkspaceId(session);
     const label = resolveGroupLabel(session);
-    const key = resolveGroupKey(session, workspaceId, label);
+    const key = resolveGroupKey(session, label);
     const existing = groups.get(key);
     if (existing) {
       existing.sessions.push(session);
     } else {
-      groups.set(key, { key, workspaceId, label, sessions: [session] });
+      groups.set(key, { key, workspaceId: null, label, sessions: [session] });
     }
   }
   return Array.from(groups.values());

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ProjectPlacementPayload } from "@getpaseo/protocol/messages";
-import { groupSidebarSessionsByWorkspace } from "./sidebar-sessions-grouping";
+import { groupSidebarSessionsByProject } from "./sidebar-sessions-grouping";
 import type { SidebarSessionEntry } from "./use-sidebar-sessions-list";
 
 function placement(input: {
@@ -55,26 +55,30 @@ function session(input: {
   } as SidebarSessionEntry;
 }
 
-describe("groupSidebarSessionsByWorkspace", () => {
+describe("groupSidebarSessionsByProject", () => {
   it("returns an empty list for no sessions", () => {
-    expect(groupSidebarSessionsByWorkspace([])).toEqual([]);
+    expect(groupSidebarSessionsByProject([])).toEqual([]);
   });
 
-  it("labels a group by the workspace name when present", () => {
-    const groups = groupSidebarSessionsByWorkspace([
+  it("labels a GitHub project group as owner/repo even when workspace names differ", () => {
+    const groups = groupSidebarSessionsByProject([
       session({
         id: "a",
         recencyMs: 10,
-        projectPlacement: placement({ workspaceName: "feature-x" }),
+        projectPlacement: placement({
+          projectKey: "remote:github.com/sakurayun/paseo-reclaude",
+          projectName: "paseo-reclaude",
+          workspaceName: "feature-x",
+        }),
       }),
     ]);
     expect(groups).toHaveLength(1);
-    expect(groups[0].label).toBe("feature-x");
+    expect(groups[0].label).toBe("sakurayun/paseo-reclaude");
     expect(groups[0].sessions.map((s) => s.id)).toEqual(["a"]);
   });
 
-  it("falls back to the project name when the workspace name is absent", () => {
-    const groups = groupSidebarSessionsByWorkspace([
+  it("falls back to the local project name when the project is not remote-backed", () => {
+    const groups = groupSidebarSessionsByProject([
       session({
         id: "a",
         recencyMs: 10,
@@ -84,8 +88,8 @@ describe("groupSidebarSessionsByWorkspace", () => {
     expect(groups[0].label).toBe("Paseo");
   });
 
-  it("groups sessions by workspace id and exposes it for renaming", () => {
-    const groups = groupSidebarSessionsByWorkspace([
+  it("does not expose a workspace id for project groups", () => {
+    const groups = groupSidebarSessionsByProject([
       session({
         id: "newer",
         recencyMs: 30,
@@ -96,38 +100,48 @@ describe("groupSidebarSessionsByWorkspace", () => {
         id: "older",
         recencyMs: 10,
         workspaceId: "ws-1",
-        // A staler placement label must not split the group — id wins.
         projectPlacement: placement({ workspaceName: "old name" }),
       }),
     ]);
     expect(groups).toHaveLength(1);
-    expect(groups[0].workspaceId).toBe("ws-1");
-    expect(groups[0].key).toBe("ws:ws-1");
-    expect(groups[0].label).toBe("main");
+    expect(groups[0].workspaceId).toBeNull();
+    expect(groups[0].key).toBe("project:proj");
+    expect(groups[0].label).toBe("Project");
     expect(groups[0].sessions.map((s) => s.id)).toEqual(["newer", "older"]);
   });
 
-  it("splits sessions with different workspace ids even under the same name", () => {
-    const groups = groupSidebarSessionsByWorkspace([
+  it("groups sessions by project key even when new conversations use different workspaces", () => {
+    const groups = groupSidebarSessionsByProject([
       session({
         id: "a",
         recencyMs: 30,
         workspaceId: "ws-1",
-        projectPlacement: placement({ workspaceName: "main" }),
+        projectPlacement: placement({
+          projectKey: "remote:github.com/sakurayun/paseo-reclaude",
+          projectName: "paseo-reclaude",
+          workspaceName: "main",
+        }),
       }),
       session({
         id: "b",
         recencyMs: 20,
         workspaceId: "ws-2",
-        projectPlacement: placement({ workspaceName: "main" }),
+        projectPlacement: placement({
+          projectKey: "remote:github.com/sakurayun/paseo-reclaude",
+          projectName: "paseo-reclaude",
+          workspaceName: "new-conversation-branch",
+        }),
       }),
     ]);
-    expect(groups).toHaveLength(2);
-    expect(groups.map((g) => g.workspaceId)).toEqual(["ws-1", "ws-2"]);
+    expect(groups).toHaveLength(1);
+    expect(groups[0].key).toBe("project:remote:github.com/sakurayun/paseo-reclaude");
+    expect(groups[0].workspaceId).toBeNull();
+    expect(groups[0].label).toBe("sakurayun/paseo-reclaude");
+    expect(groups[0].sessions.map((s) => s.id)).toEqual(["a", "b"]);
   });
 
-  it("groups workspace-less history sessions by (projectKey, workspaceName)", () => {
-    const groups = groupSidebarSessionsByWorkspace([
+  it("groups workspace-less history sessions by project key", () => {
+    const groups = groupSidebarSessionsByProject([
       session({
         id: "newer",
         recencyMs: 30,
@@ -136,7 +150,7 @@ describe("groupSidebarSessionsByWorkspace", () => {
       session({
         id: "older",
         recencyMs: 10,
-        projectPlacement: placement({ projectKey: "p", workspaceName: "main" }),
+        projectPlacement: placement({ projectKey: "p", workspaceName: "feature" }),
       }),
     ]);
     expect(groups).toHaveLength(1);
@@ -144,8 +158,8 @@ describe("groupSidebarSessionsByWorkspace", () => {
     expect(groups[0].sessions.map((s) => s.id)).toEqual(["newer", "older"]);
   });
 
-  it("separates two workspaces under the same project", () => {
-    const groups = groupSidebarSessionsByWorkspace([
+  it("does not split two workspaces under the same project", () => {
+    const groups = groupSidebarSessionsByProject([
       session({
         id: "a",
         recencyMs: 30,
@@ -157,11 +171,13 @@ describe("groupSidebarSessionsByWorkspace", () => {
         projectPlacement: placement({ projectKey: "p", workspaceName: "main" }),
       }),
     ]);
-    expect(groups.map((g) => g.label)).toEqual(["feature", "main"]);
+    expect(groups).toHaveLength(1);
+    expect(groups[0].label).toBe("Project");
+    expect(groups[0].sessions.map((s) => s.id)).toEqual(["a", "b"]);
   });
 
   it("does not merge same-named workspaces from different projects", () => {
-    const groups = groupSidebarSessionsByWorkspace([
+    const groups = groupSidebarSessionsByProject([
       session({
         id: "a",
         recencyMs: 30,
@@ -186,17 +202,17 @@ describe("groupSidebarSessionsByWorkspace", () => {
   });
 
   it("orders groups by first appearance (most-recent session leads)", () => {
-    const groups = groupSidebarSessionsByWorkspace([
+    const groups = groupSidebarSessionsByProject([
       session({ id: "a", recencyMs: 50, projectPlacement: placement({ projectKey: "p1" }) }),
       session({ id: "b", recencyMs: 40, projectPlacement: placement({ projectKey: "p2" }) }),
       session({ id: "c", recencyMs: 30, projectPlacement: placement({ projectKey: "p1" }) }),
     ]);
-    expect(groups.map((g) => g.key.startsWith("pp:p1"))).toEqual([true, false]);
+    expect(groups.map((g) => g.key === "project:p1")).toEqual([true, false]);
     expect(groups[0].sessions.map((s) => s.id)).toEqual(["a", "c"]);
   });
 
   it("keeps an empty label when no placement is available for the header to localize", () => {
-    const groups = groupSidebarSessionsByWorkspace([
+    const groups = groupSidebarSessionsByProject([
       session({ id: "a", recencyMs: 10, projectPlacement: null, projectName: null }),
     ]);
     expect(groups[0].label).toBe("");

@@ -13,7 +13,7 @@ import {
   type SidebarSessionEntry,
 } from "@/hooks/use-sidebar-sessions-list";
 import {
-  groupSidebarSessionsByWorkspace,
+  groupSidebarSessionsByProject,
   type SidebarSessionGroup,
 } from "@/hooks/sidebar-sessions-grouping";
 import { SidebarSessionRow } from "@/components/sidebar/sidebar-workspace-sessions";
@@ -65,9 +65,9 @@ function GroupLeadingIcon({ hovered, expanded }: { hovered: boolean; expanded: b
 
 /**
  * New-theme default sidebar body: every non-archived session on the active host,
- * grouped by workspace. Groups are sorted by recency (the group holding the most
+ * grouped by project. Groups are sorted by recency (the group holding the most
  * recent session leads) and start collapsed, so the sidebar opens as a compact
- * index of workspaces the user can drill into. A collapsed group still shows its
+ * index of projects the user can drill into. A collapsed group still shows its
  * unfinished (running / waiting / failed) sessions so live work is never hidden.
  * Sessions auto-refresh through react-query + the live session store, so no
  * manual refresh control is needed here.
@@ -76,7 +76,7 @@ export function SidebarSessionsList({ serverId, parentGestureRef }: SidebarSessi
   const { t } = useTranslation();
   const { sessions, isInitialLoad } = useSidebarSessionsList(serverId);
 
-  const groups = useMemo(() => groupSidebarSessionsByWorkspace(sessions), [sessions]);
+  const groups = useMemo(() => groupSidebarSessionsByProject(sessions), [sessions]);
   // Expanded-by-key set, empty by default → all groups start collapsed. Newly
   // appearing groups are absent from the set, so they stay collapsed too.
   const [expandedKeys, setExpandedKeys] = useState<ReadonlySet<string>>(EMPTY_EXPANDED);

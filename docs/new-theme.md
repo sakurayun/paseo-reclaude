@@ -204,6 +204,10 @@ one conversation), with a **3-button top toolbar**: new conversation
   history cache (`useAgentHistory`) with the live session store, filters
   archived, sorts by `lastUserMessageAt ?? lastActivityAt` (the user's most
   recent message), exposes `recencyAt` + `projectName` per row.
+- **Grouping** — `hooks/sidebar-sessions-grouping.ts`: the flat sessions list is
+  grouped by **project key**, not workspace id/name. A new conversation may create
+  a new workspace, but it must stay under the same repo header. GitHub projects
+  display as `owner/repo` (for example `sakurayun/paseo-reclaude`).
 - **Rows** — reuse `SidebarSessionRow` (`sidebar-workspace-sessions.tsx`) with
   `variant="flat"` → hover/press radius = `theme.shell.contentRadius` (12, the
   content-card radius), plus `subtitle` (project) and `timeOverride` (recencyAt).
