@@ -50,7 +50,7 @@ import {
   FileSymlink,
 } from "lucide-react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
-import { ICON_SIZE, type Theme } from "@/styles/theme";
+import { colorSchemeForThemeName, ICON_SIZE, type Theme } from "@/styles/theme";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import Animated, {
   Easing,
@@ -1492,12 +1492,24 @@ const expandableBadgeStylesheet = StyleSheet.create((theme, rt) => ({
     color: theme.colors.foreground,
     opacity: 0.72,
   },
+  // On failure the badge glyph swaps to a destructive-tinted alert icon
+  // (see renderExpandableBadgeIcon); tint the tool name to the same
+  // `destructive` color so name and glyph always agree. Applied last in the
+  // label style array so it wins over the category tint, mirroring the icon
+  // where the error branch takes priority over `tintColorMapping`.
+  labelError: {
+    color: theme.colors.destructive,
+  },
   // Scheme selection must go through the runtime, not `theme.colorScheme`:
   // unistyles web runs in CSSVars mode, where every string leaf on `theme`
   // (including colorScheme) is rewritten to a `var(--…)` reference, so using
-  // it as an object key silently resolves to undefined.
+  // it as an object key silently resolves to undefined. Map the theme NAME to a
+  // scheme via colorSchemeForThemeName so the tool name matches the badge glyph
+  // (which resolves its tint through `theme.colorScheme` in a uniProps mapping)
+  // under every theme — including the fork's light `newTheme`, whose key starts
+  // with neither "light" nor "dark".
   labelTinted: (tint: ToolCallSchemeColor) => ({
-    color: String(rt.themeName).startsWith("light") ? tint.light : tint.dark,
+    color: tint[colorSchemeForThemeName(String(rt.themeName))],
   }),
   secondaryLabel: {
     flexShrink: 1,
@@ -3201,8 +3213,9 @@ const ExpandableBadge = memo(function ExpandableBadge({
       isActive && expandableBadgeStylesheet.labelActive,
       isLoading && expandableBadgeStylesheet.labelLoading,
       labelColor ? expandableBadgeStylesheet.labelTinted(labelColor) : null,
+      isError && expandableBadgeStylesheet.labelError,
     ],
-    [isActive, isLoading, labelColor],
+    [isActive, isLoading, labelColor, isError],
   );
 
   const secondaryLabelStyle = useMemo(

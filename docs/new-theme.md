@@ -121,6 +121,24 @@ typed ones; the test asserts the literal list):
 (`THEME_TO_UNISTYLES` / `VALID_THEMES` are only for dropdown `ThemeName`s —
 `newTheme` is not a dropdown option, so it stays out of both.)
 
+## Never classify light/dark by theme-name prefix
+
+`newTheme` is a **light** theme (`buildLightTheme`, `colorScheme: "light"`) whose
+Unistyles key starts with neither `"light"` nor `"dark"`. Any
+`rt.themeName.startsWith("light")` heuristic therefore mis-classifies it as dark.
+This bit the colored tool-call labels: the badge **glyph** picks its tint via
+`theme.colorScheme` (a `uniProps` mapping → correctly "light"), but the tool
+**name** ran inside a `StyleSheet.create((theme, rt) => …)` factory where
+`theme.colorScheme` is rewritten to a CSS var on web and can't be read as a key,
+so it fell back to `rt.themeName.startsWith("light")` and picked the **dark** tint
+— amber name next to an amber-but-darker glyph. Fixed by `colorSchemeForThemeName`
+in `theme.ts` (an authoritative key→scheme map derived from each theme object's
+own `colorScheme`); `message.tsx` `labelTinted` and `sidechain-track.tsx`
+`rowTypeTinted` now resolve `tint[colorSchemeForThemeName(rt.themeName)]`. When you
+need light/dark inside a stylesheet factory and only have the theme name, use that
+helper — never a name prefix. (Upstream code may still ship the prefix heuristic;
+re-point it at the helper on merge.)
+
 ## Settings: borderless nested cards
 
 Settings detail pages dropped the bordered-card-with-divider-lines look in favour

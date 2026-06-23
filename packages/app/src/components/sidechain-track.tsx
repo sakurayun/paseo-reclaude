@@ -17,7 +17,7 @@ import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { GlassSurface } from "@/components/ui/glass-surface";
 import { MAX_CONTENT_WIDTH } from "@/constants/layout";
 import { useSessionStore } from "@/stores/session-store";
-import type { Theme } from "@/styles/theme";
+import { colorSchemeForThemeName, type Theme } from "@/styles/theme";
 import { resolveToolCallColor, type ToolCallSchemeColor } from "@/utils/tool-call-colors";
 import { selectCurrentRunSidechainCalls, type SidechainCall } from "./sidechain-track-select";
 import { ToolCallSheetProvider, useToolCallSheet } from "./tool-call-sheet";
@@ -480,8 +480,12 @@ const styles = StyleSheet.create((theme, rt) => ({
     color: theme.colors.foreground,
     fontWeight: theme.fontWeight.medium,
   },
+  // Map the theme NAME to a scheme (not a name-prefix heuristic) so the tool
+  // name color matches its glyph under every theme, including the fork's light
+  // `newTheme`. See colorSchemeForThemeName / docs/unistyles.md (CSSVars mode
+  // makes `theme.colorScheme` unusable as an object key inside this factory).
   rowTypeTinted: (tint: ToolCallSchemeColor) => ({
-    color: String(rt.themeName).startsWith("light") ? tint.light : tint.dark,
+    color: tint[colorSchemeForThemeName(String(rt.themeName))],
   }),
   rowLabel: {
     flex: 1,

@@ -794,6 +794,30 @@ const newThemeShell = {
 
 export const newTheme = { ...buildLightTheme(newThemeSemanticColors), shell: newThemeShell };
 
+// Authoritative Unistyles-theme-key → colorScheme map, derived from the theme
+// objects' own `colorScheme` so it can't drift. Use this anywhere only the theme
+// NAME is available — notably a `StyleSheet.create((theme, rt) => …)` factory on
+// web, where every string leaf on `theme` (including `theme.colorScheme`) is
+// rewritten to a `var(--…)` reference and is unusable as a value (see
+// docs/unistyles.md). A name-prefix heuristic is NOT enough: the fork's
+// `newTheme` is a light theme whose key starts with neither "light" nor "dark".
+const THEME_NAME_TO_COLOR_SCHEME = {
+  light: lightTheme.colorScheme,
+  lightClaude: lightClaudeTheme.colorScheme,
+  newTheme: newTheme.colorScheme,
+  dark: darkTheme.colorScheme,
+  darkZinc: darkZincTheme.colorScheme,
+  darkMidnight: darkMidnightTheme.colorScheme,
+  darkClaude: darkClaudeTheme.colorScheme,
+  darkGhostty: darkGhosttyTheme.colorScheme,
+} satisfies Record<string, "light" | "dark">;
+
+// Falls back to "dark" for unknown names (the app's dark-default, and the only
+// names seen before settings load are `light`/`dark`, both mapped above).
+export function colorSchemeForThemeName(themeName: string): "light" | "dark" {
+  return THEME_NAME_TO_COLOR_SCHEME[themeName as keyof typeof THEME_NAME_TO_COLOR_SCHEME] ?? "dark";
+}
+
 // Keep compatibility with existing code
 export const theme = darkTheme;
 
