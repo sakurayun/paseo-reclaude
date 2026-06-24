@@ -393,6 +393,12 @@ interface MessageAssemblyState {
   text: string;
 }
 
+interface SubmittedUserMessageEcho {
+  messageId: string;
+  text: string;
+  turnId: string;
+}
+
 export type SessionStateResponse = NewSessionResponse | LoadSessionResponse | ResumeSessionResponse;
 
 interface TerminalExit {
@@ -978,6 +984,7 @@ export class ACPAgentSession implements AgentSession, ACPClient {
   private readonly pendingPermissions = new Map<string, PendingPermission>();
   private readonly messageAssemblies = new Map<string, MessageAssemblyState>();
   private readonly submittedUserMessageIds = new Set<string>();
+  private activeSubmittedUserMessage: SubmittedUserMessageEcho | null = null;
   private readonly toolCalls = new Map<string, ACPToolSnapshot>();
   private readonly terminalEntries = new Map<string, TerminalEntry>();
   private readonly persistedHistory: AgentTimelineItem[] = [];
@@ -1136,6 +1143,7 @@ export class ACPAgentSession implements AgentSession, ACPClient {
     const turnId = randomUUID();
     const messageId = options?.messageId ?? randomUUID();
     this.activeForegroundTurnId = turnId;
+    this.activeSubmittedUserMessage = null;
     this.emitBootstrapThreadEvent();
     this.pushEvent({ type: "turn_started", provider: this.provider, turnId });
     this.emitSubmittedUserMessage(prompt, messageId, turnId);
@@ -2016,7 +2024,10 @@ export class ACPAgentSession implements AgentSession, ACPClient {
         if (!item) {
           return [];
         }
-        if (update.messageId && this.submittedUserMessageIds.has(update.messageId)) {
+        if (item.type !== "user_message") {
+          return [this.wrapTimeline(item)];
+        }
+        if (this.isSubmittedUserMessageEcho(item)) {
           return [];
         }
         return [this.wrapTimeline(item)];
@@ -2099,7 +2110,7 @@ export class ACPAgentSession implements AgentSession, ACPClient {
     if (!chunkText) {
       return null;
     }
-    const key = `${type}:${update.messageId ?? "default"}`;
+    const key = this.messageAssemblyKey(type, update.messageId);
     const state = this.messageAssemblies.get(key) ?? { text: "" };
     state.text += chunkText;
     this.messageAssemblies.set(key, state);
@@ -2111,6 +2122,15 @@ export class ACPAgentSession implements AgentSession, ACPClient {
       return { type: "assistant_message", text: chunkText };
     }
     return { type: "reasoning", text: chunkText };
+  }
+
+  private messageAssemblyKey(
+    type: "user_message" | "assistant_message" | "reasoning",
+    messageId: string | null | undefined,
+  ): string {
+    const fallbackId =
+      type === "user_message" ? (this.activeForegroundTurnId ?? "default") : "default";
+    return `${type}:${messageId ?? fallbackId}`;
   }
 
   private handleCurrentModeUpdate(update: CurrentModeUpdate): void {
@@ -2231,6 +2251,7 @@ export class ACPAgentSession implements AgentSession, ACPClient {
       return;
     }
     this.submittedUserMessageIds.add(messageId);
+    this.activeSubmittedUserMessage = { messageId, text, turnId };
     this.pushEvent({
       type: "timeline",
       provider: this.provider,
@@ -2257,7 +2278,25 @@ export class ACPAgentSession implements AgentSession, ACPClient {
     event: Extract<AgentStreamEvent, { type: "turn_completed" | "turn_failed" | "turn_canceled" }>,
   ): void {
     this.activeForegroundTurnId = null;
+    if (this.activeSubmittedUserMessage?.turnId === event.turnId) {
+      this.activeSubmittedUserMessage = null;
+    }
     this.pushEvent(event);
+  }
+
+  private isSubmittedUserMessageEcho(
+    item: Extract<AgentTimelineItem, { type: "user_message" }>,
+  ): boolean {
+    const active = this.activeSubmittedUserMessage;
+    if (!active || active.turnId !== this.activeForegroundTurnId) {
+      return false;
+    }
+    if (item.messageId) {
+      if (this.submittedUserMessageIds.has(item.messageId)) {
+        return true;
+      }
+    }
+    return active.text.startsWith(item.text);
   }
 
   private emitBootstrapThreadEvent(): void {

@@ -1916,6 +1916,130 @@ describe("ACPAgentSession", () => {
     ).toHaveLength(1);
   });
 
+  test("startTurn dedupes ACP user echo chunks without message ids for the submitted message", async () => {
+    const session = createSession();
+    const events: AgentStreamEvent[] = [];
+    const prompt = vi.fn(() => new Promise<PromptResponse>(() => {}));
+
+    asInternals<ACPSessionInternals>(session).sessionId = "session-1";
+    asInternals<ACPSessionInternals>(session).connection = { prompt };
+
+    session.subscribe((event) => {
+      events.push(event);
+    });
+
+    await session.startTurn("hello", { messageId: "msg-client-1" });
+    await session.sessionUpdate({
+      sessionId: "session-1",
+      update: {
+        sessionUpdate: "user_message_chunk",
+        content: { type: "text", text: "hello" },
+      } as SessionUpdate,
+    });
+
+    expect(
+      events.filter((event) => event.type === "timeline" && event.item.type === "user_message"),
+    ).toEqual([
+      {
+        type: "timeline",
+        provider: "claude-acp",
+        item: { type: "user_message", text: "hello", messageId: "msg-client-1" },
+        turnId: expect.any(String),
+      },
+    ]);
+  });
+
+  test("startTurn dedupes ACP user echo chunks without message ids across turns", async () => {
+    const session = createSession();
+    const events: AgentStreamEvent[] = [];
+    let resolvePrompt!: (value: PromptResponse) => void;
+    const prompt = vi.fn(
+      () =>
+        new Promise<PromptResponse>((resolve) => {
+          resolvePrompt = resolve;
+        }),
+    );
+
+    asInternals<ACPSessionInternals>(session).sessionId = "session-1";
+    asInternals<ACPSessionInternals>(session).connection = { prompt };
+
+    session.subscribe((event) => {
+      events.push(event);
+    });
+
+    await session.startTurn("first", { messageId: "msg-client-1" });
+    await session.sessionUpdate({
+      sessionId: "session-1",
+      update: {
+        sessionUpdate: "user_message_chunk",
+        content: { type: "text", text: "first" },
+      } as SessionUpdate,
+    });
+    resolvePrompt({ stopReason: "end_turn" });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    await session.startTurn("second", { messageId: "msg-client-2" });
+    await session.sessionUpdate({
+      sessionId: "session-1",
+      update: {
+        sessionUpdate: "user_message_chunk",
+        content: { type: "text", text: "second" },
+      } as SessionUpdate,
+    });
+
+    expect(
+      events.filter((event) => event.type === "timeline" && event.item.type === "user_message"),
+    ).toEqual([
+      {
+        type: "timeline",
+        provider: "claude-acp",
+        item: { type: "user_message", text: "first", messageId: "msg-client-1" },
+        turnId: expect.any(String),
+      },
+      {
+        type: "timeline",
+        provider: "claude-acp",
+        item: { type: "user_message", text: "second", messageId: "msg-client-2" },
+        turnId: expect.any(String),
+      },
+    ]);
+  });
+
+  test("startTurn dedupes ACP user echo chunks with provider-owned ids for the submitted message", async () => {
+    const session = createSession();
+    const events: AgentStreamEvent[] = [];
+    const prompt = vi.fn(() => new Promise<PromptResponse>(() => {}));
+
+    asInternals<ACPSessionInternals>(session).sessionId = "session-1";
+    asInternals<ACPSessionInternals>(session).connection = { prompt };
+
+    session.subscribe((event) => {
+      events.push(event);
+    });
+
+    await session.startTurn("hello", { messageId: "msg-client-1" });
+    await session.sessionUpdate({
+      sessionId: "session-1",
+      update: {
+        sessionUpdate: "user_message_chunk",
+        messageId: "msg-provider-1",
+        content: { type: "text", text: "hello" },
+      } as SessionUpdate,
+    });
+
+    expect(
+      events.filter((event) => event.type === "timeline" && event.item.type === "user_message"),
+    ).toEqual([
+      {
+        type: "timeline",
+        provider: "claude-acp",
+        item: { type: "user_message", text: "hello", messageId: "msg-client-1" },
+        turnId: expect.any(String),
+      },
+    ]);
+  });
+
   test("startTurn converts background prompt rejections into turn_failed events", async () => {
     const session = createSession();
     const events: Array<{ type: string; turnId?: string; error?: string }> = [];

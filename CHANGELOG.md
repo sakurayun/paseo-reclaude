@@ -60,6 +60,19 @@
 
 - Android app no longer crashes when switching to a remote terminal
 
+## 0.1.99 - 2026-06-23
+
+### Improved
+
+- The PR panel now has a refresh button and clearer loading states ([#1664](https://github.com/getpaseo/paseo/pull/1664))
+- Provider diagnostics and model lists now stay in sync ([#1660](https://github.com/getpaseo/paseo/pull/1660))
+
+### Fixed
+
+- ACP providers like Grok no longer show duplicate user messages
+- Saved composer modes no longer reset while provider data is loading ([#1658](https://github.com/getpaseo/paseo/pull/1658))
+- The right sidebar no longer gets stuck on mobile ([#1661](https://github.com/getpaseo/paseo/pull/1661))
+
 ## 0.1.98 - 2026-06-21
 
 ### Added
