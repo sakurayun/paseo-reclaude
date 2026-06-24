@@ -396,7 +396,16 @@ export function resolvePaseoCliBinDir(): string | null {
   }
 
   const externalCliEntrypoint = resolveExternalProcessPath(cliEntrypoint);
-  return findNpmBinDir(dirname(externalCliEntrypoint)) ?? dirname(externalCliEntrypoint);
+  const npmBinDir = findNpmBinDir(dirname(externalCliEntrypoint));
+  if (npmBinDir) {
+    return npmBinDir;
+  }
+
+  // The resolved entrypoint can be a phantom path (e.g. packaged builds where the
+  // CLI is not unpacked next to `require.resolve`'s result and the shim ships on
+  // PATH instead). Don't prepend a non-existent dir to PATH.
+  const fallbackDir = dirname(externalCliEntrypoint);
+  return existsSync(fallbackDir) ? fallbackDir : null;
 }
 
 export function resolvePaseoCliExecutablePath(): string | null {
@@ -414,7 +423,10 @@ export function resolvePaseoCliExecutablePath(): string | null {
     }
   }
 
-  return externalCliEntrypoint;
+  // When the CLI isn't unpacked next to the resolved entrypoint, don't hand the
+  // shell a phantom path — returning null lets the agent hooks fall back to
+  // `${PASEO_HOOK_CLI:-paseo}`, resolving `paseo` from PATH instead.
+  return existsSync(externalCliEntrypoint) ? externalCliEntrypoint : null;
 }
 
 function resolvePaseoCliBinEntrypoint(): string | null {
