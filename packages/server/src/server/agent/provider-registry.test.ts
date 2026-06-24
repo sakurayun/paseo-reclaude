@@ -12,6 +12,7 @@ const mockState = vi.hoisted(() => {
   interface ConstructorEntry {
     runtimeSettings?: unknown;
     providerParams?: unknown;
+    commandsRpcType?: unknown;
   }
 
   return {
@@ -262,12 +263,20 @@ vi.mock("./providers/pi/agent.js", () => ({
     readonly provider = "pi";
     readonly runtimeSettings?: unknown;
 
-    constructor(options: { runtimeSettings?: unknown; providerParams?: unknown }) {
+    constructor(options: {
+      runtimeSettings?: unknown;
+      providerParams?: unknown;
+      commandsRpcType?: unknown;
+    }) {
       this.runtimeSettings = options.runtimeSettings;
-      mockState.constructorArgs.pi.push({
+      const entry: ConstructorEntry = {
         runtimeSettings: options.runtimeSettings,
         providerParams: options.providerParams,
-      });
+      };
+      if (options.commandsRpcType !== undefined) {
+        entry.commandsRpcType = options.commandsRpcType;
+      }
+      mockState.constructorArgs.pi.push(entry);
     }
 
     async createSession(): Promise<never> {
@@ -534,6 +543,7 @@ test("OMP is a disabled built-in backed by the Pi adapter", () => {
     providerParams: {
       sessionDir: "~/.omp/agent/sessions",
     },
+    commandsRpcType: "get_available_commands",
   });
 });
 
@@ -564,11 +574,10 @@ test("new provider extending claude appears in registry", () => {
   expect(registry.zai.createClient(logger).provider).toBe("zai");
 });
 
-test("new provider extending pi passes params to the base provider constructor", () => {
+test("built-in OMP override passes params to the Pi adapter constructor", () => {
   const registry = buildProviderRegistry(logger, {
     providerOverrides: {
       omp: {
-        extends: "pi",
         label: "OMP",
         command: ["omp"],
         params: {
@@ -591,6 +600,7 @@ test("new provider extending pi passes params to the base provider constructor",
     providerParams: {
       sessionDir: "~/.omp/agent/sessions",
     },
+    commandsRpcType: "get_available_commands",
   });
 });
 

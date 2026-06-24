@@ -218,7 +218,7 @@ export const zhCN: TranslationResources = {
     hints: {
       thinking: "思考模式",
       model: "切换 Model",
-      mode: "切换权限 Mode",
+      mode: "更改模式",
       gateway: "模型网关",
     },
     gateway: {
@@ -2051,6 +2051,7 @@ export const zhCN: TranslationResources = {
         toggleFocusMode: "切换专注模式",
         cycleTheme: "循环切换主题",
         focusMessageInput: "聚焦消息输入框",
+        cycleAgentMode: "循环切换代理模式",
         toggleVoiceMode: "切换语音模式",
         startStopDictation: "开始/停止听写",
         interruptAgent: "中断 Agent",

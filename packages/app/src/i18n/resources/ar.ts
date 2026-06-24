@@ -218,7 +218,7 @@ export const ar: TranslationResources = {
     hints: {
       thinking: "وضع التفكير",
       model: "تغيير النموذج",
-      mode: "تغيير وضع الإذن",
+      mode: "تغيير الوضع",
       gateway: "بوابة النماذج",
     },
     gateway: {
@@ -2078,6 +2078,7 @@ export const ar: TranslationResources = {
         toggleFocusMode: "تبديل وضع التركيز",
         cycleTheme: "موضوع الدورة",
         focusMessageInput: "التركيز على إدخال الرسالة",
+        cycleAgentMode: "تبديل وضع الوكيل",
         toggleVoiceMode: "تبديل الوضع الصوتي",
         startStopDictation: "بدء إملاء /stop",
         interruptAgent: "عامل المقاطعة",

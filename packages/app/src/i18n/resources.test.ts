@@ -183,6 +183,7 @@ describe("translation resources", () => {
     expect(en.composer.github.title).toBe("Attach issue or PR");
     expect(en.agentControls.provider.fallback).toBe("Provider");
     expect(en.agentControls.hints.model).toBe("Change model");
+    expect(en.agentControls.hints.mode).toBe("Change mode");
     expect(en.agentControls.features.title).toBe("Features");
     expect(en.agentControls.mode.title).toBe("Mode");
     expect(en.agentStream.permission.required).toBe("Permission Required");
@@ -289,6 +290,7 @@ describe("translation resources", () => {
     expect(en.settings.shortcuts.sections.tabsPanes).toBe("Tabs & Panes");
     expect(en.settings.shortcuts.help.toggleCommandCenter).toBe("Toggle command center");
     expect(en.settings.shortcuts.help.newWorkspace).toBe("New workspace");
+    expect(en.settings.shortcuts.help.cycleAgentMode).toBe("Cycle agent mode");
     expect(en.settings.shortcuts.helpNotes.showKeyboardShortcuts).toBe(
       "Available when focus is not in a text field or terminal.",
     );
