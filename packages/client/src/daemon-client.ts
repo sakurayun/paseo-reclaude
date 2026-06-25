@@ -119,6 +119,7 @@ import type {
   PromptPresetsEnvelope,
   AppearanceSettingsEnvelope,
   ModelPreferencesEnvelope,
+  ComposerDraftsEnvelope,
 } from "@getpaseo/protocol/messages";
 import { isRelayClientWebSocketUrl } from "@getpaseo/protocol/daemon-endpoints";
 import { terminalSubscriptionKey } from "@getpaseo/protocol/terminal-subscription-key";
@@ -1861,6 +1862,60 @@ export class DaemonClient {
       options: { skipQueue: true },
       select: (msg) => {
         if (msg.type !== "model.preferences.get.response") {
+          return null;
+        }
+        if (msg.payload.requestId !== requestId) {
+          return null;
+        }
+        return msg.payload;
+      },
+    });
+    return response.envelope;
+  }
+
+  // COMPAT(composerDraftsSync): gated on server_info.features.composerDraftsSync.
+  async pushComposerDrafts(params: {
+    revision: number;
+    drafts: Record<string, unknown>;
+  }): Promise<{ accepted: boolean; revision: number }> {
+    const requestId = this.createRequestId();
+    const message = SessionInboundMessageSchema.parse({
+      type: "composer.drafts.push.request",
+      revision: params.revision,
+      drafts: params.drafts,
+      requestId,
+    });
+    const response = await this.sendRequest({
+      requestId,
+      message,
+      timeout: 15000,
+      options: { skipQueue: true },
+      select: (msg) => {
+        if (msg.type !== "composer.drafts.push.response") {
+          return null;
+        }
+        if (msg.payload.requestId !== requestId) {
+          return null;
+        }
+        return msg.payload;
+      },
+    });
+    return { accepted: response.accepted, revision: response.revision };
+  }
+
+  async getComposerDrafts(): Promise<ComposerDraftsEnvelope> {
+    const requestId = this.createRequestId();
+    const message = SessionInboundMessageSchema.parse({
+      type: "composer.drafts.get.request",
+      requestId,
+    });
+    const response = await this.sendRequest({
+      requestId,
+      message,
+      timeout: 15000,
+      options: { skipQueue: true },
+      select: (msg) => {
+        if (msg.type !== "composer.drafts.get.response") {
           return null;
         }
         if (msg.payload.requestId !== requestId) {

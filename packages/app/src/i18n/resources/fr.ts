@@ -88,6 +88,10 @@ export const fr: TranslationResources = {
     },
   },
   composer: {
+    draftConflict: {
+      title: "Brouillon distant",
+      overwrite: "Remplacer la saisie locale",
+    },
     runDir: {
       select: "Choisir le répertoire d'exécution",
     },

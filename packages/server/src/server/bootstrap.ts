@@ -118,6 +118,7 @@ import { FileBackedWorkspaceLayoutStore } from "./workspace-layout-store.js";
 import { FileBackedPromptPresetsStore } from "./prompt-presets-store.js";
 import { FileBackedAppearanceSettingsStore } from "./appearance-settings-store.js";
 import { FileBackedModelPreferencesStore } from "./model-preferences-store.js";
+import { FileBackedComposerDraftsStore } from "./composer-drafts-store.js";
 import { FileBackedChatService } from "./chat/chat-service.js";
 import { CheckoutDiffManager } from "./checkout-diff-manager.js";
 import { LoopService } from "./loop-service.js";
@@ -710,6 +711,11 @@ export async function createPaseoDaemon(
     logger,
   );
   await modelPreferencesStore.initialize();
+  const composerDraftsStore = new FileBackedComposerDraftsStore(
+    path.join(config.paseoHome, "composer-drafts.json"),
+    logger,
+  );
+  await composerDraftsStore.initialize();
   const chatService = new FileBackedChatService({
     paseoHome: config.paseoHome,
     logger,
@@ -1243,6 +1249,7 @@ export async function createPaseoDaemon(
               promptPresetsStore,
               appearanceSettingsStore,
               modelPreferencesStore,
+              composerDraftsStore,
             );
 
             if (relayEnabled) {

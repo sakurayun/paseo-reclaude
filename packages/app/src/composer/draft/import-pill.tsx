@@ -3,6 +3,7 @@ import { Pressable, Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { Import as ImportIcon } from "lucide-react-native";
+import { isWeb } from "@/constants/platform";
 import type { Theme } from "@/styles/theme";
 
 const ThemedImportIcon = withUnistyles(ImportIcon);
@@ -50,13 +51,26 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[2],
     paddingHorizontal: theme.spacing[3],
     paddingVertical: theme.spacing[2],
-    borderRadius: theme.borderRadius.md,
-    borderWidth: theme.borderWidth[1],
-    borderColor: theme.colors.borderAccent,
-    backgroundColor: theme.colors.surface1,
+    // Match the composer input's frosted-glass surface: large radius, no border,
+    // translucent glass background with backdrop blur (web) and a soft shadow.
+    borderRadius: theme.borderRadius["2xl"],
+    backgroundColor: isWeb ? theme.colors.surfaceGlass : theme.colors.surfaceGlassStrong,
+    ...(isWeb
+      ? ({
+          backdropFilter: "blur(20px) saturate(1.5)",
+          WebkitBackdropFilter: "blur(20px) saturate(1.5)",
+          boxShadow: "0 3px 18px rgba(0, 0, 0, 0.14)",
+        } as object)
+      : {
+          shadowColor: "#000000",
+          shadowOffset: { width: 0, height: 3 },
+          shadowOpacity: 0.16,
+          shadowRadius: 12,
+          elevation: 5,
+        }),
   },
   bodyHovered: {
-    backgroundColor: theme.colors.surface2,
+    backgroundColor: theme.colors.surfaceGlassStrong,
   },
   label: {
     color: theme.colors.foreground,

@@ -1,19 +1,14 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback } from "react";
 import { Pressable, Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { FolderOpen } from "lucide-react-native";
+import type { ProjectPickerTriggerArgs } from "@/components/project-picker/project-picker";
+import { isWeb } from "@/constants/platform";
 import type { Theme } from "@/styles/theme";
 
 const ThemedFolderIcon = withUnistyles(FolderOpen);
 const iconColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
-
-interface ComposerRunDirPillProps {
-  /** Absolute run directory; the pill shows its last path segment. */
-  runDir: string | null;
-  onPress: () => void;
-  disabled?: boolean;
-}
 
 /** Last path segment of an absolute dir — the folder name shown on the pill. */
 function basename(path: string | null): string {
@@ -24,32 +19,46 @@ function basename(path: string | null): string {
   return segments.length > 0 ? segments[segments.length - 1] : path;
 }
 
+type ComposerRunDirTriggerProps = ProjectPickerTriggerArgs & {
+  /** Current working directory; labels the trigger when no project is selected. */
+  runDir: string | null;
+};
+
 /**
- * Picks the working directory the new agent runs in. Sits beside the import pill
- * at the top of the draft composer; the label is the current run dir's folder
- * name so it doubles as a "this is where it runs" indicator.
+ * Frosted-glass trigger for the draft composer's working-directory selector.
+ * Rendered as the {@link ProjectPicker} trigger so it keeps the glass pill look
+ * (matching the import pill) while the dropdown reuses the shared project picker.
+ * Sits beside the import pill at the top of the draft composer; the label is the
+ * selected project name, falling back to the current run dir's folder name.
  */
-export function ComposerRunDirPill({ runDir, onPress, disabled = false }: ComposerRunDirPillProps) {
+export function ComposerRunDirTrigger({
+  ref,
+  onPress,
+  disabled,
+  selectedProject,
+  runDir,
+}: ComposerRunDirTriggerProps) {
   const { t } = useTranslation();
-  const [isHovered, setIsHovered] = useState(false);
-  const handleHoverIn = useCallback(() => setIsHovered(true), []);
-  const handleHoverOut = useCallback(() => setIsHovered(false), []);
-  const bodyStyle = useMemo(() => [styles.body, isHovered && styles.bodyHovered], [isHovered]);
-  const folderName = basename(runDir);
-  const label = folderName || t("composer.runDir.select");
+  const label = selectedProject?.projectName || basename(runDir) || t("composer.runDir.select");
   const accessibilityLabel = runDir
     ? `${t("composer.runDir.select")}: ${runDir}`
     : t("composer.runDir.select");
+  const bodyStyle = useCallback(
+    ({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => [
+      styles.body,
+      (Boolean(hovered) || pressed) && styles.bodyHovered,
+    ],
+    [],
+  );
   return (
     <View style={styles.row}>
       <Pressable
+        ref={ref}
         testID="composer-run-dir-pill"
         accessibilityRole="button"
         accessibilityLabel={accessibilityLabel}
         onPress={onPress}
         disabled={disabled}
-        onHoverIn={handleHoverIn}
-        onHoverOut={handleHoverOut}
         style={bodyStyle}
       >
         <ThemedFolderIcon size={14} uniProps={iconColorMapping} />
@@ -71,14 +80,27 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[2],
     paddingHorizontal: theme.spacing[3],
     paddingVertical: theme.spacing[2],
-    borderRadius: theme.borderRadius.md,
-    borderWidth: theme.borderWidth[1],
-    borderColor: theme.colors.borderAccent,
-    backgroundColor: theme.colors.surface1,
+    // Match the composer input's frosted-glass surface: large radius, no border,
+    // translucent glass background with backdrop blur (web) and a soft shadow.
+    borderRadius: theme.borderRadius["2xl"],
+    backgroundColor: isWeb ? theme.colors.surfaceGlass : theme.colors.surfaceGlassStrong,
     maxWidth: 220,
+    ...(isWeb
+      ? ({
+          backdropFilter: "blur(20px) saturate(1.5)",
+          WebkitBackdropFilter: "blur(20px) saturate(1.5)",
+          boxShadow: "0 3px 18px rgba(0, 0, 0, 0.14)",
+        } as object)
+      : {
+          shadowColor: "#000000",
+          shadowOffset: { width: 0, height: 3 },
+          shadowOpacity: 0.16,
+          shadowRadius: 12,
+          elevation: 5,
+        }),
   },
   bodyHovered: {
-    backgroundColor: theme.colors.surface2,
+    backgroundColor: theme.colors.surfaceGlassStrong,
   },
   label: {
     color: theme.colors.foreground,

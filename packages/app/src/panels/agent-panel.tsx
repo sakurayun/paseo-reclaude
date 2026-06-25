@@ -89,6 +89,7 @@ import type { Theme } from "@/styles/theme";
 import { useArchiveSubagent, useDetachSubagent, useSubagentsForParent } from "@/subagents";
 import { SubagentsTrack } from "@/subagents/track";
 import { TodoTrack, useLatestAgentTodos } from "@/components/todo-track";
+import { RemoteDraftConflictDrawer } from "@/composer/draft/remote-draft-conflict-drawer";
 import { SidechainTrack, useCurrentRunSidechainCalls } from "@/components/sidechain-track";
 import type { PendingPermission } from "@/types/shared";
 import type { StreamItem } from "@/types/stream";
@@ -1203,8 +1204,17 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
   });
   // Stabilize the agentInputDraft object identity so that memo(AgentComposerSection) can bail out
   // when only toast state changes (which does not affect any draft field).
-  const { text, setText, attachments, setAttachments, clear, isHydrated, composerState } =
-    rawAgentInputDraft;
+  const {
+    text,
+    setText,
+    attachments,
+    setAttachments,
+    clear,
+    isHydrated,
+    composerState,
+    remoteConflict,
+    acceptRemoteDraft,
+  } = rawAgentInputDraft;
   const agentInputDraft = useMemo(
     (): AgentInputDraft => ({
       text,
@@ -1214,8 +1224,20 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
       clear,
       isHydrated,
       composerState,
+      remoteConflict,
+      acceptRemoteDraft,
     }),
-    [text, setText, attachments, setAttachments, clear, isHydrated, composerState],
+    [
+      text,
+      setText,
+      attachments,
+      setAttachments,
+      clear,
+      isHydrated,
+      composerState,
+      remoteConflict,
+      acceptRemoteDraft,
+    ],
   );
   // The composer floats over the stream on every form factor. The stream keeps
   // enough bottom inset to scroll the final message clear of the glass surface,
@@ -1642,6 +1664,12 @@ function ActiveAgentComposer({
       />
       <SidechainTrack calls={sidechainCalls} />
       <TodoTrack items={latestTodos} />
+      {agentInputDraft.remoteConflict ? (
+        <RemoteDraftConflictDrawer
+          remoteText={agentInputDraft.remoteConflict.text}
+          onAccept={agentInputDraft.acceptRemoteDraft}
+        />
+      ) : null}
       <Composer
         agentId={agentId}
         serverId={serverId}

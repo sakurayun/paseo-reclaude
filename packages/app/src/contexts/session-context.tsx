@@ -38,6 +38,7 @@ import { startWorkspaceLayoutSync } from "@/stores/workspace-layout-sync";
 import { startPromptPresetsSync } from "@/stores/prompt-presets-sync";
 import { startAppearanceSettingsSync } from "@/stores/appearance-settings-sync";
 import { startModelPreferencesSync } from "@/stores/model-preferences-sync";
+import { startComposerDraftsSync } from "@/stores/composer-drafts-sync";
 import { startReclaudeUsageSync } from "@/provider-usage/reclaude-usage-sync";
 import type { AgentSessionConfig } from "@getpaseo/protocol/agent-types";
 import type { GitSetupOptions } from "@getpaseo/protocol/messages";
@@ -607,6 +608,13 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
   // peers. Like appearance sync, this includes mobile.
   useEffect(() => {
     return startModelPreferencesSync({ serverId, client });
+  }, [serverId, client]);
+
+  // Composer draft sync: unsent composer text per session mirrored to the daemon
+  // and applied from peers (in-progress edits are protected). Like appearance
+  // sync, this includes mobile.
+  useEffect(() => {
+    return startComposerDraftsSync({ serverId, client });
   }, [serverId, client]);
 
   // ReClaude usage sync: live-apply the daemon's broadcast of auth/usage changes

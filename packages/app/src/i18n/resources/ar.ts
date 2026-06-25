@@ -87,6 +87,10 @@ export const ar: TranslationResources = {
     },
   },
   composer: {
+    draftConflict: {
+      title: "مسودة بعيدة",
+      overwrite: "الكتابة فوق الإدخال المحلي",
+    },
     runDir: {
       select: "اختيار دليل التشغيل",
     },

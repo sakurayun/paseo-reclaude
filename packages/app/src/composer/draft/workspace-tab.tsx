@@ -10,7 +10,12 @@ import invariant from "tiny-invariant";
 import { Composer } from "@/composer";
 import { DraftAgentModeControl } from "@/composer/agent-controls/mode-control";
 import { ComposerImportPill } from "@/composer/draft/import-pill";
-import { ComposerRunDirPill } from "@/composer/draft/run-dir-pill";
+import { ComposerRunDirTrigger } from "@/composer/draft/run-dir-pill";
+import { RemoteDraftConflictDrawer } from "@/composer/draft/remote-draft-conflict-drawer";
+import {
+  ProjectPicker,
+  type ProjectPickerTriggerArgs,
+} from "@/components/project-picker/project-picker";
 import { FileDropZone } from "@/components/file-drop-zone";
 import { AgentStreamView } from "@/agent-stream/view";
 import { composerWorkspaceAttachment } from "@/composer/attachments/workspace";
@@ -26,6 +31,7 @@ import {
   resolveModelGatewayModelId,
 } from "@/model-gateways/model-gateway-models";
 import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
+import { useHostProjects, type HostProjectListItem } from "@/projects/host-projects";
 import { buildWorkspaceDraftAgentConfig } from "@/screens/workspace/workspace-draft-agent-config";
 import { buildDraftStoreKey } from "@/stores/draft-keys";
 import { usePanelStore } from "@/stores/panel-store";
@@ -54,9 +60,7 @@ import {
   MAX_CONTENT_WIDTH,
   useIsCompactFormFactor,
 } from "@/constants/layout";
-import { getIsElectron, isWeb } from "@/constants/platform";
-import { useToast } from "@/contexts/toast-context";
-import { pickDirectory } from "@/desktop/pick-directory";
+import { isWeb } from "@/constants/platform";
 import type { WorkspaceDraftTabSetup } from "@/stores/workspace-tabs-store";
 
 const EMPTY_PENDING_PERMISSIONS = new Map();
@@ -499,7 +503,6 @@ export function WorkspaceDraftAgentTab({
   onOpenImportSheet,
 }: WorkspaceDraftAgentTabProps) {
   const { t } = useTranslation();
-  const toast = useToast();
   const insets = useSafeAreaInsets();
   const client = useHostRuntimeClient(serverId);
   const isConnected = useHostRuntimeIsConnected(serverId);
@@ -550,20 +553,27 @@ export function WorkspaceDraftAgentTab({
     throw new Error("Workspace draft composer state is required");
   }
 
-  // Only desktop has a native folder picker; the pill is hidden elsewhere.
-  const canPickRunDir = getIsElectron();
-  const handlePickRunDir = useCallback(() => {
-    void (async () => {
-      try {
-        const path = await pickDirectory();
-        if (path) {
-          setRunDirOverride(path);
-        }
-      } catch (error) {
-        toast.error(error instanceof Error ? error.message : String(error));
-      }
-    })();
-  }, [toast]);
+  // The working-directory selector reuses the shared project picker on every
+  // platform: pick a host project and run the new agent in its directory.
+  const projects = useHostProjects(serverId);
+  const [pickedProjectKey, setPickedProjectKey] = useState<string | null>(null);
+  const effectiveProjectKey = useMemo(
+    () =>
+      pickedProjectKey ??
+      projects.find((project) => project.iconWorkingDir === draftWorkingDirectory)?.projectKey ??
+      null,
+    [draftWorkingDirectory, pickedProjectKey, projects],
+  );
+  const handleSelectRunDirProject = useCallback((project: HostProjectListItem) => {
+    setRunDirOverride(project.iconWorkingDir);
+    setPickedProjectKey(project.projectKey);
+  }, []);
+  const renderRunDirTrigger = useCallback(
+    (args: ProjectPickerTriggerArgs) => (
+      <ComposerRunDirTrigger {...args} runDir={draftWorkingDirectory} />
+    ),
+    [draftWorkingDirectory],
+  );
   const {
     modelGateway: selectedModelGateway,
     modelDefinitions: selectedModelGatewayModels,
@@ -926,15 +936,24 @@ export function WorkspaceDraftAgentTab({
             <View style={styles.importPillRow}>
               <View style={styles.importPillContent}>
                 <ComposerImportPill onPress={importPillPress} />
-                {canPickRunDir ? (
-                  <ComposerRunDirPill
-                    runDir={draftWorkingDirectory}
-                    onPress={handlePickRunDir}
-                    disabled={isSubmitting}
-                  />
-                ) : null}
+                <ProjectPicker
+                  serverId={serverId}
+                  projects={projects}
+                  selectedProjectKey={effectiveProjectKey}
+                  onSelectProject={handleSelectRunDirProject}
+                  allowAllProjects
+                  disabled={isSubmitting}
+                  renderTrigger={renderRunDirTrigger}
+                  desktopPlacement="top-start"
+                />
               </View>
             </View>
+          ) : null}
+          {draftInput.remoteConflict ? (
+            <RemoteDraftConflictDrawer
+              remoteText={draftInput.remoteConflict.text}
+              onAccept={draftInput.acceptRemoteDraft}
+            />
           ) : null}
           <Composer
             agentId={tabId}

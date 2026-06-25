@@ -1565,7 +1565,11 @@ function useResolvedWorkspaceRouteState(input: {
 function WorkspaceScreenGateFrame({ children }: { children: ReactNode }) {
   return (
     <>
-      <ScreenHeader left={GATED_WORKSPACE_HEADER_LEFT} />
+      <ScreenHeader
+        left={GATED_WORKSPACE_HEADER_LEFT}
+        surfaceStyle={styles.workspaceHeaderSurface}
+        rowStyle={styles.workspaceHeaderRow}
+      />
       <View style={styles.centerContent}>{children}</View>
     </>
   );

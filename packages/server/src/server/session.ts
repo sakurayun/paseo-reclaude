@@ -28,6 +28,7 @@ import {
   type PromptPresetsEnvelope,
   type AppearanceSettingsEnvelope,
   type ModelPreferencesEnvelope,
+  type ComposerDraftsEnvelope,
 } from "./messages.js";
 import type {
   TerminalManager,
@@ -38,6 +39,7 @@ import type { WorkspaceLayoutStore } from "./workspace-layout-store.js";
 import type { PromptPresetsStore } from "./prompt-presets-store.js";
 import type { AppearanceSettingsStore } from "./appearance-settings-store.js";
 import type { ModelPreferencesStore } from "./model-preferences-store.js";
+import type { ComposerDraftsStore } from "./composer-drafts-store.js";
 import { TerminalSessionController } from "../terminal/terminal-session-controller.js";
 import { TunnelForwarder } from "./tunnel-forwarder.js";
 import type { TerminalActivity } from "@getpaseo/protocol/terminal-activity";
@@ -426,6 +428,14 @@ type ModelPreferencesGetRequestMessage = Extract<
   SessionInboundMessage,
   { type: "model.preferences.get.request" }
 >;
+type ComposerDraftsPushRequestMessage = Extract<
+  SessionInboundMessage,
+  { type: "composer.drafts.push.request" }
+>;
+type ComposerDraftsGetRequestMessage = Extract<
+  SessionInboundMessage,
+  { type: "composer.drafts.get.request" }
+>;
 interface WorkspaceUpdatesSubscriptionState {
   subscriptionId: string;
   filter?: WorkspaceUpdatesFilter;
@@ -509,6 +519,8 @@ export interface SessionOptions {
   onAppearanceSettingsPushed?: (envelope: AppearanceSettingsEnvelope) => void;
   modelPreferencesStore?: ModelPreferencesStore | null;
   onModelPreferencesPushed?: (envelope: ModelPreferencesEnvelope) => void;
+  composerDraftsStore?: ComposerDraftsStore | null;
+  onComposerDraftsPushed?: (envelope: ComposerDraftsEnvelope) => void;
   providerSnapshotManager: ProviderSnapshotManager;
   providerUsageService: ProviderUsageService;
   reclaude: ReclaudeAccountService;
@@ -627,6 +639,8 @@ export class Session {
   private readonly onAppearanceSettingsPushed?: (envelope: AppearanceSettingsEnvelope) => void;
   private readonly modelPreferencesStore?: ModelPreferencesStore | null;
   private readonly onModelPreferencesPushed?: (envelope: ModelPreferencesEnvelope) => void;
+  private readonly composerDraftsStore?: ComposerDraftsStore | null;
+  private readonly onComposerDraftsPushed?: (envelope: ComposerDraftsEnvelope) => void;
   private readonly filesystem: SessionFileSystem;
   private readonly github: GitHubService;
   private readonly renameCurrentBranch: typeof renameCurrentBranchDefault;
@@ -705,10 +719,12 @@ export class Session {
       promptPresetsStore,
       appearanceSettingsStore,
       modelPreferencesStore,
+      composerDraftsStore,
       onWorkspaceLayoutPushed,
       onPromptPresetsPushed,
       onAppearanceSettingsPushed,
       onModelPreferencesPushed,
+      onComposerDraftsPushed,
       filesystem,
       chatService,
       scheduleService,
@@ -781,6 +797,8 @@ export class Session {
     this.onAppearanceSettingsPushed = onAppearanceSettingsPushed;
     this.modelPreferencesStore = modelPreferencesStore;
     this.onModelPreferencesPushed = onModelPreferencesPushed;
+    this.composerDraftsStore = composerDraftsStore;
+    this.onComposerDraftsPushed = onComposerDraftsPushed;
     this.filesystem = filesystem ?? nodeSessionFileSystem;
     this.github = github ?? createGitHubService();
     this.renameCurrentBranch = renameCurrentBranch ?? renameCurrentBranchDefault;
@@ -1499,6 +1517,7 @@ export class Session {
       this.dispatchPromptPresetsMessage(msg) ??
       this.dispatchAppearanceSettingsMessage(msg) ??
       this.dispatchModelPreferencesMessage(msg) ??
+      this.dispatchComposerDraftsMessage(msg) ??
       this.dispatchProjectMessage(msg) ??
       this.dispatchProviderMessage(msg) ??
       this.dispatchTerminalMessage(msg) ??
@@ -1917,6 +1936,19 @@ export class Session {
         return undefined;
       case "model.preferences.get.request":
         this.handleModelPreferencesGetRequest(msg);
+        return undefined;
+      default:
+        return undefined;
+    }
+  }
+
+  private dispatchComposerDraftsMessage(msg: SessionInboundMessage): Promise<void> | undefined {
+    switch (msg.type) {
+      case "composer.drafts.push.request":
+        this.handleComposerDraftsPushRequest(msg);
+        return undefined;
+      case "composer.drafts.get.request":
+        this.handleComposerDraftsGetRequest(msg);
         return undefined;
       default:
         return undefined;
@@ -2863,6 +2895,37 @@ export class Session {
     };
     this.emit({
       type: "model.preferences.get.response",
+      payload: { requestId: msg.requestId, envelope },
+    });
+  }
+
+  private handleComposerDraftsPushRequest(msg: ComposerDraftsPushRequestMessage): void {
+    const { revision, drafts, requestId } = msg;
+    if (!this.composerDraftsStore) {
+      this.emit({
+        type: "composer.drafts.push.response",
+        payload: { requestId, accepted: false, revision: 0 },
+      });
+      return;
+    }
+    const { accepted, current } = this.composerDraftsStore.applyPush({ revision, drafts });
+    this.emit({
+      type: "composer.drafts.push.response",
+      payload: { requestId, accepted, revision: current.revision },
+    });
+    if (accepted) {
+      this.onComposerDraftsPushed?.(current);
+    }
+  }
+
+  private handleComposerDraftsGetRequest(msg: ComposerDraftsGetRequestMessage): void {
+    const envelope = this.composerDraftsStore?.get() ?? {
+      revision: 0,
+      updatedAt: new Date(0).toISOString(),
+      drafts: {},
+    };
+    this.emit({
+      type: "composer.drafts.get.response",
       payload: { requestId: msg.requestId, envelope },
     });
   }

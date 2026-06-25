@@ -16,6 +16,7 @@ import type { WorkspaceLayoutStore } from "./workspace-layout-store.js";
 import type { PromptPresetsStore } from "./prompt-presets-store.js";
 import type { AppearanceSettingsStore } from "./appearance-settings-store.js";
 import type { ModelPreferencesStore } from "./model-preferences-store.js";
+import type { ComposerDraftsStore } from "./composer-drafts-store.js";
 import {
   FileBackedReclaudeCredentialsStore,
   type ReclaudeCredentialsStore,
@@ -31,6 +32,7 @@ import {
   type PromptPresetsEnvelope,
   type AppearanceSettingsEnvelope,
   type ModelPreferencesEnvelope,
+  type ComposerDraftsEnvelope,
   type ReclaudeUsageChangedMessage,
   type WSHelloMessage,
   type WSInboundMessage,
@@ -394,6 +396,7 @@ export class VoiceAssistantWebSocketServer {
   private readonly promptPresetsStore: PromptPresetsStore | null;
   private readonly appearanceSettingsStore: AppearanceSettingsStore | null;
   private readonly modelPreferencesStore: ModelPreferencesStore | null;
+  private readonly composerDraftsStore: ComposerDraftsStore | null;
   private readonly chatService: FileBackedChatService;
   private readonly loopService: LoopService;
   private readonly scheduleService: ScheduleService;
@@ -499,6 +502,7 @@ export class VoiceAssistantWebSocketServer {
     promptPresetsStore?: PromptPresetsStore | null,
     appearanceSettingsStore?: AppearanceSettingsStore | null,
     modelPreferencesStore?: ModelPreferencesStore | null,
+    composerDraftsStore?: ComposerDraftsStore | null,
   ) {
     this.logger = logger.child({ module: "websocket-server" });
     this.serverId = serverId;
@@ -515,6 +519,7 @@ export class VoiceAssistantWebSocketServer {
     this.promptPresetsStore = promptPresetsStore ?? null;
     this.appearanceSettingsStore = appearanceSettingsStore ?? null;
     this.modelPreferencesStore = modelPreferencesStore ?? null;
+    this.composerDraftsStore = composerDraftsStore ?? null;
     const requiredServices = requireWebSocketServices({
       chatService,
       loopService,
@@ -1096,6 +1101,13 @@ export class VoiceAssistantWebSocketServer {
         }
         this.broadcastModelPreferencesChanged(envelope, connection);
       },
+      composerDraftsStore: this.composerDraftsStore,
+      onComposerDraftsPushed: (envelope) => {
+        if (!connection) {
+          return;
+        }
+        this.broadcastComposerDraftsChanged(envelope, connection);
+      },
       chatService: this.chatService,
       loopService: this.loopService,
       scheduleService: this.scheduleService,
@@ -1331,6 +1343,8 @@ export class VoiceAssistantWebSocketServer {
         appearanceSettingsSync: true,
         // COMPAT(modelPreferencesSync): added in v0.1.108, remove gate after 2026-12-23.
         modelPreferencesSync: true,
+        // COMPAT(composerDraftsSync): added in v0.1.113, remove gate after 2026-12-25.
+        composerDraftsSync: true,
         // COMPAT(projectRemove): added in v0.1.97, drop the gate when floor >= v0.1.97.
         projectRemove: true,
         // COMPAT(projectAdd): added in v0.1.97, drop the gate when floor >= v0.1.97.
@@ -2009,6 +2023,23 @@ export class VoiceAssistantWebSocketServer {
     senderConnection: SessionConnection,
   ): void {
     const message = wrapSessionMessage({ type: "model.preferences.changed", payload: envelope });
+    for (const [ws, connection] of this.sessions) {
+      if (connection === senderConnection) {
+        continue;
+      }
+      this.sendToClient(ws, message);
+    }
+  }
+
+  // Fan composer drafts out to every connected client except the pusher. Like
+  // appearance settings (and unlike workspace-layout sync) there is NO deviceType
+  // filter: unsent composer drafts are a global user preference that mobile must
+  // share too.
+  private broadcastComposerDraftsChanged(
+    envelope: ComposerDraftsEnvelope,
+    senderConnection: SessionConnection,
+  ): void {
+    const message = wrapSessionMessage({ type: "composer.drafts.changed", payload: envelope });
     for (const [ws, connection] of this.sessions) {
       if (connection === senderConnection) {
         continue;

@@ -87,6 +87,10 @@ export const ru: TranslationResources = {
     },
   },
   composer: {
+    draftConflict: {
+      title: "Удалённый черновик",
+      overwrite: "Перезаписать локальный ввод",
+    },
     runDir: {
       select: "Выбрать рабочий каталог",
     },

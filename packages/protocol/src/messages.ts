@@ -2160,6 +2160,30 @@ export const ModelPreferencesGetRequestSchema = z.object({
   requestId: z.string(),
 });
 
+// COMPAT(composerDraftsSync): added in v0.1.113, remove gate after 2026-12-25.
+// Per-session unsent composer drafts synced through the daemon so every connected
+// client — including mobile — shares the same in-progress drafts. Stored as an opaque
+// blob keyed by draftKey: the daemon never parses it, it stores/arbitrates by revision
+// and fans it out verbatim. The client applies it with a per-draft merge, so new
+// synced drafts need no protocol change.
+export const ComposerDraftsEnvelopeSchema = z.object({
+  revision: z.number().int().nonnegative(),
+  updatedAt: z.string(),
+  drafts: z.record(z.string(), z.unknown()),
+});
+
+export const ComposerDraftsPushRequestSchema = z.object({
+  type: z.literal("composer.drafts.push.request"),
+  revision: z.number().int().nonnegative(),
+  drafts: z.record(z.string(), z.unknown()),
+  requestId: z.string(),
+});
+
+export const ComposerDraftsGetRequestSchema = z.object({
+  type: z.literal("composer.drafts.get.request"),
+  requestId: z.string(),
+});
+
 // Highlighted diff token schema
 // Note: style can be a compound class name (e.g., "heading meta") from the syntax highlighter
 const HighlightTokenSchema = z.object({
@@ -2606,6 +2630,8 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   AppearanceSettingsGetRequestSchema,
   ModelPreferencesPushRequestSchema,
   ModelPreferencesGetRequestSchema,
+  ComposerDraftsPushRequestSchema,
+  ComposerDraftsGetRequestSchema,
   FileExplorerRequestSchema,
   ProjectIconRequestSchema,
   FileDownloadTokenRequestSchema,
@@ -2858,6 +2884,8 @@ export const ServerInfoStatusPayloadSchema = z
         appearanceSettingsSync: z.boolean().optional(),
         // COMPAT(modelPreferencesSync): added in v0.1.108, remove gate after 2026-12-23.
         modelPreferencesSync: z.boolean().optional(),
+        // COMPAT(composerDraftsSync): added in v0.1.113, remove gate after 2026-12-25.
+        composerDraftsSync: z.boolean().optional(),
         // COMPAT(projectRemove): added in v0.1.97, drop the gate when floor >= v0.1.97.
         projectRemove: z.boolean().optional(),
         // COMPAT(projectAdd): added in v0.1.97, drop the gate when floor >= v0.1.97.
@@ -3614,6 +3642,28 @@ export const ModelPreferencesGetResponseSchema = z.object({
 export const ModelPreferencesChangedSchema = z.object({
   type: z.literal("model.preferences.changed"),
   payload: ModelPreferencesEnvelopeSchema,
+});
+
+export const ComposerDraftsPushResponseSchema = z.object({
+  type: z.literal("composer.drafts.push.response"),
+  payload: z.object({
+    requestId: z.string(),
+    accepted: z.boolean(),
+    revision: z.number().int().nonnegative(),
+  }),
+});
+
+export const ComposerDraftsGetResponseSchema = z.object({
+  type: z.literal("composer.drafts.get.response"),
+  payload: z.object({
+    requestId: z.string(),
+    envelope: ComposerDraftsEnvelopeSchema,
+  }),
+});
+
+export const ComposerDraftsChangedSchema = z.object({
+  type: z.literal("composer.drafts.changed"),
+  payload: ComposerDraftsEnvelopeSchema,
 });
 
 export const SendAgentMessageResponseMessageSchema = z.object({
@@ -5131,6 +5181,9 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   ModelPreferencesPushResponseSchema,
   ModelPreferencesGetResponseSchema,
   ModelPreferencesChangedSchema,
+  ComposerDraftsPushResponseSchema,
+  ComposerDraftsGetResponseSchema,
+  ComposerDraftsChangedSchema,
   SendAgentMessageResponseMessageSchema,
   SetVoiceModeResponseMessageSchema,
   DaemonGetStatusResponseSchema,
@@ -5622,6 +5675,12 @@ export type ModelPreferencesPushResponse = z.infer<typeof ModelPreferencesPushRe
 export type ModelPreferencesGetRequest = z.infer<typeof ModelPreferencesGetRequestSchema>;
 export type ModelPreferencesGetResponse = z.infer<typeof ModelPreferencesGetResponseSchema>;
 export type ModelPreferencesChanged = z.infer<typeof ModelPreferencesChangedSchema>;
+export type ComposerDraftsEnvelope = z.infer<typeof ComposerDraftsEnvelopeSchema>;
+export type ComposerDraftsPushRequest = z.infer<typeof ComposerDraftsPushRequestSchema>;
+export type ComposerDraftsPushResponse = z.infer<typeof ComposerDraftsPushResponseSchema>;
+export type ComposerDraftsGetRequest = z.infer<typeof ComposerDraftsGetRequestSchema>;
+export type ComposerDraftsGetResponse = z.infer<typeof ComposerDraftsGetResponseSchema>;
+export type ComposerDraftsChanged = z.infer<typeof ComposerDraftsChangedSchema>;
 export type ClientHeartbeatMessage = z.infer<typeof ClientHeartbeatMessageSchema>;
 export type ListCommandsRequest = z.infer<typeof ListCommandsRequestSchema>;
 export type ListCommandsResponse = z.infer<typeof ListCommandsResponseSchema>;

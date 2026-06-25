@@ -21,7 +21,7 @@ import { Composer } from "@/composer";
 import { DraftAgentModeControl } from "@/composer/agent-controls/mode-control";
 import { splitComposerAttachmentsForSubmit } from "@/composer/attachments/submit";
 import { FileDropZone } from "@/components/file-drop-zone";
-import { ProjectIconView } from "@/components/project-icon-view";
+import { ProjectPicker } from "@/components/project-picker/project-picker";
 import { Combobox, ComboboxItem } from "@/components/ui/combobox";
 import type { ComboboxOption as ComboboxOptionType } from "@/components/ui/combobox";
 import { ComboboxTrigger } from "@/components/ui/combobox-trigger";
@@ -48,9 +48,7 @@ import { useKeyboardShiftStyle } from "@/hooks/use-keyboard-shift-style";
 import { useFormPreferences } from "@/hooks/use-form-preferences";
 import { generateMessageId } from "@/types/stream";
 import { toErrorMessage } from "@/utils/error-messages";
-import { projectIconPlaceholderLabelFromDisplayName } from "@/utils/project-display-name";
 import { navigateToPreparedWorkspaceTab } from "@/utils/workspace-navigation";
-import { ProjectPickerAddProjectRow } from "@/screens/new-workspace-add-project-row";
 import {
   hostProjectFromRoute,
   hostProjectFromWorkspace,
@@ -59,7 +57,6 @@ import {
   useHostProjects,
   type HostProjectListItem,
 } from "@/projects/host-projects";
-import { useProjectIconDataByProjectKey } from "@/projects/project-icons";
 import type { ComposerAttachment, UserComposerAttachment } from "@/attachments/types";
 import type { ImageAttachment, MessagePayload } from "@/composer/types";
 import type {
@@ -117,11 +114,6 @@ interface PickerOptionData {
   itemById: Map<string, PickerItem>;
 }
 
-interface ProjectOptionData {
-  options: ComboboxOptionType[];
-  projectByOptionId: Map<string, HostProjectListItem>;
-}
-
 interface PickerSelection {
   item: PickerItem;
   attachedPrNumber: number | null;
@@ -132,10 +124,6 @@ interface NewWorkspaceProjectPickerInput {
   sourceDirectory?: string;
   projectId?: string;
   displayName?: string;
-  // When true (workspaceMultiplicity), every project is selectable because a
-  // local-backed workspace works for any directory, git or not. When false the
-  // picker stays limited to worktree-capable projects (legacy behavior).
-  allowAllProjects: boolean;
 }
 
 interface NewWorkspaceProjectPickerState {
@@ -143,16 +131,12 @@ interface NewWorkspaceProjectPickerState {
   selectedProject: HostProjectListItem | null;
   selectedSourceDirectory: string | null;
   selectedDisplayName: string;
-  projectPickerOptions: ComboboxOptionType[];
-  projectByOptionId: Map<string, HostProjectListItem>;
-  selectedProjectOptionId: string;
-  projectTriggerLabel: string;
-  handleSelectProjectOption: (id: string) => void;
+  selectedProjectKey: string | null;
+  selectProjectByKey: (projectKey: string) => void;
 }
 
 const BRANCH_OPTION_PREFIX = "branch:";
 const PR_OPTION_PREFIX = "github-pr:";
-const PROJECT_OPTION_PREFIX = "project:";
 const REPO_OPTION_PREFIX = "repo:";
 const PROJECT_ICON_FALLBACK_FONT_SIZE = 10;
 // Height of a single picker-trigger badge. The Base-row spacer reserves exactly
@@ -231,67 +215,6 @@ function RefPickerTrigger({
       </TooltipTrigger>
       <TooltipContent side="top" align="center" offset={8}>
         <Text style={styles.tooltipText}>{tooltipLabel}</Text>
-      </TooltipContent>
-    </Tooltip>
-  );
-}
-
-function ProjectPickerTrigger({
-  pickerAnchorRef,
-  onPress,
-  disabled,
-  badgePressableStyle,
-  label,
-  projectKey,
-  iconDataUri,
-  iconColor,
-  iconSize,
-}: {
-  pickerAnchorRef: React.RefObject<View | null>;
-  onPress: () => void;
-  disabled: boolean;
-  badgePressableStyle: React.ComponentProps<typeof Pressable>["style"];
-  label: string;
-  projectKey: string | null;
-  iconDataUri: string | null;
-  iconColor: string;
-  iconSize: number;
-}) {
-  const placeholderLabel = projectIconPlaceholderLabelFromDisplayName(label);
-  const placeholderInitial = placeholderLabel.charAt(0).toUpperCase() || "?";
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild triggerRefProp="ref">
-        <ComboboxTrigger
-          ref={pickerAnchorRef}
-          testID="new-workspace-project-picker-trigger"
-          onPress={onPress}
-          disabled={disabled}
-          style={badgePressableStyle}
-          accessibilityRole="button"
-          accessibilityLabel="Workspace project"
-        >
-          <View style={styles.badgeIconBox}>
-            {projectKey ? (
-              <ProjectIconView
-                iconDataUri={iconDataUri}
-                initial={placeholderInitial}
-                projectKey={projectKey}
-                imageStyle={styles.projectIcon}
-                fallbackStyle={styles.projectIconFallback}
-                textStyle={styles.projectIconFallbackText}
-              />
-            ) : (
-              <Folder size={iconSize} color={iconColor} />
-            )}
-          </View>
-          <Text style={styles.badgeText} numberOfLines={1}>
-            {label}
-          </Text>
-        </ComboboxTrigger>
-      </TooltipTrigger>
-      <TooltipContent side="top" align="center" offset={8}>
-        <Text style={styles.tooltipText}>Choose project</Text>
       </TooltipContent>
     </Tooltip>
   );
@@ -481,69 +404,12 @@ function IsolationOptionItem({
   );
 }
 
-function ProjectOptionItem({
-  testID,
-  projectKey,
-  iconDataUri,
-  label,
-  description,
-  selected,
-  active,
-  disabled,
-  onPress,
-}: {
-  testID: string;
-  projectKey: string;
-  iconDataUri: string | null;
-  label: string;
-  description: string | undefined;
-  selected: boolean;
-  active: boolean;
-  disabled: boolean;
-  onPress: () => void;
-}) {
-  const placeholderLabel = projectIconPlaceholderLabelFromDisplayName(label);
-  const placeholderInitial = placeholderLabel.charAt(0).toUpperCase() || "?";
-  const leadingSlot = useMemo(
-    () => (
-      <View style={styles.rowIconBox}>
-        <ProjectIconView
-          iconDataUri={iconDataUri}
-          initial={placeholderInitial}
-          projectKey={projectKey}
-          imageStyle={styles.projectIcon}
-          fallbackStyle={styles.projectIconFallback}
-          textStyle={styles.projectIconFallbackText}
-        />
-      </View>
-    ),
-    [iconDataUri, placeholderInitial, projectKey],
-  );
-
-  return (
-    <ComboboxItem
-      testID={testID}
-      label={label}
-      description={description}
-      selected={selected}
-      active={active}
-      disabled={disabled}
-      onPress={onPress}
-      leadingSlot={leadingSlot}
-    />
-  );
-}
-
 function branchOptionId(name: string): string {
   return `${BRANCH_OPTION_PREFIX}${name}`;
 }
 
 function prOptionId(number: number): string {
   return `${PR_OPTION_PREFIX}${number}`;
-}
-
-function projectOptionId(projectId: string): string {
-  return `${PROJECT_OPTION_PREFIX}${projectId}`;
 }
 
 function repoOptionId(path: string): string {
@@ -777,22 +643,11 @@ function computePickerOptionData(
   return { options: timedOptions.map((t) => t.option), itemById: idMap };
 }
 
-function computeProjectOptionData(projects: readonly HostProjectListItem[]): ProjectOptionData {
-  const projectByOptionId = new Map<string, HostProjectListItem>();
-  const options = projects.map((project) => {
-    const id = projectOptionId(project.projectKey);
-    projectByOptionId.set(id, project);
-    return { id, label: project.projectName };
-  });
-  return { options, projectByOptionId };
-}
-
 function useNewWorkspaceProjectPicker({
   serverId,
   sourceDirectory,
   projectId,
   displayName: displayNameProp,
-  allowAllProjects,
 }: NewWorkspaceProjectPickerInput): NewWorkspaceProjectPickerState {
   const [manualProjectKey, setManualProjectKey] = useState<string | null>(null);
   const displayName = displayNameProp?.trim() ?? "";
@@ -825,11 +680,6 @@ function useNewWorkspaceProjectPicker({
       }),
     [lastActiveProject, projects, routeProject],
   );
-  const selectableProjects = useMemo(
-    () => (allowAllProjects ? projects : projects.filter((project) => project.canCreateWorktree)),
-    [allowAllProjects, projects],
-  );
-
   // expo-router reuses the 'new' screen across navigations without remounting, so
   // a manual picker choice would otherwise stick when navigating to a different
   // project's New Workspace. Resetting on route project identity lets each
@@ -852,30 +702,13 @@ function useNewWorkspaceProjectPicker({
       }),
     [lastActiveProject, projects, routeProject, selectedProjectKey],
   );
-  const { options: projectPickerOptions, projectByOptionId }: ProjectOptionData = useMemo(
-    () => computeProjectOptionData(selectableProjects),
-    [selectableProjects],
-  );
-  const handleSelectProjectOption = useCallback(
-    (id: string) => {
-      const project = projectByOptionId.get(id);
-      if (!project) return;
-      if (!allowAllProjects && !project.canCreateWorktree) return;
-      setManualProjectKey(project.projectKey);
-    },
-    [allowAllProjects, projectByOptionId],
-  );
-
   return {
     projects,
     selectedProject,
     selectedSourceDirectory: selectedProject?.iconWorkingDir ?? null,
     selectedDisplayName: selectedProject?.projectName ?? displayName,
-    projectPickerOptions,
-    projectByOptionId,
-    selectedProjectOptionId: selectedProject ? projectOptionId(selectedProject.projectKey) : "",
-    projectTriggerLabel: selectedProject?.projectName ?? "Choose project",
-    handleSelectProjectOption,
+    selectedProjectKey,
+    selectProjectByKey: setManualProjectKey,
   };
 }
 
@@ -1264,12 +1097,10 @@ export function NewWorkspaceScreen({
   const [pendingAction, setPendingAction] = useState<"chat" | "empty" | null>(null);
   const [manualPickerSelection, setManualPickerSelection] = useState<PickerSelection | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
-  const [projectPickerOpen, setProjectPickerOpen] = useState(false);
   const [isolationPickerOpen, setIsolationPickerOpen] = useState(false);
   const [pickerSearchQuery, setPickerSearchQuery] = useState("");
   const [debouncedPickerSearchQuery, setDebouncedPickerSearchQuery] = useState("");
   const pickerAnchorRef = useRef<View>(null);
-  const projectPickerAnchorRef = useRef<View>(null);
   const isolationPickerAnchorRef = useRef<View>(null);
 
   useEffect(() => {
@@ -1282,33 +1113,13 @@ export function NewWorkspaceScreen({
   const isPending = pendingAction !== null;
   const client = useHostRuntimeClient(serverId);
   const isConnected = useHostRuntimeIsConnected(serverId);
-  const {
-    projects,
-    selectedProject,
-    selectedSourceDirectory,
-    projectPickerOptions,
-    projectByOptionId,
-    selectedProjectOptionId,
-    projectTriggerLabel,
-    handleSelectProjectOption: selectProjectOption,
-  } = useNewWorkspaceProjectPicker({
-    serverId,
-    sourceDirectory: sourceDirectoryProp,
-    projectId,
-    displayName: displayNameProp,
-    allowAllProjects: supportsWorkspaceMultiplicity,
-  });
-  const projectIconDataByProjectKey = useProjectIconDataByProjectKey({ serverId, projects });
-
-  // "Add project" lives below the search box in the Choose project dropdown.
-  // The row owns its own gating + open-project flow (see the component); here we
-  // just hand it a way to close the dropdown before the native picker opens.
-  const closeProjectPicker = useCallback(() => setProjectPickerOpen(false), []);
-  const projectPickerListHeader = useMemo(
-    () => <ProjectPickerAddProjectRow serverId={serverId} onActivate={closeProjectPicker} />,
-    [closeProjectPicker, serverId],
-  );
-
+  const { projects, selectedProject, selectedSourceDirectory, selectProjectByKey } =
+    useNewWorkspaceProjectPicker({
+      serverId,
+      sourceDirectory: sourceDirectoryProp,
+      projectId,
+      displayName: displayNameProp,
+    });
   const handleRepoSelected = useCallback(() => {
     setManualPickerSelection(null);
   }, []);
@@ -1469,18 +1280,6 @@ export function NewWorkspaceScreen({
     [itemById, selectPickerItem],
   );
 
-  const handleSelectProjectOption = useCallback(
-    (id: string) => {
-      // selectProjectOption enforces selectability (worktree-only when
-      // multiplicity is off, any project when it's on); don't re-gate here on
-      // canCreateWorktree or non-git projects become unselectable.
-      selectProjectOption(id);
-      setProjectPickerOpen(false);
-      setManualPickerSelection(null);
-    },
-    [selectProjectOption],
-  );
-
   const renderRepoOption = useCallback(
     ({
       option,
@@ -1544,10 +1343,6 @@ export function NewWorkspaceScreen({
 
   const openPicker = useCallback(() => {
     setPickerOpen(true);
-  }, []);
-
-  const openProjectPicker = useCallback(() => {
-    setProjectPickerOpen(true);
   }, []);
 
   const openIsolationPicker = useCallback(() => {
@@ -1621,10 +1416,6 @@ export function NewWorkspaceScreen({
     if (!nextOpen) {
       setPickerSearchQuery("");
     }
-  }, []);
-
-  const handleProjectPickerOpenChange = useCallback((nextOpen: boolean) => {
-    setProjectPickerOpen(nextOpen);
   }, []);
 
   const buildCreateWorktreeInput = useCallback(
@@ -1792,38 +1583,6 @@ export function NewWorkspaceScreen({
     [isPending, itemById, t, theme.colors.foregroundMuted, theme.iconSize.sm],
   );
 
-  const renderProjectOption = useCallback(
-    ({
-      option,
-      selected,
-      active,
-      onPress,
-    }: {
-      option: ComboboxOptionType;
-      selected: boolean;
-      active: boolean;
-      onPress: () => void;
-    }) => {
-      const project = projectByOptionId.get(option.id);
-      if (!project) return <View key={option.id} />;
-
-      return (
-        <ProjectOptionItem
-          testID={`new-workspace-project-picker-option-${project.projectKey}`}
-          projectKey={project.projectKey}
-          iconDataUri={projectIconDataByProjectKey.get(project.projectKey) ?? null}
-          label={project.projectName}
-          description={project.iconWorkingDir}
-          selected={selected}
-          active={active}
-          disabled={isPending || (!supportsWorkspaceMultiplicity && !project.canCreateWorktree)}
-          onPress={onPress}
-        />
-      );
-    },
-    [isPending, projectByOptionId, projectIconDataByProjectKey, supportsWorkspaceMultiplicity],
-  );
-
   const contentStyle = useMemo(
     () => getContentStyle({ isCompact, insetBottom: insets.bottom }),
     [isCompact, insets.bottom],
@@ -1856,40 +1615,27 @@ export function NewWorkspaceScreen({
 
   const isolationTriggerLabel = isolationLabel(t, effectiveIsolation);
 
+  const handleSelectProjectForWorkspace = useCallback(
+    (project: HostProjectListItem) => {
+      // The picker already enforces selectability; clearing the manual picker
+      // selection resets any branch/PR choice for the new project.
+      selectProjectByKey(project.projectKey);
+      setManualPickerSelection(null);
+    },
+    [selectProjectByKey],
+  );
+
   const formStack = useMemo(() => {
     const projectControl = (
-      <View>
-        <ProjectPickerTrigger
-          pickerAnchorRef={projectPickerAnchorRef}
-          onPress={openProjectPicker}
-          disabled={isPending || projectPickerOptions.length === 0}
-          badgePressableStyle={badgePressableStyle}
-          label={projectTriggerLabel}
-          projectKey={selectedProject?.projectKey ?? null}
-          iconDataUri={
-            selectedProject
-              ? (projectIconDataByProjectKey.get(selectedProject.projectKey) ?? null)
-              : null
-          }
-          iconColor={theme.colors.foregroundMuted}
-          iconSize={theme.iconSize.sm}
-        />
-        <Combobox
-          options={projectPickerOptions}
-          value={selectedProjectOptionId}
-          onSelect={handleSelectProjectOption}
-          searchable
-          searchPlaceholder="Search projects"
-          title="Project"
-          open={projectPickerOpen}
-          onOpenChange={handleProjectPickerOpenChange}
-          desktopPlacement="bottom-start"
-          anchorRef={projectPickerAnchorRef}
-          emptyText="No projects available."
-          renderOption={renderProjectOption}
-          listHeader={projectPickerListHeader}
-        />
-      </View>
+      <ProjectPicker
+        serverId={serverId}
+        projects={projects}
+        selectedProjectKey={selectedProject?.projectKey ?? null}
+        onSelectProject={handleSelectProjectForWorkspace}
+        allowAllProjects={supportsWorkspaceMultiplicity}
+        disabled={isPending}
+        testIDPrefix="new-workspace-project-picker"
+      />
     );
 
     // Fork-only: a single project can span multiple scanned repos. When more
@@ -2021,29 +1767,21 @@ export function NewWorkspaceScreen({
     effectiveIsolation,
     handleIsolationPickerOpenChange,
     handlePickerOpenChange,
-    handleProjectPickerOpenChange,
     handleRepoPickerOpenChange,
     handleSelectIsolationOption,
     handleSelectOption,
-    handleSelectProjectOption,
     handleSelectRepoOption,
     isCompact,
     isPending,
     openIsolationPicker,
     openPicker,
-    openProjectPicker,
     openRepoPicker,
     options,
     pickerEmptyText,
     pickerOpen,
-    projectIconDataByProjectKey,
-    projectPickerListHeader,
-    projectPickerOpen,
-    projectPickerOptions,
-    projectTriggerLabel,
+    projects,
     renderIsolationOption,
     renderPickerOption,
-    renderProjectOption,
     renderRepoOption,
     repoPickerAnchorRef,
     repoPickerOpen,
@@ -2053,11 +1791,13 @@ export function NewWorkspaceScreen({
     selectedItem,
     selectedOptionId,
     selectedProject,
-    selectedProjectOptionId,
     selectedRepoOptionId,
     selectedSourceDirectory,
+    handleSelectProjectForWorkspace,
+    serverId,
     setPickerSearchQuery,
     showRefPicker,
+    supportsWorkspaceMultiplicity,
     t,
     theme.colors.foregroundMuted,
     theme.iconSize.sm,

@@ -87,6 +87,10 @@ export const es: TranslationResources = {
     },
   },
   composer: {
+    draftConflict: {
+      title: "Borrador remoto",
+      overwrite: "Sobrescribir la entrada local",
+    },
     runDir: {
       select: "Seleccionar directorio de ejecución",
     },

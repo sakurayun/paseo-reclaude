@@ -87,6 +87,10 @@ export const zhCN: TranslationResources = {
     },
   },
   composer: {
+    draftConflict: {
+      title: "远端草稿",
+      overwrite: "覆盖本地输入",
+    },
     runDir: {
       select: "选择运行目录",
     },

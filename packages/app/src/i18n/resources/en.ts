@@ -85,6 +85,10 @@ export const en = {
     },
   },
   composer: {
+    draftConflict: {
+      title: "Remote draft",
+      overwrite: "Overwrite local input",
+    },
     runDir: {
       select: "Select run directory",
     },

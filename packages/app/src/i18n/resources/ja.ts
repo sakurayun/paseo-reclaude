@@ -87,6 +87,10 @@ export const ja: TranslationResources = {
     },
   },
   composer: {
+    draftConflict: {
+      title: "リモートの下書き",
+      overwrite: "ローカル入力を上書き",
+    },
     runDir: {
       select: "実行ディレクトリを選択",
     },
