@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.1.114 - 2026-06-25
+
+### Added
+
+- Composer drafts now sync through the daemon so remote and local clients can keep workspace draft state aligned
+- Project picking has a reusable UI for selecting and launching from saved projects
+
+### Changed
+
+- Merged the latest upstream provider tooling and desktop/APK release workflow updates
+
 ## 0.1.110 - 2026-06-23
 
 ### Changed
