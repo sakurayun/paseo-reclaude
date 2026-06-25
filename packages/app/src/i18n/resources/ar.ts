@@ -1905,6 +1905,7 @@ export const ar: TranslationResources = {
           en: "English",
           es: "Español",
           fr: "Français",
+          ja: "日本語",
           ru: "Русский",
           zhCN: "中文",
         },
