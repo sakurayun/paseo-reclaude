@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.1.115 - 2026-06-26
+
+### Added
+
+- Sidebar session list now groups sessions by host when several hosts are connected — each host is a collapsible section with a status dot, session count, and a "+" to start a conversation on that host
+
+### Changed
+
+- Switching the active host no longer reorders the sidebar; host sections keep their position so the list never jumps under you
+
 ## 0.1.114 - 2026-06-25
 
 ### Added
