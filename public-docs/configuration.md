@@ -164,6 +164,9 @@ In the mobile app, enter the password in the direct connection setup screen.
 - `PASEO_LISTEN`, override `daemon.listen`
 - `PASEO_HOSTNAMES`, override/extend `daemon.hostnames`
 - `PASEO_ALLOWED_HOSTS`, deprecated alias for `PASEO_HOSTNAMES`
+- `PASEO_WEB_UI_ENABLED`, enable or disable the daemon-served web UI
+- `PASEO_WEB_UI_DIST_DIR`, override the daemon web UI build directory
+- `PASEO_TRUSTED_PROXIES`, configure trusted reverse proxy ranges for `X-Forwarded-*` headers
 - `PASEO_LOG_CONSOLE_LEVEL`, override `log.console.level`
 - `PASEO_LOG_FILE_LEVEL`, override `log.file.level`
 - `PASEO_LOG_FILE_PATH`, override `log.file.path`

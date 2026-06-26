@@ -170,6 +170,13 @@ const FeatureVoiceModeSchema = z
   })
   .strict();
 
+const FeatureWebUiSchema = z
+  .object({
+    enabled: z.boolean().optional(),
+    distDir: z.string().min(1).optional(),
+  })
+  .strict();
+
 const StructuredGenerationProviderConfigSchema = z
   .object({
     provider: z.string().min(1),
@@ -247,6 +254,7 @@ export const PersistedConfigSchema = z
         listen: z.string().optional(),
         hostnames: z.union([z.literal(true), z.array(z.string())]).optional(),
         allowedHosts: z.union([z.literal(true), z.array(z.string())]).optional(),
+        trustedProxies: z.union([z.literal(true), z.array(z.string())]).optional(),
         mcp: z
           .object({
             enabled: z.boolean().optional(),
@@ -315,6 +323,7 @@ export const PersistedConfigSchema = z
       .object({
         dictation: FeatureDictationSchema.optional(),
         voiceMode: FeatureVoiceModeSchema.optional(),
+        webUi: FeatureWebUiSchema.optional(),
       })
       .strict()
       .optional(),

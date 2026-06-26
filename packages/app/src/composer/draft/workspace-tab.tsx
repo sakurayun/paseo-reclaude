@@ -31,7 +31,11 @@ import {
   resolveModelGatewayModelId,
 } from "@/model-gateways/model-gateway-models";
 import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
-import { useHostProjects, type HostProjectListItem } from "@/projects/host-projects";
+import {
+  getHostProjectSourceDirectory,
+  useHostProjects,
+  type HostProjectListItem,
+} from "@/projects/host-projects";
 import { buildWorkspaceDraftAgentConfig } from "@/screens/workspace/workspace-draft-agent-config";
 import { buildDraftStoreKey } from "@/stores/draft-keys";
 import { usePanelStore } from "@/stores/panel-store";
@@ -555,19 +559,26 @@ export function WorkspaceDraftAgentTab({
 
   // The working-directory selector reuses the shared project picker on every
   // platform: pick a host project and run the new agent in its directory.
-  const projects = useHostProjects(serverId);
+  const projects = useHostProjects([serverId]);
   const [pickedProjectKey, setPickedProjectKey] = useState<string | null>(null);
   const effectiveProjectKey = useMemo(
     () =>
       pickedProjectKey ??
-      projects.find((project) => project.iconWorkingDir === draftWorkingDirectory)?.projectKey ??
+      projects.find(
+        (project) => getHostProjectSourceDirectory(project, serverId) === draftWorkingDirectory,
+      )?.projectKey ??
       null,
-    [draftWorkingDirectory, pickedProjectKey, projects],
+    [draftWorkingDirectory, pickedProjectKey, projects, serverId],
   );
-  const handleSelectRunDirProject = useCallback((project: HostProjectListItem) => {
-    setRunDirOverride(project.iconWorkingDir);
-    setPickedProjectKey(project.projectKey);
-  }, []);
+  const handleSelectRunDirProject = useCallback(
+    (project: HostProjectListItem) => {
+      const sourceDirectory = getHostProjectSourceDirectory(project, serverId);
+      if (!sourceDirectory) return;
+      setRunDirOverride(sourceDirectory);
+      setPickedProjectKey(project.projectKey);
+    },
+    [serverId],
+  );
   const renderRunDirTrigger = useCallback(
     (args: ProjectPickerTriggerArgs) => (
       <ComposerRunDirTrigger {...args} runDir={draftWorkingDirectory} />

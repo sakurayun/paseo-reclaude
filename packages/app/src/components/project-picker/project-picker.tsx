@@ -7,7 +7,11 @@ import { Combobox, ComboboxItem } from "@/components/ui/combobox";
 import type { ComboboxOption } from "@/components/ui/combobox";
 import { ComboboxTrigger } from "@/components/ui/combobox-trigger";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import type { HostProjectListItem } from "@/projects/host-projects";
+import {
+  canCreateWorkspaceForHostProject,
+  getHostProjectSourceDirectory,
+  type HostProjectListItem,
+} from "@/projects/host-projects";
 import { useProjectIconDataByProjectKey } from "@/projects/project-icons";
 import { ProjectPickerAddProjectRow } from "@/screens/new-workspace-add-project-row";
 import type { Theme } from "@/styles/theme";
@@ -211,11 +215,27 @@ export function ProjectPicker({
 }: ProjectPickerProps): ReactElement {
   const [open, setOpen] = useState(false);
   const anchorRef = useRef<View>(null);
-  const projectIconDataByProjectKey = useProjectIconDataByProjectKey({ serverId, projects });
+  const projectIconTargets = useMemo(
+    () =>
+      projects.flatMap((project) => {
+        const iconWorkingDir = getHostProjectSourceDirectory(project, serverId)?.trim();
+        if (!iconWorkingDir) {
+          return [];
+        }
+        return [{ serverId, projectKey: project.projectKey, iconWorkingDir }];
+      }),
+    [projects, serverId],
+  );
+  const projectIconDataByProjectKey = useProjectIconDataByProjectKey({
+    projects: projectIconTargets,
+  });
 
   const selectableProjects = useMemo(
-    () => (allowAllProjects ? projects : projects.filter((project) => project.canCreateWorktree)),
-    [allowAllProjects, projects],
+    () =>
+      projects.filter((project) =>
+        canCreateWorkspaceForHostProject({ project, serverId, allowAllProjects }),
+      ),
+    [allowAllProjects, projects, serverId],
   );
   const { options, projectByOptionId } = useMemo(
     () => computeProjectOptionData(selectableProjects),
@@ -236,11 +256,11 @@ export function ProjectPicker({
     (id: string) => {
       const project = projectByOptionId.get(id);
       if (!project) return;
-      if (!allowAllProjects && !project.canCreateWorktree) return;
+      if (!canCreateWorkspaceForHostProject({ project, serverId, allowAllProjects })) return;
       onSelectProject(project);
       setOpen(false);
     },
-    [allowAllProjects, onSelectProject, projectByOptionId],
+    [allowAllProjects, onSelectProject, projectByOptionId, serverId],
   );
 
   const renderOption = useCallback(
@@ -263,15 +283,24 @@ export function ProjectPicker({
           projectKey={project.projectKey}
           iconDataUri={projectIconDataByProjectKey.get(project.projectKey) ?? null}
           label={project.projectName}
-          description={project.iconWorkingDir}
+          description={getHostProjectSourceDirectory(project, serverId) ?? project.iconWorkingDir}
           selected={selected}
           active={active}
-          disabled={disabled || (!allowAllProjects && !project.canCreateWorktree)}
+          disabled={
+            disabled || !canCreateWorkspaceForHostProject({ project, serverId, allowAllProjects })
+          }
           onPress={onPress}
         />
       );
     },
-    [allowAllProjects, disabled, projectByOptionId, projectIconDataByProjectKey, testIDPrefix],
+    [
+      allowAllProjects,
+      disabled,
+      projectByOptionId,
+      projectIconDataByProjectKey,
+      serverId,
+      testIDPrefix,
+    ],
   );
 
   const listHeader = useMemo(

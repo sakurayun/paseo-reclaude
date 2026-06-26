@@ -5,15 +5,14 @@ import { router, usePathname, type Href } from "expo-router";
 import { useTranslation } from "react-i18next";
 import { useKeyboardShortcutsStore } from "@/stores/keyboard-shortcuts-store";
 import { keyboardActionDispatcher } from "@/keyboard/keyboard-action-dispatcher";
-import { useAllAgentsList } from "@/hooks/use-all-agents-list";
-import type { AggregatedAgent } from "@/hooks/use-aggregated-agents";
+import { useAggregatedAgents, type AggregatedAgent } from "@/hooks/use-aggregated-agents";
 import { useOpenProjectPicker } from "@/hooks/use-open-project-picker";
 import {
   clearCommandCenterFocusRestoreElement,
   takeCommandCenterFocusRestoreElement,
 } from "@/utils/command-center-focus-restore";
 import {
-  buildHostOpenProjectRoute,
+  buildOpenProjectRoute,
   buildSettingsRoute,
   parseHostAgentRouteFromPathname,
   parseHostWorkspaceRouteFromPathname,
@@ -26,7 +25,6 @@ import { getShortcutOs } from "@/utils/shortcut-platform";
 import { getIsElectronRuntime } from "@/constants/layout";
 import { navigateToAgent } from "@/utils/navigate-to-agent";
 import { focusWithRetries } from "@/utils/web-focus";
-import { useActiveServerId } from "@/hooks/use-active-server-id";
 import { isWeb } from "@/constants/platform";
 import { buildWorkspaceTabPersistenceKey } from "@/stores/workspace-tabs-store";
 import { useWorkspaceLayoutStore, collectAllTabs } from "@/stores/workspace-layout-store";
@@ -302,7 +300,6 @@ function useGlobalSearchSection<T>(input: {
 export function useCommandCenter() {
   const { t } = useTranslation();
   const pathname = usePathname();
-  const routeActiveServerId = useActiveServerId();
   const { overrides } = useKeyboardShortcutOverrides();
   const open = useKeyboardShortcutsStore((s) => s.commandCenterOpen);
   const setOpen = useKeyboardShortcutsStore((s) => s.setCommandCenterOpen);
@@ -316,13 +313,7 @@ export function useCommandCenter() {
   const [query, setQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
 
-  const activeServerId = open ? routeActiveServerId : null;
-
-  const { agents } = useAllAgentsList({
-    serverId: activeServerId,
-  });
-  const client = useHostRuntimeClient(activeServerId ?? "");
-  const isConnected = useHostRuntimeIsConnected(activeServerId ?? "");
+  const { agents } = useAggregatedAgents();
 
   const agentResults = useMemo(() => {
     if (!open || agents.length === 0) {
@@ -342,6 +333,9 @@ export function useCommandCenter() {
       }),
     [agents, pathname],
   );
+  const activeServerId = open ? (searchWorkspace?.serverId ?? null) : null;
+  const client = useHostRuntimeClient(activeServerId ?? "");
+  const isConnected = useHostRuntimeIsConnected(activeServerId ?? "");
   const trimmedQuery = query.trim();
   const debouncedFileQuery = useDebouncedValue(trimmedQuery, 300);
 
@@ -466,10 +460,7 @@ export function useCommandCenter() {
     return buildSettingsRoute();
   }, []);
 
-  const homeRoute = useMemo<Href | undefined>(() => {
-    if (!routeActiveServerId) return undefined;
-    return buildHostOpenProjectRoute(routeActiveServerId) as Href;
-  }, [routeActiveServerId]);
+  const homeRoute = useMemo<Href>(() => buildOpenProjectRoute() as Href, []);
 
   const actionItems = useMemo(() => {
     if (!open) {
@@ -608,7 +599,7 @@ export function useCommandCenter() {
     [pathname, setOpen],
   );
 
-  const openProjectPicker = useOpenProjectPicker(activeServerId);
+  const openProjectPicker = useOpenProjectPicker();
 
   const handleSelectAction = useCallback(
     (action: CommandCenterActionItem) => {

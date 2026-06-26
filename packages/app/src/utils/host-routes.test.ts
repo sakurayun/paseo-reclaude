@@ -5,6 +5,10 @@ import {
   buildHostRootRoute,
   buildHostWorkspaceOpenRoute,
   buildHostWorkspaceRoute,
+  buildOpenProjectRoute,
+  resolveKnownHostRoute,
+  buildSessionsRoute,
+  buildSettingsAddHostRoute,
   buildProjectSettingsRoute,
   buildProjectsSettingsRoute,
   decodeFilePathFromPathSegment,
@@ -16,6 +20,7 @@ import {
   parseHostWorkspaceOpenIntentFromPathname,
   parseHostWorkspaceRouteFromPathname,
   parseWorkspaceOpenIntent,
+  stripHostWorkspaceRouteEchoSearch,
 } from "./host-routes";
 
 describe("parseHostAgentRouteFromPathname", () => {
@@ -122,6 +127,28 @@ describe("workspace route parsing", () => {
     );
   });
 
+  it("strips route params repeated as workspace route search params", () => {
+    expect(
+      stripHostWorkspaceRouteEchoSearch(
+        "/h/local/workspace/164?serverId=local&workspaceId=164&open=agent%3Aagent-1#pane",
+      ),
+    ).toBe("/h/local/workspace/164?open=agent%3Aagent-1#pane");
+  });
+
+  it("keeps non-route workspace search params", () => {
+    expect(stripHostWorkspaceRouteEchoSearch("/h/local/workspace/164?workspaceId=other")).toBe(
+      "/h/local/workspace/164?workspaceId=other",
+    );
+  });
+
+  it("strips encoded workspace route echoes", () => {
+    expect(
+      stripHostWorkspaceRouteEchoSearch(
+        "/h/local/workspace/b64_L3RtcC9yZXBv?workspaceId=%2Ftmp%2Frepo",
+      ),
+    ).toBe("/h/local/workspace/b64_L3RtcC9yZXBv");
+  });
+
   it("builds a global new workspace route without a source directory", () => {
     expect(buildHostNewWorkspaceRoute("local")).toBe("/h/local/new");
   });
@@ -153,6 +180,14 @@ describe("workspace route parsing", () => {
 });
 
 describe("projects settings routes", () => {
+  it("buildSettingsAddHostRoute opens settings with the add-host flag", () => {
+    expect(buildSettingsAddHostRoute()).toBe("/settings/general?addHost=1");
+  });
+
+  it("buildSettingsAddHostRoute accepts a repeatable intent id", () => {
+    expect(buildSettingsAddHostRoute("retry 1")).toBe("/settings/general?addHost=retry%201");
+  });
+
   it("buildProjectsSettingsRoute returns /settings/projects", () => {
     expect(buildProjectsSettingsRoute()).toBe("/settings/projects");
   });
@@ -177,6 +212,12 @@ describe("projects settings routes", () => {
   });
 });
 
+describe("global routes", () => {
+  it("buildSessionsRoute returns the all-host Sessions route", () => {
+    expect(buildSessionsRoute()).toBe("/sessions");
+  });
+});
+
 describe("host settings section slugs", () => {
   it("keeps current host settings sections", () => {
     expect(normalizeHostSectionSlug("connections")).toBe("connections");
@@ -190,5 +231,34 @@ describe("host settings section slugs", () => {
   it("maps old host settings sections to their new names", () => {
     expect(normalizeHostSectionSlug("orchestration")).toBe("agents");
     expect(normalizeHostSectionSlug("daemon")).toBe("host");
+  });
+});
+
+describe("resolveKnownHostRoute", () => {
+  it("renders when the route host is still saved", () => {
+    expect(
+      resolveKnownHostRoute({
+        routeServerId: "srv-current",
+        hosts: [{ serverId: "srv-current" }, { serverId: "srv-next" }],
+      }),
+    ).toEqual({ kind: "render" });
+  });
+
+  it("sends removed host routes to the host-agnostic open project screen", () => {
+    expect(
+      resolveKnownHostRoute({
+        routeServerId: "srv-removed",
+        hosts: [{ serverId: "srv-next" }],
+      }),
+    ).toEqual({ kind: "redirect", href: buildOpenProjectRoute() });
+  });
+
+  it("sends host routes to welcome when no hosts are saved", () => {
+    expect(
+      resolveKnownHostRoute({
+        routeServerId: "srv-removed",
+        hosts: [],
+      }),
+    ).toEqual({ kind: "redirect", href: "/welcome" });
   });
 });

@@ -1006,5 +1006,6 @@ const styles = StyleSheet.create((theme) => ({
   },
   itemContent: {
     flexShrink: 1,
+    minWidth: 0,
   },
 }));

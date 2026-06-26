@@ -470,7 +470,7 @@ const userMessageStylesheet = StyleSheet.create((theme) => ({
     color: theme.colors.foreground,
     fontSize: theme.fontSize.base,
     lineHeight: Math.round(theme.fontSize.base * 1.4),
-    overflowWrap: "anywhere",
+    ...(isWeb ? { overflowWrap: "anywhere" as const } : {}),
     minWidth: USER_MESSAGE_TEXT_MIN_WIDTH,
     // Native text engines re-wrap text inside the frame Yoga assigns, while
     // the bubble's height was measured at the (possibly fractionally wider)

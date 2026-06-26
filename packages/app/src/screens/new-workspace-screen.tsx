@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { ReactElement, RefObject } from "react";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { Pressable, Text, View } from "react-native";
@@ -21,9 +22,11 @@ import { Composer } from "@/composer";
 import { DraftAgentModeControl } from "@/composer/agent-controls/mode-control";
 import { splitComposerAttachmentsForSubmit } from "@/composer/attachments/submit";
 import { FileDropZone } from "@/components/file-drop-zone";
-import { ProjectPicker } from "@/components/project-picker/project-picker";
+import { HostStatusDot } from "@/components/host-status-dot";
+import { HostPicker } from "@/components/hosts/host-picker";
+import { ProjectIconView } from "@/components/project-icon-view";
 import { Combobox, ComboboxItem } from "@/components/ui/combobox";
-import type { ComboboxOption as ComboboxOptionType } from "@/components/ui/combobox";
+import type { ComboboxOption as ComboboxOptionType, ComboboxProps } from "@/components/ui/combobox";
 import { ComboboxTrigger } from "@/components/ui/combobox-trigger";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { TitlebarDragRegion } from "@/components/desktop/titlebar-drag-region";
@@ -33,11 +36,10 @@ import { HEADER_INNER_HEIGHT, MAX_CONTENT_WIDTH, useIsCompactFormFactor } from "
 import { useToast } from "@/contexts/toast-context";
 import { useAgentInputDraft } from "@/composer/draft/input-draft";
 import { useGithubSearchQuery } from "@/git/use-github-search-query";
-import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
-import {
-  navigateToWorkspace,
-  useLastWorkspaceSelection,
-} from "@/stores/navigation-active-workspace-store";
+import { useHostRuntimeClient, useHostRuntimeIsConnected, useHosts } from "@/runtime/host-runtime";
+import type { HostProfile } from "@/types/host-connection";
+import { navigateToWorkspace } from "@/stores/navigation-active-workspace-store";
+import { useLastWorkspaceSelection } from "@/stores/navigation-active-workspace-store";
 import { normalizeWorkspaceDescriptor, useSessionStore } from "@/stores/session-store";
 import { useWorkspace } from "@/stores/session-store-hooks";
 import { generateDraftId } from "@/stores/draft-keys";
@@ -50,13 +52,17 @@ import { generateMessageId } from "@/types/stream";
 import { toErrorMessage } from "@/utils/error-messages";
 import { navigateToPreparedWorkspaceTab } from "@/utils/workspace-navigation";
 import {
+  filterWorkspaceProjectsForHost,
+  getHostProjectSourceDirectory,
   hostProjectFromRoute,
   hostProjectFromWorkspace,
-  resolveInitialWorktreeProject,
+  resolveInitialWorkspaceProject,
   resolveSelectedHostProject,
   useHostProjects,
   type HostProjectListItem,
+  type HostProjectRouteContext,
 } from "@/projects/host-projects";
+import { useProjectIconDataByProjectKey } from "@/projects/project-icons";
 import type { ComposerAttachment, UserComposerAttachment } from "@/attachments/types";
 import type { ImageAttachment, MessagePayload } from "@/composer/types";
 import type {
@@ -66,6 +72,7 @@ import type {
 } from "@getpaseo/protocol/messages";
 import type { CreatePaseoWorktreeInput } from "@getpaseo/client/internal/daemon-client";
 import type { AgentProvider } from "@getpaseo/protocol/agent-types";
+import { projectIconPlaceholderLabelFromDisplayName } from "@/utils/project-display-name";
 import { isEmptyWorkspaceSubmission, runCreateEmptyWorkspace } from "./new-workspace-empty";
 import {
   pickerItemToCheckoutRequest,
@@ -119,24 +126,9 @@ interface PickerSelection {
   attachedPrNumber: number | null;
 }
 
-interface NewWorkspaceProjectPickerInput {
-  serverId: string;
-  sourceDirectory?: string;
-  projectId?: string;
-  displayName?: string;
-}
-
-interface NewWorkspaceProjectPickerState {
-  projects: HostProjectListItem[];
-  selectedProject: HostProjectListItem | null;
-  selectedSourceDirectory: string | null;
-  selectedDisplayName: string;
-  selectedProjectKey: string | null;
-  selectProjectByKey: (projectKey: string) => void;
-}
-
 const BRANCH_OPTION_PREFIX = "branch:";
 const PR_OPTION_PREFIX = "github-pr:";
+const PROJECT_OPTION_PREFIX = "project:";
 const REPO_OPTION_PREFIX = "repo:";
 const PROJECT_ICON_FALLBACK_FONT_SIZE = 10;
 // Height of a single picker-trigger badge. The Base-row spacer reserves exactly
@@ -215,6 +207,67 @@ function RefPickerTrigger({
       </TooltipTrigger>
       <TooltipContent side="top" align="center" offset={8}>
         <Text style={styles.tooltipText}>{tooltipLabel}</Text>
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+function ProjectPickerTrigger({
+  pickerAnchorRef,
+  onPress,
+  disabled,
+  badgePressableStyle,
+  label,
+  projectKey,
+  iconDataUri,
+  iconColor,
+  iconSize,
+}: {
+  pickerAnchorRef: React.RefObject<View | null>;
+  onPress: () => void;
+  disabled: boolean;
+  badgePressableStyle: React.ComponentProps<typeof Pressable>["style"];
+  label: string;
+  projectKey: string | null;
+  iconDataUri: string | null;
+  iconColor: string;
+  iconSize: number;
+}) {
+  const placeholderLabel = projectIconPlaceholderLabelFromDisplayName(label);
+  const placeholderInitial = placeholderLabel.charAt(0).toUpperCase() || "?";
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild triggerRefProp="ref">
+        <ComboboxTrigger
+          ref={pickerAnchorRef}
+          testID="new-workspace-project-picker-trigger"
+          onPress={onPress}
+          disabled={disabled}
+          style={badgePressableStyle}
+          accessibilityRole="button"
+          accessibilityLabel="Workspace project"
+        >
+          <View style={styles.badgeIconBox}>
+            {projectKey ? (
+              <ProjectIconView
+                iconDataUri={iconDataUri}
+                initial={placeholderInitial}
+                projectKey={projectKey}
+                imageStyle={styles.projectIcon}
+                fallbackStyle={styles.projectIconFallback}
+                textStyle={styles.projectIconFallbackText}
+              />
+            ) : (
+              <Folder size={iconSize} color={iconColor} />
+            )}
+          </View>
+          <Text style={styles.badgeText} numberOfLines={1}>
+            {label}
+          </Text>
+        </ComboboxTrigger>
+      </TooltipTrigger>
+      <TooltipContent side="top" align="center" offset={8}>
+        <Text style={styles.tooltipText}>Choose project</Text>
       </TooltipContent>
     </Tooltip>
   );
@@ -360,6 +413,59 @@ function PickerOptionItem({
   );
 }
 
+function ProjectOptionItem({
+  testID,
+  projectKey,
+  iconDataUri,
+  label,
+  description,
+  selected,
+  active,
+  disabled,
+  onPress,
+}: {
+  testID: string;
+  projectKey: string;
+  iconDataUri: string | null;
+  label: string;
+  description: string | undefined;
+  selected: boolean;
+  active: boolean;
+  disabled: boolean;
+  onPress: () => void;
+}) {
+  const placeholderLabel = projectIconPlaceholderLabelFromDisplayName(label);
+  const placeholderInitial = placeholderLabel.charAt(0).toUpperCase() || "?";
+  const leadingSlot = useMemo(
+    () => (
+      <View style={styles.rowIconBox}>
+        <ProjectIconView
+          iconDataUri={iconDataUri}
+          initial={placeholderInitial}
+          projectKey={projectKey}
+          imageStyle={styles.projectIcon}
+          fallbackStyle={styles.projectIconFallback}
+          textStyle={styles.projectIconFallbackText}
+        />
+      </View>
+    ),
+    [iconDataUri, placeholderInitial, projectKey],
+  );
+
+  return (
+    <ComboboxItem
+      testID={testID}
+      label={label}
+      description={description}
+      selected={selected}
+      active={active}
+      disabled={disabled}
+      onPress={onPress}
+      leadingSlot={leadingSlot}
+    />
+  );
+}
+
 function IsolationOptionItem({
   optionId,
   label,
@@ -410,6 +516,10 @@ function branchOptionId(name: string): string {
 
 function prOptionId(number: number): string {
   return `${PR_OPTION_PREFIX}${number}`;
+}
+
+function projectOptionId(projectId: string): string {
+  return `${PROJECT_OPTION_PREFIX}${projectId}`;
 }
 
 function repoOptionId(path: string): string {
@@ -598,6 +708,105 @@ function useNewWorkspaceRepoScan({
   };
 }
 
+function computeProjectOptionData(projects: readonly HostProjectListItem[]) {
+  const projectByOptionId = new Map<string, HostProjectListItem>();
+  const options = projects.map((project) => {
+    const id = projectOptionId(project.projectKey);
+    projectByOptionId.set(id, project);
+    return { id, label: project.projectName };
+  });
+  return { options, projectByOptionId };
+}
+
+function NewWorkspacePickerOption({
+  option,
+  selected,
+  active,
+  onPress,
+  itemById,
+  isPending,
+}: {
+  option: ComboboxOptionType;
+  selected: boolean;
+  active: boolean;
+  onPress: () => void;
+  itemById: Map<string, PickerItem>;
+  isPending: boolean;
+}) {
+  const { theme } = useUnistyles();
+  const { t } = useTranslation();
+  const item = itemById.get(option.id);
+  if (!item) return <View key={option.id} />;
+
+  const isBranch = item.kind === "branch";
+  const testID = isBranch
+    ? `new-workspace-ref-picker-branch-${item.name}`
+    : `new-workspace-ref-picker-pr-${item.item.number}`;
+  const description =
+    !isBranch && item.item.baseRefName
+      ? t("newWorkspace.refPicker.intoBase", { baseRef: item.item.baseRefName })
+      : undefined;
+
+  return (
+    <PickerOptionItem
+      testID={testID}
+      label={pickerItemLabel(item)}
+      description={description}
+      selected={selected}
+      active={active}
+      disabled={isPending}
+      onPress={onPress}
+      isBranch={isBranch}
+      iconColor={theme.colors.foregroundMuted}
+      iconSize={theme.iconSize.sm}
+    />
+  );
+}
+
+function NewWorkspaceProjectPickerOption({
+  option,
+  selected,
+  active,
+  onPress,
+  projectByOptionId,
+  projectIconDataByProjectKey,
+  selectedServerId,
+  isPending,
+  supportsWorkspaceMultiplicity,
+}: {
+  option: ComboboxOptionType;
+  selected: boolean;
+  active: boolean;
+  onPress: () => void;
+  projectByOptionId: Map<string, HostProjectListItem>;
+  projectIconDataByProjectKey: Map<string, string | null>;
+  selectedServerId: string;
+  isPending: boolean;
+  supportsWorkspaceMultiplicity: boolean;
+}) {
+  const project = projectByOptionId.get(option.id);
+  if (!project) return <View key={option.id} />;
+  const sourceDirectory =
+    getHostProjectSourceDirectory(project, selectedServerId) ?? project.iconWorkingDir;
+
+  return (
+    <ProjectOptionItem
+      testID={`new-workspace-project-picker-option-${project.projectKey}`}
+      projectKey={project.projectKey}
+      iconDataUri={projectIconDataByProjectKey.get(project.projectKey) ?? null}
+      label={project.projectName}
+      description={sourceDirectory}
+      selected={selected}
+      active={active}
+      disabled={
+        isPending ||
+        (!supportsWorkspaceMultiplicity && !project.hosts.some((host) => host.canCreateWorktree))
+      }
+      onPress={onPress}
+    />
+  );
+}
+
 function formatPrLabel(item: { number: number; title: string }): string {
   return `#${item.number} ${item.title}`;
 }
@@ -607,7 +816,11 @@ function pickerItemLabel(item: PickerItem): string {
 }
 
 function pickerItemTriggerLabel(item: PickerItem): string {
-  return pickerItemLabel(item);
+  return item.kind === "branch" ? item.name : formatPrLabel(item.item);
+}
+
+function newWorkspaceHostOptionTestID(serverId: string): string {
+  return `new-workspace-host-picker-option-${serverId}`;
 }
 
 function computePickerOptionData(
@@ -641,75 +854,6 @@ function computePickerOptionData(
 
   timedOptions.sort((a, b) => b.timestamp - a.timestamp);
   return { options: timedOptions.map((t) => t.option), itemById: idMap };
-}
-
-function useNewWorkspaceProjectPicker({
-  serverId,
-  sourceDirectory,
-  projectId,
-  displayName: displayNameProp,
-}: NewWorkspaceProjectPickerInput): NewWorkspaceProjectPickerState {
-  const [manualProjectKey, setManualProjectKey] = useState<string | null>(null);
-  const displayName = displayNameProp?.trim() ?? "";
-  const projects = useHostProjects(serverId || null);
-  const lastWorkspaceSelection = useLastWorkspaceSelection();
-  const lastWorkspaceServerId = lastWorkspaceSelection?.serverId === serverId ? serverId : null;
-  const lastWorkspaceId =
-    lastWorkspaceSelection?.serverId === serverId ? lastWorkspaceSelection.workspaceId : null;
-  const lastWorkspace = useWorkspace(lastWorkspaceServerId, lastWorkspaceId);
-  const routeProject = useMemo(
-    () =>
-      hostProjectFromRoute({
-        serverId,
-        projectId,
-        displayName,
-        sourceDirectory,
-      }),
-    [displayName, projectId, serverId, sourceDirectory],
-  );
-  const lastActiveProject = useMemo(
-    () => hostProjectFromWorkspace({ serverId, workspace: lastWorkspace }),
-    [lastWorkspace, serverId],
-  );
-  const initialProject = useMemo(
-    () =>
-      resolveInitialWorktreeProject({
-        routeProject,
-        lastActiveProject,
-        projects,
-      }),
-    [lastActiveProject, projects, routeProject],
-  );
-  // expo-router reuses the 'new' screen across navigations without remounting, so
-  // a manual picker choice would otherwise stick when navigating to a different
-  // project's New Workspace. Resetting on route project identity lets each
-  // route-driven navigation preselect its own project; in-screen manual override
-  // still works within a single visit.
-  const routeProjectKey = routeProject?.projectKey ?? null;
-  useEffect(() => {
-    setManualProjectKey(null);
-  }, [routeProjectKey]);
-
-  const selectedProjectKey = manualProjectKey ?? initialProject?.projectKey ?? null;
-
-  const selectedProject = useMemo(
-    () =>
-      resolveSelectedHostProject({
-        selectedProjectKey,
-        projects,
-        routeProject,
-        lastActiveProject,
-      }),
-    [lastActiveProject, projects, routeProject, selectedProjectKey],
-  );
-  return {
-    projects,
-    selectedProject,
-    selectedSourceDirectory: selectedProject?.iconWorkingDir ?? null,
-    selectedDisplayName: selectedProject?.projectName ?? displayName,
-    selectedProjectKey,
-    selectProjectByKey: setManualProjectKey,
-  };
 }
 
 function IsolationPickerTrigger({
@@ -871,6 +1015,7 @@ async function createMultiplicityWorkspace(input: {
   client: NonNullable<ReturnType<typeof useHostRuntimeClient>>;
   isolation: "local" | "worktree";
   project: HostProjectListItem;
+  sourceDirectory: string;
   selectedItem: PickerItem | null;
   currentBranch: string | null;
   withInitialAgent: boolean;
@@ -895,14 +1040,14 @@ async function createMultiplicityWorkspace(input: {
     source: isWorktree
       ? {
           kind: "worktree",
-          cwd: input.project.iconWorkingDir,
+          cwd: input.sourceDirectory,
           projectId: input.project.projectKey,
           worktreeSlug: createNameId(),
           ...checkoutRequest,
         }
       : {
           kind: "directory",
-          path: input.project.iconWorkingDir,
+          path: input.sourceDirectory,
           projectId: input.project.projectKey,
         },
     ...(firstAgentContext ? { firstAgentContext } : {}),
@@ -1074,6 +1219,414 @@ function submitWorkspaceDraft(input: SubmitDraftInput): void {
   useDraftStore.getState().clearDraftInput({ draftKey, lifecycle: "sent" });
 }
 
+function useNewWorkspaceHostSelector(initialServerId: string) {
+  const allHosts = useHosts();
+  const allServerIds = useMemo(() => allHosts.map((h) => h.serverId), [allHosts]);
+  const [selectedServerId, setSelectedServerId] = useState(initialServerId);
+  const [hostPickerOpen, setHostPickerOpen] = useState(false);
+
+  const handleSelectHost = useCallback((id: string) => {
+    setSelectedServerId(id);
+    setHostPickerOpen(false);
+  }, []);
+
+  const handleHostPickerOpenChange = useCallback((open: boolean) => {
+    setHostPickerOpen(open);
+  }, []);
+
+  const openHostPicker = useCallback(() => {
+    setHostPickerOpen(true);
+  }, []);
+
+  return {
+    allHosts,
+    allServerIds,
+    selectedServerId,
+    setSelectedServerId,
+    hostPickerOpen,
+    setHostPickerOpen,
+    handleSelectHost,
+    handleHostPickerOpenChange,
+    openHostPicker,
+  };
+}
+
+interface NewWorkspaceProjectPickerInput extends HostProjectRouteContext {
+  selectedServerId: string;
+  allServerIds: string[];
+  allowAllProjects: boolean;
+}
+
+interface NewWorkspaceProjectPickerState {
+  projects: HostProjectListItem[];
+  selectedProject: HostProjectListItem | null;
+  selectedSourceDirectory: string | null;
+  selectedDisplayName: string;
+  projectPickerOptions: Array<{ id: string; label: string }>;
+  projectByOptionId: Map<string, HostProjectListItem>;
+  selectedProjectOptionId: string;
+  projectTriggerLabel: string;
+  handleSelectProjectOption: (id: string) => void;
+}
+
+function useNewWorkspaceProjectPicker({
+  serverId,
+  selectedServerId,
+  allServerIds,
+  sourceDirectory,
+  projectId,
+  displayName: displayNameProp,
+  allowAllProjects,
+}: NewWorkspaceProjectPickerInput): NewWorkspaceProjectPickerState {
+  const [manualProjectKey, setManualProjectKey] = useState<string | null>(null);
+  const displayName = displayNameProp?.trim() ?? "";
+  const projects = useHostProjects(allServerIds);
+  const lastWorkspaceSelection = useLastWorkspaceSelection();
+  const lastWorkspaceServerId = useMemo(
+    () =>
+      lastWorkspaceSelection && allServerIds.includes(lastWorkspaceSelection.serverId)
+        ? lastWorkspaceSelection.serverId
+        : null,
+    [allServerIds, lastWorkspaceSelection],
+  );
+  const lastWorkspaceId = lastWorkspaceServerId ? lastWorkspaceSelection!.workspaceId : null;
+  const lastWorkspace = useWorkspace(lastWorkspaceServerId, lastWorkspaceId);
+
+  const routeProject = useMemo(
+    () => hostProjectFromRoute({ serverId, projectId, displayName, sourceDirectory }),
+    [displayName, projectId, serverId, sourceDirectory],
+  );
+  const lastActiveProject = useMemo(
+    () =>
+      lastWorkspaceServerId
+        ? hostProjectFromWorkspace({ serverId: lastWorkspaceServerId, workspace: lastWorkspace })
+        : null,
+    [lastWorkspace, lastWorkspaceServerId],
+  );
+  const selectableProjects = useMemo(
+    () =>
+      filterWorkspaceProjectsForHost({ projects, serverId: selectedServerId, allowAllProjects }),
+    [allowAllProjects, projects, selectedServerId],
+  );
+  const initialProject = useMemo(
+    () =>
+      resolveInitialWorkspaceProject({
+        routeProject,
+        lastActiveProject,
+        projects: selectableProjects,
+        serverId: selectedServerId,
+        allowAllProjects,
+      }),
+    [allowAllProjects, lastActiveProject, routeProject, selectableProjects, selectedServerId],
+  );
+
+  const routeProjectKey = routeProject?.projectKey ?? null;
+  useEffect(() => {
+    setManualProjectKey(null);
+  }, [routeProjectKey]);
+
+  const selectedProjectKey = useMemo(() => {
+    if (manualProjectKey) {
+      const manual = resolveSelectedHostProject({
+        selectedProjectKey: manualProjectKey,
+        projects: selectableProjects,
+        routeProject: null,
+        lastActiveProject: null,
+      });
+      if (manual) return manual.projectKey;
+    }
+    return initialProject?.projectKey ?? null;
+  }, [initialProject, manualProjectKey, selectableProjects]);
+
+  const selectedProject = useMemo(
+    () =>
+      resolveSelectedHostProject({
+        selectedProjectKey,
+        projects: selectableProjects,
+        routeProject,
+        lastActiveProject,
+      }),
+    [lastActiveProject, routeProject, selectableProjects, selectedProjectKey],
+  );
+  const { options: projectPickerOptions, projectByOptionId } = useMemo(
+    () => computeProjectOptionData(selectableProjects),
+    [selectableProjects],
+  );
+  const handleSelectProjectOption = useCallback(
+    (id: string) => {
+      const project = projectByOptionId.get(id);
+      if (!project) return;
+      if (!allowAllProjects && !project.hosts.some((host) => host.canCreateWorktree)) return;
+      setManualProjectKey(project.projectKey);
+    },
+    [allowAllProjects, projectByOptionId],
+  );
+
+  return {
+    projects,
+    selectedProject,
+    selectedSourceDirectory: selectedProject
+      ? getHostProjectSourceDirectory(selectedProject, selectedServerId)
+      : null,
+    selectedDisplayName: selectedProject?.projectName ?? displayName,
+    projectPickerOptions,
+    projectByOptionId,
+    selectedProjectOptionId: selectedProject ? projectOptionId(selectedProject.projectKey) : "",
+    projectTriggerLabel: selectedProject?.projectName ?? "Choose project",
+    handleSelectProjectOption,
+  };
+}
+
+type RefPickerRenderOption = NonNullable<ComboboxProps["renderOption"]>;
+
+interface FormPickerControl {
+  anchorRef: RefObject<View | null>;
+  open: () => void;
+  openState: boolean;
+  onOpenChange: (open: boolean) => void;
+}
+
+interface NewWorkspaceFormStackInput {
+  isCompact: boolean;
+  isPending: boolean;
+  project: FormPickerControl & {
+    options: ComboboxOptionType[];
+    triggerLabel: string;
+    selectedProject: HostProjectListItem | null;
+    iconDataByProjectKey: Map<string, string | null>;
+    selectedOptionId: string;
+    onSelect: (id: string) => void;
+    renderOption: RefPickerRenderOption;
+  };
+  host: FormPickerControl & {
+    allHosts: HostProfile[];
+    selectedServerId: string;
+    onSelect: (id: string) => void;
+  };
+  repo?: FormPickerControl & {
+    options: ComboboxOptionType[];
+    triggerLabel: string;
+    selectedOptionId: string;
+    onSelect: (id: string) => void;
+    renderOption: RefPickerRenderOption;
+  };
+  isolation: FormPickerControl & {
+    effectiveIsolation: "local" | "worktree";
+    options: ComboboxOptionType[];
+    onSelect: (id: string) => void;
+    renderOption: RefPickerRenderOption;
+    canCreateWorktree: boolean;
+  };
+  base: FormPickerControl & {
+    selectedSourceDirectory: string | null;
+    selectedItem: PickerItem | null;
+    triggerLabel: string;
+    options: ComboboxOptionType[];
+    selectedOptionId: string;
+    onSelect: (id: string) => void;
+    setSearchQuery: (query: string) => void;
+    emptyText: string;
+    renderOption: RefPickerRenderOption;
+    showRefPicker: boolean;
+  };
+}
+
+function useNewWorkspaceFormStack(input: NewWorkspaceFormStackInput): ReactElement {
+  const { theme } = useUnistyles();
+  const { t } = useTranslation();
+  const { isCompact, isPending, project, host, repo, isolation, base } = input;
+
+  const selectedHostLabel =
+    host.allHosts.find((h) => h.serverId === host.selectedServerId)?.label ?? "Host";
+  const isolationTriggerLabel = isolationLabel(t, isolation.effectiveIsolation);
+
+  const badgePressableStyle = useCallback(
+    ({ pressed, hovered }: PressableStateCallbackType & { hovered?: boolean }) => [
+      styles.badge,
+      Boolean(hovered) && !isPending && styles.badgeHovered,
+      pressed && !isPending && styles.badgePressed,
+      isPending && styles.badgeDisabled,
+    ],
+    [isPending],
+  );
+
+  const projectControl = (
+    <View>
+      <ProjectPickerTrigger
+        pickerAnchorRef={project.anchorRef}
+        onPress={project.open}
+        disabled={isPending || project.options.length === 0}
+        badgePressableStyle={badgePressableStyle}
+        label={project.triggerLabel}
+        projectKey={project.selectedProject?.projectKey ?? null}
+        iconDataUri={
+          project.selectedProject
+            ? (project.iconDataByProjectKey.get(project.selectedProject.projectKey) ?? null)
+            : null
+        }
+        iconColor={theme.colors.foregroundMuted}
+        iconSize={theme.iconSize.sm}
+      />
+      <Combobox
+        options={project.options}
+        value={project.selectedOptionId}
+        onSelect={project.onSelect}
+        searchable
+        searchPlaceholder="Search projects"
+        title="Project"
+        open={project.openState}
+        onOpenChange={project.onOpenChange}
+        desktopPlacement="bottom-start"
+        anchorRef={project.anchorRef}
+        emptyText="No projects available."
+        renderOption={project.renderOption}
+      />
+    </View>
+  );
+
+  const hostControl = (
+    <View>
+      <HostPicker
+        hosts={host.allHosts}
+        value={host.selectedServerId}
+        onSelect={host.onSelect}
+        open={host.openState}
+        onOpenChange={host.onOpenChange}
+        anchorRef={host.anchorRef}
+        searchable={false}
+        title="Host"
+        desktopPlacement="bottom-start"
+        hostOptionTestID={newWorkspaceHostOptionTestID}
+      >
+        <Pressable
+          ref={host.anchorRef}
+          onPress={host.open}
+          disabled={isPending || host.allHosts.length === 0}
+          style={badgePressableStyle}
+          testID="host-picker-trigger"
+        >
+          <HostStatusDot serverId={host.selectedServerId} />
+          <Text style={styles.badgeText} numberOfLines={1}>
+            {selectedHostLabel}
+          </Text>
+          <ChevronDown size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
+        </Pressable>
+      </HostPicker>
+    </View>
+  );
+
+  const repoControl =
+    repo && repo.options.length > 1 ? (
+      <View>
+        <RepoPickerTrigger
+          pickerAnchorRef={repo.anchorRef}
+          onPress={repo.open}
+          disabled={isPending}
+          badgePressableStyle={badgePressableStyle}
+          label={repo.triggerLabel}
+          tooltipLabel={t("newWorkspace.repoPicker.choose")}
+          iconColor={theme.colors.foregroundMuted}
+          iconSize={theme.iconSize.sm}
+        />
+        <Combobox
+          options={repo.options}
+          value={repo.selectedOptionId}
+          onSelect={repo.onSelect}
+          searchable
+          searchPlaceholder={t("newWorkspace.repoPicker.searchPlaceholder")}
+          title={t("newWorkspace.repoPicker.title")}
+          open={repo.openState}
+          onOpenChange={repo.onOpenChange}
+          desktopPlacement="bottom-start"
+          anchorRef={repo.anchorRef}
+          emptyText={t("newWorkspace.repoPicker.empty")}
+          renderOption={repo.renderOption}
+        />
+      </View>
+    ) : null;
+
+  const isolationControl = isolation.canCreateWorktree ? (
+    <View>
+      <IsolationPickerTrigger
+        pickerAnchorRef={isolation.anchorRef}
+        onPress={isolation.open}
+        disabled={isPending}
+        badgePressableStyle={badgePressableStyle}
+        isolation={isolation.effectiveIsolation}
+        label={isolationTriggerLabel}
+        iconColor={theme.colors.foregroundMuted}
+        iconSize={theme.iconSize.sm}
+      />
+      <Combobox
+        options={isolation.options}
+        value={isolation.effectiveIsolation}
+        onSelect={isolation.onSelect}
+        title={t("newWorkspace.isolation.label")}
+        open={isolation.openState}
+        onOpenChange={isolation.onOpenChange}
+        desktopPlacement="bottom-start"
+        anchorRef={isolation.anchorRef}
+        renderOption={isolation.renderOption}
+      />
+    </View>
+  ) : null;
+
+  const baseControl = base.showRefPicker ? (
+    <View>
+      <RefPickerTrigger
+        pickerAnchorRef={base.anchorRef}
+        onPress={base.open}
+        disabled={isPending || !base.selectedSourceDirectory}
+        badgePressableStyle={badgePressableStyle}
+        selectedItem={base.selectedItem}
+        triggerLabel={base.triggerLabel}
+        accessibilityLabel={t("newWorkspace.refPicker.startingRef")}
+        tooltipLabel={t("newWorkspace.refPicker.chooseStart")}
+        iconColor={theme.colors.foregroundMuted}
+        iconSize={theme.iconSize.sm}
+      />
+      <Combobox
+        options={base.options}
+        value={base.selectedOptionId}
+        onSelect={base.onSelect}
+        searchable
+        searchPlaceholder={t("newWorkspace.refPicker.searchPlaceholder")}
+        title={t("newWorkspace.refPicker.title")}
+        open={base.openState}
+        onOpenChange={base.onOpenChange}
+        onSearchQueryChange={base.setSearchQuery}
+        desktopPlacement="bottom-start"
+        anchorRef={base.anchorRef}
+        emptyText={base.emptyText}
+        renderOption={base.renderOption}
+      />
+    </View>
+  ) : null;
+
+  return isCompact ? (
+    <View testID="new-workspace-ref-picker-row" style={styles.formStack}>
+      <FormRow>{projectControl}</FormRow>
+      <FormRow>{hostControl}</FormRow>
+      {repoControl ? <FormRow>{repoControl}</FormRow> : null}
+      {/* Keep fixed row height when git-only controls are hidden. */}
+      {isolationControl ? (
+        <FormRow>{isolationControl}</FormRow>
+      ) : (
+        <View style={styles.baseSpacer} />
+      )}
+      {baseControl ? <FormRow>{baseControl}</FormRow> : <View style={styles.baseSpacer} />}
+    </View>
+  ) : (
+    <View testID="new-workspace-ref-picker-row" style={styles.formStackDesktop}>
+      {projectControl}
+      {hostControl}
+      {repoControl}
+      {isolationControl}
+      {baseControl}
+    </View>
+  );
+}
+
 export function NewWorkspaceScreen({
   serverId,
   sourceDirectory: sourceDirectoryProp,
@@ -1086,9 +1639,19 @@ export function NewWorkspaceScreen({
   const isCompact = useIsCompactFormFactor();
   const toast = useToast();
   const mergeWorkspaces = useSessionStore((state) => state.mergeWorkspaces);
+  const {
+    allHosts,
+    allServerIds,
+    selectedServerId,
+    hostPickerOpen,
+    handleSelectHost,
+    handleHostPickerOpenChange,
+    openHostPicker,
+  } = useNewWorkspaceHostSelector(serverId);
   // COMPAT(workspaceMultiplicity): added in v0.1.97, drop the gate when floor >= v0.1.97
   const supportsWorkspaceMultiplicity = useSessionStore(
-    (state) => state.sessions[serverId]?.serverInfo?.features?.workspaceMultiplicity === true,
+    (state) =>
+      state.sessions[selectedServerId]?.serverInfo?.features?.workspaceMultiplicity === true,
   );
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [createdWorkspace, setCreatedWorkspace] = useState<ReturnType<
@@ -1097,11 +1660,14 @@ export function NewWorkspaceScreen({
   const [pendingAction, setPendingAction] = useState<"chat" | "empty" | null>(null);
   const [manualPickerSelection, setManualPickerSelection] = useState<PickerSelection | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [projectPickerOpen, setProjectPickerOpen] = useState(false);
   const [isolationPickerOpen, setIsolationPickerOpen] = useState(false);
   const [pickerSearchQuery, setPickerSearchQuery] = useState("");
   const [debouncedPickerSearchQuery, setDebouncedPickerSearchQuery] = useState("");
   const pickerAnchorRef = useRef<View>(null);
+  const projectPickerAnchorRef = useRef<View>(null);
   const isolationPickerAnchorRef = useRef<View>(null);
+  const hostPickerAnchorRef = useRef<View | null>(null);
 
   useEffect(() => {
     const trimmed = pickerSearchQuery.trim();
@@ -1111,22 +1677,32 @@ export function NewWorkspaceScreen({
 
   const workspace = createdWorkspace;
   const isPending = pendingAction !== null;
-  const client = useHostRuntimeClient(serverId);
-  const isConnected = useHostRuntimeIsConnected(serverId);
-  const { projects, selectedProject, selectedSourceDirectory, selectProjectByKey } =
-    useNewWorkspaceProjectPicker({
-      serverId,
-      sourceDirectory: sourceDirectoryProp,
-      projectId,
-      displayName: displayNameProp,
-    });
+  const client = useHostRuntimeClient(selectedServerId);
+  const isConnected = useHostRuntimeIsConnected(selectedServerId);
+  const {
+    projects,
+    selectedProject,
+    selectedSourceDirectory,
+    projectPickerOptions,
+    projectByOptionId,
+    selectedProjectOptionId,
+    projectTriggerLabel,
+    handleSelectProjectOption,
+  } = useNewWorkspaceProjectPicker({
+    serverId,
+    selectedServerId,
+    allServerIds,
+    sourceDirectory: sourceDirectoryProp,
+    projectId,
+    displayName: displayNameProp,
+    allowAllProjects: supportsWorkspaceMultiplicity,
+  });
   const handleRepoSelected = useCallback(() => {
     setManualPickerSelection(null);
   }, []);
   const {
     effectiveSourceDirectory,
     selectedRepoPath,
-    scannedRepos,
     repoPickerOptions,
     repoByOptionId,
     selectedRepoOptionId,
@@ -1137,7 +1713,7 @@ export function NewWorkspaceScreen({
     handleRepoPickerOpenChange,
     handleSelectRepoOption,
   } = useNewWorkspaceRepoScan({
-    serverId,
+    serverId: selectedServerId,
     selectedSourceDirectory,
     client,
     isConnected,
@@ -1145,11 +1721,26 @@ export function NewWorkspaceScreen({
     onRepoSelected: handleRepoSelected,
   });
 
-  const draftKey = `new-workspace:${serverId}:${selectedSourceDirectory ?? "choose-project"}`;
+  const projectIconTargets = useMemo(
+    () =>
+      projects.flatMap((project) => {
+        const iconWorkingDir = getHostProjectSourceDirectory(project, selectedServerId)?.trim();
+        if (!iconWorkingDir) {
+          return [];
+        }
+        return [{ projectKey: project.projectKey, serverId: selectedServerId, iconWorkingDir }];
+      }),
+    [projects, selectedServerId],
+  );
+
+  const projectIconDataByProjectKey = useProjectIconDataByProjectKey({
+    projects: projectIconTargets,
+  });
+  const draftKey = `new-workspace:${selectedServerId}:${selectedSourceDirectory ?? "choose-project"}`;
   const chatDraft = useAgentInputDraft({
     draftKey,
     composer: buildComposerConfig({
-      serverId,
+      serverId: selectedServerId,
       isConnected,
       workspaceDirectory: workspace?.workspaceDirectory ?? null,
       sourceDirectory: effectiveSourceDirectory,
@@ -1173,7 +1764,7 @@ export function NewWorkspaceScreen({
   const pickerQueryEnabled = pickerOpen && clientReady && hasSelectedSourceDirectory;
 
   const checkoutStatusQuery = useQuery({
-    queryKey: ["checkout-status", serverId, effectiveSourceDirectory],
+    queryKey: ["checkout-status", selectedServerId, effectiveSourceDirectory],
     queryFn: async () => {
       if (!effectiveSourceDirectory) {
         throw new Error("Choose a project");
@@ -1198,7 +1789,7 @@ export function NewWorkspaceScreen({
   const branchSuggestionsQuery = useQuery({
     queryKey: [
       "branch-suggestions",
-      serverId,
+      selectedServerId,
       effectiveSourceDirectory,
       debouncedPickerSearchQuery,
     ],
@@ -1219,7 +1810,7 @@ export function NewWorkspaceScreen({
 
   const githubPrSearchQuery = useGithubSearchQuery({
     client,
-    serverId,
+    serverId: selectedServerId,
     cwd: effectiveSourceDirectory ?? "",
     query: debouncedPickerSearchQuery,
     kinds: ["github-pr"],
@@ -1345,6 +1936,10 @@ export function NewWorkspaceScreen({
     setPickerOpen(true);
   }, []);
 
+  const openProjectPicker = useCallback(() => {
+    setProjectPickerOpen(true);
+  }, []);
+
   const openIsolationPicker = useCallback(() => {
     setIsolationPickerOpen(true);
   }, []);
@@ -1401,21 +1996,15 @@ export function NewWorkspaceScreen({
     // No-op: screen navigates away on success, text should stay for retry on error
   }, []);
 
-  const badgePressableStyle = useCallback(
-    ({ pressed, hovered }: PressableStateCallbackType & { hovered?: boolean }) => [
-      styles.badge,
-      Boolean(hovered) && !isPending && styles.badgeHovered,
-      pressed && !isPending && styles.badgePressed,
-      isPending && styles.badgeDisabled,
-    ],
-    [isPending],
-  );
-
   const handlePickerOpenChange = useCallback((nextOpen: boolean) => {
     setPickerOpen(nextOpen);
     if (!nextOpen) {
       setPickerSearchQuery("");
     }
+  }, []);
+
+  const handleProjectPickerOpenChange = useCallback((nextOpen: boolean) => {
+    setProjectPickerOpen(nextOpen);
   }, []);
 
   const buildCreateWorktreeInput = useCallback(
@@ -1427,18 +2016,21 @@ export function NewWorkspaceScreen({
       if (!selectedProject) {
         throw new Error("Choose a project");
       }
+      if (!selectedSourceDirectory) {
+        throw new Error("Choose a host for this project");
+      }
       const checkoutRequest = resolveCheckoutRequest(selectedItem, currentBranch);
       const firstAgentContext = buildFirstAgentContext(input);
 
       return {
-        cwd: selectedRepoPath ?? selectedProject.iconWorkingDir,
+        cwd: selectedRepoPath ?? selectedSourceDirectory,
         projectId: selectedProject.projectKey,
         worktreeSlug: createNameId(),
         ...(firstAgentContext ? { firstAgentContext } : {}),
         ...checkoutRequest,
       };
     },
-    [currentBranch, selectedItem, selectedProject, selectedRepoPath],
+    [currentBranch, selectedItem, selectedProject, selectedRepoPath, selectedSourceDirectory],
   );
 
   const ensureWorkspace = useCallback(
@@ -1454,25 +2046,29 @@ export function NewWorkspaceScreen({
       if (!selectedProject) {
         throw new Error("Choose a project");
       }
+      if (!selectedSourceDirectory) {
+        throw new Error("Choose a host for this project");
+      }
       const normalizedWorkspace = supportsWorkspaceMultiplicity
         ? await createMultiplicityWorkspace({
             client: withConnectedClient(),
             isolation: effectiveIsolation,
             project: selectedProject,
+            sourceDirectory: effectiveSourceDirectory ?? selectedSourceDirectory,
             selectedItem,
             currentBranch,
             withInitialAgent: input.withInitialAgent,
             prompt: input.prompt,
             attachments: input.attachments,
             mergeWorkspaces,
-            serverId,
+            serverId: selectedServerId,
             createFailedMessage: t("newWorkspace.errors.createWorktreeFailed"),
           })
         : await createAndMergeWorkspace({
             client: withConnectedClient(),
             createInput: buildCreateWorktreeInput(input),
             mergeWorkspaces,
-            serverId,
+            serverId: selectedServerId,
             createFailedMessage: t("newWorkspace.errors.createWorktreeFailed"),
           });
       setCreatedWorkspace(normalizedWorkspace);
@@ -1483,10 +2079,12 @@ export function NewWorkspaceScreen({
       createdWorkspace,
       currentBranch,
       effectiveIsolation,
+      effectiveSourceDirectory,
       mergeWorkspaces,
       selectedItem,
       selectedProject,
-      serverId,
+      selectedServerId,
+      selectedSourceDirectory,
       supportsWorkspaceMultiplicity,
       t,
       withConnectedClient,
@@ -1503,7 +2101,7 @@ export function NewWorkspaceScreen({
           await runCreateEmptyWorkspace({
             payload,
             ensureWorkspace,
-            serverId,
+            serverId: selectedServerId,
             navigate: navigateToWorkspace,
           });
           return;
@@ -1514,7 +2112,7 @@ export function NewWorkspaceScreen({
           payload,
           composerState,
           ensureWorkspace,
-          serverId,
+          serverId: selectedServerId,
           draftKey,
           labels: {
             composerStateRequired: t("newWorkspace.errors.composerStateRequired"),
@@ -1528,7 +2126,7 @@ export function NewWorkspaceScreen({
         toast.error(message);
       }
     },
-    [composerState, draftKey, ensureWorkspace, serverId, t, toast],
+    [composerState, draftKey, ensureWorkspace, selectedServerId, t, toast],
   );
 
   const addImagesRef = useRef<((images: ImageAttachment[]) => void) | null>(null);
@@ -1540,47 +2138,46 @@ export function NewWorkspaceScreen({
   }, []);
 
   const renderPickerOption = useCallback(
-    ({
-      option,
-      selected,
-      active,
-      onPress,
-    }: {
+    (props: {
       option: ComboboxOptionType;
       selected: boolean;
       active: boolean;
       onPress: () => void;
-    }) => {
-      const item = itemById.get(option.id);
-      if (!item) return <View key={option.id} />;
+    }) => <NewWorkspacePickerOption {...props} itemById={itemById} isPending={isPending} />,
+    [isPending, itemById],
+  );
 
-      const isBranch = item.kind === "branch";
+  const renderProjectOption = useCallback(
+    (props: {
+      option: ComboboxOptionType;
+      selected: boolean;
+      active: boolean;
+      onPress: () => void;
+    }) => (
+      <NewWorkspaceProjectPickerOption
+        {...props}
+        projectByOptionId={projectByOptionId}
+        projectIconDataByProjectKey={projectIconDataByProjectKey}
+        selectedServerId={selectedServerId}
+        isPending={isPending}
+        supportsWorkspaceMultiplicity={supportsWorkspaceMultiplicity}
+      />
+    ),
+    [
+      isPending,
+      projectByOptionId,
+      projectIconDataByProjectKey,
+      selectedServerId,
+      supportsWorkspaceMultiplicity,
+    ],
+  );
 
-      const testID = isBranch
-        ? `new-workspace-ref-picker-branch-${item.name}`
-        : `new-workspace-ref-picker-pr-${item.item.number}`;
-
-      const description =
-        !isBranch && item.item.baseRefName
-          ? t("newWorkspace.refPicker.intoBase", { baseRef: item.item.baseRefName })
-          : undefined;
-
-      return (
-        <PickerOptionItem
-          testID={testID}
-          label={pickerItemLabel(item)}
-          description={description}
-          selected={selected}
-          active={active}
-          disabled={isPending}
-          onPress={onPress}
-          isBranch={isBranch}
-          iconColor={theme.colors.foregroundMuted}
-          iconSize={theme.iconSize.sm}
-        />
-      );
+  const handleSelectProjectForWorkspace = useCallback(
+    (id: string) => {
+      handleSelectProjectOption(id);
+      setManualPickerSelection(null);
     },
-    [isPending, itemById, t, theme.colors.foregroundMuted, theme.iconSize.sm],
+    [handleSelectProjectOption],
   );
 
   const contentStyle = useMemo(
@@ -1613,196 +2210,70 @@ export function NewWorkspaceScreen({
       ? t("newWorkspace.refPicker.searching")
       : t("newWorkspace.refPicker.noMatchingRefs");
 
-  const isolationTriggerLabel = isolationLabel(t, effectiveIsolation);
-
-  const handleSelectProjectForWorkspace = useCallback(
-    (project: HostProjectListItem) => {
-      // The picker already enforces selectability; clearing the manual picker
-      // selection resets any branch/PR choice for the new project.
-      selectProjectByKey(project.projectKey);
-      setManualPickerSelection(null);
-    },
-    [selectProjectByKey],
-  );
-
-  const formStack = useMemo(() => {
-    const projectControl = (
-      <ProjectPicker
-        serverId={serverId}
-        projects={projects}
-        selectedProjectKey={selectedProject?.projectKey ?? null}
-        onSelectProject={handleSelectProjectForWorkspace}
-        allowAllProjects={supportsWorkspaceMultiplicity}
-        disabled={isPending}
-        testIDPrefix="new-workspace-project-picker"
-      />
-    );
-
-    // Fork-only: a single project can span multiple scanned repos. When more
-    // than one repo is present, the user picks which repo backs the workspace.
-    const repoControl =
-      scannedRepos.length > 1 ? (
-        <View>
-          <RepoPickerTrigger
-            pickerAnchorRef={repoPickerAnchorRef}
-            onPress={openRepoPicker}
-            disabled={isPending}
-            badgePressableStyle={badgePressableStyle}
-            label={repoTriggerLabel}
-            tooltipLabel={t("newWorkspace.repoPicker.choose")}
-            iconColor={theme.colors.foregroundMuted}
-            iconSize={theme.iconSize.sm}
-          />
-          <Combobox
-            options={repoPickerOptions}
-            value={selectedRepoOptionId}
-            onSelect={handleSelectRepoOption}
-            searchable
-            searchPlaceholder={t("newWorkspace.repoPicker.searchPlaceholder")}
-            title={t("newWorkspace.repoPicker.title")}
-            open={repoPickerOpen}
-            onOpenChange={handleRepoPickerOpenChange}
-            desktopPlacement="bottom-start"
-            anchorRef={repoPickerAnchorRef}
-            emptyText={t("newWorkspace.repoPicker.empty")}
-            renderOption={renderRepoOption}
-          />
-        </View>
-      ) : null;
-
-    const isolationControl = canCreateWorktree ? (
-      <View>
-        <IsolationPickerTrigger
-          pickerAnchorRef={isolationPickerAnchorRef}
-          onPress={openIsolationPicker}
-          disabled={isPending}
-          badgePressableStyle={badgePressableStyle}
-          isolation={effectiveIsolation}
-          label={isolationTriggerLabel}
-          iconColor={theme.colors.foregroundMuted}
-          iconSize={theme.iconSize.sm}
-        />
-        <Combobox
-          options={isolationOptions}
-          value={effectiveIsolation}
-          onSelect={handleSelectIsolationOption}
-          title={t("newWorkspace.isolation.label")}
-          open={isolationPickerOpen}
-          onOpenChange={handleIsolationPickerOpenChange}
-          desktopPlacement="bottom-start"
-          anchorRef={isolationPickerAnchorRef}
-          renderOption={renderIsolationOption}
-        />
-      </View>
-    ) : null;
-
-    const baseControl = showRefPicker ? (
-      <View>
-        <RefPickerTrigger
-          pickerAnchorRef={pickerAnchorRef}
-          onPress={openPicker}
-          disabled={isPending || !selectedSourceDirectory}
-          badgePressableStyle={badgePressableStyle}
-          selectedItem={selectedItem}
-          triggerLabel={triggerLabel}
-          accessibilityLabel={t("newWorkspace.refPicker.startingRef")}
-          tooltipLabel={t("newWorkspace.refPicker.chooseStart")}
-          iconColor={theme.colors.foregroundMuted}
-          iconSize={theme.iconSize.sm}
-        />
-        <Combobox
-          options={options}
-          value={selectedOptionId}
-          onSelect={handleSelectOption}
-          searchable
-          searchPlaceholder={t("newWorkspace.refPicker.searchPlaceholder")}
-          title={t("newWorkspace.refPicker.title")}
-          open={pickerOpen}
-          onOpenChange={handlePickerOpenChange}
-          onSearchQueryChange={setPickerSearchQuery}
-          desktopPlacement="bottom-start"
-          anchorRef={pickerAnchorRef}
-          emptyText={pickerEmptyText}
-          renderOption={renderPickerOption}
-        />
-      </View>
-    ) : null;
-
-    if (isCompact) {
-      return (
-        <View testID="new-workspace-ref-picker-row" style={styles.formStack}>
-          <FormRow>{projectControl}</FormRow>
-          {repoControl ? <FormRow>{repoControl}</FormRow> : null}
-          {/* The Isolation row keeps its height for non-git projects so switching
-              projects never shifts the form; worktree isolation is git-only, so a
-              non-git project renders an invisible spacer matching the trigger
-              height exactly. */}
-          {isolationControl ? (
-            <FormRow>{isolationControl}</FormRow>
-          ) : (
-            <View style={styles.baseSpacer} />
-          )}
-          {/* The Base row keeps its height so toggling Isolation never shifts the
-              form; on Local isolation it renders an invisible spacer with no label
-              or control, matching the trigger height exactly. */}
-          {baseControl ? <FormRow>{baseControl}</FormRow> : <View style={styles.baseSpacer} />}
-        </View>
-      );
-    }
-
-    return (
-      <View testID="new-workspace-ref-picker-row" style={styles.formStackDesktop}>
-        {projectControl}
-        {repoControl}
-        {isolationControl}
-        {baseControl}
-      </View>
-    );
-  }, [
-    isolationOptions,
-    isolationPickerOpen,
-    isolationTriggerLabel,
-    badgePressableStyle,
-    canCreateWorktree,
-    effectiveIsolation,
-    handleIsolationPickerOpenChange,
-    handlePickerOpenChange,
-    handleRepoPickerOpenChange,
-    handleSelectIsolationOption,
-    handleSelectOption,
-    handleSelectRepoOption,
+  const formStack = useNewWorkspaceFormStack({
     isCompact,
     isPending,
-    openIsolationPicker,
-    openPicker,
-    openRepoPicker,
-    options,
-    pickerEmptyText,
-    pickerOpen,
-    projects,
-    renderIsolationOption,
-    renderPickerOption,
-    renderRepoOption,
-    repoPickerAnchorRef,
-    repoPickerOpen,
-    repoPickerOptions,
-    repoTriggerLabel,
-    scannedRepos,
-    selectedItem,
-    selectedOptionId,
-    selectedProject,
-    selectedRepoOptionId,
-    selectedSourceDirectory,
-    handleSelectProjectForWorkspace,
-    serverId,
-    setPickerSearchQuery,
-    showRefPicker,
-    supportsWorkspaceMultiplicity,
-    t,
-    theme.colors.foregroundMuted,
-    theme.iconSize.sm,
-    triggerLabel,
-  ]);
+    project: {
+      anchorRef: projectPickerAnchorRef,
+      open: openProjectPicker,
+      options: projectPickerOptions,
+      triggerLabel: projectTriggerLabel,
+      selectedProject,
+      iconDataByProjectKey: projectIconDataByProjectKey,
+      selectedOptionId: selectedProjectOptionId,
+      onSelect: handleSelectProjectForWorkspace,
+      openState: projectPickerOpen,
+      onOpenChange: handleProjectPickerOpenChange,
+      renderOption: renderProjectOption,
+    },
+    host: {
+      allHosts,
+      selectedServerId,
+      onSelect: handleSelectHost,
+      openState: hostPickerOpen,
+      onOpenChange: handleHostPickerOpenChange,
+      anchorRef: hostPickerAnchorRef,
+      open: openHostPicker,
+    },
+    repo: {
+      anchorRef: repoPickerAnchorRef,
+      open: openRepoPicker,
+      options: repoPickerOptions,
+      triggerLabel: repoTriggerLabel,
+      selectedOptionId: selectedRepoOptionId,
+      onSelect: handleSelectRepoOption,
+      openState: repoPickerOpen,
+      onOpenChange: handleRepoPickerOpenChange,
+      renderOption: renderRepoOption,
+    },
+    isolation: {
+      anchorRef: isolationPickerAnchorRef,
+      open: openIsolationPicker,
+      effectiveIsolation,
+      options: isolationOptions,
+      onSelect: handleSelectIsolationOption,
+      openState: isolationPickerOpen,
+      onOpenChange: handleIsolationPickerOpenChange,
+      renderOption: renderIsolationOption,
+      canCreateWorktree,
+    },
+    base: {
+      anchorRef: pickerAnchorRef,
+      open: openPicker,
+      selectedSourceDirectory,
+      selectedItem,
+      triggerLabel,
+      options,
+      selectedOptionId,
+      onSelect: handleSelectOption,
+      openState: pickerOpen,
+      onOpenChange: handlePickerOpenChange,
+      setSearchQuery: setPickerSearchQuery,
+      emptyText: pickerEmptyText,
+      renderOption: renderPickerOption,
+      showRefPicker,
+    },
+  });
 
   const composerFooter = useMemo(() => {
     // The agent mode control only renders in the footer on compact layouts; on
@@ -1863,7 +2334,7 @@ export function NewWorkspaceScreen({
             <Composer
               externalKeyboardShift
               agentId={draftKey}
-              serverId={serverId}
+              serverId={selectedServerId}
               isPaneFocused={true}
               onSubmitMessage={handleSubmitNewWorkspace}
               allowEmptySubmit={true}
@@ -2044,5 +2515,10 @@ const styles = StyleSheet.create((theme) => ({
     height: theme.iconSize.md,
     alignItems: "center",
     justifyContent: "center",
+  },
+  hostStatusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
   },
 }));
