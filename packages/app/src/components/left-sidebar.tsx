@@ -115,6 +115,8 @@ interface SidebarSharedProps {
   handleRefresh: () => void;
   handleHostSelect: (nextServerId: string) => void;
   handleNewWorkspaceNavigate: () => void;
+  /** New-theme multi-host list: start a new conversation on a specific host. */
+  handleNewWorkspaceForHost: (serverId: string) => void;
   handleOpenProject: () => void;
   /** New-theme toolbar: pick a folder → open it in the New conversation flow. */
   handleOpenProjectFolder: () => void;
@@ -322,6 +324,14 @@ export const LeftSidebar = memo(function LeftSidebar({
     router.navigate(buildHostNewWorkspaceRoute(activeServerId));
   }, [activeServerId]);
 
+  // Per-host "new chat" for the multi-host sidebar list. Navigating to the
+  // host's new-workspace route also makes it the active host (active host is
+  // route-derived), so subsequent toolbar actions target the host the user
+  // just started a conversation on.
+  const handleNewWorkspaceForHost = useCallback((serverId: string) => {
+    router.navigate(buildHostNewWorkspaceRoute(serverId));
+  }, []);
+
   const handleSettingsMobile = useCallback(() => {
     showMobileAgent();
     router.push(buildSettingsRoute());
@@ -410,6 +420,7 @@ export const LeftSidebar = memo(function LeftSidebar({
     toggleProjectCollapsed,
     handleRefresh,
     handleHostSelect,
+    handleNewWorkspaceForHost,
     renderHostOption,
     labels,
     newWorkspaceKeys,
@@ -727,6 +738,7 @@ function MobileSidebar({
   renderHostOption,
   newWorkspaceKeys,
   handleNewWorkspaceNavigate,
+  handleNewWorkspaceForHost,
   handleOpenProject,
   handleOpenProjectFolder,
   handleHome,
@@ -794,6 +806,14 @@ function MobileSidebar({
     closeSidebar();
     handleNewWorkspaceNavigate();
   }, [closeSidebar, handleNewWorkspaceNavigate]);
+
+  const handleNewChatForHost = useCallback(
+    (serverId: string) => {
+      closeSidebar();
+      handleNewWorkspaceForHost(serverId);
+    },
+    [closeSidebar, handleNewWorkspaceForHost],
+  );
 
   const closeGesture = useMemo(
     () =>
@@ -950,7 +970,11 @@ function MobileSidebar({
                   isHistoryActive={isSessionsActive}
                   onClose={closeSidebar}
                 />
-                <SidebarSessionsList serverId={activeServerId} parentGestureRef={closeGestureRef} />
+                <SidebarSessionsList
+                  serverId={activeServerId}
+                  parentGestureRef={closeGestureRef}
+                  onNewChatForHost={handleNewChatForHost}
+                />
               </>
             ) : (
               <>
@@ -1063,6 +1087,7 @@ function DesktopSidebar({
   renderHostOption,
   newWorkspaceKeys,
   handleNewWorkspaceNavigate,
+  handleNewWorkspaceForHost,
   handleOpenProject,
   handleOpenProjectFolder,
   handleHome,
@@ -1173,7 +1198,10 @@ function DesktopSidebar({
                 isHistoryActive={isSessionsActive}
               />
             </View>
-            <SidebarSessionsList serverId={activeServerId} />
+            <SidebarSessionsList
+              serverId={activeServerId}
+              onNewChatForHost={handleNewWorkspaceForHost}
+            />
           </>
         ) : (
           <>
