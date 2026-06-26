@@ -164,6 +164,7 @@ import { WorkspaceFilesSession } from "./session/files/workspace-files-session.j
 import { AgentConfigSession } from "./session/agent-config/agent-config-session.js";
 import { ProjectConfigSession } from "./session/project-config/project-config-session.js";
 import { DaemonSession, type DaemonRuntimeConfig } from "./session/daemon/daemon-session.js";
+import type { DaemonWebSocketRuntimeDiagnosticSnapshot } from "./session/daemon/diagnostics.js";
 import { DownloadTokenStore } from "./file-download/token-store.js";
 import { PushTokenStore } from "./push/token-store.js";
 import {
@@ -556,6 +557,7 @@ export interface SessionOptions {
   serverId?: string;
   daemonVersion?: string;
   daemonRuntimeConfig?: DaemonRuntimeConfig;
+  getWebSocketRuntimeMetrics?: () => DaemonWebSocketRuntimeDiagnosticSnapshot | null;
 }
 
 export type SessionLifecycleIntent =
@@ -758,6 +760,7 @@ export class Session {
       daemonVersion,
       daemonRuntimeConfig,
       dictationSettings,
+      getWebSocketRuntimeMetrics,
     } = options;
     this.clientId = clientId;
     this.appVersion = appVersion ?? null;
@@ -916,7 +919,11 @@ export class Session {
       serverId,
       daemonVersion,
       daemonRuntimeConfig,
+      getWebSocketRuntimeMetrics,
       listProviderAvailability: () => this.agentManager.listProviderAvailability(),
+      listAgents: () => this.agentManager.listAgents(),
+      listProjects: () => this.projectRegistry.list(),
+      listWorkspaces: () => this.workspaceRegistry.list(),
       logger: this.sessionLogger,
     });
     this.daemonConfigStore = daemonConfigStore;
@@ -1779,6 +1786,8 @@ export class Session {
         return this.daemonSession.handleGetPairingOfferRequest(msg);
       case "daemon.update.request":
         return this.handleDaemonUpdateRequest(msg);
+      case "diagnostics.request":
+        return this.daemonSession.handleDiagnosticsRequest(msg);
       case "set_daemon_config_request":
         this.emit({
           type: "set_daemon_config_response",

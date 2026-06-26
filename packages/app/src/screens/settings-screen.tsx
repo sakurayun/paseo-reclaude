@@ -44,6 +44,7 @@ import {
   SquareTerminal,
 } from "lucide-react-native";
 import { DropdownTrigger } from "@/components/ui/dropdown-trigger";
+import { AppDiagnosticSheet } from "@/components/app-diagnostic-sheet";
 import { ComboboxTrigger } from "@/components/ui/combobox-trigger";
 import { SidebarHeaderRow } from "@/components/sidebar/sidebar-header-row";
 import { SidebarSeparator } from "@/components/sidebar/sidebar-separator";
@@ -384,7 +385,7 @@ function GeneralSection({
             >
               <Text style={styles.themeTriggerText}>{selectedLanguageLabel}</Text>
             </DropdownTrigger>
-            <DropdownMenuContent side="bottom" align="end" width={220}>
+            <DropdownMenuContent side="bottom" align="end" width={300}>
               {LANGUAGE_OPTIONS.map((option) => (
                 <LanguageMenuItem
                   key={option.value}
@@ -456,6 +457,8 @@ interface DiagnosticsSectionProps {
   isPlaybackTestRunning: boolean;
   playbackTestResult: string | null;
   handlePlaybackTest: () => Promise<void>;
+  appVersion: string | null;
+  isDesktopApp: boolean;
 }
 
 function DiagnosticsSection({
@@ -463,14 +466,28 @@ function DiagnosticsSection({
   isPlaybackTestRunning,
   playbackTestResult,
   handlePlaybackTest,
+  appVersion,
+  isDesktopApp,
 }: DiagnosticsSectionProps) {
   const { t } = useTranslation();
+  const [diagnosticSheetOpen, setDiagnosticSheetOpen] = useState(false);
   const handlePlayPress = useCallback(() => {
     void handlePlaybackTest();
   }, [handlePlaybackTest]);
+  const handleOpenDiagnostic = useCallback(() => setDiagnosticSheetOpen(true), []);
+  const handleCloseDiagnostic = useCallback(() => setDiagnosticSheetOpen(false), []);
   return (
     <SettingsSection title={t("settings.diagnostics.title")}>
       <View style={settingsStyles.card}>
+        <View style={settingsStyles.row} testID="app-diagnostic-row">
+          <View style={settingsStyles.rowContent}>
+            <Text style={settingsStyles.rowTitle}>{t("settings.diagnostics.app.rowTitle")}</Text>
+            <Text style={settingsStyles.rowHint}>{t("settings.diagnostics.app.rowHint")}</Text>
+          </View>
+          <Button variant="secondary" size="sm" onPress={handleOpenDiagnostic}>
+            {t("settings.diagnostics.app.run")}
+          </Button>
+        </View>
         <View style={settingsStyles.row}>
           <View style={settingsStyles.rowContent}>
             <Text style={settingsStyles.rowTitle}>{t("settings.diagnostics.testAudio")}</Text>
@@ -490,6 +507,12 @@ function DiagnosticsSection({
           </Button>
         </View>
       </View>
+      <AppDiagnosticSheet
+        visible={diagnosticSheetOpen}
+        onClose={handleCloseDiagnostic}
+        appVersion={appVersion}
+        isDesktopApp={isDesktopApp}
+      />
     </SettingsSection>
   );
 }
@@ -1553,6 +1576,8 @@ export default function SettingsScreen({ view }: SettingsScreenProps) {
               isPlaybackTestRunning={isPlaybackTestRunning}
               playbackTestResult={playbackTestResult}
               handlePlaybackTest={handlePlaybackTest}
+              appVersion={appVersion}
+              isDesktopApp={isDesktopApp}
             />
           );
         case "about":
