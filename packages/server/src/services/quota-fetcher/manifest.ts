@@ -24,11 +24,7 @@ export const PROVIDER_USAGE_FETCHERS: readonly ProviderUsageFetcherManifestEntry
   },
   {
     providerId: "codex",
-    create: (options) =>
-      new CodexQuotaProvider({
-        logger: options.logger,
-        fetch: options.fetch,
-      }),
+    create: (options) => new CodexQuotaProvider({ logger: options.logger }),
   },
   {
     providerId: "copilot",

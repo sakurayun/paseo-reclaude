@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -27,13 +27,6 @@ function writeClaudeCredentials(
     JSON.stringify({
       claudeAiOauth: { accessToken, refreshToken, subscriptionType, rateLimitTier },
     }),
-  );
-}
-
-function writeCodexAuth(dir: string, accessToken: string, refreshToken = "rt_codex"): void {
-  writeFileSync(
-    join(dir, "auth.json"),
-    JSON.stringify({ tokens: { access_token: accessToken, refresh_token: refreshToken } }),
   );
 }
 
@@ -80,18 +73,6 @@ function makeClaudeResponse(
     five_hour: { utilization: 11, resets_at: "2026-06-01T21:00:00Z" },
     seven_day: { utilization: 1, resets_at: "2026-06-04T00:00:00Z" },
     seven_day_opus: { utilization: 0.5, resets_at: "2026-06-04T00:00:00Z" },
-    ...overrides,
-  };
-}
-
-function makeCodexResponse(overrides: object = {}) {
-  return {
-    plan_type: "plus",
-    email: "user@example.com",
-    rate_limit: {
-      primary_window: { used_percent: 42, reset_at: 1_748_812_800 },
-      secondary_window: { used_percent: 8, reset_at: 1_749_072_000 },
-    },
     ...overrides,
   };
 }
@@ -378,7 +359,7 @@ describe("real provider usage fetchers", () => {
           platform: options.platform,
           fetch: fetchThroughTestDouble,
         }),
-        new CodexQuotaProvider({ logger, codexHome, fetch: fetchThroughTestDouble }),
+        new CodexQuotaProvider({ logger, codexHome }),
         new CopilotQuotaProvider({ logger, fetch: fetchThroughTestDouble }),
         new CursorQuotaProvider({ logger, fetch: fetchThroughTestDouble }),
         new ZaiQuotaProvider({ logger, fetch: fetchThroughTestDouble }),
@@ -534,90 +515,15 @@ describe("real provider usage fetchers", () => {
     );
   });
 
-  it("fetches Codex windows and coerces string credit balances", async () => {
-    writeCodexAuth(codexHome, "at_codex_valid");
-    fetchApi = mockFetch(
-      new Map([
-        [
-          "https://chatgpt.com/backend-api/wham/usage",
-          () =>
-            jsonResponse(
-              makeCodexResponse({
-                code_review_rate_limit: null,
-                credits: { balance: "0" },
-              }),
-            ),
-        ],
-      ]),
-    );
-
-    const result = await service().listUsage();
-    const codex = findProvider(result, "codex");
-
-    expect(codex).toMatchObject({
-      status: "available",
-      planLabel: "plus",
-      windows: expect.arrayContaining([
-        expect.objectContaining({ id: "session", usedPct: 42 }),
-        expect.objectContaining({ id: "weekly", usedPct: 8 }),
-      ]),
-      balances: [expect.objectContaining({ id: "credits", remaining: 0 })],
-    });
-  });
-
-  it("treats a Codex HTML usage response as auth failure", async () => {
-    writeCodexAuth(codexHome, "at_codex_stale");
-    fetchApi = mockFetch(
-      new Map([
-        [
-          "https://chatgpt.com/backend-api/wham/usage",
-          () => new Response("<html>Login</html>", { status: 200 }),
-        ],
-        ["https://auth.openai.com/oauth/token", () => new Response(null, { status: 401 })],
-      ]),
-    );
-
+  // Codex usage now comes from the app-server `account/rateLimits/read` JSON-RPC
+  // (a spawned `codex app-server`), not the HTTP `wham/usage` endpoint, so it is
+  // covered by the codex app-server e2e tests rather than this fetch-mocked
+  // suite. With no auth.json present, the provider reports unavailable without
+  // spawning anything.
+  it("reports Codex unavailable when no auth file is present", async () => {
     const result = await service().listUsage();
 
     expect(findProvider(result, "codex").status).toBe("unavailable");
-  });
-
-  it("persists refreshed Codex tokens to the auth file that was read", async () => {
-    const alternateCodexHome = mkdtempSync(join(tmpdir(), "usage-test-codex-alt-"));
-    process.env["CODEX_HOME"] = alternateCodexHome;
-    writeFileSync(join(alternateCodexHome, "auth.json"), JSON.stringify({ tokens: {} }));
-    writeCodexAuth(codexHome, "at_codex_stale", "rt_codex_valid");
-
-    let usageCalls = 0;
-    fetchApi = mockFetch(
-      new Map([
-        [
-          "https://chatgpt.com/backend-api/wham/usage",
-          () => {
-            usageCalls += 1;
-            if (usageCalls === 1) return new Response(null, { status: 401 });
-            return jsonResponse(makeCodexResponse());
-          },
-        ],
-        [
-          "https://auth.openai.com/oauth/token",
-          () => jsonResponse({ access_token: "at_codex_fresh", refresh_token: "rt_codex_fresh" }),
-        ],
-      ]),
-    );
-
-    try {
-      const result = await service().listUsage();
-
-      const refreshedAuth = JSON.parse(readFileSync(join(codexHome, "auth.json"), "utf8"));
-      const untouchedAuth = JSON.parse(readFileSync(join(alternateCodexHome, "auth.json"), "utf8"));
-      expect(findProvider(result, "codex").status).toBe("available");
-      expect(refreshedAuth.tokens.access_token).toBe("at_codex_fresh");
-      expect(refreshedAuth.tokens.refresh_token).toBe("rt_codex_fresh");
-      expect(untouchedAuth.tokens.access_token).toBeUndefined();
-    } finally {
-      rmSync(alternateCodexHome, { recursive: true, force: true });
-    }
   });
 
   it("fetches Copilot usage from COPILOT_TOKEN", async () => {

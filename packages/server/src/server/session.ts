@@ -2279,6 +2279,8 @@ export class Session {
         return this.providerCatalogSession.handleGrokStatusRequest(msg);
       case "provider.grok.sync.request":
         return this.providerCatalogSession.handleGrokSyncUsageRequest(msg);
+      case "provider.codex.consume_reset_credit.request":
+        return this.providerCatalogSession.handleCodexConsumeResetCreditRequest(msg);
       default:
         return undefined;
     }

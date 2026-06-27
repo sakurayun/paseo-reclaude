@@ -114,6 +114,17 @@ function isCodexAlreadyUnarchivedError(error: unknown, threadId: string): boolea
   return message.includes(`no archived rollout found for thread id ${threadId}`);
 }
 
+// Heuristic classification of a failed Codex turn as a usage/rate-limit hit, so
+// the client can surface the rate-limit reset card (COMPAT(codexRateLimitReset)).
+// Codex reports these as a turn error message, not a structured code, so we match
+// the common phrasings.
+const CODEX_RATE_LIMIT_ERROR_PATTERN =
+  /rate.?limit|usage limit|usage cap|limit reached|quota|too many requests|\b429\b/i;
+
+function isCodexRateLimitError(message: string | null | undefined): boolean {
+  return typeof message === "string" && CODEX_RATE_LIMIT_ERROR_PATTERN.test(message);
+}
+
 const TURN_START_TIMEOUT_MS = 90 * 1000;
 const INTERRUPT_TIMEOUT_MS = 2_000;
 const CODEX_PROVIDER = "codex" as const;
@@ -3026,7 +3037,7 @@ export function buildCodexAppServerEnv(
   });
 }
 
-function buildCodexAppServerInitializeParams(): {
+export function buildCodexAppServerInitializeParams(): {
   clientInfo: { name: string; title: string; version: string };
   capabilities: { experimentalApi: true; mcpServerOpenaiFormElicitation: true };
 } {
@@ -5657,6 +5668,7 @@ export class CodexAppServerAgentSession implements AgentSession {
         type: "turn_failed",
         provider: CODEX_PROVIDER,
         error: parsed.errorMessage ?? "Codex turn failed",
+        ...(isCodexRateLimitError(parsed.errorMessage) ? { code: "rate_limit" } : {}),
       });
     } else if (parsed.status === "interrupted") {
       this.emitEvent({ type: "turn_canceled", provider: CODEX_PROVIDER, reason: "interrupted" });

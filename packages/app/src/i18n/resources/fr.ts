@@ -1924,6 +1924,22 @@ export const fr: TranslationResources = {
     },
   },
   providerUsage: {
+    codexReset: {
+      title: "Limite d'utilisation Codex atteinte",
+      description:
+        "Vous avez atteint une limite d'utilisation Codex. Utilisez un crédit de réinitialisation pour la lever maintenant.",
+      remaining: "Restant : {{count}}",
+      consume: "Utiliser un crédit de réinitialisation pour réinitialiser l'utilisation",
+      confirmTitle: "Utiliser un crédit de réinitialisation ?",
+      confirmMessage:
+        "Cela consomme l'un de vos crédits de réinitialisation Codex limités et est irréversible.",
+      confirmCta: "Utiliser le crédit",
+      upgradeRequired: "Mettez à jour l'hôte pour réinitialiser l'utilisation de Codex",
+      resultReset: "Limite d'utilisation réinitialisée",
+      resultNoCredit: "Aucun crédit de réinitialisation disponible",
+      resultNothing: "Aucune limite d'utilisation à réinitialiser pour le moment",
+      resultUnavailable: "Impossible de joindre Codex pour réinitialiser l'utilisation",
+    },
     reclaude: {
       needLogin: "Connectez-vous à ReClaude pour voir votre utilisation",
       loginButton: "Se connecter",

@@ -1905,6 +1905,20 @@ export const ja: TranslationResources = {
     },
   },
   providerUsage: {
+    codexReset: {
+      title: "Codexの使用上限に達しました",
+      description: "Codexの使用上限に達しました。リセットクレジットを使うと今すぐ解除できます。",
+      remaining: "残り {{count}} 回",
+      consume: "リセットクレジットを使って使用量をリセット",
+      confirmTitle: "リセットクレジットを使いますか？",
+      confirmMessage: "限られたCodexのリセットクレジットを1つ消費します。元に戻せません。",
+      confirmCta: "クレジットを使う",
+      upgradeRequired: "Codexの使用量をリセットするにはホストを更新してください",
+      resultReset: "使用上限をリセットしました",
+      resultNoCredit: "利用できるリセットクレジットがありません",
+      resultNothing: "現在リセットできる使用枠がありません",
+      resultUnavailable: "Codexに接続できず、リセットできませんでした",
+    },
     reclaude: {
       needLogin: "使用量を表示するには ReClaude にサインインしてください",
       loginButton: "サインイン",

@@ -1909,6 +1909,22 @@ export const ru: TranslationResources = {
     },
   },
   providerUsage: {
+    codexReset: {
+      title: "Достигнут лимит использования Codex",
+      description:
+        "Вы достигли лимита использования Codex. Используйте кредит сброса, чтобы снять его сейчас.",
+      remaining: "Осталось: {{count}}",
+      consume: "Использовать кредит сброса, чтобы сбросить использование",
+      confirmTitle: "Использовать кредит сброса?",
+      confirmMessage:
+        "Будет израсходован один из ваших ограниченных кредитов сброса Codex. Это нельзя отменить.",
+      confirmCta: "Использовать кредит",
+      upgradeRequired: "Обновите хост, чтобы сбросить использование Codex",
+      resultReset: "Лимит использования сброшен",
+      resultNoCredit: "Нет доступных кредитов сброса",
+      resultNothing: "Сейчас нет лимита использования для сброса",
+      resultUnavailable: "Не удалось связаться с Codex для сброса",
+    },
     reclaude: {
       needLogin: "Войдите в ReClaude, чтобы видеть использование",
       loginButton: "Войти",

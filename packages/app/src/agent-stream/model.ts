@@ -24,6 +24,9 @@ export interface StreamHistoryBoundary {
 export interface StreamRenderAuxiliary {
   pendingPermissions: ReactNode;
   turnFooter: ReactNode;
+  // COMPAT(codexRateLimitReset): the Codex usage-limit reset card, shown at the
+  // end of the stream after a Codex turn fails on a rate limit.
+  rateLimitCard: ReactNode;
 }
 
 export interface AgentStreamRenderModel {
@@ -46,6 +49,7 @@ const EMPTY_STREAM_ITEMS: StreamItem[] = [];
 const EMPTY_AUXILIARY: StreamRenderAuxiliary = {
   pendingPermissions: null,
   turnFooter: null,
+  rateLimitCard: null,
 };
 
 const orderedTailCache = new WeakMap<StreamItem[], Map<string, StreamItem[]>>();

@@ -1494,6 +1494,8 @@ export class VoiceAssistantWebSocketServer {
         providerRemoval: true,
         // COMPAT(importSessionWorkspaceTarget): added in v0.1.110, remove gate after 2027-01-16.
         importSessionWorkspaceTarget: true,
+        // COMPAT(codexRateLimitReset): added in v0.1.116, remove gate after 2026-12-26.
+        codexRateLimitReset: true,
       },
     };
   }

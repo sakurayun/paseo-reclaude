@@ -1854,6 +1854,20 @@ export const zhCN: TranslationResources = {
     },
   },
   providerUsage: {
+    codexReset: {
+      title: "Codex 用量已达上限",
+      description: "你已触发 Codex 用量限制。可消耗一次重置额度立即解除。",
+      remaining: "剩余 {{count}} 次",
+      consume: "消耗一次重置用量机会重置额度",
+      confirmTitle: "确认消耗一次重置额度？",
+      confirmMessage: "这将消耗你有限的 Codex 重置额度之一，且不可撤销。",
+      confirmCta: "消耗重置额度",
+      upgradeRequired: "请升级宿主以重置 Codex 用量",
+      resultReset: "用量限制已重置",
+      resultNoCredit: "暂无可用的重置额度",
+      resultNothing: "当前没有可重置的用量窗口",
+      resultUnavailable: "无法连接 Codex 进行重置",
+    },
     reclaude: {
       needLogin: "登录 ReClaude 以查看用量",
       loginButton: "登录",
