@@ -1368,6 +1368,8 @@ export class VoiceAssistantWebSocketServer {
         agentDetach: true,
         // COMPAT(daemonDiagnostics): added in v0.1.100, remove gate after 2026-12-25 once daemon floor >= v0.1.100.
         daemonDiagnostics: true,
+        // COMPAT(codexRateLimitReset): added in v0.1.116, remove gate after 2026-12-26.
+        codexRateLimitReset: true,
       },
     };
   }

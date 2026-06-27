@@ -1707,6 +1707,21 @@ export const en = {
     },
   },
   providerUsage: {
+    codexReset: {
+      title: "Codex usage limit reached",
+      description: "You've hit a Codex usage limit. Spend a reset credit to lift it now.",
+      remaining: "Remaining: {{count}}",
+      consume: "Use a reset credit to reset usage",
+      confirmTitle: "Use a reset credit?",
+      confirmMessage:
+        "This spends one of your limited earned Codex reset credits and cannot be undone.",
+      confirmCta: "Use reset credit",
+      upgradeRequired: "Update the host to reset Codex usage",
+      resultReset: "Usage limit reset",
+      resultNoCredit: "No reset credits available",
+      resultNothing: "No usage limit to reset right now",
+      resultUnavailable: "Couldn't reach Codex to reset usage",
+    },
     reclaude: {
       needLogin: "Sign in to ReClaude to view your usage",
       loginButton: "Sign in",

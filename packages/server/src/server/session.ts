@@ -2067,6 +2067,8 @@ export class Session {
         return this.providerCatalogSession.handleReclaudeLogoutRequest(msg);
       case "provider.reclaude.sync.request":
         return this.providerCatalogSession.handleReclaudeSyncUsageRequest(msg);
+      case "provider.codex.consume_reset_credit.request":
+        return this.providerCatalogSession.handleCodexConsumeResetCreditRequest(msg);
       default:
         return undefined;
     }

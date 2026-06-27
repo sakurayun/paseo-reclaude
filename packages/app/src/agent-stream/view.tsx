@@ -98,17 +98,25 @@ import { inlineUnistylesStyle } from "@/styles/unistyles-inline-style";
 import type { Theme } from "@/styles/theme";
 import { recordRenderProfileReasons } from "@/utils/render-profiler";
 import { MountedTabActiveContext } from "@/components/split-container";
+import { CodexResetCard } from "@/provider-usage/codex-reset-card";
+import { codexRateLimitKey, useCodexRateLimitStore } from "@/stores/codex-rate-limit-store";
 
 function renderLiveAuxiliaryNode(input: {
   pendingPermissions: ReactNode;
   turnFooter: ReactNode;
+  rateLimitCard: ReactNode;
 }): ReactNode {
-  if (!input.pendingPermissions && !input.turnFooter) {
+  if (!input.pendingPermissions && !input.turnFooter && !input.rateLimitCard) {
     return null;
   }
   return (
     <>
       {input.turnFooter}
+      {input.rateLimitCard ? (
+        <View style={stylesheet.contentWrapper}>
+          <View style={stylesheet.listHeaderContent}>{input.rateLimitCard}</View>
+        </View>
+      ) : null}
       {input.pendingPermissions ? (
         <View style={stylesheet.contentWrapper}>
           <View style={stylesheet.listHeaderContent}>{input.pendingPermissions}</View>
@@ -183,7 +191,8 @@ function renderListEmptyComponent(input: {
     input.renderModel.boundary.hasMountedHistory ||
     input.renderModel.boundary.hasLiveHead ||
     input.renderModel.auxiliary.pendingPermissions ||
-    input.renderModel.auxiliary.turnFooter
+    input.renderModel.auxiliary.turnFooter ||
+    input.renderModel.auxiliary.rateLimitCard
   ) {
     return null;
   }
@@ -351,6 +360,11 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     const client = useSessionStore((state) => state.sessions[resolvedServerId]?.client ?? null);
     const streamHead = useSessionStore((state) =>
       state.sessions[resolvedServerId]?.agentStreamHead?.get(agentId),
+    );
+    // COMPAT(codexRateLimitReset): whether this Codex agent's latest turn failed
+    // on a usage limit (drives the reset card at the end of the stream).
+    const isCodexRateLimited = useCodexRateLimitStore((state) =>
+      Boolean(state.hits[codexRateLimitKey(resolvedServerId, agentId)]),
     );
 
     const workspaceRoot = agent.cwd?.trim() || "";
@@ -932,6 +946,15 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         streamRenderStrategy,
       ],
     );
+    // The hit flag is only ever set for Codex agents (the agent_stream trigger
+    // gates on provider === "codex"), so the flag alone is sufficient here.
+    const rateLimitCardNode = useMemo(
+      () =>
+        isCodexRateLimited ? (
+          <CodexResetCard serverId={resolvedServerId} agentId={agentId} />
+        ) : null,
+      [isCodexRateLimited, resolvedServerId, agentId],
+    );
     const renderModel = useMemo<AgentStreamRenderModel>(() => {
       return {
         ...baseRenderModel,
@@ -939,9 +962,10 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         auxiliary: {
           pendingPermissions: pendingPermissionsNode,
           turnFooter: turnFooterNode,
+          rateLimitCard: rateLimitCardNode,
         },
       };
-    }, [baseRenderModel, pendingPermissionsNode, turnFooterNode]);
+    }, [baseRenderModel, pendingPermissionsNode, turnFooterNode, rateLimitCardNode]);
 
     const emptyStateStyle = useMemo(() => [stylesheet.emptyState, stylesheet.contentWrapper], []);
     const listEmptyComponent = useMemo(
@@ -1034,8 +1058,9 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       return renderLiveAuxiliaryNode({
         pendingPermissions: auxiliary.pendingPermissions,
         turnFooter: auxiliary.turnFooter,
+        rateLimitCard: auxiliary.rateLimitCard,
       });
-    }, [auxiliary.pendingPermissions, auxiliary.turnFooter]);
+    }, [auxiliary.pendingPermissions, auxiliary.turnFooter, auxiliary.rateLimitCard]);
 
     const renderers = useMemo<StreamSegmentRenderers>(
       () => ({

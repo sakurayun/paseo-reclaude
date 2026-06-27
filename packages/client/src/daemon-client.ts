@@ -80,6 +80,7 @@ import type {
   ReclaudeVerifyMfaResponseMessage,
   ReclaudeLogoutResponseMessage,
   ReclaudeSyncUsageResponseMessage,
+  CodexConsumeResetCreditResponseMessage,
   DaemonGetStatusResponse,
   DaemonGetPairingOfferResponse,
   DiagnosticsResponse,
@@ -397,6 +398,7 @@ type ReclaudeLoginPayload = ReclaudeLoginResponseMessage["payload"];
 type ReclaudeVerifyMfaPayload = ReclaudeVerifyMfaResponseMessage["payload"];
 type ReclaudeLogoutPayload = ReclaudeLogoutResponseMessage["payload"];
 type ReclaudeSyncUsagePayload = ReclaudeSyncUsageResponseMessage["payload"];
+type CodexConsumeResetCreditPayload = CodexConsumeResetCreditResponseMessage["payload"];
 type DaemonStatusPayload = DaemonGetStatusResponse["payload"];
 type DictationListModelsPayload = SpeechDictationListModelsResponse["payload"];
 type DictationSetModelPayload = SpeechDictationSetModelResponse["payload"];
@@ -4406,6 +4408,22 @@ export class DaemonClient {
       requestId: options?.requestId,
       message: {
         type: "provider.reclaude.status.request",
+      },
+      timeout: 30000,
+    });
+  }
+
+  // COMPAT(codexRateLimitReset): added in v0.1.116, remove gate after 2026-12-26.
+  // Consume one earned Codex rate-limit reset credit. Irreversible — callers must
+  // confirm with the user first. The daemon gates support via
+  // server_info.features.codexRateLimitReset.
+  async consumeCodexResetCredit(options?: {
+    requestId?: string;
+  }): Promise<CodexConsumeResetCreditPayload> {
+    return this.sendNamespacedCorrelatedSessionRequest({
+      requestId: options?.requestId,
+      message: {
+        type: "provider.codex.consume_reset_credit.request",
       },
       timeout: 30000,
     });

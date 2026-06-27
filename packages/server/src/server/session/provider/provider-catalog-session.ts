@@ -1,6 +1,8 @@
+import { randomUUID } from "node:crypto";
 import type pino from "pino";
 import { getErrorMessage } from "@getpaseo/protocol/error-utils";
 import type { SessionInboundMessage, SessionOutboundMessage } from "../../messages.js";
+import { consumeCodexRateLimitResetCredit } from "../../agent/providers/codex/account-rpc.js";
 import {
   resolveSnapshotCwd,
   type ProviderSnapshotManager,
@@ -452,6 +454,36 @@ export class ProviderCatalogSession {
           error: `Failed to list provider usage: ${err.message}`,
           code: "provider_usage_list_failed",
         },
+      });
+    }
+  }
+
+  // COMPAT(codexRateLimitReset): added in v0.1.116, remove gate after 2026-12-26.
+  // Consume one earned Codex rate-limit reset credit via a short-lived
+  // `codex app-server`. Irreversible (spends a limited earned credit), so the
+  // client always confirms before sending. A successful "reset" drops the usage
+  // cache so the next provider.usage.list re-fetches the new windows.
+  async handleCodexConsumeResetCreditRequest(
+    msg: Extract<SessionInboundMessage, { type: "provider.codex.consume_reset_credit.request" }>,
+  ): Promise<void> {
+    try {
+      const outcome = await consumeCodexRateLimitResetCredit({
+        logger: this.logger,
+        idempotencyKey: randomUUID(),
+      });
+      if (outcome === "reset") {
+        this.providerUsageService.invalidateCache();
+      }
+      this.host.emit({
+        type: "provider.codex.consume_reset_credit.response",
+        payload: { requestId: msg.requestId, outcome, error: null },
+      });
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
+      this.logger.error({ err }, "Failed to consume Codex rate-limit reset credit");
+      this.host.emit({
+        type: "provider.codex.consume_reset_credit.response",
+        payload: { requestId: msg.requestId, outcome: "unavailable", error: err.message },
       });
     }
   }

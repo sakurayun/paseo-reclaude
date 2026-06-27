@@ -1740,6 +1740,22 @@ export const ptBR: TranslationResources = {
     },
   },
   providerUsage: {
+    codexReset: {
+      title: "Limite de uso do Codex atingido",
+      description:
+        "Você atingiu um limite de uso do Codex. Use um crédito de redefinição para liberá-lo agora.",
+      remaining: "Restante: {{count}}",
+      consume: "Usar um crédito de redefinição para redefinir o uso",
+      confirmTitle: "Usar um crédito de redefinição?",
+      confirmMessage:
+        "Isso gasta um dos seus créditos limitados de redefinição do Codex e não pode ser desfeito.",
+      confirmCta: "Usar crédito",
+      upgradeRequired: "Atualize o host para redefinir o uso do Codex",
+      resultReset: "Limite de uso redefinido",
+      resultNoCredit: "Nenhum crédito de redefinição disponível",
+      resultNothing: "Nenhum limite de uso para redefinir agora",
+      resultUnavailable: "Não foi possível contatar o Codex para redefinir o uso",
+    },
     reclaude: {
       needLogin: "Sign in to ReClaude to view your usage",
       loginButton: "Sign in",

@@ -57,6 +57,7 @@ import {
   normalizeEmptyProjectDescriptor,
 } from "@/stores/session-store";
 import { useDraftStore } from "@/stores/draft-store";
+import { isRateLimitErrorText, useCodexRateLimitStore } from "@/stores/codex-rate-limit-store";
 import { useWorkspaceSetupStore } from "@/stores/workspace-setup-store";
 import { sendOsNotification } from "@/utils/os-notifications";
 import { getIsAppActivelyVisible } from "@/utils/app-visibility";
@@ -1367,6 +1368,17 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
         event.type === "turn_canceled"
       ) {
         voiceRuntime?.onTurnEvent(serverId, agentId, event.type);
+      }
+
+      // COMPAT(codexRateLimitReset): track when a Codex turn fails on a usage
+      // limit so the stream can surface the reset card; clear it once a new turn
+      // starts or completes.
+      if (event.type === "turn_failed" && event.provider === "codex") {
+        if (event.code === "rate_limit" || isRateLimitErrorText(event.error)) {
+          useCodexRateLimitStore.getState().setHit(serverId, agentId, true);
+        }
+      } else if (event.type === "turn_started" || event.type === "turn_completed") {
+        useCodexRateLimitStore.getState().setHit(serverId, agentId, false);
       }
 
       // Attention notification stays in React (not extractable to pure reducer)

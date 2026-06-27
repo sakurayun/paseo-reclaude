@@ -1326,6 +1326,16 @@ export const ReclaudeSyncUsageRequestMessageSchema = z.object({
   force: z.boolean().optional(),
 });
 
+// COMPAT(codexRateLimitReset): added in v0.1.116, remove gate after 2026-12-26.
+// Consume one earned Codex rate-limit reset credit via the app-server
+// `account/rateLimitResetCredit/consume` RPC. Irreversible: it spends a limited
+// earned credit on the user's ChatGPT account, so the client always gates this
+// behind an explicit confirmation before sending the request.
+export const CodexConsumeResetCreditRequestMessageSchema = z.object({
+  type: z.literal("provider.codex.consume_reset_credit.request"),
+  requestId: z.string(),
+});
+
 export const ResumeAgentRequestMessageSchema = z.object({
   type: z.literal("resume_agent_request"),
   handle: AgentPersistenceHandleSchema,
@@ -2570,6 +2580,7 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   ReclaudeVerifyMfaRequestMessageSchema,
   ReclaudeLogoutRequestMessageSchema,
   ReclaudeSyncUsageRequestMessageSchema,
+  CodexConsumeResetCreditRequestMessageSchema,
   ResumeAgentRequestMessageSchema,
   ImportAgentRequestMessageSchema,
   RefreshAgentRequestMessageSchema,
@@ -2908,6 +2919,12 @@ export const ServerInfoStatusPayloadSchema = z
         agentDetach: z.boolean().optional(),
         // COMPAT(daemonDiagnostics): added in v0.1.100, remove gate after 2026-12-25 once daemon floor >= v0.1.100.
         daemonDiagnostics: z.boolean().optional(),
+        // COMPAT(codexRateLimitReset): added in v0.1.116, remove gate after 2026-12-26.
+        // Daemon sources Codex usage from the app-server `account/rateLimits/read`
+        // RPC (instead of the legacy HTTP endpoint) and supports the
+        // `provider.codex.consume_reset_credit` RPC + the extra ProviderUsage
+        // fields (availableResetCredits, rateLimitReached).
+        codexRateLimitReset: z.boolean().optional(),
       })
       .optional(),
   })
@@ -4809,6 +4826,15 @@ export const ProviderUsageSchema = z.object({
   balances: z.array(ProviderUsageBalanceSchema).optional(),
   details: z.array(ProviderUsageDetailSchema).optional(),
   error: z.string().nullable().optional(),
+  // COMPAT(codexRateLimitReset): added in v0.1.116, remove gate after 2026-12-26.
+  // Number of earned reset credits the account can still consume (Codex only,
+  // from the app-server `account/rateLimits/read` RPC). null/absent when the
+  // backend grants none. Optional so old clients ignore it and old daemons just
+  // never send it.
+  availableResetCredits: z.number().nullable().optional(),
+  // COMPAT(codexRateLimitReset): true when the provider currently reports a hit
+  // rate-limit window (Codex `rateLimitReachedType` set).
+  rateLimitReached: z.boolean().optional(),
 });
 
 export const ProviderUsageListResponseMessageSchema = z.object({
@@ -4862,6 +4888,23 @@ export const ReclaudeSyncUsageResponseMessageSchema = z.object({
   payload: z.object({
     requestId: z.string(),
     usage: ProviderUsageSchema,
+  }),
+});
+
+// COMPAT(codexRateLimitReset): added in v0.1.116, remove gate after 2026-12-26.
+// Result of consuming one earned Codex rate-limit reset credit. `outcome`
+// mirrors the upstream app-server values, plus "unavailable" when the daemon
+// could not reach the Codex app-server (binary missing / not logged in).
+export const CodexConsumeResetCreditResponseMessageSchema = z.object({
+  type: z.literal("provider.codex.consume_reset_credit.response"),
+  payload: z.object({
+    requestId: z.string(),
+    // "reset" — a credit was consumed and the rate-limit window was reset.
+    // "nothingToReset" — no eligible rate-limit window to reset right now.
+    // "noCredit" — the account has no earned reset credits available.
+    // "unavailable" — the daemon could not reach the Codex app-server.
+    outcome: z.enum(["reset", "nothingToReset", "noCredit", "unavailable"]),
+    error: z.string().nullable().optional(),
   }),
 });
 
@@ -5281,6 +5324,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   ReclaudeLogoutResponseMessageSchema,
   ReclaudeSyncUsageResponseMessageSchema,
   ReclaudeUsageChangedMessageSchema,
+  CodexConsumeResetCreditResponseMessageSchema,
   ListCommandsResponseSchema,
   ListTerminalsResponseSchema,
   TerminalsChangedSchema,
@@ -5457,6 +5501,12 @@ export type ReclaudeSyncUsageResponseMessage = z.infer<
   typeof ReclaudeSyncUsageResponseMessageSchema
 >;
 export type ReclaudeUsageChangedMessage = z.infer<typeof ReclaudeUsageChangedMessageSchema>;
+export type CodexConsumeResetCreditRequestMessage = z.infer<
+  typeof CodexConsumeResetCreditRequestMessageSchema
+>;
+export type CodexConsumeResetCreditResponseMessage = z.infer<
+  typeof CodexConsumeResetCreditResponseMessageSchema
+>;
 export type ChatCreateResponse = z.infer<typeof ChatCreateResponseSchema>;
 export type ChatListResponse = z.infer<typeof ChatListResponseSchema>;
 export type ChatInspectResponse = z.infer<typeof ChatInspectResponseSchema>;

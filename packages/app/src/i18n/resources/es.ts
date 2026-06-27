@@ -1737,6 +1737,22 @@ export const es: TranslationResources = {
     },
   },
   providerUsage: {
+    codexReset: {
+      title: "Límite de uso de Codex alcanzado",
+      description:
+        "Has alcanzado un límite de uso de Codex. Usa un crédito de reinicio para levantarlo ahora.",
+      remaining: "Quedan: {{count}}",
+      consume: "Usar un crédito de reinicio para reiniciar el uso",
+      confirmTitle: "¿Usar un crédito de reinicio?",
+      confirmMessage:
+        "Esto gasta uno de tus créditos de reinicio de Codex limitados y no se puede deshacer.",
+      confirmCta: "Usar crédito de reinicio",
+      upgradeRequired: "Actualiza el host para reiniciar el uso de Codex",
+      resultReset: "Límite de uso reiniciado",
+      resultNoCredit: "No hay créditos de reinicio disponibles",
+      resultNothing: "No hay límite de uso para reiniciar ahora",
+      resultUnavailable: "No se pudo contactar con Codex para reiniciar el uso",
+    },
     reclaude: {
       needLogin: "Inicia sesión en ReClaude para ver tu uso",
       loginButton: "Iniciar sesión",

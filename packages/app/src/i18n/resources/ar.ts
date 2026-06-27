@@ -1700,6 +1700,20 @@ export const ar: TranslationResources = {
     },
   },
   providerUsage: {
+    codexReset: {
+      title: "تم بلوغ حد استخدام Codex",
+      description: "لقد بلغت حد استخدام Codex. استخدم رصيد إعادة التعيين لرفعه الآن.",
+      remaining: "المتبقي: {{count}}",
+      consume: "استخدم رصيد إعادة تعيين لإعادة ضبط الاستخدام",
+      confirmTitle: "هل تستخدم رصيد إعادة التعيين؟",
+      confirmMessage: "سيستهلك هذا أحد أرصدة إعادة تعيين Codex المحدودة ولا يمكن التراجع عنه.",
+      confirmCta: "استخدام الرصيد",
+      upgradeRequired: "حدّث المضيف لإعادة ضبط استخدام Codex",
+      resultReset: "تمت إعادة ضبط حد الاستخدام",
+      resultNoCredit: "لا توجد أرصدة إعادة تعيين متاحة",
+      resultNothing: "لا يوجد حد استخدام لإعادة ضبطه الآن",
+      resultUnavailable: "تعذّر الوصول إلى Codex لإعادة الضبط",
+    },
     reclaude: {
       needLogin: "سجّل الدخول إلى ReClaude لعرض استخدامك",
       loginButton: "تسجيل الدخول",
