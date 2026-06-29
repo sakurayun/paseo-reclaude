@@ -444,6 +444,10 @@ const userMessageStylesheet = StyleSheet.create((theme) => ({
   content: {
     alignItems: "flex-end",
     maxWidth: "100%",
+    // Shrink within the row instead of overflowing (RN defaults flexShrink to 0),
+    // so a long unbreakable line can't push the bubble past the left edge.
+    minWidth: 0,
+    flexShrink: 1,
     cursor: "auto",
   },
   containerSpacing: {
@@ -464,6 +468,10 @@ const userMessageStylesheet = StyleSheet.create((theme) => ({
     paddingHorizontal: theme.spacing[4],
     paddingVertical: theme.spacing[4],
     minWidth: 0,
+    // Cap the bubble at its (already width-bounded) parent so a long unbreakable
+    // line wraps inside the bubble instead of growing it past the left border.
+    // flexShrink is vertical here (parent is a column), so maxWidth does the work.
+    maxWidth: "100%",
     flexShrink: 1,
   },
   text: {
