@@ -371,6 +371,17 @@ export const en = {
       durationEndedAt: "{{duration}}, ended {{timestamp}}",
     },
   },
+  markdown: {
+    mermaid: {
+      diagram: "Diagram",
+      source: "Source",
+      viewDiagram: "View diagram",
+      viewSource: "View source",
+      renderFailed: "Diagram failed to render",
+      openFullscreen: "Open fullscreen",
+      closeFullscreen: "Close fullscreen",
+    },
+  },
   importSession: {
     title: "Import session",
     filters: {

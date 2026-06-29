@@ -376,6 +376,17 @@ export const es: TranslationResources = {
       durationEndedAt: "{{duration}}, finalizó {{timestamp}}",
     },
   },
+  markdown: {
+    mermaid: {
+      diagram: "Diagrama",
+      source: "Código",
+      viewDiagram: "Ver diagrama",
+      viewSource: "Ver código fuente",
+      renderFailed: "No se pudo renderizar el diagrama",
+      openFullscreen: "Pantalla completa",
+      closeFullscreen: "Cerrar pantalla completa",
+    },
+  },
   importSession: {
     title: "Importar sesión",
     filters: {

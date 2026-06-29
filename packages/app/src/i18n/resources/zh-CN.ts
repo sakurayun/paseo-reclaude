@@ -372,6 +372,17 @@ export const zhCN: TranslationResources = {
       durationEndedAt: "{{duration}}，结束于 {{timestamp}}",
     },
   },
+  markdown: {
+    mermaid: {
+      diagram: "图表",
+      source: "源码",
+      viewDiagram: "查看图表",
+      viewSource: "查看源码",
+      renderFailed: "图表渲染失败",
+      openFullscreen: "全屏打开",
+      closeFullscreen: "退出全屏",
+    },
+  },
   importSession: {
     title: "导入会话",
     filters: {

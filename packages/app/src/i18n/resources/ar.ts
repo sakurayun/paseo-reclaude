@@ -372,6 +372,17 @@ export const ar: TranslationResources = {
       durationEndedAt: "{{duration}}، انتهى في {{timestamp}}",
     },
   },
+  markdown: {
+    mermaid: {
+      diagram: "مخطط",
+      source: "المصدر",
+      viewDiagram: "عرض المخطط",
+      viewSource: "عرض المصدر",
+      renderFailed: "تعذّر عرض المخطط",
+      openFullscreen: "ملء الشاشة",
+      closeFullscreen: "إغلاق ملء الشاشة",
+    },
+  },
   importSession: {
     title: "جلسة الاستيراد",
     filters: {

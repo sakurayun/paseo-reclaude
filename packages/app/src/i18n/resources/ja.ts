@@ -381,6 +381,17 @@ export const ja: TranslationResources = {
       durationEndedAt: "{{duration}}、{{timestamp}} に終了",
     },
   },
+  markdown: {
+    mermaid: {
+      diagram: "図",
+      source: "ソース",
+      viewDiagram: "図を表示",
+      viewSource: "ソースを表示",
+      renderFailed: "図の描画に失敗しました",
+      openFullscreen: "全画面表示",
+      closeFullscreen: "全画面を閉じる",
+    },
+  },
   importSession: {
     title: "セッションをインポート",
     filters: {
