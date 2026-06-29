@@ -682,7 +682,7 @@ describe("git-actions-policy", () => {
 
     expect(actions.primary).toMatchObject({
       id: "pull",
-      label: "Pull",
+      label: "拉取",
       pendingLabel: "正在 pull...",
       successLabel: "已 pull",
     });
