@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.117 - 2026-06-29
+
+### Added
+
+- New theme sidebar: each project group header now has a "+" button that opens the new-agent page with that workspace preselected
+
 ## 0.1.116 - 2026-06-29
 
 ### Added
