@@ -21,6 +21,7 @@ import { useShortcutKeys } from "@/hooks/use-shortcut-keys";
 import { inlineUnistylesStyle } from "@/styles/unistyles-inline-style";
 import type { ShortcutKey } from "@/utils/format-shortcut";
 import { useToast } from "@/contexts/toast-context";
+import { withCount } from "@/git/action-label";
 import type { GitAction, GitActions } from "@/git/policy";
 
 interface GitActionsSplitButtonProps {
@@ -72,7 +73,7 @@ function GitActionMenuItem({
         closeOnSelect={closeOnSelect}
         onSelect={handleSelect}
       >
-        {action.label}
+        {withCount(action.label, action.count)}
       </DropdownMenuItem>
     </View>
   );
@@ -87,7 +88,7 @@ export function GitActionsSplitButton({ gitActions, hideLabels }: GitActionsSpli
   const getActionDisplayLabel = useCallback((action: GitAction): string => {
     if (action.status === "pending") return action.pendingLabel;
     if (action.status === "success") return action.successLabel;
-    return action.label;
+    return withCount(action.label, action.count);
   }, []);
 
   const handleActionSelect = useCallback(
@@ -143,7 +144,7 @@ export function GitActionsSplitButton({ gitActions, hideLabels }: GitActionsSpli
             onPress={handlePrimaryPress}
             disabled={gitActions.primary.disabled}
             accessibilityRole="button"
-            accessibilityLabel={gitActions.primary.label}
+            accessibilityLabel={withCount(gitActions.primary.label, gitActions.primary.count)}
           >
             {gitActions.primary.status === "pending" ? (
               <ActivityIndicator
