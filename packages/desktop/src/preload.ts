@@ -114,5 +114,11 @@ contextBridge.exposeInMainWorld("paseoDesktop", {
         ipcRenderer.removeListener("paseo:event:browser-found-in-page", ipcListener);
       };
     },
+    captureElement: (
+      browserId: string,
+      rect: { x: number; y: number; width: number; height: number },
+    ) => ipcRenderer.invoke("paseo:browser:capture-element", browserId, rect),
+    copyElement: (payload: { text?: string; imageDataUrl?: string }) =>
+      ipcRenderer.invoke("paseo:browser:copy-element", payload),
   },
 });

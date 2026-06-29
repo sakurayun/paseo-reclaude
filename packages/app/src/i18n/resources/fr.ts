@@ -522,6 +522,25 @@ export const fr: TranslationResources = {
         openDevTools: "Outils de développement du navigateur ouvert",
         cancelSelector: "Annuler le sélecteur d'élément",
         selectElement: "Sélectionner un élément",
+        grabElement: "Copier l'élément dans le presse-papiers",
+        grabElementLabel: "élément",
+        grabFailed: "Impossible de copier l'élément",
+      },
+      annotate: {
+        title: "Envoyer un retour à l'agent",
+        placeholder: "Décrivez ce qui doit changer…",
+        submit: "Joindre",
+        cancel: "Annuler",
+        intents: {
+          fix: "Corriger",
+          change: "Modifier",
+          question: "Question",
+          approve: "Approuver",
+        },
+      },
+      devices: {
+        label: "Taille de l'appareil",
+        responsive: "Adaptatif",
       },
       errors: {
         failedToLoad: "Échec du chargement de la page",
@@ -1076,8 +1095,16 @@ export const fr: TranslationResources = {
       home: "Maison",
       settings: "Paramètres",
       closeSidebar: "Fermer la barre latérale",
-      openCommandCenter: "Ouvrir le centre de commandes",
+      commandCenter: "Centre de commande",
+      openCommandCenter: "Ouvrir le centre de commande",
       displayPreferences: "Préférences d'affichage",
+    },
+    search: {
+      placeholder: "Filtrer les projets...",
+      clear: "Effacer la recherche",
+      open: "Rechercher des projets",
+      close: "Fermer la recherche",
+      closeAccessibility: "Fermer la recherche de projets",
     },
     sections: {
       sessions: "Historique",

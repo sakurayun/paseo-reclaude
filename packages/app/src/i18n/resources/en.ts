@@ -510,6 +510,25 @@ export const en = {
         openDevTools: "Open browser dev tools",
         cancelSelector: "Cancel element selector",
         selectElement: "Select element",
+        grabElement: "Copy element to clipboard",
+        grabElementLabel: "element",
+        grabFailed: "Couldn't copy element",
+      },
+      annotate: {
+        title: "Send feedback to agent",
+        placeholder: "Describe what should change…",
+        submit: "Attach",
+        cancel: "Cancel",
+        intents: {
+          fix: "Fix",
+          change: "Change",
+          question: "Question",
+          approve: "Approve",
+        },
+      },
+      devices: {
+        label: "Device size",
+        responsive: "Responsive",
       },
       errors: {
         failedToLoad: "Failed to load page",
@@ -1047,8 +1066,16 @@ export const en = {
       home: "Home",
       settings: "Settings",
       closeSidebar: "Close sidebar",
+      commandCenter: "Command center",
       openCommandCenter: "Open command center",
       displayPreferences: "Display preferences",
+    },
+    search: {
+      placeholder: "Filter projects...",
+      clear: "Clear search",
+      open: "Search projects",
+      close: "Close search",
+      closeAccessibility: "Close project search",
     },
     sections: {
       sessions: "History",

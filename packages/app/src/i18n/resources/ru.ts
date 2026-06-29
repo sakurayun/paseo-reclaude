@@ -521,6 +521,25 @@ export const ru: TranslationResources = {
         openDevTools: "Открыть инструменты разработки браузера",
         cancelSelector: "Отменить выбор элемента",
         selectElement: "Выберите элемент",
+        grabElement: "Скопировать элемент в буфер обмена",
+        grabElementLabel: "элемент",
+        grabFailed: "Не удалось скопировать элемент",
+      },
+      annotate: {
+        title: "Отправить отзыв агенту",
+        placeholder: "Опишите, что нужно изменить…",
+        submit: "Прикрепить",
+        cancel: "Отмена",
+        intents: {
+          fix: "Исправить",
+          change: "Изменить",
+          question: "Вопрос",
+          approve: "Одобрить",
+        },
+      },
+      devices: {
+        label: "Размер устройства",
+        responsive: "Адаптивный",
       },
       errors: {
         failedToLoad: "Не удалось загрузить страницу",
@@ -1067,8 +1086,16 @@ export const ru: TranslationResources = {
       home: "Дом",
       settings: "Настройки",
       closeSidebar: "Закрыть боковую панель",
+      commandCenter: "Командный центр",
       openCommandCenter: "Открыть командный центр",
-      displayPreferences: "Настройки отображения",
+      displayPreferences: "Параметры отображения",
+    },
+    search: {
+      placeholder: "Фильтровать проекты...",
+      clear: "Очистить поиск",
+      open: "Искать проекты",
+      close: "Закрыть поиск",
+      closeAccessibility: "Закрыть поиск проектов",
     },
     sections: {
       sessions: "История",
