@@ -3,7 +3,6 @@ import { v4 as uuidv4 } from "uuid";
 import { promises as fs } from "node:fs";
 import nodePath from "node:path";
 import { stat } from "node:fs/promises";
-import { spawn } from "node:child_process";
 import { basename, normalize, resolve, sep } from "path";
 import { homedir } from "node:os";
 import { CLIENT_CAPS, type ClientCapability } from "@getpaseo/protocol/client-capabilities";
@@ -455,9 +454,6 @@ class SessionRequestError extends Error {
   }
 }
 
-// Global guard — only one daemon update can run at a time across all sessions.
-let daemonUpdateInProgress = false;
-
 export interface SessionFileSystem {
   isDirectory(path: string): Promise<boolean>;
 }
@@ -683,8 +679,6 @@ export class Session {
   private readonly workspaceDirectory: WorkspaceDirectory;
   // Fork-only: dictation model selection (speech.dictation.*) backed by a daemon-scoped controller.
   private readonly dictationSettings: DictationSettingsController | null;
-  // Fork-only: reported as previousVersion by handleDaemonUpdateRequest (daemon.update.request).
-  private readonly daemonVersion: string | undefined;
   // Fork-only: shared diff-manager singleton, used by handleCheckoutGitOpRequest to refresh the
   // live diff after a generic git op. Same instance owned/read by checkoutSession.
   private readonly checkoutDiffManager: CheckoutDiffManager;
@@ -914,7 +908,9 @@ export class Session {
     this.daemonSession = new DaemonSession({
       host: {
         emit: (msg) => this.emit(msg),
+        emitLifecycleIntent: (intent) => this.emitLifecycleIntent(intent),
       },
+      clientId: this.clientId,
       paseoHome: this.paseoHome,
       serverId,
       daemonVersion,
@@ -991,7 +987,6 @@ export class Session {
     this.serviceProxyPublicBaseUrl = serviceProxyPublicBaseUrl ?? null;
     this.resolveScriptHealth = resolveScriptHealth ?? null;
     this.dictationSettings = dictationSettings ?? null;
-    this.daemonVersion = daemonVersion;
     this.checkoutDiffManager = checkoutDiffManager;
     this.workspaceScripts = createWorkspaceScriptsService({
       serviceProxy: this.serviceProxy,
@@ -1784,10 +1779,10 @@ export class Session {
         return this.daemonSession.handleGetStatusRequest(msg);
       case "daemon.get_pairing_offer.request":
         return this.daemonSession.handleGetPairingOfferRequest(msg);
-      case "daemon.update.request":
-        return this.handleDaemonUpdateRequest(msg);
       case "diagnostics.request":
         return this.daemonSession.handleDiagnosticsRequest(msg);
+      case "daemon.update.request":
+        return this.daemonSession.handleUpdateRequest(msg);
       case "set_daemon_config_request":
         this.emit({
           type: "set_daemon_config_response",
@@ -2288,134 +2283,6 @@ export class Session {
       clientId: this.clientId,
       requestId,
     });
-  }
-
-  private async handleDaemonUpdateRequest(
-    msg: Extract<SessionInboundMessage, { type: "daemon.update.request" }>,
-  ): Promise<void> {
-    if (daemonUpdateInProgress) {
-      this.emit({
-        type: "rpc_error",
-        payload: {
-          requestId: msg.requestId,
-          requestType: "daemon.update.request",
-          error: "An update is already in progress",
-          code: "already_updating",
-        },
-      });
-      return;
-    }
-
-    daemonUpdateInProgress = true;
-    const previousVersion = this.daemonVersion ?? null;
-
-    const emitProgress = (phase: "starting" | "downloading" | "installing" | "complete") => {
-      this.emit({
-        type: "status",
-        payload: {
-          status: "daemon_update_progress",
-          requestId: msg.requestId,
-          phase,
-        },
-      });
-    };
-
-    const emitResponse = (success: boolean, error: string | null, newVersion: string | null) => {
-      this.emit({
-        type: "daemon.update.response",
-        payload: {
-          requestId: msg.requestId,
-          success,
-          error,
-          previousVersion,
-          newVersion,
-        },
-      });
-    };
-
-    try {
-      emitProgress("starting");
-
-      // Check if npm is available
-      const npmVersionOk = await new Promise<boolean>((fulfill) => {
-        const proc = spawn("npm", ["--version"], {
-          stdio: ["ignore", "pipe", "pipe"],
-          timeout: 10000,
-        });
-        proc.on("close", (code: number | null) => fulfill(code === 0));
-        proc.on("error", () => fulfill(false));
-      });
-
-      if (!npmVersionOk) {
-        emitResponse(false, "npm is not available on this system", null);
-        daemonUpdateInProgress = false;
-        return;
-      }
-
-      emitProgress("downloading");
-
-      // Install latest version globally — npm install -g @getpaseo/cli@latest
-      // is more reliable than npm update -g, especially across major versions.
-      const result = await new Promise<{ exitCode: number; stdout: string; stderr: string }>(
-        (fulfill) => {
-          const proc = spawn("npm", ["install", "-g", "@getpaseo/cli@latest"], {
-            stdio: ["ignore", "pipe", "pipe"],
-            timeout: 300_000, // 5 minutes
-          });
-          let stdout = "";
-          let stderr = "";
-          proc.stdout.on("data", (data: Buffer) => {
-            stdout += data.toString();
-          });
-          proc.stderr.on("data", (data: Buffer) => {
-            stderr += data.toString();
-          });
-          proc.on("close", (code: number | null) => {
-            fulfill({ exitCode: code ?? 1, stdout, stderr });
-          });
-          proc.on("error", (err: Error) => {
-            fulfill({ exitCode: 1, stdout, stderr: err.message });
-          });
-        },
-      );
-
-      if (result.exitCode !== 0) {
-        const errorMsg =
-          result.stderr.trim() || result.stdout.trim() || `npm exited with code ${result.exitCode}`;
-        this.sessionLogger.error(
-          { exitCode: result.exitCode, stderr: result.stderr },
-          "Daemon update failed",
-        );
-        emitResponse(false, errorMsg, null);
-        daemonUpdateInProgress = false;
-        return;
-      }
-
-      emitProgress("installing");
-
-      // Try to parse the new version from npm output
-      let newVersion: string | null = null;
-      const versionMatch = result.stdout.match(/@getpaseo\/cli@(\S+)/);
-      if (versionMatch) {
-        newVersion = versionMatch[1];
-      }
-
-      emitProgress("complete");
-      emitResponse(true, null, newVersion);
-
-      // Trigger restart to load the new code
-      this.emitLifecycleIntent({
-        type: "restart",
-        clientId: this.clientId,
-        requestId: msg.requestId,
-        reason: "daemon_update",
-      });
-    } catch (error) {
-      this.sessionLogger.error({ err: error }, "Daemon update failed with exception");
-      emitResponse(false, error instanceof Error ? error.message : "Unknown error", null);
-    } finally {
-      daemonUpdateInProgress = false;
-    }
   }
 
   private emitLifecycleIntent(intent: SessionLifecycleIntent): void {
@@ -3217,6 +3084,7 @@ export class Session {
           initialTitle: workspacePromptTitle,
         },
       );
+      const createdDirectoryWorkspaceForAgent = !createdWorktree && !msg.workspaceId;
 
       const { snapshot, liveSnapshot } = await createAgentCommand(
         {
@@ -3247,11 +3115,8 @@ export class Session {
         },
       );
       createdAgentId = snapshot.id;
-      if (!createdWorktree && msg.workspaceId) {
-        await this.writeInitialWorkspaceTitleIfUntitled(workspaceId, workspacePromptTitle);
-      }
       await this.agentUpdates.forwardLiveAgent(snapshot);
-      if (!createdWorktree && trimmedPrompt) {
+      if (createdDirectoryWorkspaceForAgent && trimmedPrompt) {
         await this.scheduleAutoNameLocalWorkspaceTitleForFirstAgent({
           workspaceId,
           cwd: createAgentConfig.cwd,
@@ -3708,24 +3573,6 @@ export class Session {
       ...current,
       title,
       ...(input.branch ? { branch: input.branch } : {}),
-      updatedAt: new Date().toISOString(),
-    });
-  }
-
-  private async writeInitialWorkspaceTitleIfUntitled(
-    workspaceId: string,
-    title: string | null,
-  ): Promise<void> {
-    if (!title) {
-      return;
-    }
-    const current = await this.workspaceRegistry.get(workspaceId);
-    if (!current || current.title) {
-      return;
-    }
-    await this.workspaceRegistry.upsert({
-      ...current,
-      title,
       updatedAt: new Date().toISOString(),
     });
   }

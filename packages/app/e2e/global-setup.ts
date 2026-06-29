@@ -11,6 +11,8 @@ import { loadDaemonClientConstructor } from "./helpers/daemon-client-loader";
 import { createNodeWebSocketFactory, type NodeWebSocketFactory } from "./helpers/node-ws-factory";
 import { forkPaseoHomeMetadata, resolvePaseoHomePath } from "./helpers/paseo-home-fork";
 
+const wranglerCliPath = path.resolve(__dirname, "../node_modules/wrangler/bin/wrangler.js");
+
 interface WaitForServerOptions {
   host?: string;
   timeoutMs?: number;
@@ -573,8 +575,18 @@ async function startRelay(excludedPorts: Set<number>): Promise<number> {
     const state: RelayStreamState = { failureLine: null, readyForSelectedPort: false };
 
     relayProcess = spawn(
-      "npx",
-      ["wrangler", "dev", "--local", "--ip", "127.0.0.1", "--port", String(relayPort)],
+      process.execPath,
+      [
+        wranglerCliPath,
+        "dev",
+        "--local",
+        "--ip",
+        "127.0.0.1",
+        "--port",
+        String(relayPort),
+        "--live-reload=false",
+        "--show-interactive-dev-session=false",
+      ],
       {
         cwd: relayDir,
         env: { ...process.env },

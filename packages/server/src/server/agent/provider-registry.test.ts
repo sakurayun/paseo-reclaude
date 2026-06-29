@@ -886,6 +886,7 @@ describe("model merging", () => {
     });
 
     const { models } = await registry.codex.fetchCatalog({
+      scope: "workspace",
       cwd: "/tmp/registry-models",
       force: false,
     });
@@ -921,6 +922,7 @@ describe("model merging", () => {
     });
 
     const { models } = await registry.codex.fetchCatalog({
+      scope: "workspace",
       cwd: "/tmp/registry-models",
       force: false,
     });
@@ -959,6 +961,7 @@ describe("model merging", () => {
     });
 
     const { models } = await registry.codex.fetchCatalog({
+      scope: "workspace",
       cwd: "/tmp/registry-models",
       force: false,
     });
@@ -993,6 +996,7 @@ describe("model merging", () => {
     });
 
     const { models } = await registry.codex.fetchCatalog({
+      scope: "workspace",
       cwd: "/tmp/registry-models",
       force: false,
     });
@@ -1035,6 +1039,7 @@ describe("model merging", () => {
     });
 
     const { models } = await registry.claude.fetchCatalog({
+      scope: "workspace",
       cwd: "/tmp/registry-models",
       force: false,
     });
@@ -1085,6 +1090,7 @@ describe("model merging", () => {
     });
 
     const { models } = await registry.claude.fetchCatalog({
+      scope: "workspace",
       cwd: "/tmp/registry-models",
       force: false,
     });
@@ -1132,6 +1138,7 @@ describe("model merging", () => {
     });
 
     const { models } = await registry.codex.fetchCatalog({
+      scope: "workspace",
       cwd: "/tmp/registry-models",
       force: false,
     });
@@ -1171,6 +1178,7 @@ describe("model merging", () => {
     });
 
     const { models } = await registry.claude.fetchCatalog({
+      scope: "workspace",
       cwd: "/tmp/registry-models",
       force: false,
     });
@@ -1223,6 +1231,7 @@ describe("model merging", () => {
     });
 
     const { models } = await registry.claude.fetchCatalog({
+      scope: "workspace",
       cwd: "/tmp/registry-models",
       force: false,
     });
@@ -1261,6 +1270,7 @@ describe("model merging", () => {
 
     const registry = buildProviderRegistry(logger);
     const { models } = await registry.claude.fetchCatalog({
+      scope: "workspace",
       cwd: "/tmp/registry-models",
       force: false,
     });
@@ -1301,6 +1311,7 @@ describe("model merging", () => {
 
     const client = registry.codex.createClient(logger);
     const catalog = await client.fetchCatalog({
+      scope: "workspace",
       cwd: "/tmp/registry-models",
       force: false,
     });
@@ -1335,6 +1346,7 @@ describe("model merging", () => {
 
     const client = registry.claude.createClient(logger);
     const catalog = await client.fetchCatalog({
+      scope: "workspace",
       cwd: "/tmp/registry-models",
       force: false,
     });
@@ -1363,6 +1375,7 @@ describe("model merging", () => {
     });
 
     const { models } = await registry.claude.fetchCatalog({
+      scope: "workspace",
       cwd: "/tmp/registry-models",
       force: false,
     });
@@ -1380,6 +1393,7 @@ describe("fetchCatalog", () => {
 
     const registry = buildProviderRegistry(logger);
     const catalog = await registry.codex.fetchCatalog({
+      scope: "workspace",
       cwd: "/tmp/catalog",
       force: false,
     });
@@ -1403,6 +1417,7 @@ describe("fetchCatalog", () => {
     });
 
     const catalog = await registry.codex.fetchCatalog({
+      scope: "workspace",
       cwd: "/tmp/catalog",
       force: false,
     });
@@ -1421,6 +1436,7 @@ describe("fetchCatalog", () => {
     });
 
     const catalog = await registry.codex.fetchCatalog({
+      scope: "workspace",
       cwd: "/tmp/catalog",
       force: false,
     });

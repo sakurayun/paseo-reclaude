@@ -34,6 +34,14 @@ export function resolveBundledWebUiDistDir(moduleUrl: string | URL = import.meta
     return path.resolve(moduleDir, "..", "..", "dist", "server", "web-ui");
   }
 
+  if (
+    path.basename(moduleDir) === "server" &&
+    path.basename(path.dirname(moduleDir)) === "server" &&
+    path.basename(path.dirname(path.dirname(moduleDir))) === "dist"
+  ) {
+    return path.resolve(moduleDir, "..", "web-ui");
+  }
+
   return path.resolve(moduleDir, "web-ui");
 }
 

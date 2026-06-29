@@ -21,7 +21,6 @@ import {
 import { Composer } from "@/composer";
 import { DraftAgentModeControl } from "@/composer/agent-controls/mode-control";
 import { splitComposerAttachmentsForSubmit } from "@/composer/attachments/submit";
-import { FileDropZone } from "@/components/file-drop-zone";
 import { HostStatusDot } from "@/components/host-status-dot";
 import { HostPicker } from "@/components/hosts/host-picker";
 import { ProjectIconView } from "@/components/project-icon-view";
@@ -64,7 +63,7 @@ import {
 } from "@/projects/host-projects";
 import { useProjectIconDataByProjectKey } from "@/projects/project-icons";
 import type { ComposerAttachment, UserComposerAttachment } from "@/attachments/types";
-import type { ImageAttachment, MessagePayload } from "@/composer/types";
+import type { MessagePayload } from "@/composer/types";
 import type {
   AgentAttachment,
   GitHubSearchItem,
@@ -1214,6 +1213,7 @@ function submitWorkspaceDraft(input: SubmitDraftInput): void {
   navigateToPreparedWorkspaceTab({
     serverId,
     workspaceId,
+    currentPathname: "/new",
     target: { kind: "draft", draftId },
   });
   useDraftStore.getState().clearDraftInput({ draftKey, lifecycle: "sent" });
@@ -1222,11 +1222,24 @@ function submitWorkspaceDraft(input: SubmitDraftInput): void {
 function useNewWorkspaceHostSelector(initialServerId: string) {
   const allHosts = useHosts();
   const allServerIds = useMemo(() => allHosts.map((h) => h.serverId), [allHosts]);
-  const [selectedServerId, setSelectedServerId] = useState(initialServerId);
+  const lastWorkspaceSelection = useLastWorkspaceSelection();
+  const normalizedInitialServerId = initialServerId.trim();
+  const routeInitialServerId = allServerIds.includes(normalizedInitialServerId)
+    ? normalizedInitialServerId
+    : null;
+  const fallbackServerId =
+    lastWorkspaceSelection && allServerIds.includes(lastWorkspaceSelection.serverId)
+      ? lastWorkspaceSelection.serverId
+      : (allServerIds[0] ?? "");
+  const [manualServerId, setManualServerId] = useState<string | null>(null);
   const [hostPickerOpen, setHostPickerOpen] = useState(false);
+  const selectedServerId =
+    manualServerId && allServerIds.includes(manualServerId)
+      ? manualServerId
+      : (routeInitialServerId ?? fallbackServerId);
 
   const handleSelectHost = useCallback((id: string) => {
-    setSelectedServerId(id);
+    setManualServerId(id);
     setHostPickerOpen(false);
   }, []);
 
@@ -1242,9 +1255,7 @@ function useNewWorkspaceHostSelector(initialServerId: string) {
     allHosts,
     allServerIds,
     selectedServerId,
-    setSelectedServerId,
     hostPickerOpen,
-    setHostPickerOpen,
     handleSelectHost,
     handleHostPickerOpenChange,
     openHostPicker,
@@ -1438,6 +1449,7 @@ function useNewWorkspaceFormStack(input: NewWorkspaceFormStackInput): ReactEleme
 
   const selectedHostLabel =
     host.allHosts.find((h) => h.serverId === host.selectedServerId)?.label ?? "Host";
+  const showHostControl = host.allHosts.length > 1;
   const isolationTriggerLabel = isolationLabel(t, isolation.effectiveIsolation);
 
   const badgePressableStyle = useCallback(
@@ -1484,7 +1496,7 @@ function useNewWorkspaceFormStack(input: NewWorkspaceFormStackInput): ReactEleme
     </View>
   );
 
-  const hostControl = (
+  const hostControl = showHostControl ? (
     <View>
       <HostPicker
         hosts={host.allHosts}
@@ -1513,7 +1525,7 @@ function useNewWorkspaceFormStack(input: NewWorkspaceFormStackInput): ReactEleme
         </Pressable>
       </HostPicker>
     </View>
-  );
+  ) : null;
 
   const repoControl =
     repo && repo.options.length > 1 ? (
@@ -1606,7 +1618,7 @@ function useNewWorkspaceFormStack(input: NewWorkspaceFormStackInput): ReactEleme
   return isCompact ? (
     <View testID="new-workspace-ref-picker-row" style={styles.formStack}>
       <FormRow>{projectControl}</FormRow>
-      <FormRow>{hostControl}</FormRow>
+      {hostControl ? <FormRow>{hostControl}</FormRow> : null}
       {repoControl ? <FormRow>{repoControl}</FormRow> : null}
       {/* Keep fixed row height when git-only controls are hidden. */}
       {isolationControl ? (
@@ -2102,7 +2114,8 @@ export function NewWorkspaceScreen({
             payload,
             ensureWorkspace,
             serverId: selectedServerId,
-            navigate: navigateToWorkspace,
+            navigate: (targetServerId, workspaceId) =>
+              navigateToWorkspace(targetServerId, workspaceId, { currentPathname: "/new" }),
           });
           return;
         }
@@ -2128,14 +2141,6 @@ export function NewWorkspaceScreen({
     },
     [composerState, draftKey, ensureWorkspace, selectedServerId, t, toast],
   );
-
-  const addImagesRef = useRef<((images: ImageAttachment[]) => void) | null>(null);
-  const handleAddImagesCallback = useCallback((addImages: (images: ImageAttachment[]) => void) => {
-    addImagesRef.current = addImages;
-  }, []);
-  const handleFilesDropped = useCallback((files: ImageAttachment[]) => {
-    addImagesRef.current?.(files);
-  }, []);
 
   const renderPickerOption = useCallback(
     (props: {
@@ -2321,46 +2326,43 @@ export function NewWorkspaceScreen({
   const screenHeaderLeft = useMemo(() => <SidebarMenuToggle />, []);
 
   return (
-    <FileDropZone onFilesDropped={handleFilesDropped}>
-      <View style={styles.container}>
-        <ScreenHeader left={screenHeaderLeft} borderless surfaceStyle={styles.headerSurface} />
-        <View style={contentStyle}>
-          <TitlebarDragRegion />
-          <ReanimatedAnimated.View style={centeredStyle}>
-            <View style={styles.composerTitleContainer}>
-              <Text style={styles.composerTitle}>{t("newWorkspace.title")}</Text>
-            </View>
-            {formStack}
-            <Composer
-              externalKeyboardShift
-              agentId={draftKey}
-              serverId={selectedServerId}
-              isPaneFocused={true}
-              onSubmitMessage={handleSubmitNewWorkspace}
-              allowEmptySubmit={true}
-              submitButtonAccessibilityLabel={t("newWorkspace.create")}
-              submitButtonTestID="workspace-create-submit"
-              submitIcon="return"
-              isSubmitLoading={pendingAction !== null}
-              submitBehavior="preserve-and-lock"
-              blurOnSubmit={true}
-              value={chatDraft.text}
-              onChangeText={chatDraft.setText}
-              attachments={chatDraft.attachments}
-              onChangeAttachments={chatDraft.setAttachments}
-              cwd={effectiveSourceDirectory ?? ""}
-              clearDraft={handleClearDraft}
-              autoFocus
-              commandDraftConfig={composerState?.commandDraftConfig}
-              agentControls={agentControlsWithDisabled}
-              onAddImages={handleAddImagesCallback}
-              footer={composerFooter}
-            />
-            {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
-          </ReanimatedAnimated.View>
-        </View>
+    <View style={styles.container}>
+      <ScreenHeader left={screenHeaderLeft} borderless surfaceStyle={styles.headerSurface} />
+      <View style={contentStyle}>
+        <TitlebarDragRegion />
+        <ReanimatedAnimated.View style={centeredStyle}>
+          <View style={styles.composerTitleContainer}>
+            <Text style={styles.composerTitle}>{t("newWorkspace.title")}</Text>
+          </View>
+          {formStack}
+          <Composer
+            externalKeyboardShift
+            agentId={draftKey}
+            serverId={selectedServerId}
+            isPaneFocused={true}
+            onSubmitMessage={handleSubmitNewWorkspace}
+            allowEmptySubmit={true}
+            submitButtonAccessibilityLabel={t("newWorkspace.create")}
+            submitButtonTestID="workspace-create-submit"
+            submitIcon="return"
+            isSubmitLoading={pendingAction !== null}
+            submitBehavior="preserve-and-lock"
+            blurOnSubmit={true}
+            value={chatDraft.text}
+            onChangeText={chatDraft.setText}
+            attachments={chatDraft.attachments}
+            onChangeAttachments={chatDraft.setAttachments}
+            cwd={effectiveSourceDirectory ?? ""}
+            clearDraft={handleClearDraft}
+            autoFocus
+            commandDraftConfig={composerState?.commandDraftConfig}
+            agentControls={agentControlsWithDisabled}
+            footer={composerFooter}
+          />
+          {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
+        </ReanimatedAnimated.View>
       </View>
-    </FileDropZone>
+    </View>
   );
 }
 
@@ -2446,6 +2448,7 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     height: BADGE_HEIGHT,
     maxWidth: 240,
+    overflow: "hidden",
     paddingHorizontal: theme.spacing[2],
     borderRadius: theme.borderRadius["2xl"],
     gap: theme.spacing[1],
@@ -2477,6 +2480,7 @@ const styles = StyleSheet.create((theme) => ({
     opacity: 0.6,
   },
   badgeText: {
+    minWidth: 0,
     fontSize: theme.fontSize.sm,
     color: theme.colors.foregroundMuted,
     flexShrink: 1,

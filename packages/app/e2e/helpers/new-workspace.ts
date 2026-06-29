@@ -1,6 +1,6 @@
 import { expect, type Page } from "@playwright/test";
 import type { DaemonClient as InternalDaemonClient } from "@getpaseo/client/internal/daemon-client";
-import { buildHostNewWorkspaceRoute, decodeWorkspaceIdFromPathSegment } from "@/utils/host-routes";
+import { buildNewWorkspaceRoute, decodeWorkspaceIdFromPathSegment } from "@/utils/host-routes";
 import { connectDaemonClient } from "./daemon-client-loader";
 import { daemonWsRoutePattern } from "./daemon-port";
 import { getServerId } from "./server-id";
@@ -160,7 +160,7 @@ export async function openNewWorkspaceComposer(
   await expect(button).toBeVisible({ timeout: 30_000 });
   await button.click();
 
-  await expect(page).toHaveURL(/\/h\/[^/]+\/new(?:\?.*)?$/, {
+  await expect(page).toHaveURL(/\/new(?:\?.*)?$/, {
     timeout: 30_000,
   });
 }
@@ -170,9 +170,9 @@ export async function openGlobalNewWorkspaceComposer(page: Page): Promise<void> 
   // project". The new-workspace route still exists, so navigate to it directly
   // here — equivalent to where Model B's global button landed (the /new form's
   // project picker can still target any git or non-git project).
-  await page.goto(buildHostNewWorkspaceRoute(getServerId()));
+  await page.goto(buildNewWorkspaceRoute({ serverId: getServerId() }));
 
-  await expect(page).toHaveURL(/\/h\/[^/]+\/new(?:\?.*)?$/, {
+  await expect(page).toHaveURL(/\/new(?:\?.*)?$/, {
     timeout: 30_000,
   });
 }

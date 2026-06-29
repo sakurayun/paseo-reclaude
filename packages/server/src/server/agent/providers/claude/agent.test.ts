@@ -406,7 +406,11 @@ describe("ClaudeAgentClient.fetchCatalog", () => {
         resolveBinary: async () => "/test/claude/bin",
         configDir: emptyConfigDir,
       });
-      const { models } = await client.fetchCatalog({ cwd: "/tmp/claude-models", force: false });
+      const { models } = await client.fetchCatalog({
+        scope: "workspace",
+        cwd: "/tmp/claude-models",
+        force: false,
+      });
 
       expect(models.map((m) => m.id)).toEqual([
         "claude-fable-5[1m]",
@@ -443,7 +447,11 @@ describe("ClaudeAgentClient.fetchCatalog", () => {
         resolveBinary: async () => "/test/claude/bin",
         configDir: emptyConfigDir,
       });
-      const { models } = await client.fetchCatalog({ cwd: "/tmp/claude-models", force: false });
+      const { models } = await client.fetchCatalog({
+        scope: "workspace",
+        cwd: "/tmp/claude-models",
+        force: false,
+      });
 
       expect(models.map((m) => m.id)).toEqual(["opus", "sonnet", "haiku"]);
 
@@ -451,6 +459,33 @@ describe("ClaudeAgentClient.fetchCatalog", () => {
       expect(defaultModel?.id).toBe("opus");
     } finally {
       vi.unstubAllEnvs();
+      await fs.rm(emptyConfigDir, { recursive: true, force: true });
+    }
+  });
+
+  test("exposes Ultracode only on Claude models that support it", async () => {
+    const emptyConfigDir = await fs.mkdtemp(path.join(os.tmpdir(), "paseo-claude-models-empty-"));
+    try {
+      const client = new ClaudeAgentClient({
+        logger,
+        resolveBinary: async () => "/test/claude/bin",
+        configDir: emptyConfigDir,
+      });
+      const { models } = await client.fetchCatalog({
+        scope: "workspace",
+        cwd: "/tmp/claude-models",
+        force: false,
+      });
+      const getThinkingIds = (modelId: string) => {
+        return models.find((model) => model.id === modelId)?.thinkingOptions?.map(({ id }) => id);
+      };
+
+      expect(getThinkingIds("claude-fable-5")).toContain("ultracode");
+      expect(getThinkingIds("claude-opus-4-8[1m]")).toContain("ultracode");
+      expect(getThinkingIds("claude-opus-4-8")).toContain("ultracode");
+      expect(getThinkingIds("claude-opus-4-7")).not.toContain("ultracode");
+      expect(getThinkingIds("claude-sonnet-4-6")).not.toContain("ultracode");
+    } finally {
       await fs.rm(emptyConfigDir, { recursive: true, force: true });
     }
   });

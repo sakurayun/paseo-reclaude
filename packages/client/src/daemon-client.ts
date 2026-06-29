@@ -2212,7 +2212,9 @@ export class DaemonClient {
         cwd,
       },
       responseType: "open_project_response",
-      timeout: 10000,
+      // Large local repos (e.g. a big monorepo/brain checkout) need >10s for the
+      // daemon to resolve the path, detect git, and materialize the workspace.
+      timeout: 60000,
     });
   }
 
@@ -3896,7 +3898,9 @@ export class DaemonClient {
         limit: options.limit,
       },
       responseType: "directory_suggestions_response",
-      timeout: 10000,
+      // Home-tree scans on large home dirs can take several seconds; don't cut
+      // the suggestion request off early (it would surface as an empty list).
+      timeout: 30000,
     });
   }
 

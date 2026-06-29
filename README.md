@@ -100,6 +100,21 @@ paseo
 - [文档](https://paseo.sh/docs)
 - [配置参考](https://paseo.sh/docs/configuration)
 
+### Docker
+
+Run the Paseo daemon and self-hosted web UI in Docker:
+
+```bash
+docker run -d --name paseo \
+  -p 6767:6767 \
+  -e PASEO_PASSWORD=change-me \
+  -v "$PWD/paseo-home:/home/paseo" \
+  -v "$PWD:/workspace" \
+  ghcr.io/getpaseo/paseo:latest
+```
+
+Open `http://localhost:6767` after it starts. Extend the base image with the agent CLIs you use, then provide credentials through environment variables or the persistent `/home/paseo` volume. See the [Docker documentation](docs/docker.md) for full setup details.
+
 ## CLI
 
 你能在 app 中完成的事情，也都可以在终端中完成。

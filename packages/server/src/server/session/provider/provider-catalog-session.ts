@@ -2,7 +2,7 @@ import type pino from "pino";
 import { getErrorMessage } from "@getpaseo/protocol/error-utils";
 import type { SessionInboundMessage, SessionOutboundMessage } from "../../messages.js";
 import {
-  resolveSnapshotCwd,
+  isGlobalProviderSnapshotKey,
   type ProviderSnapshotManager,
 } from "../../agent/provider-snapshot-manager.js";
 import type {
@@ -81,7 +81,7 @@ export class ProviderCatalogSession {
       const visibleEntries = entries.filter((entry) =>
         this.host.isProviderVisibleToClient(entry.provider),
       );
-      const snapshotCwd = cwd === resolveSnapshotCwd() ? undefined : cwd;
+      const snapshotCwd = isGlobalProviderSnapshotKey(cwd) ? undefined : cwd;
       this.host.emit({
         type: "providers_snapshot_update",
         payload: {
@@ -145,7 +145,7 @@ export class ProviderCatalogSession {
   async handleListProviderModelsRequest(
     msg: Extract<SessionInboundMessage, { type: "list_provider_models_request" }>,
   ): Promise<void> {
-    const cwd = resolveSnapshotCwd(msg.cwd ? expandTilde(msg.cwd) : undefined);
+    const cwd = resolveCatalogRequestCwd(msg.cwd);
     const fetchedAt = new Date().toISOString();
 
     const entry = await this.getProviderSnapshotEntryForRead(cwd, msg.provider);
@@ -202,7 +202,7 @@ export class ProviderCatalogSession {
     msg: Extract<SessionInboundMessage, { type: "list_provider_modes_request" }>,
   ): Promise<void> {
     const fetchedAt = new Date().toISOString();
-    const cwd = resolveSnapshotCwd(msg.cwd ? expandTilde(msg.cwd) : undefined);
+    const cwd = resolveCatalogRequestCwd(msg.cwd);
     const entry = await this.getProviderSnapshotEntryForRead(cwd, msg.provider);
 
     if (!entry) {
@@ -254,7 +254,7 @@ export class ProviderCatalogSession {
   }
 
   private async getProviderSnapshotEntryForRead(
-    cwd: string,
+    cwd: string | undefined,
     provider: AgentProvider,
   ): Promise<ProviderSnapshotEntry | undefined> {
     const manager = this.providerSnapshotManager;
@@ -579,4 +579,9 @@ export class ProviderCatalogSession {
       });
     }
   }
+}
+
+function resolveCatalogRequestCwd(cwd?: string | null): string | undefined {
+  const trimmed = cwd?.trim();
+  return trimmed ? expandTilde(trimmed) : undefined;
 }

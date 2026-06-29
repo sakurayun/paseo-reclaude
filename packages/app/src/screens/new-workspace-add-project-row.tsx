@@ -10,7 +10,7 @@ import { pickDirectory } from "@/desktop/pick-directory";
 import { useIsLocalDaemon } from "@/hooks/use-is-local-daemon";
 import type { OpenProjectResult } from "@/hooks/open-project";
 import { useOpenProject } from "@/hooks/use-open-project";
-import { buildHostNewWorkspaceRoute } from "@/utils/host-routes";
+import { buildNewWorkspaceRoute } from "@/utils/host-routes";
 
 /**
  * "Add project" action shown inside the Choose project dropdown, below the
@@ -85,7 +85,9 @@ async function runAddProjectFlow(input: {
       return;
     }
     router.navigate(
-      buildHostNewWorkspaceRoute(input.serverId, result.projectRootPath, {
+      buildNewWorkspaceRoute({
+        serverId: input.serverId,
+        sourceDirectory: result.projectRootPath,
         projectId: result.projectKey,
       }),
     );

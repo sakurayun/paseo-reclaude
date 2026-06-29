@@ -138,6 +138,7 @@ paseo schedule create --every 30m --provider claude/opus --feature ultracode "co
 
 ```bash
 paseo daemon start             # Start the daemon
+paseo daemon start --web-ui    # Start and serve the bundled web UI
 paseo daemon status            # Check status
 paseo daemon stop              # Stop the daemon
 ```

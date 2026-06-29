@@ -1379,6 +1379,7 @@ export const ja: TranslationResources = {
   projectPicker: {
     placeholder: "ディレクトリパスを入力...",
     opening: "プロジェクトを開いています...",
+    searching: "検索中...",
     empty: "パスを入力してください",
     errors: {
       directory_not_found: "ディレクトリが見つかりません。",
@@ -2312,26 +2313,26 @@ export const ja: TranslationResources = {
           title: "デーモンを更新",
           hint: "デーモンを最新バージョンに更新して再起動します",
           confirm: "更新",
-          confirmTitle: "{{name}} を更新",
+          confirmTitle: "{{name}}を更新",
           confirmMessage:
-            "デーモンを最新バージョンに更新して再起動します。実行中のエージェントは一時的に中断されます。",
+            "これによりデーモンが最新バージョンに更新され、再起動されます。実行中のエージェントは一時的に中断されます。",
           updating: "更新中...",
           phaseStarting: "更新を準備中...",
           phaseDownloading: "パッケージをダウンロード中...",
           phaseInstalling: "インストール中...",
-          phaseComplete: "更新完了、再起動中...",
+          phaseComplete: "更新が完了しました。再起動中...",
           unableToReconnectTitle: "再接続できません",
           unableToReconnectMessage:
-            "{{name}} は更新後にオンラインに復帰しませんでした。デーモンが再起動したか確認してください。",
+            "{{name}}が更新後にオンラインに戻りませんでした。デーモンが再起動されたことを確認してください。",
           unavailableTitle: "ホストが利用できません",
           unavailableMessage:
-            "このホストは接続されていません。オンラインになるのを待ってから更新してください。",
-          offlineTitle: "ホストがオフライン",
+            "このホストは接続されていません。更新する前にオンラインになるまでお待ちください。",
+          offlineTitle: "ホストオフライン",
           offlineMessage:
-            "このホストはオフラインです。オンラインに復帰するまで待ってから更新してください。",
+            "このホストはオフラインです。オンラインに戻るまで待ってから更新してください。",
           requestFailedTitle: "更新に失敗しました",
           requestFailedMessage: "デーモンの更新に失敗しました: {{error}}",
-          dialogFailedMessage: "更新確認ダイアログを開けません。",
+          dialogFailedMessage: "更新確認ダイアログを開けませんでした。",
         },
         dangerZone: "危険ゾーン",
         remove: {

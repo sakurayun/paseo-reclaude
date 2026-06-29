@@ -100,7 +100,6 @@ export function HostPickerOption({
       trailingSlot={trailingSlot}
       selected={selected}
       active={active}
-      interactiveFeedback={false}
       onPress={onPress}
       testID={testID}
     />
@@ -134,7 +133,6 @@ function SystemHostPickerOption({
       leadingSlot={leadingSlot}
       selected={selected}
       active={active}
-      interactiveFeedback={false}
       onPress={onPress}
       testID={testID}
     />

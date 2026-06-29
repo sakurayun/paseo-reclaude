@@ -31,6 +31,7 @@ export {
   computeSidebarOrderUpdates,
   createSidebarWorkspaceEntry,
   deriveSidebarLoadingState,
+  shouldShowSidebarHostLabels,
   type SidebarLoadingState,
   type SidebarOrderUpdates,
   type SidebarStatusWorkspacePlacement,
@@ -169,7 +170,7 @@ export function useSidebarWorkspacesList(options?: {
       void (async () => {
         const next = new Map<string, WorkspaceDescriptor>();
         try {
-          const workspaces = await fetchAllWorkspaceDescriptors({
+          const { workspaces, emptyProjects } = await fetchAllWorkspaceDescriptors({
             client,
             sort: [{ key: "activity_at", direction: "desc" }],
           });
@@ -181,6 +182,9 @@ export function useSidebarWorkspacesList(options?: {
           }
           const store = useSessionStore.getState();
           store.setWorkspaces(serverId, next);
+          // Keep parents with no workspaces yet, so a manual refresh doesn't drop
+          // a freshly-added project from the sidebar.
+          store.setEmptyProjects(serverId, emptyProjects);
           store.setHasHydratedWorkspaces(serverId, true);
         } catch (error) {
           console.error("[WorkspaceFetch][sidebar-refresh] failed", {

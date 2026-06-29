@@ -769,10 +769,7 @@ export class VoiceAssistantWebSocketServer {
       callback(false, 403, "Host not allowed");
       return;
     }
-    const sameOrigin =
-      !!origin &&
-      !!requestHost &&
-      (origin === `http://${requestHost}` || origin === `https://${requestHost}`);
+    const sameOrigin = isWebSocketSameOrigin(origin, requestHost);
 
     if (!origin || allowedOrigins.has("*") || allowedOrigins.has(origin) || sameOrigin) {
       callback(true);
@@ -2236,6 +2233,106 @@ function extractSocketRequestMetadata(request: unknown): SocketRequestMetadata {
     ...(userAgent ? { userAgent } : {}),
     ...(remoteAddress ? { remoteAddress } : {}),
   };
+}
+
+interface HostAuthority {
+  hostname: string;
+  port: string | null;
+}
+
+function stripIpv6Brackets(hostname: string): string {
+  return hostname.startsWith("[") && hostname.endsWith("]") ? hostname.slice(1, -1) : hostname;
+}
+
+function parseHostAuthority(host: string): HostAuthority | null {
+  const trimmed = host.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  if (trimmed.startsWith("[")) {
+    const end = trimmed.indexOf("]");
+    if (end === -1) {
+      return null;
+    }
+    const hostname = stripIpv6Brackets(trimmed.slice(0, end + 1)).toLowerCase();
+    const rest = trimmed.slice(end + 1);
+    if (!rest) {
+      return { hostname, port: null };
+    }
+    if (!rest.startsWith(":")) {
+      return null;
+    }
+    const port = rest.slice(1);
+    return port ? { hostname, port } : null;
+  }
+
+  const firstColon = trimmed.indexOf(":");
+  if (firstColon === -1) {
+    return { hostname: trimmed.toLowerCase(), port: null };
+  }
+  if (trimmed.indexOf(":", firstColon + 1) !== -1) {
+    return { hostname: trimmed.toLowerCase(), port: null };
+  }
+  const hostname = trimmed.slice(0, firstColon).toLowerCase();
+  const port = trimmed.slice(firstColon + 1);
+  return hostname && port ? { hostname, port } : null;
+}
+
+function defaultPortForOriginProtocol(protocol: string): string | null {
+  if (protocol === "http:") {
+    return "80";
+  }
+  if (protocol === "https:") {
+    return "443";
+  }
+  return null;
+}
+
+function isLoopbackAlias(hostname: string): boolean {
+  const normalized = stripIpv6Brackets(hostname).toLowerCase();
+  if (normalized === "localhost" || normalized.endsWith(".localhost")) {
+    return true;
+  }
+  if (normalized === "::1" || normalized === "0:0:0:0:0:0:0:1") {
+    return true;
+  }
+  return /^127(?:\.\d{1,3}){3}$/.test(normalized);
+}
+
+export function isWebSocketSameOrigin(
+  origin: string | undefined,
+  requestHost: string | null,
+): boolean {
+  if (!origin || !requestHost) {
+    return false;
+  }
+
+  if (origin === `http://${requestHost}` || origin === `https://${requestHost}`) {
+    return true;
+  }
+
+  let originUrl: URL;
+  try {
+    originUrl = new URL(origin);
+  } catch {
+    return false;
+  }
+  const originPort = originUrl.port || defaultPortForOriginProtocol(originUrl.protocol);
+  if (!originPort) {
+    return false;
+  }
+
+  const requestAuthority = parseHostAuthority(requestHost);
+  if (!requestAuthority) {
+    return false;
+  }
+  const requestPort = requestAuthority.port || defaultPortForOriginProtocol(originUrl.protocol);
+  if (originPort !== requestPort) {
+    return false;
+  }
+
+  return isLoopbackAlias(originUrl.hostname) && isLoopbackAlias(requestAuthority.hostname);
 }
 
 function selectWebSocketProtocol(

@@ -16,15 +16,13 @@ import {
   ProjectPicker,
   type ProjectPickerTriggerArgs,
 } from "@/components/project-picker/project-picker";
-import { FileDropZone } from "@/components/file-drop-zone";
 import { AgentStreamView } from "@/agent-stream/view";
 import { composerWorkspaceAttachment } from "@/composer/attachments/workspace";
-import type { ImageAttachment } from "@/composer/types";
 import { useDaemonConfig } from "@/hooks/use-daemon-config";
 import { useModelGatewayModels } from "@/hooks/use-model-gateway-models";
 import { useAgentInputDraft } from "@/composer/draft/input-draft";
 import type { CreateAgentInitialValues } from "@/hooks/use-agent-form-state";
-import { useDraftAgentCreateFlow } from "@/composer/draft/create-flow";
+import { useDraftAgentCreateFlow, type DraftCreateAttempt } from "@/composer/draft/create-flow";
 import {
   buildModelGatewayModelDefinitions,
   buildModelGatewaySelectorProviders,
@@ -39,6 +37,7 @@ import {
 import { buildWorkspaceDraftAgentConfig } from "@/screens/workspace/workspace-draft-agent-config";
 import { buildDraftStoreKey } from "@/stores/draft-keys";
 import { usePanelStore } from "@/stores/panel-store";
+import { useCreateFlowStore } from "@/stores/create-flow-store";
 import type { Agent } from "@/stores/session-store";
 import { useWorkspaceFields } from "@/stores/session-store-hooks";
 import { useWorkspaceDraftSubmissionStore } from "@/stores/workspace-draft-submission-store";
@@ -531,7 +530,6 @@ export function WorkspaceDraftAgentTab({
     initialSetup: draftSetup,
   });
   const onlineServerIds = resolveOnlineServerIds({ isConnected, serverId });
-  const addImagesRef = useRef<((images: ImageAttachment[]) => void) | null>(null);
   const draftStoreKey = useMemo(
     () =>
       buildDraftStoreKey({
@@ -614,10 +612,33 @@ export function WorkspaceDraftAgentTab({
     const pending = state.pendingByDraftId[draftId] ?? null;
     return pending?.serverId === serverId && pending.workspaceId === workspaceId ? pending : null;
   });
+  const pendingCreateAttempt = useCreateFlowStore((state) => {
+    const pending = state.pendingByDraftId[draftId] ?? null;
+    return pending?.serverId === serverId && pending.lifecycle === "active" ? pending : null;
+  });
   const consumePendingAutoSubmit = useWorkspaceDraftSubmissionStore(
     (state) => state.consumePending,
   );
   const autoSubmitConfig = resolveAutoSubmitConfig(pendingAutoSubmit);
+  const initialCreateAttempt = useMemo<DraftCreateAttempt | null>(() => {
+    if (!pendingAutoSubmit || !pendingCreateAttempt) {
+      return null;
+    }
+    if (pendingAutoSubmit.clientMessageId !== pendingCreateAttempt.clientMessageId) {
+      return null;
+    }
+    return {
+      clientMessageId: pendingCreateAttempt.clientMessageId,
+      text: pendingCreateAttempt.text,
+      timestamp: new Date(pendingCreateAttempt.timestamp),
+      ...(pendingCreateAttempt.images && pendingCreateAttempt.images.length > 0
+        ? { images: pendingCreateAttempt.images }
+        : {}),
+      ...(pendingCreateAttempt.attachments && pendingCreateAttempt.attachments.length > 0
+        ? { attachments: pendingCreateAttempt.attachments }
+        : {}),
+    };
+  }, [pendingAutoSubmit, pendingCreateAttempt]);
   const allowsEmptyAutoSubmit = pendingAutoSubmit?.allowEmptyText === true;
   const isCompactFormFactor = useIsCompactFormFactor();
   const { onLayout: onInputAreaLayout, isBelow: isCompactComposerLayout } = useContainerWidthBelow(
@@ -660,9 +681,11 @@ export function WorkspaceDraftAgentTab({
     optimisticStreamItems,
     draftAgent,
     handleCreateFromInput,
+    continueCreateFromAttempt,
   } = useDraftAgentCreateFlow<Agent, AgentSnapshotPayload>({
     draftId,
     getPendingServerId: () => serverId,
+    initialAttempt: initialCreateAttempt,
     allowEmptyText: allowsEmptyAutoSubmit,
     validateBeforeSubmit: ({ text }) =>
       validateDraftSubmission({
@@ -742,33 +765,37 @@ export function WorkspaceDraftAgentTab({
     autoSubmitKeyRef.current = submitKey;
     setDraftText("");
     setDraftAttachments([]);
-    void handleCreateFromInput({
-      text: submission.text,
-      attachments: submission.attachments,
-      cwd: submission.cwd,
-    }).catch(() => {
+    const preparedAttempt =
+      initialCreateAttempt?.clientMessageId === submission.clientMessageId
+        ? initialCreateAttempt
+        : null;
+    const createPromise = preparedAttempt
+      ? continueCreateFromAttempt({
+          attempt: preparedAttempt,
+          cwd: submission.cwd,
+        })
+      : handleCreateFromInput({
+          text: submission.text,
+          attachments: submission.attachments,
+          cwd: submission.cwd,
+        });
+    void createPromise.catch(() => {
       setDraftText(submission.text);
       setDraftAttachments(composerWorkspaceAttachment.userAttachmentsOnly(submission.attachments));
       autoSubmitKeyRef.current = null;
     });
   }, [
+    continueCreateFromAttempt,
     consumePendingAutoSubmit,
     draftId,
     handleCreateFromInput,
+    initialCreateAttempt,
     isReadyForPendingAutoSubmit,
     serverId,
     setDraftAttachments,
     setDraftText,
     workspaceId,
   ]);
-
-  const handleFilesDropped = useCallback((files: ImageAttachment[]) => {
-    addImagesRef.current?.(files);
-  }, []);
-
-  const handleAddImagesCallback = useCallback((addImages: (images: ImageAttachment[]) => void) => {
-    addImagesRef.current = addImages;
-  }, []);
 
   const focusInputRef = useRef<(() => void) | null>(null);
 
@@ -912,88 +939,82 @@ export function WorkspaceDraftAgentTab({
   );
 
   return (
-    <FileDropZone onFilesDropped={handleFilesDropped}>
-      <View style={styles.container}>
-        <View style={styles.contentContainer}>
-          {isSubmitting && draftAgent ? (
-            <View style={styles.streamContainer}>
-              <AgentStreamView
-                agentId={tabId}
+    <View style={styles.container}>
+      <View style={styles.contentContainer}>
+        {isSubmitting && draftAgent ? (
+          <View style={styles.streamContainer}>
+            <AgentStreamView
+              agentId={tabId}
+              serverId={serverId}
+              agent={draftAgent}
+              streamItems={optimisticStreamItems}
+              pendingPermissions={EMPTY_PENDING_PERMISSIONS}
+              onOpenWorkspaceFile={onOpenWorkspaceFile}
+            />
+          </View>
+        ) : (
+          <ScrollView style={styles.scrollView} contentContainerStyle={styles.configScrollContent}>
+            <View style={styles.configSection}>
+              {formErrorMessage ? (
+                <View style={styles.errorContainer}>
+                  <Text style={styles.errorText}>{formErrorMessage}</Text>
+                </View>
+              ) : null}
+            </View>
+          </ScrollView>
+        )}
+      </View>
+
+      <ReanimatedAnimated.View style={inputAreaWrapperStyle} onLayout={onInputAreaLayout}>
+        {importPillPress ? (
+          <View style={styles.importPillRow}>
+            <View style={styles.importPillContent}>
+              <ComposerImportPill onPress={importPillPress} />
+              <ProjectPicker
                 serverId={serverId}
-                agent={draftAgent}
-                streamItems={optimisticStreamItems}
-                pendingPermissions={EMPTY_PENDING_PERMISSIONS}
-                onOpenWorkspaceFile={onOpenWorkspaceFile}
+                projects={projects}
+                selectedProjectKey={effectiveProjectKey}
+                onSelectProject={handleSelectRunDirProject}
+                allowAllProjects
+                disabled={isSubmitting}
+                renderTrigger={renderRunDirTrigger}
+                desktopPlacement="top-start"
               />
             </View>
-          ) : (
-            <ScrollView
-              style={styles.scrollView}
-              contentContainerStyle={styles.configScrollContent}
-            >
-              <View style={styles.configSection}>
-                {formErrorMessage ? (
-                  <View style={styles.errorContainer}>
-                    <Text style={styles.errorText}>{formErrorMessage}</Text>
-                  </View>
-                ) : null}
-              </View>
-            </ScrollView>
-          )}
-        </View>
-
-        <ReanimatedAnimated.View style={inputAreaWrapperStyle} onLayout={onInputAreaLayout}>
-          {importPillPress ? (
-            <View style={styles.importPillRow}>
-              <View style={styles.importPillContent}>
-                <ComposerImportPill onPress={importPillPress} />
-                <ProjectPicker
-                  serverId={serverId}
-                  projects={projects}
-                  selectedProjectKey={effectiveProjectKey}
-                  onSelectProject={handleSelectRunDirProject}
-                  allowAllProjects
-                  disabled={isSubmitting}
-                  renderTrigger={renderRunDirTrigger}
-                  desktopPlacement="top-start"
-                />
-              </View>
-            </View>
-          ) : null}
-          {draftInput.remoteConflict ? (
-            <RemoteDraftConflictDrawer
-              remoteText={draftInput.remoteConflict.text}
-              onAccept={draftInput.acceptRemoteDraft}
-            />
-          ) : null}
-          <Composer
-            agentId={tabId}
-            serverId={serverId}
-            externalKeyboardShift
-            isPaneFocused={isPaneFocused}
-            onSubmitMessage={handleCreateFromInput}
-            isSubmitLoading={isSubmitting}
-            blurOnSubmit={true}
-            value={draftInput.text}
-            onChangeText={draftInput.setText}
-            attachments={draftInput.attachments}
-            workspaceAttachments={workspaceAttachments}
-            onOpenWorkspaceAttachment={handleOpenWorkspaceAttachment}
-            onChangeAttachments={draftInput.setAttachments}
-            cwd={composerState.workingDir}
-            clearDraft={draftInput.clear}
-            autoFocus={shouldAutoFocusWorkspaceDraftComposer({ isPaneFocused, isSubmitting })}
-            onAddImages={handleAddImagesCallback}
-            onFocusInput={handleFocusInputCallback}
-            commandDraftConfig={composerState.commandDraftConfig}
-            agentControls={composerAgentControls}
-            footer={composerFooter}
-            isCompactLayout={isCompactComposerLayout}
-            enablePromptPresets
+          </View>
+        ) : null}
+        {draftInput.remoteConflict ? (
+          <RemoteDraftConflictDrawer
+            remoteText={draftInput.remoteConflict.text}
+            onAccept={draftInput.acceptRemoteDraft}
           />
-        </ReanimatedAnimated.View>
-      </View>
-    </FileDropZone>
+        ) : null}
+        <Composer
+          agentId={tabId}
+          serverId={serverId}
+          externalKeyboardShift
+          isPaneFocused={isPaneFocused}
+          onSubmitMessage={handleCreateFromInput}
+          isSubmitLoading={isSubmitting}
+          blurOnSubmit={true}
+          value={draftInput.text}
+          onChangeText={draftInput.setText}
+          attachments={draftInput.attachments}
+          workspaceAttachments={workspaceAttachments}
+          onOpenWorkspaceAttachment={handleOpenWorkspaceAttachment}
+          onChangeAttachments={draftInput.setAttachments}
+          cwd={composerState.workingDir}
+          clearDraft={draftInput.clear}
+          autoFocus={shouldAutoFocusWorkspaceDraftComposer({ isPaneFocused, isSubmitting })}
+          onFocusInput={handleFocusInputCallback}
+          commandDraftConfig={composerState.commandDraftConfig}
+          agentControls={composerAgentControls}
+          footer={composerFooter}
+          isCompactLayout={isCompactComposerLayout}
+          enablePromptPresets
+        />
+      </ReanimatedAnimated.View>
+    </View>
   );
 }
 

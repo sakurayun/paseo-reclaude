@@ -36,7 +36,6 @@ import { agentHistoryQueryKey } from "@/hooks/agent-history-query-key";
 import { useIsLocalDaemon } from "@/hooks/use-is-local-daemon";
 import { useOpenProject } from "@/hooks/use-open-project";
 import { useOpenProjectPicker } from "@/hooks/use-open-project-picker";
-import { useHostChooser } from "@/hosts/host-chooser";
 import { useShortcutKeys } from "@/hooks/use-shortcut-keys";
 import { useSidebarShortcutModel } from "@/hooks/use-sidebar-shortcut-model";
 import {
@@ -58,7 +57,7 @@ import { useWindowControlsPadding } from "@/utils/desktop-window";
 import { canCloseLeftSidebarGesture } from "@/utils/sidebar-animation-state";
 import {
   buildOpenProjectRoute,
-  buildHostNewWorkspaceRoute,
+  buildNewWorkspaceRoute,
   buildSessionsRoute,
   buildSettingsAddHostRoute,
   buildSettingsHostSectionRoute,
@@ -205,7 +204,6 @@ export const LeftSidebar = memo(function LeftSidebar({
   const openProject = useOpenProject(activeServerId);
   const toast = useToast();
   const isLocalDaemon = useIsLocalDaemon(activeServerId ?? "");
-  const chooseHost = useHostChooser();
 
   const handleOpenProjectMobile = useCallback(() => {
     showMobileAgent();
@@ -225,7 +223,7 @@ export const LeftSidebar = memo(function LeftSidebar({
   const openProjectFolder = useCallback(async () => {
     if (!activeServerId) return;
     if (!isLocalDaemon) {
-      router.navigate(buildHostNewWorkspaceRoute(activeServerId));
+      router.navigate(buildNewWorkspaceRoute({ serverId: activeServerId }));
       return;
     }
     try {
@@ -237,7 +235,9 @@ export const LeftSidebar = memo(function LeftSidebar({
         return;
       }
       router.navigate(
-        buildHostNewWorkspaceRoute(activeServerId, result.projectRootPath, {
+        buildNewWorkspaceRoute({
+          serverId: activeServerId,
+          sourceDirectory: result.projectRootPath,
           projectId: result.projectKey,
         }),
       );
@@ -256,20 +256,15 @@ export const LeftSidebar = memo(function LeftSidebar({
   }, [openProjectFolder]);
 
   const handleNewWorkspaceNavigate = useCallback(() => {
-    chooseHost({
-      title: "Choose host",
-      onChooseHost: (serverId) => {
-        router.push(buildHostNewWorkspaceRoute(serverId));
-      },
-    });
-  }, [chooseHost]);
+    router.push(buildNewWorkspaceRoute());
+  }, []);
 
   // Per-host "new chat" for the multi-host sidebar list. Navigating to the
   // host's new-workspace route also makes it the active host (active host is
   // route-derived), so subsequent toolbar actions target the host the user
   // just started a conversation on.
   const handleNewWorkspaceForHost = useCallback((serverId: string) => {
-    router.navigate(buildHostNewWorkspaceRoute(serverId));
+    router.navigate(buildNewWorkspaceRoute({ serverId }));
   }, []);
 
   const handleSettingsMobile = useCallback(() => {

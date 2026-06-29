@@ -7,6 +7,8 @@ import {
   TextInput,
   View,
   type PressableStateCallbackType,
+  type StyleProp,
+  type TextStyle,
 } from "react-native";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
@@ -68,6 +70,68 @@ function PathRow({ option, active, onSelect }: PathRowProps) {
   );
 }
 
+interface ProjectPickerResultsProps {
+  options: ProjectPickerOption[];
+  activeIndex: number;
+  isSubmitting: boolean;
+  openErrorMessage: string | null;
+  hasQuery: boolean;
+  isSearching: boolean;
+  emptyTextStyle: StyleProp<TextStyle>;
+  errorTextStyle: StyleProp<TextStyle>;
+  onSelect: (path: string) => void;
+}
+
+function ProjectPickerResults({
+  options,
+  activeIndex,
+  isSubmitting,
+  openErrorMessage,
+  hasQuery,
+  isSearching,
+  emptyTextStyle,
+  errorTextStyle,
+  onSelect,
+}: ProjectPickerResultsProps) {
+  const { t } = useTranslation();
+  const canShowResultState = !isSubmitting && !openErrorMessage;
+
+  return (
+    <ScrollView
+      style={styles.results}
+      contentContainerStyle={styles.resultsContent}
+      keyboardShouldPersistTaps="always"
+      showsVerticalScrollIndicator={false}
+    >
+      {isSubmitting ? <Text style={emptyTextStyle}>{t("projectPicker.opening")}</Text> : null}
+      {!isSubmitting && openErrorMessage ? (
+        <Text style={errorTextStyle}>{openErrorMessage}</Text>
+      ) : null}
+      {canShowResultState && options.length === 0 && !hasQuery ? (
+        <Text style={emptyTextStyle}>{t("projectPicker.empty")}</Text>
+      ) : null}
+      {canShowResultState && isSearching ? (
+        <Text style={emptyTextStyle}>{t("projectPicker.searching")}</Text>
+      ) : null}
+      {canShowResultState && !isSearching && options.length === 0 && hasQuery ? (
+        <Text style={emptyTextStyle}>{t("common.empty.noOptionsMatchSearch")}</Text>
+      ) : null}
+      {canShowResultState && options.length > 0 ? (
+        <>
+          {options.map((option, index) => (
+            <PathRow
+              key={`${option.kind}:${option.path}`}
+              option={option}
+              active={index === activeIndex}
+              onSelect={onSelect}
+            />
+          ))}
+        </>
+      ) : null}
+    </ScrollView>
+  );
+}
+
 export function ProjectPickerModal() {
   const { theme } = useUnistyles();
   const { t } = useTranslation();
@@ -82,17 +146,18 @@ export function ProjectPickerModal() {
 
   const inputRef = useRef<TextInput>(null);
   const [query, setQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [openErrorReason, setOpenErrorReason] = useState<OpenProjectFailureReason | null>(null);
   const openProject = useOpenProject(serverId);
 
   const directorySuggestionsQuery = useQuery({
-    queryKey: ["project-picker-directory-suggestions", serverId, query],
+    queryKey: ["project-picker-directory-suggestions", serverId, debouncedQuery],
     queryFn: async () => {
       if (!client) return [];
       const result = await client.getDirectorySuggestions({
-        query,
+        query: debouncedQuery,
         includeDirectories: true,
         includeFiles: false,
         limit: 30,
@@ -115,6 +180,11 @@ export function ProjectPickerModal() {
       }),
     [directorySuggestionsQuery.data, query, recommendedPaths],
   );
+  const hasQuery = query.trim().length > 0;
+  const isSearching =
+    hasQuery &&
+    options.length === 0 &&
+    (query !== debouncedQuery || directorySuggestionsQuery.isFetching);
 
   const openErrorMessage = useMemo(() => {
     if (!openErrorReason) {
@@ -165,12 +235,20 @@ export function ProjectPickerModal() {
   useEffect(() => {
     if (open) {
       setQuery("");
+      setDebouncedQuery("");
       setActiveIndex(0);
       setOpenErrorReason(null);
       const id = setTimeout(() => inputRef.current?.focus(), 0);
       return () => clearTimeout(id);
     }
   }, [open]);
+
+  // Debounce the query that drives the (potentially multi-second) directory
+  // suggestions RPC so fast typing doesn't fire a filesystem scan per keystroke.
+  useEffect(() => {
+    const id = setTimeout(() => setDebouncedQuery(query), 250);
+    return () => clearTimeout(id);
+  }, [query]);
 
   useEffect(() => {
     if (!open) return;
@@ -269,32 +347,17 @@ export function ProjectPickerModal() {
             />
           </View>
 
-          <ScrollView
-            style={styles.results}
-            contentContainerStyle={styles.resultsContent}
-            keyboardShouldPersistTaps="always"
-            showsVerticalScrollIndicator={false}
-          >
-            {isSubmitting ? <Text style={emptyTextStyle}>{t("projectPicker.opening")}</Text> : null}
-            {!isSubmitting && openErrorMessage ? (
-              <Text style={errorTextStyle}>{openErrorMessage}</Text>
-            ) : null}
-            {!isSubmitting && options.length === 0 && !query.trim() ? (
-              <Text style={emptyTextStyle}>{t("projectPicker.empty")}</Text>
-            ) : null}
-            {!isSubmitting && !(options.length === 0 && !query.trim()) ? (
-              <>
-                {options.map((option, index) => (
-                  <PathRow
-                    key={`${option.kind}:${option.path}`}
-                    option={option}
-                    active={index === activeIndex}
-                    onSelect={handleSelectPath}
-                  />
-                ))}
-              </>
-            ) : null}
-          </ScrollView>
+          <ProjectPickerResults
+            options={options}
+            activeIndex={activeIndex}
+            isSubmitting={isSubmitting}
+            openErrorMessage={openErrorMessage}
+            hasQuery={hasQuery}
+            isSearching={isSearching}
+            emptyTextStyle={emptyTextStyle}
+            errorTextStyle={errorTextStyle}
+            onSelect={handleSelectPath}
+          />
         </View>
       </View>
     </Modal>

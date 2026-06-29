@@ -59,11 +59,12 @@ import { getHostRuntimeStore, useHosts } from "@/runtime/host-runtime";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { useProjectIconDataByProjectKey } from "@/projects/project-icons";
 import {
-  buildHostNewWorkspaceRoute,
+  buildNewWorkspaceRoute,
   buildProjectSettingsRoute,
   parseHostWorkspaceRouteFromPathname,
 } from "@/utils/host-routes";
 import {
+  shouldShowSidebarHostLabels,
   useSidebarWorkspaceEntry,
   type SidebarProjectEntry,
   type SidebarStatusWorkspacePlacement,
@@ -993,7 +994,9 @@ function NewWorkspaceGhostRow({
   const handlePress = useCallback(() => {
     onWorkspacePress?.();
     router.navigate(
-      buildHostNewWorkspaceRoute(worktreeTarget.serverId, worktreeTarget.iconWorkingDir, {
+      buildNewWorkspaceRoute({
+        serverId: worktreeTarget.serverId,
+        sourceDirectory: worktreeTarget.iconWorkingDir,
         displayName,
         projectId: project.projectKey,
       }) as Href,
@@ -1288,7 +1291,9 @@ function ProjectHeaderRow({
     }
     onWorkspacePress?.();
     router.navigate(
-      buildHostNewWorkspaceRoute(worktreeTarget.serverId, worktreeTarget.iconWorkingDir, {
+      buildNewWorkspaceRoute({
+        serverId: worktreeTarget.serverId,
+        sourceDirectory: worktreeTarget.iconWorkingDir,
         displayName,
         projectId: project.projectKey,
       }) as Href,
@@ -1745,13 +1750,14 @@ function WorkspaceRowItem({
   isDragging = false,
   dragHandleProps,
 }: WorkspaceRowItemProps) {
+  const currentPathname = usePathname();
   const handlePress = useCallback(() => {
     if (!workspace.serverId) {
       return;
     }
     onWorkspacePress?.();
-    navigateToWorkspace(workspace.serverId, workspace.workspaceId);
-  }, [onWorkspacePress, workspace.serverId, workspace.workspaceId]);
+    navigateToWorkspace(workspace.serverId, workspace.workspaceId, { currentPathname });
+  }, [currentPathname, onWorkspacePress, workspace.serverId, workspace.workspaceId]);
 
   return (
     <WorkspaceRow
@@ -1876,6 +1882,7 @@ function ProjectBlock({
   creatingWorkspaceIds,
   activeWorkspaceSelection,
   hostLabelByServerId,
+  showHostLabels,
 }: {
   project: SidebarProjectEntry;
   collapsed: boolean;
@@ -1896,6 +1903,7 @@ function ProjectBlock({
   creatingWorkspaceIds: ReadonlySet<string>;
   activeWorkspaceSelection: ActiveWorkspaceSelection | null;
   hostLabelByServerId: ReadonlyMap<string, string>;
+  showHostLabels: boolean;
 }) {
   const rowModel = useMemo(
     () =>
@@ -1925,9 +1933,7 @@ function ProjectBlock({
         <MemoWorkspaceRowItem
           workspace={item}
           subtitle={
-            project.hosts.length > 1
-              ? (hostLabelByServerId.get(item.serverId) ?? item.serverId)
-              : null
+            showHostLabels ? (hostLabelByServerId.get(item.serverId) ?? item.serverId) : null
           }
           shortcutNumber={shortcutIndexByWorkspaceKey.get(item.workspaceKey) ?? null}
           showShortcutBadge={showShortcutBadges}
@@ -1944,7 +1950,7 @@ function ProjectBlock({
     },
     [
       project.projectKind,
-      project.hosts.length,
+      showHostLabels,
       activeWorkspaceSelection,
       creatingWorkspaceIds,
       hostLabelByServerId,
@@ -2112,6 +2118,7 @@ function areProjectBlockPropsEqual(previous: ProjectBlockProps, next: ProjectBlo
     previous.showShortcutBadges === next.showShortcutBadges &&
     previous.shortcutIndexByWorkspaceKey === next.shortcutIndexByWorkspaceKey &&
     previous.hostLabelByServerId === next.hostLabelByServerId &&
+    previous.showHostLabels === next.showHostLabels &&
     previous.parentGestureRef === next.parentGestureRef &&
     previous.onToggleCollapsed === next.onToggleCollapsed &&
     previous.onWorkspacePress === next.onWorkspacePress &&
@@ -2178,6 +2185,7 @@ export function SidebarWorkspaceList({
     }
     return labels;
   }, [hosts]);
+  const showHostLabels = useMemo(() => shouldShowSidebarHostLabels(projects), [projects]);
 
   const content =
     groupMode === "status" ? (
@@ -2186,6 +2194,8 @@ export function SidebarWorkspaceList({
         projectNamesByKey={projectNamesByKey}
         shortcutIndexByWorkspaceKey={shortcutIndexByWorkspaceKey}
         onWorkspacePress={onWorkspacePress}
+        hostLabelByServerId={hostLabelByServerId}
+        showHostLabels={showHostLabels}
       />
     ) : (
       <ProjectModeList
@@ -2199,6 +2209,7 @@ export function SidebarWorkspaceList({
         parentGestureRef={parentGestureRef}
         pathname={pathname}
         hostLabelByServerId={hostLabelByServerId}
+        showHostLabels={showHostLabels}
       />
     );
 
@@ -2210,11 +2221,15 @@ function SidebarStatusModeWrapper({
   projectNamesByKey,
   shortcutIndexByWorkspaceKey: _projectShortcutIndex,
   onWorkspacePress,
+  hostLabelByServerId,
+  showHostLabels,
 }: {
   statusWorkspacePlacements: SidebarStatusWorkspacePlacement[];
   projectNamesByKey: Map<string, string>;
   shortcutIndexByWorkspaceKey: Map<string, number>;
   onWorkspacePress?: () => void;
+  hostLabelByServerId: ReadonlyMap<string, string>;
+  showHostLabels: boolean;
 }) {
   const showShortcutBadges = useShowShortcutBadges();
 
@@ -2225,6 +2240,8 @@ function SidebarStatusModeWrapper({
       shortcutIndexByWorkspaceKey={_projectShortcutIndex}
       showShortcutBadges={showShortcutBadges}
       onWorkspacePress={onWorkspacePress}
+      hostLabelByServerId={hostLabelByServerId}
+      showHostLabels={showHostLabels}
     />
   );
 }
@@ -2240,12 +2257,14 @@ function ProjectModeList({
   parentGestureRef,
   pathname,
   hostLabelByServerId,
+  showHostLabels,
 }: Omit<
   SidebarWorkspaceListProps,
   "statusWorkspacePlacements" | "projectNamesByKey" | "groupMode" | "isRefreshing" | "onRefresh"
 > & {
   pathname: string;
   hostLabelByServerId: ReadonlyMap<string, string>;
+  showHostLabels: boolean;
 }) {
   const { t } = useTranslation();
   const [creatingWorkspaceIds, setCreatingWorkspaceIds] = useState<Set<string>>(() => new Set());
@@ -2433,6 +2452,7 @@ function ProjectModeList({
           creatingWorkspaceIds={creatingWorkspaceIds}
           activeWorkspaceSelection={activeWorkspaceSelection}
           hostLabelByServerId={hostLabelByServerId}
+          showHostLabels={showHostLabels}
         />
       );
     },
@@ -2442,6 +2462,7 @@ function ProjectModeList({
       handleWorktreeCreated,
       handleWorkspaceReorder,
       hostLabelByServerId,
+      showHostLabels,
       onWorkspacePress,
       onToggleProjectCollapsed,
       parentGestureRef,
@@ -2732,7 +2753,7 @@ const styles = StyleSheet.create((theme) => ({
     minHeight: 36,
     marginBottom: theme.spacing[1],
     paddingVertical: theme.spacing[2],
-    paddingLeft: theme.spacing[3] + theme.spacing[3],
+    paddingLeft: theme.spacing[2],
     paddingRight: theme.spacing[3],
     borderRadius: theme.borderRadius.lg,
     flexDirection: "column",

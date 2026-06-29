@@ -21,6 +21,7 @@ import {
   ExternalLink,
   Folder,
   GitBranch,
+  Server,
 } from "lucide-react-native";
 import { GitHubIcon } from "@/components/icons/github-icon";
 import type { Theme } from "@/styles/theme";
@@ -39,8 +40,7 @@ import { useHoverSafeZone } from "@/hooks/use-hover-safe-zone";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { FloatingSurface } from "@/components/ui/floating";
 import { isWeb } from "@/constants/platform";
-import { useHosts, useHostRuntimeSnapshot } from "@/runtime/host-runtime";
-import { formatConnectionStatus } from "@/utils/daemons";
+import { useHosts } from "@/runtime/host-runtime";
 
 interface Rect {
   x: number;
@@ -330,20 +330,16 @@ function WorkspaceHoverCardContent({
 
 const ThemedGitBranch = withUnistyles(GitBranch);
 const ThemedFolder = withUnistyles(Folder);
+const ThemedServer = withUnistyles(Server);
+
+type CardInfoIcon = React.ComponentType<React.ComponentProps<typeof ThemedGitBranch>>;
 
 function HostRow({ serverId }: { serverId: string }): ReactElement | null {
   const hosts = useHosts();
   const host = hosts.find((h) => h.serverId === serverId);
-  const snapshot = useHostRuntimeSnapshot(serverId);
   const label = host?.label?.trim() || serverId;
-  const status = formatConnectionStatus(snapshot?.connectionStatus ?? "idle");
 
-  return (
-    <View style={styles.hostRow}>
-      <Text style={styles.hostRowLabel}>{label}</Text>
-      <Text style={styles.hostRowStatus}>{status}</Text>
-    </View>
-  );
+  return <InfoRow icon={ThemedServer} value={label} testID="hover-card-workspace-host" />;
 }
 
 const ThemedExternalLink = withUnistyles(ExternalLink);
@@ -360,6 +356,25 @@ const successColorMapping = (theme: Theme) => ({ color: theme.colors.statusSucce
 const warningColorMapping = (theme: Theme) => ({ color: theme.colors.statusWarning });
 const dangerColorMapping = (theme: Theme) => ({ color: theme.colors.statusDanger });
 
+function InfoRow({
+  icon: Icon,
+  value,
+  testID,
+}: {
+  icon: CardInfoIcon;
+  value: string;
+  testID: string;
+}) {
+  return (
+    <View style={styles.cardInfoRow}>
+      <Icon size={12} uniProps={foregroundMutedColorMapping} />
+      <Text style={styles.cardInfoText} numberOfLines={1} testID={testID}>
+        {value}
+      </Text>
+    </View>
+  );
+}
+
 function CopyableInfoRow({
   icon: Icon,
   value,
@@ -367,7 +382,7 @@ function CopyableInfoRow({
   copyLabel,
   testID,
 }: {
-  icon: React.ComponentType<React.ComponentProps<typeof ThemedGitBranch>>;
+  icon: CardInfoIcon;
   value: string;
   copyValue: string;
   copyLabel: string;
@@ -566,22 +581,6 @@ const styles = StyleSheet.create((theme) => ({
     fontWeight: theme.fontWeight.normal,
     flex: 1,
     minWidth: 0,
-  },
-  hostRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: theme.spacing[2],
-    paddingHorizontal: theme.spacing[3],
-    paddingBottom: theme.spacing[2],
-  },
-  hostRowLabel: {
-    fontSize: theme.fontSize.xs,
-    color: theme.colors.foregroundMuted,
-  },
-  hostRowStatus: {
-    fontSize: theme.fontSize.xs,
-    color: theme.colors.foregroundMuted,
   },
   cardMetaRow: {
     flexDirection: "row",
