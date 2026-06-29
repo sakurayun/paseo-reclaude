@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.1.116 - 2026-06-29
+
+### Added
+
+- Render Mermaid diagrams inside markdown messages, themed to match the app, with a fullscreen view on web and native
+- Desktop Schedules UI — create, edit, pause, and run scheduled agents from the main sidebar
+
+### Changed
+
+- New theme: the History, Schedules, and Settings pages now float as a rounded white card on the #fafafa shell — an exposed, divider-less header whose height matches the workspace, plus borderless inputs and dropdowns
+
 ## 0.1.115 - 2026-06-26
 
 ### Added
