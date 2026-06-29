@@ -14,7 +14,14 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
-import { FolderPlus, History, SquarePen, X, type LucideIcon } from "lucide-react-native";
+import {
+  CalendarClock,
+  FolderPlus,
+  History,
+  SquarePen,
+  X,
+  type LucideIcon,
+} from "lucide-react-native";
 import type { Theme } from "@/styles/theme";
 
 const foregroundColorMapping = (theme: Theme) => ({ color: theme.colors.foreground });
@@ -24,6 +31,7 @@ export interface SidebarSessionsToolbarLabels {
   newConversation: string;
   openProject: string;
   history: string;
+  schedules: string;
   close: string;
 }
 
@@ -33,6 +41,9 @@ interface SidebarSessionsToolbarProps {
   onOpenProject: () => void;
   onHistory: () => void;
   isHistoryActive?: boolean;
+  /** Desktop (Electron) only: render a Schedules action after History. */
+  onSchedules?: () => void;
+  isSchedulesActive?: boolean;
   /** Compact layout only: render an inline close (X) at the trailing edge. */
   onClose?: () => void;
 }
@@ -52,6 +63,8 @@ export function SidebarSessionsToolbar({
   onOpenProject,
   onHistory,
   isHistoryActive = false,
+  onSchedules,
+  isSchedulesActive = false,
   onClose,
 }: SidebarSessionsToolbarProps) {
   return (
@@ -78,6 +91,16 @@ export function SidebarSessionsToolbar({
         index={2}
         testID="sidebar-toolbar-history"
       />
+      {onSchedules ? (
+        <ToolbarButton
+          icon={CalendarClock}
+          label={labels.schedules}
+          onPress={onSchedules}
+          isActive={isSchedulesActive}
+          index={3}
+          testID="sidebar-toolbar-schedules"
+        />
+      ) : null}
       {onClose ? <CloseButton label={labels.close} onPress={onClose} /> : null}
     </View>
   );
