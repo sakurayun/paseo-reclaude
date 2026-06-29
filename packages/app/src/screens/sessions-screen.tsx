@@ -19,6 +19,11 @@ import { useAgentHistory } from "@/hooks/use-agent-history";
 import { useHosts } from "@/runtime/host-runtime";
 import { type HostProfile } from "@/types/host-connection";
 import { buildOpenProjectRoute } from "@/utils/host-routes";
+import {
+  HEADER_INNER_HEIGHT,
+  HEADER_INNER_HEIGHT_MOBILE,
+  NEW_THEME_HEADER_HEIGHT_DESKTOP,
+} from "@/constants/layout";
 
 export function SessionsScreen() {
   const isFocused = useIsFocused();
@@ -149,48 +154,54 @@ function SessionsScreenContent() {
 
   return (
     <View style={styles.container}>
-      <MenuHeader title={t("sessions.title")} />
-      {showHostFilter ? (
-        <View style={styles.filterContainer}>
-          <SessionsHostFilter
-            hosts={hosts}
-            selectedHost={selectedHost}
-            onSelectHost={setSelectedHost}
+      <MenuHeader
+        title={t("sessions.title")}
+        surfaceStyle={styles.headerSurface}
+        rowStyle={styles.headerRow}
+      />
+      <View style={styles.content}>
+        {showHostFilter ? (
+          <View style={styles.filterContainer}>
+            <SessionsHostFilter
+              hosts={hosts}
+              selectedHost={selectedHost}
+              onSelectHost={setSelectedHost}
+            />
+          </View>
+        ) : null}
+        {isInitialLoad ? (
+          <View style={styles.loadingContainer}>
+            <LoadingSpinner size="large" color={theme.colors.foregroundMuted} />
+          </View>
+        ) : null}
+        {!isInitialLoad && showLoadError ? (
+          <View style={styles.emptyContainer}>
+            <Text style={styles.emptyText}>Unable to load sessions</Text>
+            <Button variant="ghost" onPress={handleRefresh}>
+              Try again
+            </Button>
+          </View>
+        ) : null}
+        {!isInitialLoad && !showLoadError && sortedAgents.length === 0 ? (
+          <View style={styles.emptyContainer}>
+            <Text style={styles.emptyText}>{emptyText}</Text>
+            <Button variant="ghost" leftIcon={ChevronLeft} onPress={handleBack}>
+              Back
+            </Button>
+          </View>
+        ) : null}
+        {!isInitialLoad && !showLoadError && sortedAgents.length > 0 ? (
+          <AgentList
+            agents={sortedAgents}
+            showCheckoutInfo={false}
+            isRefreshing={isManualRefresh}
+            onRefresh={handleRefresh}
+            listFooterComponent={listFooterComponent}
+            showAttentionIndicator={false}
+            showHostColumn
           />
-        </View>
-      ) : null}
-      {isInitialLoad ? (
-        <View style={styles.loadingContainer}>
-          <LoadingSpinner size="large" color={theme.colors.foregroundMuted} />
-        </View>
-      ) : null}
-      {!isInitialLoad && showLoadError ? (
-        <View style={styles.emptyContainer}>
-          <Text style={styles.emptyText}>Unable to load sessions</Text>
-          <Button variant="ghost" onPress={handleRefresh}>
-            Try again
-          </Button>
-        </View>
-      ) : null}
-      {!isInitialLoad && !showLoadError && sortedAgents.length === 0 ? (
-        <View style={styles.emptyContainer}>
-          <Text style={styles.emptyText}>{emptyText}</Text>
-          <Button variant="ghost" leftIcon={ChevronLeft} onPress={handleBack}>
-            Back
-          </Button>
-        </View>
-      ) : null}
-      {!isInitialLoad && !showLoadError && sortedAgents.length > 0 ? (
-        <AgentList
-          agents={sortedAgents}
-          showCheckoutInfo={false}
-          isRefreshing={isManualRefresh}
-          onRefresh={handleRefresh}
-          listFooterComponent={listFooterComponent}
-          showAttentionIndicator={false}
-          showHostColumn
-        />
-      ) : null}
+        ) : null}
+      </View>
     </View>
   );
 }
@@ -198,7 +209,34 @@ function SessionsScreenContent() {
 const styles = StyleSheet.create((theme) => ({
   container: {
     flex: 1,
-    backgroundColor: theme.colors.surface0,
+    backgroundColor: { xs: theme.colors.surface0, md: theme.colors.surfaceShell },
+  },
+  // New theme: the title sits exposed on the #fafafa shell with no bottom
+  // divider (chromeDivider == 0). Classic themes stay byte-identical
+  // (surfaceShell == surface0, chromeDivider == 1).
+  headerSurface: {
+    backgroundColor: { xs: theme.colors.surface0, md: theme.colors.surfaceShell },
+  },
+  headerRow: {
+    borderBottomWidth: theme.shell.chromeDivider,
+    // Match the workspace header's vertical size (shorter on desktop in the new theme).
+    height: {
+      xs: HEADER_INNER_HEIGHT_MOBILE,
+      md: theme.shell.floating ? NEW_THEME_HEADER_HEIGHT_DESKTOP : HEADER_INNER_HEIGHT,
+    },
+  },
+  // New theme: the list floats as a rounded white card on the shell, inset on
+  // all sides (desktop only). Classic = full-bleed transparent (shell tokens
+  // are 0 / 0 / visible), so the screen is unchanged.
+  content: {
+    flex: 1,
+    minHeight: 0,
+    backgroundColor: theme.shell.floating ? theme.colors.surfaceWorkspace : "transparent",
+    marginTop: 0,
+    marginHorizontal: { xs: 0, md: theme.shell.contentMargin },
+    marginBottom: { xs: 0, md: theme.shell.contentMargin },
+    borderRadius: { xs: 0, md: theme.shell.contentRadius },
+    overflow: { xs: "visible", md: theme.shell.contentOverflow },
   },
   filterContainer: {
     paddingHorizontal: {
@@ -219,7 +257,7 @@ const styles = StyleSheet.create((theme) => ({
     paddingHorizontal: theme.spacing[3],
     borderRadius: theme.borderRadius.md,
     backgroundColor: theme.colors.surface1,
-    borderWidth: theme.borderWidth[1],
+    borderWidth: theme.shell.controlBorder,
     borderColor: theme.colors.border,
   },
   filterTriggerHovered: {

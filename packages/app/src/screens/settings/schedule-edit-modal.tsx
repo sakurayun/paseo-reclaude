@@ -385,7 +385,7 @@ const styles = StyleSheet.create((theme) => ({
   textAreaWrapper: {
     backgroundColor: theme.colors.surface2,
     borderRadius: theme.borderRadius.lg,
-    borderWidth: 1,
+    borderWidth: theme.shell.controlBorder,
     borderColor: theme.colors.border,
   },
   selectorWrapper: {
@@ -393,7 +393,7 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     backgroundColor: theme.colors.surface2,
     borderRadius: theme.borderRadius.lg,
-    borderWidth: 1,
+    borderWidth: theme.shell.controlBorder,
     borderColor: theme.colors.border,
     paddingHorizontal: theme.spacing[2],
     paddingVertical: theme.spacing[1],

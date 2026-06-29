@@ -75,7 +75,8 @@ const formInputStyles = StyleSheet.create((theme) => ({
     paddingHorizontal: theme.spacing[4],
     paddingVertical: theme.spacing[3],
     color: theme.colors.foreground,
-    borderWidth: 1,
+    // New theme: borderless at rest (controlBorder == 0); classic keeps the 1px outline.
+    borderWidth: theme.shell.controlBorder,
     borderColor: theme.colors.border,
     fontSize: theme.fontSize.base,
   },

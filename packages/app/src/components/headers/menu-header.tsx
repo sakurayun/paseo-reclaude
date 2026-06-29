@@ -14,6 +14,10 @@ interface MenuHeaderProps {
   title?: string;
   rightContent?: ReactNode;
   borderless?: boolean;
+  // Forwarded to ScreenHeader so callers can expose the header on a different
+  // backdrop (e.g. the new theme's #fafafa shell) and drop the bottom divider.
+  surfaceStyle?: StyleProp<ViewStyle>;
+  rowStyle?: StyleProp<ViewStyle>;
 }
 
 interface SidebarMenuToggleProps {
@@ -90,7 +94,13 @@ export function SidebarMenuToggle({
   );
 }
 
-export function MenuHeader({ title, rightContent, borderless }: MenuHeaderProps) {
+export function MenuHeader({
+  title,
+  rightContent,
+  borderless,
+  surfaceStyle,
+  rowStyle,
+}: MenuHeaderProps) {
   return (
     <ScreenHeader
       left={
@@ -102,6 +112,8 @@ export function MenuHeader({ title, rightContent, borderless }: MenuHeaderProps)
       right={rightContent}
       leftStyle={styles.left}
       borderless={borderless}
+      surfaceStyle={surfaceStyle}
+      rowStyle={rowStyle}
     />
   );
 }

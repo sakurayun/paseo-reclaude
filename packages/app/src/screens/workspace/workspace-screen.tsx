@@ -169,6 +169,7 @@ import { findAdjacentPane } from "@/utils/split-navigation";
 import {
   HEADER_INNER_HEIGHT,
   HEADER_INNER_HEIGHT_MOBILE,
+  NEW_THEME_HEADER_HEIGHT_DESKTOP,
   useIsCompactFormFactor,
   supportsDesktopPaneSplits,
 } from "@/constants/layout";
@@ -3816,7 +3817,10 @@ const styles = StyleSheet.create((theme) => ({
   workspaceHeaderRow: {
     borderBottomWidth: { xs: theme.borderWidth[1], md: theme.shell.chromeDivider },
     // New theme: a shorter, tighter header on desktop. Classic + mobile unchanged.
-    height: { xs: HEADER_INNER_HEIGHT_MOBILE, md: theme.shell.floating ? 40 : HEADER_INNER_HEIGHT },
+    height: {
+      xs: HEADER_INNER_HEIGHT_MOBILE,
+      md: theme.shell.floating ? NEW_THEME_HEADER_HEIGHT_DESKTOP : HEADER_INNER_HEIGHT,
+    },
   },
   // The floating content card — tabs + panes only (the header is a sibling above
   // it, exposed on the underlay). The card only exists on desktop (md+); compact

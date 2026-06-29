@@ -24,6 +24,11 @@ import { useToast } from "@/contexts/toast-context";
 import { toErrorMessage } from "@/utils/error-messages";
 import { ICON_SIZE } from "@/styles/theme";
 import type { Theme } from "@/styles/theme";
+import {
+  HEADER_INNER_HEIGHT,
+  HEADER_INNER_HEIGHT_MOBILE,
+  NEW_THEME_HEADER_HEIGHT_DESKTOP,
+} from "@/constants/layout";
 
 const ThemedPlus = withUnistyles(Plus);
 const ThemedPlay = withUnistyles(Play);
@@ -151,31 +156,35 @@ function SchedulesScreenContent() {
       <MenuHeader
         title={t("settings.hostSections.schedules")}
         rightContent={isDesktop ? addButton : undefined}
+        surfaceStyle={styles.headerSurface}
+        rowStyle={styles.headerRow}
       />
-      {isDesktop && showHostFilter && resolvedServerId ? (
-        <View style={styles.filterContainer}>
-          <SchedulesHostFilter
-            hosts={hosts}
-            selectedHost={resolvedServerId}
-            onSelectHost={setSelectedHost}
-          />
-        </View>
-      ) : null}
+      <View style={styles.content}>
+        {isDesktop && showHostFilter && resolvedServerId ? (
+          <View style={styles.filterContainer}>
+            <SchedulesHostFilter
+              hosts={hosts}
+              selectedHost={resolvedServerId}
+              onSelectHost={setSelectedHost}
+            />
+          </View>
+        ) : null}
 
-      <SchedulesBody
-        isDesktop={isDesktop}
-        serverId={resolvedServerId}
-        isConnected={isConnected}
-        schedules={schedules}
-        isLoading={isLoading}
-        error={error}
-        onEdit={handleEdit}
-        onViewRuns={handleViewRuns}
-        onPause={mutations.pause}
-        onResume={mutations.resume}
-        onRunOnce={mutations.runOnce}
-        onDelete={mutations.remove}
-      />
+        <SchedulesBody
+          isDesktop={isDesktop}
+          serverId={resolvedServerId}
+          isConnected={isConnected}
+          schedules={schedules}
+          isLoading={isLoading}
+          error={error}
+          onEdit={handleEdit}
+          onViewRuns={handleViewRuns}
+          onPause={mutations.pause}
+          onResume={mutations.resume}
+          onRunOnce={mutations.runOnce}
+          onDelete={mutations.remove}
+        />
+      </View>
 
       {resolvedServerId ? (
         <ScheduleEditModal
@@ -633,7 +642,34 @@ function RunRow({ run }: { run: ScheduleRun }) {
 const styles = StyleSheet.create((theme) => ({
   container: {
     flex: 1,
-    backgroundColor: theme.colors.surface0,
+    backgroundColor: { xs: theme.colors.surface0, md: theme.colors.surfaceShell },
+  },
+  // New theme: the title sits exposed on the #fafafa shell with no bottom
+  // divider (chromeDivider == 0). Classic themes stay byte-identical
+  // (surfaceShell == surface0, chromeDivider == 1).
+  headerSurface: {
+    backgroundColor: { xs: theme.colors.surface0, md: theme.colors.surfaceShell },
+  },
+  headerRow: {
+    borderBottomWidth: theme.shell.chromeDivider,
+    // Match the workspace header's vertical size (shorter on desktop in the new theme).
+    height: {
+      xs: HEADER_INNER_HEIGHT_MOBILE,
+      md: theme.shell.floating ? NEW_THEME_HEADER_HEIGHT_DESKTOP : HEADER_INNER_HEIGHT,
+    },
+  },
+  // New theme: the schedules content floats as a rounded white card on the
+  // shell, inset on all sides (desktop only). Classic = full-bleed transparent
+  // (shell tokens are 0 / 0 / visible), so the screen is unchanged.
+  content: {
+    flex: 1,
+    minHeight: 0,
+    backgroundColor: theme.shell.floating ? theme.colors.surfaceWorkspace : "transparent",
+    marginTop: 0,
+    marginHorizontal: { xs: 0, md: theme.shell.contentMargin },
+    marginBottom: { xs: 0, md: theme.shell.contentMargin },
+    borderRadius: { xs: 0, md: theme.shell.contentRadius },
+    overflow: { xs: "visible", md: theme.shell.contentOverflow },
   },
   filterContainer: {
     paddingHorizontal: {
@@ -654,7 +690,7 @@ const styles = StyleSheet.create((theme) => ({
     paddingHorizontal: theme.spacing[3],
     borderRadius: theme.borderRadius.md,
     backgroundColor: theme.colors.surface1,
-    borderWidth: theme.borderWidth[1],
+    borderWidth: theme.shell.controlBorder,
     borderColor: theme.colors.border,
   },
   filterTriggerHovered: {
@@ -709,7 +745,8 @@ const styles = StyleSheet.create((theme) => ({
   runRow: {
     gap: theme.spacing[1],
     paddingBottom: theme.spacing[3],
-    borderBottomWidth: 1,
+    // New theme: drop the row divider (chromeDivider == 0); classic keeps it.
+    borderBottomWidth: theme.shell.chromeDivider,
     borderBottomColor: theme.colors.border,
   },
   runHeader: {

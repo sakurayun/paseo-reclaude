@@ -672,6 +672,7 @@ interface CommonTheme {
     contentRadius: number; // content card corner radius
     contentOverflow: "visible" | "hidden"; // clip card children to the radius
     chromeDivider: number; // chrome divider border width — sidebars + workspace header (0 hides them)
+    controlBorder: number; // resting outline width for inputs / dropdown triggers (0 = borderless in the new theme)
     floating: boolean; // true in the new theme — lets stylesheets branch the floating look
   };
 }
@@ -692,6 +693,7 @@ const commonTheme: CommonTheme = {
     contentRadius: BORDER_RADIUS.none,
     contentOverflow: "visible",
     chromeDivider: BORDER_WIDTH[1],
+    controlBorder: BORDER_WIDTH[1],
     floating: false,
   },
 };
@@ -789,6 +791,7 @@ const newThemeShell = {
   contentRadius: BORDER_RADIUS.xl, // 12
   contentOverflow: "hidden", // clip tab row + panes to the rounded corners
   chromeDivider: BORDER_WIDTH[0], // 0 — no sidebar / header divider lines
+  controlBorder: BORDER_WIDTH[0], // 0 — borderless inputs / dropdown triggers
   floating: true,
 } as const;
 

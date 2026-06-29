@@ -60,12 +60,14 @@ The whole shift is **token-driven**, so it reacts through Unistyles with no Reac
 re-render and is auto-gated to the active theme — classic themes are byte-identical.
 
 - **`theme.shell`** (layout tokens, on `commonTheme` in `theme.ts`):
-  `contentMargin`, `contentRadius`, `contentOverflow`, `chromeDivider`, and
-  `floating` — a boolean (`false` classic / `true` newTheme) that lets any
-  stylesheet branch the floating look directly. Classic =
-  `0 / 0 / "visible" / 1 / false`; `newTheme` overrides to
-  `8 / 12 / "hidden" / 0 / true`. The override is applied where `newTheme` is
-  exported: `{ ...buildLightTheme(...), shell: newThemeShell }`.
+  `contentMargin`, `contentRadius`, `contentOverflow`, `chromeDivider`,
+  `controlBorder`, and `floating` — a boolean (`false` classic / `true` newTheme)
+  that lets any stylesheet branch the floating look directly. Classic =
+  `0 / 0 / "visible" / 1 / 1 / false`; `newTheme` overrides to
+  `8 / 12 / "hidden" / 0 / 0 / true`. The override is applied where `newTheme` is
+  exported: `{ ...buildLightTheme(...), shell: newThemeShell }`. `controlBorder`
+  is the resting outline width for inputs / dropdown triggers (0 = borderless in
+  the new theme; see "Control outlines" below).
 - **`colors.surfaceShell`** — the shell underlay (revealed in the card's margins)
   and the exposed-header surface. Equals each theme's `surface0` in classic (so it
   is invisible behind the flush classic content and keeps the header
@@ -202,10 +204,17 @@ border (`sidebarStyles.desktopContainer`) and the back-row divider
 groups is render-gated `{theme.shell.floating ? null : <SidebarSeparator />}` (a
 render gate rather than a 0px border, so the element doesn't linger in the tree).
 
-**Out of scope on purpose:** functional control outlines stay — text inputs,
-dropdown/menu triggers, color swatches, `<StatusBadge>` pills, selection chips.
-Only the structural card/divider borders were removed. A future pass could soften
-those control outlines too if a fully borderless look is wanted.
+**Control outlines — borderless via `theme.shell.controlBorder`.** The resting 1px
+outline on **text inputs** (`FormTextInput`, `form-field.tsx`) and **dropdown
+triggers** (the schedules/sessions host filters' `filterTrigger`, and the schedule
+editor's model-selector `selectorWrapper` + `textAreaWrapper`) is now driven by
+`theme.shell.controlBorder` (`1` classic / `0` newTheme), so they read as
+borderless surface-filled fields in the new theme while classic keeps the outline.
+The surface fill (`surface1` / `surface2`) is what distinguishes them once the
+border is gone. Still keeping their outlines for now (extend `controlBorder` to
+them for a fully borderless pass): color swatches, `<StatusBadge>` pills, selection
+chips, the cadence weekday toggles (`DayButton`), and the other settings dropdown
+triggers (`Combobox`/`DropdownMenu` in model-gateways, appearance, etc.).
 
 ## Left sidebar — flat sessions
 

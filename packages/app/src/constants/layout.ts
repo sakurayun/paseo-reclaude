@@ -8,6 +8,9 @@ export const FOOTER_HEIGHT = 75;
 // This ensures both headers have the same visual height
 export const HEADER_INNER_HEIGHT = 48;
 export const HEADER_INNER_HEIGHT_MOBILE = 56;
+// New theme: shorter, tighter desktop header exposed on the #fafafa shell.
+// Classic + mobile keep HEADER_INNER_HEIGHT / HEADER_INNER_HEIGHT_MOBILE.
+export const NEW_THEME_HEADER_HEIGHT_DESKTOP = 40;
 export const WORKSPACE_SECONDARY_HEADER_HEIGHT = 36;
 export const HEADER_TOP_PADDING_MOBILE = 8;
 

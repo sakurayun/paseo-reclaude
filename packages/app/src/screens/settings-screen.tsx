@@ -98,7 +98,12 @@ import {
 } from "@/screens/settings/host-page";
 import ProjectsScreen from "@/screens/projects-screen";
 import ProjectSettingsScreen from "@/screens/project-settings-screen";
-import { useIsCompactFormFactor } from "@/constants/layout";
+import {
+  HEADER_INNER_HEIGHT,
+  HEADER_INNER_HEIGHT_MOBILE,
+  NEW_THEME_HEADER_HEIGHT_DESKTOP,
+  useIsCompactFormFactor,
+} from "@/constants/layout";
 import { useLocalDaemonServerId } from "@/hooks/use-is-local-daemon";
 import { useWebScrollbarStyle } from "@/hooks/use-web-scrollbar-style";
 import {
@@ -1657,6 +1662,11 @@ const desktopStyles = StyleSheet.create((theme) => ({
   },
   detailHeaderRow: {
     borderBottomWidth: theme.shell.chromeDivider,
+    // Match the workspace header's vertical size (shorter on desktop in the new theme).
+    height: {
+      xs: HEADER_INNER_HEIGHT_MOBILE,
+      md: theme.shell.floating ? NEW_THEME_HEADER_HEIGHT_DESKTOP : HEADER_INNER_HEIGHT,
+    },
   },
   // The floating settings card — the scrollable content sits inside it while the
   // header is a sibling above. shell tokens are 0/0/visible in classic themes
@@ -1667,7 +1677,8 @@ const desktopStyles = StyleSheet.create((theme) => ({
     flex: 1,
     minHeight: 0,
     backgroundColor: theme.colors.surfaceWorkspace,
-    marginTop: theme.shell.contentMargin,
+    // Flush to the exposed header (no top gap); inset on the other three sides.
+    marginTop: 0,
     marginHorizontal: theme.shell.contentMargin,
     marginBottom: theme.shell.contentMargin,
     borderRadius: theme.shell.contentRadius,
