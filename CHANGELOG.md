@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.1.118 - 2026-06-29
+
+### Added
+
+- Sidebar: filter projects by name with an inline search field in the Workspaces header (the query persists across restarts)
+- Browser pane: inspect, annotate, and grab a page element for the agent, and switch between device sizes
+
+### Fixed
+
+- User message bubbles no longer overflow their left edge when a single line is very long and unbreakable
+
 ## 0.1.117 - 2026-06-29
 
 ### Added
