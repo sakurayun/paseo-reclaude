@@ -1074,6 +1074,7 @@ export const ptBR: TranslationResources = {
     },
     sessionsList: {
       newConversation: "New chat",
+      newAgentInWorkspace: "New agent in this workspace",
       history: "History",
       empty: "No sessions yet",
       unknownWorkspace: "Other",

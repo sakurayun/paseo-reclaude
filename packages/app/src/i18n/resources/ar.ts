@@ -1050,6 +1050,7 @@ export const ar: TranslationResources = {
     },
     sessionsList: {
       newConversation: "محادثة جديدة",
+      newAgentInWorkspace: "وكيل جديد في مساحة العمل هذه",
       history: "السجل",
       empty: "لا توجد جلسات بعد",
       unknownWorkspace: "أخرى",

@@ -37,9 +37,11 @@ import {
   ChevronRight,
   Folder,
   FolderGit2,
+  Plus,
   Server,
   SquarePen,
 } from "lucide-react-native";
+import { router } from "expo-router";
 import { isNative as platformIsNative } from "@/constants/platform";
 import {
   useSidebarSessionsList,
@@ -76,6 +78,7 @@ import {
   type ConnectionStatusTone,
 } from "@/utils/daemons";
 import type { HostProfile } from "@/types/host-connection";
+import { buildNewWorkspaceRoute } from "@/utils/host-routes";
 
 interface SidebarSessionsListProps {
   serverId: string | null;
@@ -100,6 +103,7 @@ const ThemedFolderGit = withUnistyles(FolderGit2);
 const ThemedGitHubIcon = withUnistyles(GitHubIcon);
 const ThemedServer = withUnistyles(Server);
 const ThemedSquarePen = withUnistyles(SquarePen);
+const ThemedPlus = withUnistyles(Plus);
 
 /** A session counts as "kept visible while collapsed" until it is fully done. */
 function isSessionActive(session: SidebarSessionEntry): boolean {
@@ -536,6 +540,64 @@ function HostNewChatButton({
   );
 }
 
+/** Trailing "+" on a project group header: open the new-agent page preselected to that project. */
+function GroupNewAgentButton({
+  onPress,
+  label,
+  reduceMotion,
+  testID,
+}: {
+  onPress: () => void;
+  label: string;
+  reduceMotion: boolean;
+  testID: string;
+}) {
+  const scale = useSharedValue(1);
+  const scaleStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
+
+  const handlePressIn = useCallback(() => {
+    if (reduceMotion) return;
+    scale.value = withTiming(0.9, { duration: 90 });
+  }, [reduceMotion, scale]);
+  const handlePressOut = useCallback(() => {
+    if (reduceMotion) {
+      scale.value = 1;
+      return;
+    }
+    scale.value = withSpring(1, { damping: 18, stiffness: 320, mass: 0.5 });
+  }, [reduceMotion, scale]);
+
+  const buttonStyle = useCallback(
+    ({ hovered, pressed }: PressableStateCallbackType & { hovered?: boolean }) => [
+      styles.groupNewAgentButton,
+      (Boolean(hovered) || pressed) && styles.groupNewAgentButtonHovered,
+    ],
+    [],
+  );
+
+  return (
+    <Animated.View style={scaleStyle}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={label}
+        testID={testID}
+        hitSlop={8}
+        style={buttonStyle}
+        onPress={onPress}
+        onPressIn={handlePressIn}
+        onPressOut={handlePressOut}
+      >
+        {({ hovered, pressed }) => (
+          <ThemedPlus
+            size={14}
+            uniProps={hovered || pressed ? foregroundColorMapping : foregroundMutedColorMapping}
+          />
+        )}
+      </Pressable>
+    </Animated.View>
+  );
+}
+
 function HostStatusDot({
   status,
   reduceMotion,
@@ -666,6 +728,26 @@ const SidebarSessionsGroupView = memo(function SidebarSessionsGroupView({
     onToggle(group.key);
   }, [group.key, onToggle]);
 
+  const reduceMotion = useReducedMotion();
+
+  // Open the new-agent page with this project preselected. projectId pins the
+  // identity (resolveInitialWorkspaceProject re-hydrates it against the live
+  // project list); a non-empty sourceDirectory is required for the route to
+  // build a project candidate at all, so fall back to a session's cwd.
+  const handleNewAgent = useCallback(() => {
+    if (!group.projectKey || !serverId) {
+      return;
+    }
+    router.navigate(
+      buildNewWorkspaceRoute({
+        serverId,
+        projectId: group.projectKey,
+        displayName: baseLabel ?? displayLabel,
+        sourceDirectory: group.sessions[0]?.cwd ?? undefined,
+      }),
+    );
+  }, [baseLabel, displayLabel, group.projectKey, group.sessions, serverId]);
+
   const handleRenameSubmit = useCallback(
     async (nextTitle: string) => {
       if (!group.projectKey || !serverId) {
@@ -703,45 +785,59 @@ const SidebarSessionsGroupView = memo(function SidebarSessionsGroupView({
 
   return (
     <View style={styles.group}>
-      <View
-        style={styles.groupHeaderHoverTracker}
-        onPointerEnter={handlePointerEnter}
-        onPointerLeave={handlePointerLeave}
-      >
-        <ContextMenu>
-          <ContextMenuTrigger
-            accessibilityRole="button"
-            accessibilityLabel={displayLabel}
-            accessibilityState={expandedState(expanded)}
-            style={headerStyle}
-            onPress={handleToggle}
-            testID={`sidebar-sessions-group-${group.key}`}
-          >
-            <View style={styles.groupHeaderLeadingSlot}>
-              <GroupLeadingIcon hovered={isHovered} expanded={expanded} iconKind={group.iconKind} />
-            </View>
-            <Text style={styles.groupLabel} numberOfLines={1}>
-              {displayLabel}
-              {showBaseLabel ? <Text style={styles.groupBaseLabel}> {baseLabel}</Text> : null}
-            </Text>
-            <Text style={styles.groupCount}>{group.sessions.length}</Text>
-          </ContextMenuTrigger>
-          {canRename ? (
-            <ContextMenuContent
-              align="start"
-              width={200}
-              mobileMode="sheet"
-              testID={`sidebar-sessions-group-context-${group.key}`}
+      <View style={a.groupHeaderRow}>
+        <View
+          style={styles.groupHeaderHoverTracker}
+          onPointerEnter={handlePointerEnter}
+          onPointerLeave={handlePointerLeave}
+        >
+          <ContextMenu>
+            <ContextMenuTrigger
+              accessibilityRole="button"
+              accessibilityLabel={displayLabel}
+              accessibilityState={expandedState(expanded)}
+              style={headerStyle}
+              onPress={handleToggle}
+              testID={`sidebar-sessions-group-${group.key}`}
             >
-              <ContextMenuItem
-                testID={`sidebar-sessions-group-context-${group.key}-rename`}
-                onSelect={handleOpenRename}
+              <View style={styles.groupHeaderLeadingSlot}>
+                <GroupLeadingIcon
+                  hovered={isHovered}
+                  expanded={expanded}
+                  iconKind={group.iconKind}
+                />
+              </View>
+              <Text style={styles.groupLabel} numberOfLines={1}>
+                {displayLabel}
+                {showBaseLabel ? <Text style={styles.groupBaseLabel}> {baseLabel}</Text> : null}
+              </Text>
+              <Text style={styles.groupCount}>{group.sessions.length}</Text>
+            </ContextMenuTrigger>
+            {canRename ? (
+              <ContextMenuContent
+                align="start"
+                width={200}
+                mobileMode="sheet"
+                testID={`sidebar-sessions-group-context-${group.key}`}
               >
-                {t("settings.project.rename.renameLabel")}
-              </ContextMenuItem>
-            </ContextMenuContent>
-          ) : null}
-        </ContextMenu>
+                <ContextMenuItem
+                  testID={`sidebar-sessions-group-context-${group.key}-rename`}
+                  onSelect={handleOpenRename}
+                >
+                  {t("settings.project.rename.renameLabel")}
+                </ContextMenuItem>
+              </ContextMenuContent>
+            ) : null}
+          </ContextMenu>
+        </View>
+        {canRename ? (
+          <GroupNewAgentButton
+            onPress={handleNewAgent}
+            label={t("sidebar.sessionsList.newAgentInWorkspace")}
+            reduceMotion={reduceMotion}
+            testID={`sidebar-sessions-group-${group.key}-new-agent`}
+          />
+        ) : null}
       </View>
       {visibleSessions.length > 0 ? (
         <View style={styles.groupSessions}>
@@ -806,6 +902,11 @@ const a = RNStyleSheet.create({
     width: 14,
     alignItems: "center",
     justifyContent: "center",
+  },
+  // Group header: collapsible toggle area + trailing "+" new-agent button.
+  groupHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
   },
 });
 
@@ -890,9 +991,12 @@ const styles = StyleSheet.create((theme) => ({
   group: {
     marginBottom: theme.spacing[1],
   },
-  // Plain hover-tracker wrapper — nothing but a relative box (see docs/hover.md).
+  // Plain hover-tracker wrapper — a relative box that flex-grows so the trailing
+  // "+" button sits at the far right (see docs/hover.md).
   groupHeaderHoverTracker: {
     position: "relative",
+    flex: 1,
+    minWidth: 0,
   },
   groupHeader: {
     flexDirection: "row",
@@ -904,6 +1008,19 @@ const styles = StyleSheet.create((theme) => ({
     borderRadius: theme.shell.contentRadius,
   },
   groupHeaderHovered: {
+    backgroundColor: theme.colors.surfaceSidebarHover,
+  },
+  // Trailing "+" on a project group header — sized for the 32px group row.
+  groupNewAgentButton: {
+    width: 24,
+    height: 24,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: theme.borderRadius.md,
+    marginLeft: theme.spacing[1],
+    flexShrink: 0,
+  },
+  groupNewAgentButtonHovered: {
     backgroundColor: theme.colors.surfaceSidebarHover,
   },
   // Fixed slot so the folder↔chevron swap on hover never shifts the row.

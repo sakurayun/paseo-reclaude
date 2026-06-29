@@ -1040,6 +1040,7 @@ export const zhCN: TranslationResources = {
     },
     sessionsList: {
       newConversation: "新建对话",
+      newAgentInWorkspace: "在此工作区新建 Agent",
       history: "历史会话",
       empty: "暂无会话",
       unknownWorkspace: "其他",

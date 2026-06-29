@@ -1068,6 +1068,7 @@ export const ja: TranslationResources = {
     },
     sessionsList: {
       newConversation: "新規チャット",
+      newAgentInWorkspace: "このワークスペースで新規エージェント",
       history: "履歴",
       empty: "セッションはまだありません",
       unknownWorkspace: "その他",

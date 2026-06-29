@@ -1086,6 +1086,7 @@ export const fr: TranslationResources = {
     },
     sessionsList: {
       newConversation: "Nouveau chat",
+      newAgentInWorkspace: "Nouvel agent dans cet espace de travail",
       history: "Historique",
       empty: "Aucune session pour le moment",
       unknownWorkspace: "Autre",

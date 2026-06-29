@@ -1077,6 +1077,7 @@ export const ru: TranslationResources = {
     },
     sessionsList: {
       newConversation: "Новый чат",
+      newAgentInWorkspace: "Новый агент в этом рабочем пространстве",
       history: "История",
       empty: "Пока нет сессий",
       unknownWorkspace: "Прочее",
