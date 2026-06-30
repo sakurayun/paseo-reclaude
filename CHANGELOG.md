@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.1.119 - 2026-06-30
+
+### Changed
+
+- New-agent tabs now reuse an empty draft tab instead of opening duplicate blank tabs
+- New theme sidebar "+" actions now open a new agent from the correct project group
+- Opening projects from nested folders now finds parent Git workspaces more reliably
+- Desktop update checks now show when an update is found
+- ACP provider presets now use the latest DimCode, Factory Droid, fast-agent, Nova, and Qoder CLI releases
+
 ## 0.1.118 - 2026-06-29
 
 ### Added
