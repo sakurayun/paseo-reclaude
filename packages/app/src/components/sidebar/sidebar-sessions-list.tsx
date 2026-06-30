@@ -41,7 +41,6 @@ import {
   Server,
   SquarePen,
 } from "lucide-react-native";
-import { router } from "expo-router";
 import { isNative as platformIsNative } from "@/constants/platform";
 import {
   useSidebarSessionsList,
@@ -49,6 +48,7 @@ import {
 } from "@/hooks/use-sidebar-sessions-list";
 import {
   groupSidebarSessionsByProject,
+  resolveSidebarSessionGroupWorkspaceTarget,
   type SidebarSessionGroup,
 } from "@/hooks/sidebar-sessions-grouping";
 import { SidebarSessionRow } from "@/components/sidebar/sidebar-workspace-sessions";
@@ -78,7 +78,8 @@ import {
   type ConnectionStatusTone,
 } from "@/utils/daemons";
 import type { HostProfile } from "@/types/host-connection";
-import { buildNewWorkspaceRoute } from "@/utils/host-routes";
+import { usePanelStore } from "@/stores/panel-store";
+import { navigateToPreparedWorkspaceTab } from "@/utils/workspace-navigation";
 
 interface SidebarSessionsListProps {
   serverId: string | null;
@@ -711,6 +712,11 @@ const SidebarSessionsGroupView = memo(function SidebarSessionsGroupView({
   const baseLabel = group.baseLabel.length > 0 ? group.baseLabel : null;
   const showBaseLabel = Boolean(baseLabel && displayLabel !== baseLabel);
   const canRename = group.projectKey !== null && serverId !== null;
+  const newAgentTarget = useMemo(
+    () => resolveSidebarSessionGroupWorkspaceTarget(group, serverId),
+    [group, serverId],
+  );
+  const canOpenNewAgent = canRename && newAgentTarget !== null;
 
   // Hover lives on a plain View (canonical pattern, see docs/hover.md): the
   // header's leading icon is a folder by default and swaps to the collapse
@@ -730,23 +736,18 @@ const SidebarSessionsGroupView = memo(function SidebarSessionsGroupView({
 
   const reduceMotion = useReducedMotion();
 
-  // Open the new-agent page with this project preselected. projectId pins the
-  // identity (resolveInitialWorkspaceProject re-hydrates it against the live
-  // project list); a non-empty sourceDirectory is required for the route to
-  // build a project candidate at all, so fall back to a session's cwd.
+  // Open a new-agent draft tab in the group's latest known workspace instead
+  // of sending the user through the New workspace route.
   const handleNewAgent = useCallback(() => {
-    if (!group.projectKey || !serverId) {
+    if (!newAgentTarget) {
       return;
     }
-    router.navigate(
-      buildNewWorkspaceRoute({
-        serverId,
-        projectId: group.projectKey,
-        displayName: baseLabel ?? displayLabel,
-        sourceDirectory: group.sessions[0]?.cwd ?? undefined,
-      }),
-    );
-  }, [baseLabel, displayLabel, group.projectKey, group.sessions, serverId]);
+    navigateToPreparedWorkspaceTab({
+      ...newAgentTarget,
+      target: { kind: "draft", draftId: "new" },
+    });
+    usePanelStore.getState().showMobileAgent();
+  }, [newAgentTarget]);
 
   const handleRenameSubmit = useCallback(
     async (nextTitle: string) => {
@@ -830,7 +831,7 @@ const SidebarSessionsGroupView = memo(function SidebarSessionsGroupView({
             ) : null}
           </ContextMenu>
         </View>
-        {canRename ? (
+        {canOpenNewAgent ? (
           <GroupNewAgentButton
             onPress={handleNewAgent}
             label={t("sidebar.sessionsList.newAgentInWorkspace")}

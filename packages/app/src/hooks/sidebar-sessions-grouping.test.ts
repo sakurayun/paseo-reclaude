@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import type { ProjectPlacementPayload } from "@getpaseo/protocol/messages";
-import { groupSidebarSessionsByProject } from "./sidebar-sessions-grouping";
+import {
+  groupSidebarSessionsByProject,
+  resolveSidebarSessionGroupWorkspaceTarget,
+} from "./sidebar-sessions-grouping";
 import type { SidebarSessionEntry } from "./use-sidebar-sessions-list";
 
 function placement(input: {
@@ -282,5 +285,63 @@ describe("groupSidebarSessionsByProject", () => {
     expect(groups[0].label).toBe("");
     expect(groups[0].workspaceId).toBeNull();
     expect(groups[0].sessions.map((s) => s.id)).toEqual(["a"]);
+  });
+});
+
+describe("resolveSidebarSessionGroupWorkspaceTarget", () => {
+  it("opens the newest session workspace in a project group", () => {
+    const [group] = groupSidebarSessionsByProject([
+      session({
+        id: "newer",
+        recencyMs: 30,
+        workspaceId: "ws-newer",
+        projectPlacement: placement({ projectKey: "p" }),
+      }),
+      session({
+        id: "older",
+        recencyMs: 10,
+        workspaceId: "ws-older",
+        projectPlacement: placement({ projectKey: "p" }),
+      }),
+    ]);
+
+    expect(resolveSidebarSessionGroupWorkspaceTarget(group, "server")).toEqual({
+      serverId: "server",
+      workspaceId: "ws-newer",
+    });
+  });
+
+  it("skips workspace-less history entries instead of routing to the new workspace screen", () => {
+    const [group] = groupSidebarSessionsByProject([
+      session({
+        id: "history",
+        recencyMs: 30,
+        projectPlacement: placement({ projectKey: "p" }),
+      }),
+      session({
+        id: "known-workspace",
+        recencyMs: 10,
+        workspaceId: "ws-known",
+        projectPlacement: placement({ projectKey: "p" }),
+      }),
+    ]);
+
+    expect(resolveSidebarSessionGroupWorkspaceTarget(group, "server")).toEqual({
+      serverId: "server",
+      workspaceId: "ws-known",
+    });
+  });
+
+  it("returns null when no workspace can host the new-agent tab", () => {
+    const [group] = groupSidebarSessionsByProject([
+      session({
+        id: "history",
+        recencyMs: 30,
+        projectPlacement: placement({ projectKey: "p" }),
+      }),
+    ]);
+
+    expect(resolveSidebarSessionGroupWorkspaceTarget(group, "server")).toBeNull();
+    expect(resolveSidebarSessionGroupWorkspaceTarget(group, " ")).toBeNull();
   });
 });

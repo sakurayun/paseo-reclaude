@@ -243,6 +243,9 @@ one conversation), with a **3-button top toolbar**: new conversation
 - **Rows** — reuse `SidebarSessionRow` (`sidebar-workspace-sessions.tsx`) with
   `variant="flat"` → hover/press radius = `theme.shell.contentRadius` (12, the
   content-card radius), plus `subtitle` (project) and `timeOverride` (recencyAt).
+  The project-group trailing `+` no longer routes to `/new`: it resolves the
+  group's latest session with a workspace id, navigates straight to that
+  workspace screen, and opens a focused draft/new-agent tab in the top tab row.
 - **Components** — `components/sidebar/sidebar-sessions-toolbar.tsx` (icon-over-
   label buttons, press `scale 0.96`, `FadeInDown` stagger; inline close on
   compact) and `components/sidebar/sidebar-sessions-list.tsx`.

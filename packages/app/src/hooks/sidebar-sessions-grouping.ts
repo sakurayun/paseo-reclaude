@@ -34,6 +34,19 @@ export interface SidebarSessionGroup {
   sessions: SidebarSessionEntry[];
 }
 
+export interface SidebarSessionGroupWorkspaceTarget {
+  serverId: string;
+  workspaceId: string;
+}
+
+function trimNonEmpty(value: string | null | undefined): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
 function resolveProjectKey(session: SidebarSessionEntry): string | null {
   const projectKey = session.projectPlacement?.projectKey?.trim();
   return projectKey && projectKey.length > 0 ? projectKey : null;
@@ -149,4 +162,23 @@ export function groupSidebarSessionsByProject(
     }
   }
   return Array.from(groups.values());
+}
+
+export function resolveSidebarSessionGroupWorkspaceTarget(
+  group: SidebarSessionGroup,
+  serverId: string | null,
+): SidebarSessionGroupWorkspaceTarget | null {
+  const normalizedServerId = trimNonEmpty(serverId);
+  if (!normalizedServerId) {
+    return null;
+  }
+
+  for (const session of group.sessions) {
+    const workspaceId = trimNonEmpty(session.workspaceId);
+    if (workspaceId) {
+      return { serverId: normalizedServerId, workspaceId };
+    }
+  }
+
+  return null;
 }
