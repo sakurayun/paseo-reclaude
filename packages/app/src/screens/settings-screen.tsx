@@ -707,6 +707,9 @@ function DesktopAppUpdateRow() {
       });
   }, [installUpdate, isDesktopApp, t]);
 
+  const isUpdateReady = availableUpdate?.readyToInstall === true;
+  const readyUpdateVersion = isUpdateReady ? availableUpdate?.latestVersion : null;
+
   if (!isDesktopApp) {
     return null;
   }
@@ -731,10 +734,10 @@ function DesktopAppUpdateRow() {
         <View style={settingsStyles.rowContent}>
           <Text style={settingsStyles.rowTitle}>{t("settings.about.updates.label")}</Text>
           <Text style={settingsStyles.rowHint}>{statusText}</Text>
-          {availableUpdate?.latestVersion ? (
+          {readyUpdateVersion ? (
             <Text style={settingsStyles.rowHint}>
               {t("settings.about.updates.readyToInstall", {
-                version: formatVersionWithPrefix(availableUpdate.latestVersion),
+                version: formatVersionWithPrefix(readyUpdateVersion),
               })}
             </Text>
           ) : null}
@@ -753,9 +756,9 @@ function DesktopAppUpdateRow() {
             variant="default"
             size="sm"
             onPress={handleInstallUpdate}
-            disabled={isChecking || isInstalling || !availableUpdate}
+            disabled={isChecking || isInstalling || !isUpdateReady}
           >
-            {getUpdateButtonLabel(t, isInstalling, availableUpdate?.latestVersion)}
+            {getUpdateButtonLabel(t, isInstalling, readyUpdateVersion)}
           </Button>
         </View>
       </View>

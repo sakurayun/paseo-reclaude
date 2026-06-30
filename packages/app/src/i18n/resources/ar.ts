@@ -1285,6 +1285,9 @@ export const ar: TranslationResources = {
         upToDateWithLastChecked: "محدّث. آخر فحص في {{time}}.",
         pending: "سنخبرك عندما يصبح التحديث جاهزًا.",
         pendingWithLastChecked: "سنخبرك عندما يصبح التحديث جاهزًا. آخر فحص في {{time}}.",
+        pendingWithVersion: "تم العثور على تحديث: {{version}}. جارٍ التنزيل...",
+        pendingWithVersionAndLastChecked:
+          "تم العثور على تحديث: {{version}}. جارٍ التنزيل... آخر فحص في {{time}}.",
         availableWithVersion: "التحديث جاهز:{{version}}",
         availableWithVersionAndLastChecked: "التحديث جاهز:{{version}}. آخر فحص في {{time}}.",
         available: "تحديث التطبيق جاهز للتثبيت.",
