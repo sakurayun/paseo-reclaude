@@ -1,6 +1,7 @@
 import type { UserComposerAttachment } from "@/attachments/types";
 import type { DraftAgentControlsProps } from "@/composer/agent-controls";
 import type { UseAgentFormStateResult } from "@/hooks/use-agent-form-state";
+import { hasDraftInputContent } from "@/stores/draft-store/state";
 
 export interface DraftKeyContext {
   selectedServerId: string | null;
@@ -56,7 +57,7 @@ export function hasDraftContent(input: {
   text: string;
   attachments: UserComposerAttachment[];
 }): boolean {
-  return input.text.trim().length > 0 || input.attachments.length > 0;
+  return hasDraftInputContent(input);
 }
 
 export function areAttachmentsEqual(input: {

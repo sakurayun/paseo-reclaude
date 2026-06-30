@@ -128,6 +128,10 @@ export function toDraftInputIfReady(
   };
 }
 
+export function hasDraftInputContent(input: DraftInput): boolean {
+  return input.text.trim().length > 0 || input.attachments.length > 0;
+}
+
 export function collectReferencedAttachmentIdsFromState(state: DraftStoreState): Set<string> {
   const referencedIds = new Set<string>();
 

@@ -21,6 +21,19 @@ revision-LWW + pull-before-push) with three draft-specific differences.
 | **Protect in-progress edits** | A draft you are actively editing is never overwritten by a remote update (per-draft 3-way merge).    | Avoids a peer's push rolling back characters you are typing.                               |
 | **Per-server**                | Drafts are keyed `{prefix}:{serverId}:{rest}`; a per-server bridge only syncs its serverId's drafts. | Matches the other per-server sync bridges.                                                 |
 
+## Empty workspace draft tab reuse
+
+Opening a new-agent tab inside an existing workspace should first look for an
+already-open workspace draft tab with no active draft input (no non-whitespace
+text and no attachments). If one exists, focus that tab instead of creating
+another empty draft. This policy is centralized in `prepare-workspace-tab.ts` and
+is used by both route-driven opens (`navigateToPreparedWorkspaceTab`) and the
+workspace header's local new-agent action.
+
+Do not reuse draft tabs that carry setup/autosubmit state or an active create
+flow; those tabs represent a prepared or in-progress operation even if their
+composer text is empty.
+
 ## Data flow & anti-loop
 
 Mirrors appearance-settings-sync, but the synced store is the Zustand `useDraftStore` (subscribed

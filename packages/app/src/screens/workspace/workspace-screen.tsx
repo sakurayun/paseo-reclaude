@@ -133,6 +133,7 @@ import {
 } from "@/screens/workspace/workspace-tab-menu";
 import { useDesktopBrowserNewTabRequests } from "@/browser/new-tab-requests";
 import type { WorkspaceTabDescriptor } from "@/screens/workspace/workspace-tabs-types";
+import { resolveWorkspaceDraftOpenTargetFromStores } from "@/utils/workspace-navigation";
 import {
   resolveWorkspaceHeaderRenderState,
   type WorkspaceHeaderCheckoutState,
@@ -2063,17 +2064,36 @@ function WorkspaceScreenContent({
         return null;
       }
 
-      const target = normalizeWorkspaceTabTarget({
-        kind: "draft",
-        draftId: trimNonEmpty(input?.draftId) ?? generateDraftId(),
-      });
-      invariant(target?.kind === "draft", "Draft tab target must be valid");
       if (input?.focus === false) {
+        const target = normalizeWorkspaceTabTarget({
+          kind: "draft",
+          draftId: trimNonEmpty(input.draftId) ?? generateDraftId(),
+        });
+        invariant(target?.kind === "draft", "Draft tab target must be valid");
         return openWorkspaceTabInBackground(persistenceKey, target);
       }
-      return openWorkspaceTabFocused(persistenceKey, target);
+
+      const target = normalizeWorkspaceTabTarget({
+        kind: "draft",
+        draftId: trimNonEmpty(input?.draftId) ?? "new",
+      });
+      invariant(target?.kind === "draft", "Draft tab target must be valid");
+      const resolvedTarget = resolveWorkspaceDraftOpenTargetFromStores({
+        serverId: normalizedServerId,
+        workspaceId: normalizedWorkspaceId,
+        requestedTarget: target,
+        tabs: uiTabs,
+      });
+      return openWorkspaceTabFocused(persistenceKey, resolvedTarget);
     },
-    [openWorkspaceTabFocused, openWorkspaceTabInBackground, persistenceKey],
+    [
+      normalizedServerId,
+      normalizedWorkspaceId,
+      openWorkspaceTabFocused,
+      openWorkspaceTabInBackground,
+      persistenceKey,
+      uiTabs,
+    ],
   );
 
   useEffect(() => {
