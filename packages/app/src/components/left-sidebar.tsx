@@ -50,6 +50,8 @@ import { useOpenProject } from "@/hooks/use-open-project";
 import { useOpenProjectPicker } from "@/hooks/use-open-project-picker";
 import { useShortcutKeys } from "@/hooks/use-shortcut-keys";
 import { useSidebarShortcutModel } from "@/hooks/use-sidebar-shortcut-model";
+import { canCreateWorktreeForProjectKind } from "@/projects/host-projects";
+import { useHostFeature } from "@/runtime/host-features";
 import {
   type SidebarProjectEntry,
   type SidebarStatusWorkspacePlacement,
@@ -59,6 +61,8 @@ import { useStatusModeWorkspacePlacements } from "@/hooks/use-status-mode-worksp
 import { useSidebarViewStore, type SidebarGroupMode } from "@/stores/sidebar-view-store";
 import { useKeyboardShortcutsStore } from "@/stores/keyboard-shortcuts-store";
 import { useHosts } from "@/runtime/host-runtime";
+import { useActiveWorkspaceSelection } from "@/stores/navigation-active-workspace-store";
+import { useWorkspace } from "@/stores/session-store-hooks";
 import {
   MAX_SIDEBAR_WIDTH,
   MIN_SIDEBAR_WIDTH,
@@ -365,6 +369,7 @@ export const LeftSidebar = memo(function LeftSidebar({
     shortcutIndexByWorkspaceKey,
     toggleProjectCollapsed,
     handleRefresh,
+    handleNewWorkspaceNavigate,
     handleNewWorkspaceForHost,
     labels,
     newWorkspaceKeys,
@@ -378,7 +383,6 @@ export const LeftSidebar = memo(function LeftSidebar({
         insetsBottom={insets.bottom}
         isOpen={isOpen}
         closeSidebar={showMobileAgent}
-        handleNewWorkspaceNavigate={handleNewWorkspaceNavigate}
         handleOpenProject={handleOpenProjectMobile}
         handleOpenProjectFolder={handleOpenProjectFolderMobile}
         handleHome={handleHomeMobile}
@@ -396,7 +400,6 @@ export const LeftSidebar = memo(function LeftSidebar({
       {...sharedProps}
       insetsTop={insets.top}
       isOpen={isOpen}
-      handleNewWorkspaceNavigate={handleNewWorkspaceNavigate}
       handleOpenProject={handleOpenProjectDesktop}
       handleOpenProjectFolder={handleOpenProjectFolderDesktop}
       handleHome={handleHomeDesktop}
@@ -411,10 +414,6 @@ export const LeftSidebar = memo(function LeftSidebar({
 
 function sidebarHostOptionTestID(serverId: string): string {
   return `sidebar-host-row-${serverId}`;
-}
-
-function sidebarHostLocalMarkerTestID(serverId: string): string {
-  return `sidebar-host-local-marker-${serverId}`;
 }
 
 function FooterIconButton({
@@ -488,13 +487,12 @@ function SidebarHostPicker({
       anchorRef={triggerRef}
       includeAddHost
       onAddHost={onAddHost}
-      showLocalMarker
+      showActiveConnection
       onOpenHostSettings={onOpenHostSettings}
       searchable
       desktopMinWidth={240}
       addHostTestID="sidebar-host-add"
       hostOptionTestID={sidebarHostOptionTestID}
-      hostLocalMarkerTestID={sidebarHostLocalMarkerTestID}
     >
       <FooterIconButton
         buttonRef={triggerRef}
@@ -538,6 +536,61 @@ function HeaderIconTooltipContent({
     </View>
   );
 }
+
+const SidebarNewWorkspaceHeaderRow = memo(function SidebarNewWorkspaceHeaderRow({
+  label,
+  testID,
+  variant,
+  shortcutKeys,
+  onBeforeNavigate,
+}: {
+  label: string;
+  testID: string;
+  variant: "header" | "compact";
+  shortcutKeys: ShortcutKey[][] | null;
+  onBeforeNavigate?: () => void;
+}) {
+  const activeWorkspaceSelection = useActiveWorkspaceSelection();
+  const activeWorkspaceServerId = activeWorkspaceSelection?.serverId ?? null;
+  const activeWorkspaceId = activeWorkspaceSelection?.workspaceId ?? null;
+  const activeWorkspace = useWorkspace(activeWorkspaceServerId, activeWorkspaceId);
+  const supportsWorkspaceMultiplicity = useHostFeature(
+    activeWorkspaceServerId,
+    "workspaceMultiplicity",
+  );
+  const canUseActiveWorkspaceContext = Boolean(
+    activeWorkspace &&
+    (supportsWorkspaceMultiplicity || canCreateWorktreeForProjectKind(activeWorkspace.projectKind)),
+  );
+
+  const handlePress = useCallback(() => {
+    onBeforeNavigate?.();
+    router.push(
+      activeWorkspaceServerId
+        ? buildNewWorkspaceRoute(
+            activeWorkspace && canUseActiveWorkspaceContext
+              ? {
+                  serverId: activeWorkspaceServerId,
+                  sourceDirectory: activeWorkspace.projectRootPath,
+                  projectId: activeWorkspace.projectId,
+                }
+              : { serverId: activeWorkspaceServerId },
+          )
+        : buildNewWorkspaceRoute(),
+    );
+  }, [activeWorkspace, activeWorkspaceServerId, canUseActiveWorkspaceContext, onBeforeNavigate]);
+
+  return (
+    <SidebarHeaderRow
+      icon={Plus}
+      label={label}
+      onPress={handlePress}
+      testID={testID}
+      variant={variant}
+      shortcutKeys={shortcutKeys}
+    />
+  );
+});
 
 function SidebarFooter({
   theme,
@@ -869,13 +922,12 @@ function MobileSidebar({
             ) : (
               <>
                 <View style={styles.sidebarHeaderGroup}>
-                  <SidebarHeaderRow
-                    icon={FolderPlus}
-                    label={labels.openProject}
-                    onPress={handleOpenProject}
-                    testID="sidebar-global-open-project"
+                  <SidebarNewWorkspaceHeaderRow
+                    label={labels.newWorkspace}
+                    testID="sidebar-global-new-workspace"
                     variant="compact"
                     shortcutKeys={newWorkspaceKeys}
+                    onBeforeNavigate={closeSidebar}
                   />
                   {showSchedules ? (
                     <SidebarHeaderRow
@@ -1097,11 +1149,9 @@ function DesktopSidebar({
             <View style={styles.sidebarDragArea}>
               {padding.top > 0 ? <View style={paddingTopSpacerStyle} /> : null}
               <View style={styles.sidebarHeaderGroup}>
-                <SidebarHeaderRow
-                  icon={FolderPlus}
-                  label={labels.openProject}
-                  onPress={handleOpenProject}
-                  testID="sidebar-global-open-project"
+                <SidebarNewWorkspaceHeaderRow
+                  label={labels.newWorkspace}
+                  testID="sidebar-global-new-workspace"
                   variant="compact"
                   shortcutKeys={newWorkspaceKeys}
                 />

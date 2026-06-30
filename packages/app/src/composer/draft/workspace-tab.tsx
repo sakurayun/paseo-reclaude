@@ -8,6 +8,7 @@ import { useKeyboardShiftStyle } from "@/hooks/use-keyboard-shift-style";
 import { useContainerWidthBelow } from "@/hooks/use-container-width";
 import invariant from "tiny-invariant";
 import { Composer } from "@/composer";
+import { FileDropZone } from "@/components/file-drop/file-drop-zone";
 import { DraftAgentModeControl } from "@/composer/agent-controls/mode-control";
 import { ComposerImportPill } from "@/composer/draft/import-pill";
 import { ComposerRunDirTrigger } from "@/composer/draft/run-dir-pill";
@@ -44,7 +45,10 @@ import { useWorkspaceDraftSubmissionStore } from "@/stores/workspace-draft-submi
 import { encodeImages } from "@/utils/encode-images";
 import type { WorkspaceFileOpenRequest } from "@/workspace/file-open";
 import { shouldAutoFocusWorkspaceDraftComposer } from "@/screens/workspace/workspace-draft-pane-focus";
-import { validateDraftSubmission } from "@/composer/draft/workspace-tab-core";
+import {
+  shouldAllowEmptyDraftText,
+  validateDraftSubmission,
+} from "@/composer/draft/workspace-tab-core";
 import type {
   AgentCapabilityFlags,
   AgentModelDefinition,
@@ -54,8 +58,9 @@ import type { AgentSnapshotPayload } from "@getpaseo/protocol/messages";
 import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
 import type { WorkspaceComposerAttachment } from "@/attachments/types";
 import {
-  useWorkspaceAttachments,
+  useDraftWorkspaceAttachmentScopeKey,
   useWorkspaceAttachmentScopeKey,
+  useWorkspaceAttachmentsStore,
 } from "@/attachments/workspace-attachments-store";
 import type { UserMessageImageAttachment } from "@/types/stream";
 import {
@@ -141,6 +146,7 @@ async function submitDraftCreateRequest(input: {
   text: string;
   images?: UserMessageImageAttachment[];
   attachments?: unknown;
+  cwd: string;
   client: DaemonClient | null;
   workspaceDirectory: string | null;
   workspaceId: string | null;
@@ -162,6 +168,7 @@ async function submitDraftCreateRequest(input: {
     text,
     images,
     attachments,
+    cwd,
     client,
     workspaceDirectory,
     workspaceId,
@@ -186,7 +193,7 @@ async function submitDraftCreateRequest(input: {
   });
   const config = buildWorkspaceDraftAgentConfig({
     provider,
-    cwd: workspaceDirectory,
+    cwd,
     ...modeIdOverride,
     model: autoSubmitConfig?.model ?? (composerState.effectiveModelId || undefined),
     thinkingOptionId:
@@ -650,7 +657,14 @@ export function WorkspaceDraftAgentTab({
     cwd: composerState.workingDir,
     workspaceId,
   });
-  const workspaceAttachments = useWorkspaceAttachments(workspaceAttachmentScopeKey);
+  const draftAttachmentScopeKey = useDraftWorkspaceAttachmentScopeKey(draftId);
+  const attachmentScopeKeys = useMemo(
+    () => [draftAttachmentScopeKey, workspaceAttachmentScopeKey].filter(Boolean),
+    [draftAttachmentScopeKey, workspaceAttachmentScopeKey],
+  );
+  const clearWorkspaceAttachments = useWorkspaceAttachmentsStore(
+    (state) => state.clearWorkspaceAttachments,
+  );
   const openFileExplorerForCheckout = usePanelStore((state) => state.openFileExplorerForCheckout);
   const setExplorerTabForCheckout = usePanelStore((state) => state.setExplorerTabForCheckout);
   const handleOpenWorkspaceAttachment = useCallback(
@@ -687,15 +701,20 @@ export function WorkspaceDraftAgentTab({
     getPendingServerId: () => serverId,
     initialAttempt: initialCreateAttempt,
     allowEmptyText: allowsEmptyAutoSubmit,
-    validateBeforeSubmit: ({ text }) =>
-      validateDraftSubmission({
-        text,
+    validateBeforeSubmit: ({ text, attachments }) => {
+      const allowsEmptyDraftText = shouldAllowEmptyDraftText({
         allowsEmptyAutoSubmit,
+        attachments,
+      });
+      return validateDraftSubmission({
+        text,
+        allowsEmptyAutoSubmit: allowsEmptyDraftText,
         composerState,
         autoSubmitConfig,
         workspaceDirectory: draftWorkingDirectory,
         hasClient: Boolean(client),
-      }),
+      });
+    },
     onBeforeSubmit: async () => {
       await composerState.persistFormPreferences();
       if (isWeb) {
@@ -713,12 +732,13 @@ export function WorkspaceDraftAgentTab({
         composerState,
         selectModelMessage: t("workspaceSetup.errors.selectModel"),
       }),
-    createRequest: async ({ attempt, text, images, attachments }) =>
+    createRequest: async ({ attempt, text, images, attachments, cwd }) =>
       submitDraftCreateRequest({
         attempt,
         text,
         images,
         attachments,
+        cwd,
         client,
         workspaceDirectory: draftWorkingDirectory,
         workspaceId: workspaceFields?.id ?? null,
@@ -737,6 +757,8 @@ export function WorkspaceDraftAgentTab({
       }),
     onCreateSuccess: ({ result }) => {
       clearDraftInput("sent");
+      clearWorkspaceAttachments({ scopeKey: draftAttachmentScopeKey });
+      useWorkspaceDraftSubmissionStore.getState().clearDraftSetup({ draftId });
       onCreated(result);
     },
   });
@@ -939,7 +961,7 @@ export function WorkspaceDraftAgentTab({
   );
 
   return (
-    <View style={styles.container}>
+    <FileDropZone style={styles.container}>
       <View style={styles.contentContainer}>
         {isSubmitting && draftAgent ? (
           <View style={styles.streamContainer}>
@@ -1000,7 +1022,7 @@ export function WorkspaceDraftAgentTab({
           value={draftInput.text}
           onChangeText={draftInput.setText}
           attachments={draftInput.attachments}
-          workspaceAttachments={workspaceAttachments}
+          attachmentScopeKeys={attachmentScopeKeys}
           onOpenWorkspaceAttachment={handleOpenWorkspaceAttachment}
           onChangeAttachments={draftInput.setAttachments}
           cwd={composerState.workingDir}
@@ -1014,7 +1036,7 @@ export function WorkspaceDraftAgentTab({
           enablePromptPresets
         />
       </ReanimatedAnimated.View>
-    </View>
+    </FileDropZone>
   );
 }
 

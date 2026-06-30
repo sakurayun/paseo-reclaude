@@ -318,12 +318,13 @@ export type DaemonLifecycleIntent =
       type: "shutdown";
       clientId: string;
       requestId: string;
+      reason: string;
     }
   | {
       type: "restart";
       clientId: string;
       requestId: string;
-      reason?: string;
+      reason: string;
     };
 
 export interface PaseoDaemonConfig {

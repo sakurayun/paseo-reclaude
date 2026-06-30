@@ -327,6 +327,12 @@ export const ru: TranslationResources = {
       copyCode: "Скопировать код",
       copyTurn: "Копировать ход",
       copyMessage: "Копировать сообщение",
+      forkMenu: "Форкнуть сообщение",
+      forkInNewTab: "Форкнуть в новой вкладке",
+      forkInNewWorkspace: "Форкнуть в новом рабочем пространстве",
+      forkUnavailable: "Обновите хост, чтобы использовать это.",
+      forkMissingWorkspace: "Этот агент не находится в рабочем пространстве.",
+      forkFailed: "Не удалось форкнуть чат",
       openFile: "Открыть файл",
       copied: "Скопировано",
     },
@@ -1305,8 +1311,14 @@ export const ru: TranslationResources = {
         upToDate: "Приложение актуально.",
         upToDateWithLastChecked: "Актуально. Последняя проверка в {{time}}.",
         pending: "Мы сообщим вам, когда обновление будет готово.",
+        pendingWithLastChecked:
+          "Мы сообщим вам, когда обновление будет готово. Последняя проверка в {{time}}.",
         availableWithVersion: "Обновление готово:{{version}}",
+        availableWithVersionAndLastChecked:
+          "Обновление готово:{{version}}. Последняя проверка в {{time}}.",
         available: "Обновление приложения готово к установке.",
+        availableWithLastChecked:
+          "Обновление приложения готово к установке. Последняя проверка в {{time}}.",
         installed: "Обновление приложения установлено. Требуется перезагрузка.",
         failed: "Не удалось обновить приложение.",
         idle: "Статус обновления еще не проверен.",

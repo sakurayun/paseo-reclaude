@@ -328,6 +328,12 @@ export const fr: TranslationResources = {
       copyCode: "Copier le code",
       copyTurn: "Copier le tour",
       copyMessage: "Copier le message",
+      forkMenu: "Dupliquer le message",
+      forkInNewTab: "Dupliquer dans un nouvel onglet",
+      forkInNewWorkspace: "Dupliquer dans un nouvel espace de travail",
+      forkUnavailable: "Mettez l'hôte à jour pour utiliser ceci.",
+      forkMissingWorkspace: "Cet agent n'est pas dans un espace de travail.",
+      forkFailed: "Impossible de dupliquer le chat",
       openFile: "Ouvrir le fichier",
       copied: "Copié",
     },
@@ -1314,8 +1320,14 @@ export const fr: TranslationResources = {
         upToDate: "L'application est à jour.",
         upToDateWithLastChecked: "À jour. Dernière vérification à {{time}}.",
         pending: "Nous vous informerons lorsque la mise à jour sera prête.",
+        pendingWithLastChecked:
+          "Nous vous informerons lorsque la mise à jour sera prête. Dernière vérification à {{time}}.",
         availableWithVersion: "Mise à jour prête:{{version}}",
+        availableWithVersionAndLastChecked:
+          "Mise à jour prête:{{version}}. Dernière vérification à {{time}}.",
         available: "Une mise à jour de l'application est prête à être installée.",
+        availableWithLastChecked:
+          "Une mise à jour de l'application est prête à être installée. Dernière vérification à {{time}}.",
         installed: "Mise à jour de l'application installée. Redémarrage requis.",
         failed: "Échec de la mise à jour de l'application.",
         idle: "L'état de la mise à jour n'a pas encore été vérifié.",

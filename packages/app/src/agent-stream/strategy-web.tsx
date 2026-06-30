@@ -125,11 +125,12 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
     contentRef.current = node;
   }, []);
   const [followOutput, setFollowOutputr] = useState(true);
+  const followOutputRef = useRef(followOutput);
   const setFollowOutput = (value: boolean) => {
+    followOutputRef.current = value;
     setFollowOutputr(value);
     return value;
   };
-  const followOutputRef = useRef(followOutput);
   const lastKnownScrollTopRef = useRef(0);
   const pendingUserScrollUpIntentRef = useRef(false);
   const isPointerScrollActiveRef = useRef(false);
@@ -285,12 +286,14 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
     const currentScrollTop = scrollContainer.scrollTop;
     const isAtBottom = isScrollContainerAtBottom(scrollContainer);
     const scrolledUp = currentScrollTop < lastKnownScrollTopRef.current - USER_SCROLL_DELTA_EPSILON;
+    const scrolledDown =
+      currentScrollTop > lastKnownScrollTopRef.current + USER_SCROLL_DELTA_EPSILON;
 
-    if (!followOutputRef.current && isAtBottom) {
+    if (!followOutputRef.current && isAtBottom && scrolledDown) {
       setFollowOutput(true);
       pendingUserScrollUpIntentRef.current = false;
     } else if (followOutputRef.current && pendingUserScrollUpIntentRef.current) {
-      if (scrolledUp) {
+      if (scrolledUp || !isAtBottom) {
         cancelPendingStickToBottom();
         setFollowOutput(false);
       }

@@ -39,7 +39,8 @@ import { AppDiagnosticSheet } from "@/components/app-diagnostic-sheet";
 import { ComboboxTrigger } from "@/components/ui/combobox-trigger";
 import { SidebarHeaderRow } from "@/components/sidebar/sidebar-header-row";
 import { SidebarSeparator } from "@/components/sidebar/sidebar-separator";
-import { HostPicker as SharedHostPicker, HostStatusDotSlot } from "@/components/hosts/host-picker";
+import { HostPicker as SharedHostPicker } from "@/components/hosts/host-picker";
+import { HostStatusDot } from "@/components/host-status-dot";
 import { ScreenTitle } from "@/components/headers/screen-title";
 import { HeaderIconBadge } from "@/components/headers/header-icon-badge";
 import { SettingsSection } from "@/screens/settings/settings-section";
@@ -900,8 +901,9 @@ interface HostPickerProps {
 /**
  * Scopes the four host sections to a host. Reuses the canonical sidebar host
  * switcher pattern (left-sidebar.tsx): a quiet row-styled trigger opening a
- * <Combobox>. The local host is listed first and tagged "Local"; an "Add host"
- * row is always reachable from the list — even with a single host.
+ * <Combobox>. The local host is listed first, each row shows the connection it
+ * is using right now; an "Add host" row is always reachable from the list —
+ * even with a single host.
  */
 function HostPicker({ activeServerId, sortedHosts, onSelectHost, onAddHost }: HostPickerProps) {
   const { t } = useTranslation();
@@ -911,7 +913,6 @@ function HostPicker({ activeServerId, sortedHosts, onSelectHost, onAddHost }: Ho
     sortedHosts.find((host) => host.serverId === activeServerId) ?? sortedHosts[0] ?? null;
 
   const handleOpen = useCallback(() => setIsOpen(true), []);
-  const hostLocalMarkerTestID = useCallback(() => "settings-host-local-marker", []);
   const hostOptionTestID = useCallback(
     (serverId: string) => `settings-host-picker-item-${serverId}`,
     [],
@@ -934,23 +935,27 @@ function HostPicker({ activeServerId, sortedHosts, onSelectHost, onAddHost }: Ho
       anchorRef={triggerRef}
       includeAddHost
       onAddHost={onAddHost}
-      showLocalMarker
+      showActiveConnection
       searchable={false}
       title={t("settings.hostPicker.switchHost")}
       desktopMinWidth={240}
       addHostTestID="settings-add-host"
-      hostLocalMarkerTestID={hostLocalMarkerTestID}
       hostOptionTestID={hostOptionTestID}
     >
       <ComboboxTrigger
         ref={triggerRef}
+        block
         style={triggerStyle}
         onPress={handleOpen}
         accessibilityRole="button"
         accessibilityLabel={t("settings.hostPicker.switchHost")}
         testID="settings-host-picker"
       >
-        {activeHost ? <HostStatusDotSlot serverId={activeHost.serverId} /> : null}
+        {activeHost ? (
+          <View style={sidebarStyles.pickerTriggerDot}>
+            <HostStatusDot serverId={activeHost.serverId} />
+          </View>
+        ) : null}
         <Text style={sidebarStyles.pickerTriggerLabel} numberOfLines={1}>
           {activeHost?.label ?? t("settings.groups.host")}
         </Text>
@@ -1760,5 +1765,12 @@ const sidebarStyles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.base,
     color: theme.colors.foreground,
     fontWeight: theme.fontWeight.normal,
+  },
+  // Match the setting items' icon footprint so the host label aligns with them.
+  pickerTriggerDot: {
+    width: theme.iconSize.md,
+    height: theme.iconSize.md,
+    alignItems: "center",
+    justifyContent: "center",
   },
 }));

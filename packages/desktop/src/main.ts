@@ -909,7 +909,7 @@ app.on(
       stopDesktopManagedDaemonOnQuitIfNeeded({
         settingsStore: getDesktopSettingsStore(),
         isDesktopManagedDaemonRunning: isDesktopManagedDaemonRunningSync,
-        stopDaemon: stopDesktopDaemonViaCli,
+        stopDaemon: () => stopDesktopDaemonViaCli("quit"),
         showShutdownFeedback: showDaemonShutdownDialog,
       }),
     onStopError: (error) => {

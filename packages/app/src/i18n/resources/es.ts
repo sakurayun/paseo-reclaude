@@ -322,6 +322,12 @@ export const es: TranslationResources = {
       copyCode: "Copiar código",
       copyTurn: "Copiar turno",
       copyMessage: "Copiar mensaje",
+      forkMenu: "Bifurcar mensaje",
+      forkInNewTab: "Bifurcar en una pestaña nueva",
+      forkInNewWorkspace: "Bifurcar en un espacio de trabajo nuevo",
+      forkUnavailable: "Actualiza el host para usar esto.",
+      forkMissingWorkspace: "Este agente no está en un espacio de trabajo.",
+      forkFailed: "No se pudo bifurcar el chat",
       openFile: "Abrir archivo",
       copied: "Copiado",
     },
@@ -1306,8 +1312,14 @@ export const es: TranslationResources = {
         upToDate: "La aplicación está actualizada.",
         upToDateWithLastChecked: "Actualizado. Última comprobación a las {{time}}.",
         pending: "Le avisaremos cuando la actualización esté lista.",
+        pendingWithLastChecked:
+          "Le avisaremos cuando la actualización esté lista. Última comprobación a las {{time}}.",
         availableWithVersion: "Actualización lista:{{version}}",
+        availableWithVersionAndLastChecked:
+          "Actualización lista:{{version}}. Última comprobación a las {{time}}.",
         available: "Una actualización de la aplicación está lista para instalarse.",
+        availableWithLastChecked:
+          "Una actualización de la aplicación está lista para instalarse. Última comprobación a las {{time}}.",
         installed: "Actualización de la aplicación instalada. Se requiere reinicio.",
         failed: "No se pudo actualizar la aplicación.",
         idle: "El estado de la actualización aún no se ha comprobado.",

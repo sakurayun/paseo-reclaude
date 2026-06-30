@@ -79,6 +79,10 @@ import { getErrorMessage, getErrorMessageOr } from "@getpaseo/protocol/error-uti
 import { getAgentStatusPriority } from "@getpaseo/protocol/agent-state-bucket";
 import { getParentAgentIdFromLabels } from "@getpaseo/protocol/agent-labels";
 import type { WorkspaceGitRuntimeSnapshot, WorkspaceGitService } from "./workspace-git-service.js";
+import {
+  CLIENT_SHUTDOWN_RPC_REASON,
+  normalizeClientRestartRpcReason,
+} from "./lifecycle-reasons.js";
 
 import { AgentManager } from "./agent/agent-manager.js";
 import { ProviderSnapshotManager } from "./agent/provider-snapshot-manager.js";
@@ -113,6 +117,7 @@ import {
   type TimelineProjectionEntry,
   type TimelineProjectionMode,
 } from "./agent/timeline-projection.js";
+import { buildAgentForkContextAttachment } from "./agent/activity-curator.js";
 import type { StructuredGenerationDaemonConfig } from "./agent/structured-generation-providers.js";
 import {
   getAgentStreamEventTurnId,
@@ -561,12 +566,13 @@ export type SessionLifecycleIntent =
       type: "shutdown";
       clientId: string;
       requestId: string;
+      reason: string;
     }
   | {
       type: "restart";
       clientId: string;
       requestId: string;
-      reason?: string;
+      reason: string;
     };
 
 function parseClientCapabilities(
@@ -1437,14 +1443,6 @@ export class Session {
   ): Promise<ProjectPlacementPayload | null> {
     const workspace = await this.workspaceRegistry.get(workspaceId);
     if (!workspace) return null;
-    return this.buildProjectPlacementForWorkspace(workspace);
-  }
-
-  private async buildProjectPlacementForExistingWorkspaceProject(
-    workspaceId: string,
-  ): Promise<ProjectPlacementPayload | null> {
-    const workspace = await this.workspaceRegistry.get(workspaceId);
-    if (!workspace) return null;
 
     const project = await this.projectRegistry.get(workspace.projectId);
     if (!project) return null;
@@ -1511,6 +1509,7 @@ export class Session {
       this.dispatchVoiceAndControlMessage(msg) ??
       this.dispatchAgentRewindMessage(msg) ??
       this.dispatchAgentRelationshipMessage(msg) ??
+      this.dispatchAgentTimelineMessage(msg) ??
       this.dispatchAgentLifecycleMessage(msg) ??
       this.dispatchAgentConfigMessage(msg) ??
       this.dispatchCheckoutMessage(msg) ??
@@ -1714,6 +1713,17 @@ export class Session {
     }
   }
 
+  private dispatchAgentTimelineMessage(msg: SessionInboundMessage): Promise<void> | undefined {
+    switch (msg.type) {
+      case "fetch_agent_timeline_request":
+        return this.handleFetchAgentTimelineRequest(msg);
+      case "agent.fork_context.request":
+        return this.handleAgentForkContextRequest(msg);
+      default:
+        return undefined;
+    }
+  }
+
   private dispatchAgentLifecycleMessage(msg: SessionInboundMessage): Promise<void> | undefined {
     switch (msg.type) {
       case "fetch_agents_request":
@@ -1748,8 +1758,6 @@ export class Session {
         return this.handleRefreshAgentRequest(msg);
       case "cancel_agent_request":
         return this.handleCancelAgentRequest(msg.agentId, msg.requestId);
-      case "fetch_agent_timeline_request":
-        return this.handleFetchAgentTimelineRequest(msg);
       case "agent_permission_response":
         return this.handleAgentPermissionResponse(msg.agentId, msg.requestId, msg.response);
       case "clear_agent_attention":
@@ -2231,6 +2239,10 @@ export class Session {
     this.peakInflightRequests = this.inflightRequests;
   }
 
+  public getSessionId(): string {
+    return this.sessionId;
+  }
+
   public async handleBinaryFrame(binaryFrame: BinaryFrame): Promise<void> {
     if (binaryFrame.kind === "file_transfer") {
       await this.workspaceFilesSession.handleFileTransferFrame(binaryFrame.frame);
@@ -2244,6 +2256,7 @@ export class Session {
   }
 
   private async handleRestartServerRequest(requestId: string, reason?: string): Promise<void> {
+    const lifecycleReason = normalizeClientRestartRpcReason(reason);
     const payload: { status: string } & Record<string, unknown> = {
       status: "restart_requested",
       clientId: this.clientId,
@@ -2253,7 +2266,7 @@ export class Session {
     }
     payload.requestId = requestId;
 
-    this.sessionLogger.warn({ reason }, "Restart requested via websocket");
+    this.sessionLogger.warn({ reason: lifecycleReason }, "Restart requested via websocket");
     this.emit({
       type: "status",
       payload,
@@ -2263,12 +2276,13 @@ export class Session {
       type: "restart",
       clientId: this.clientId,
       requestId,
-      ...(reason ? { reason } : {}),
+      reason: lifecycleReason,
     });
   }
 
   private async handleShutdownServerRequest(requestId: string): Promise<void> {
-    this.sessionLogger.warn("Shutdown requested via websocket");
+    const reason = CLIENT_SHUTDOWN_RPC_REASON;
+    this.sessionLogger.warn({ reason }, "Shutdown requested via websocket");
     this.emit({
       type: "status",
       payload: {
@@ -2282,6 +2296,7 @@ export class Session {
       type: "shutdown",
       clientId: this.clientId,
       requestId,
+      reason,
     });
   }
 
@@ -4499,10 +4514,7 @@ export class Session {
       if (existing) {
         return existing;
       }
-      const placementPromise =
-        request.type === "fetch_agent_history_request"
-          ? this.buildProjectPlacementForExistingWorkspaceProject(workspaceId)
-          : this.buildProjectPlacementForWorkspaceId(workspaceId);
+      const placementPromise = this.buildProjectPlacementForWorkspaceId(workspaceId);
       placementByWorkspaceId.set(workspaceId, placementPromise);
       return placementPromise;
     };
@@ -6299,6 +6311,57 @@ export class Session {
           hasOlder: false,
           hasNewer: false,
           entries: [],
+          error: error instanceof Error ? error.message : String(error),
+        },
+      });
+    }
+  }
+
+  private async handleAgentForkContextRequest(
+    msg: Extract<SessionInboundMessage, { type: "agent.fork_context.request" }>,
+  ): Promise<void> {
+    try {
+      const snapshot = await ensureAgentLoaded(msg.agentId, {
+        agentManager: this.agentManager,
+        agentStorage: this.agentStorage,
+        logger: this.sessionLogger,
+      });
+      const agentPayload = await this.buildAgentPayload(snapshot);
+      const rows = this.agentManager.fetchTimeline(msg.agentId, {
+        direction: "tail",
+        limit: 0,
+      }).rows;
+      const forkContext = buildAgentForkContextAttachment({
+        rows,
+        boundaryMessageId: msg.boundaryMessageId,
+        agentTitle: agentPayload.title,
+        cwd: snapshot.cwd,
+      });
+
+      this.emit({
+        type: "agent.fork_context.response",
+        payload: {
+          requestId: msg.requestId,
+          agentId: msg.agentId,
+          attachment: forkContext.attachment,
+          itemCount: forkContext.itemCount,
+          boundaryMessageId: forkContext.boundaryMessageId,
+          error: null,
+        },
+      });
+    } catch (error) {
+      this.sessionLogger.error(
+        { err: error, agentId: msg.agentId },
+        "Failed to handle agent.fork_context.request",
+      );
+      this.emit({
+        type: "agent.fork_context.response",
+        payload: {
+          requestId: msg.requestId,
+          agentId: msg.agentId,
+          attachment: null,
+          itemCount: 0,
+          boundaryMessageId: msg.boundaryMessageId ?? null,
           error: error instanceof Error ? error.message : String(error),
         },
       });

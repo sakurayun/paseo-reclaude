@@ -19,6 +19,7 @@ import {
   X,
 } from "lucide-react-native";
 import { Composer } from "@/composer";
+import { FileDropZone } from "@/components/file-drop/file-drop-zone";
 import { DraftAgentModeControl } from "@/composer/agent-controls/mode-control";
 import { splitComposerAttachmentsForSubmit } from "@/composer/attachments/submit";
 import { HostStatusDot } from "@/components/host-status-dot";
@@ -35,7 +36,14 @@ import { HEADER_INNER_HEIGHT, MAX_CONTENT_WIDTH, useIsCompactFormFactor } from "
 import { useToast } from "@/contexts/toast-context";
 import { useAgentInputDraft } from "@/composer/draft/input-draft";
 import { useGithubSearchQuery } from "@/git/use-github-search-query";
-import { useHostRuntimeClient, useHostRuntimeIsConnected, useHosts } from "@/runtime/host-runtime";
+import {
+  useHostRuntimeClient,
+  useHostRuntimeConnectionStatuses,
+  useHostRuntimeIsConnected,
+  useHosts,
+  type HostRuntimeConnectionStatus,
+} from "@/runtime/host-runtime";
+import { useHostFeature, useHostFeatureMap } from "@/runtime/host-features";
 import type { HostProfile } from "@/types/host-connection";
 import { navigateToWorkspace } from "@/stores/navigation-active-workspace-store";
 import { useLastWorkspaceSelection } from "@/stores/navigation-active-workspace-store";
@@ -43,10 +51,14 @@ import { normalizeWorkspaceDescriptor, useSessionStore } from "@/stores/session-
 import { useWorkspace } from "@/stores/session-store-hooks";
 import { generateDraftId } from "@/stores/draft-keys";
 import { useDraftStore } from "@/stores/draft-store";
-import { useCreateFlowStore } from "@/stores/create-flow-store";
-import { useWorkspaceDraftSubmissionStore } from "@/stores/workspace-draft-submission-store";
+import { isActiveCreateFlowForDraft, useCreateFlowStore } from "@/stores/create-flow-store";
+import {
+  useWorkspaceDraftSubmissionStore,
+  type PendingWorkspaceDraftSetup,
+} from "@/stores/workspace-draft-submission-store";
 import { useKeyboardShiftStyle } from "@/hooks/use-keyboard-shift-style";
 import { useFormPreferences } from "@/hooks/use-form-preferences";
+import type { CreateAgentInitialValues } from "@/hooks/use-agent-form-state";
 import { generateMessageId } from "@/types/stream";
 import { toErrorMessage } from "@/utils/error-messages";
 import { navigateToPreparedWorkspaceTab } from "@/utils/workspace-navigation";
@@ -59,10 +71,10 @@ import {
   resolveSelectedHostProject,
   useHostProjects,
   type HostProjectListItem,
-  type HostProjectRouteContext,
 } from "@/projects/host-projects";
 import { useProjectIconDataByProjectKey } from "@/projects/project-icons";
 import type { ComposerAttachment, UserComposerAttachment } from "@/attachments/types";
+import { useDraftWorkspaceAttachmentScopeKey } from "@/attachments/workspace-attachments-store";
 import type { MessagePayload } from "@/composer/types";
 import type {
   AgentAttachment,
@@ -72,13 +84,22 @@ import type {
 import type { CreatePaseoWorktreeInput } from "@getpaseo/client/internal/daemon-client";
 import type { AgentProvider } from "@getpaseo/protocol/agent-types";
 import { projectIconPlaceholderLabelFromDisplayName } from "@/utils/project-display-name";
+import type { WorkspaceDraftTabSetup, WorkspaceTabTarget } from "@/stores/workspace-tabs-store";
 import { isEmptyWorkspaceSubmission, runCreateEmptyWorkspace } from "./new-workspace-empty";
+import {
+  getWorkspaceNamingAttachments,
+  remapDraftCwdToWorkspace,
+} from "./new-workspace-fork-context";
 import {
   pickerItemToCheckoutRequest,
   type PickerCheckoutRequest,
   type PickerItem,
 } from "./new-workspace-picker-item";
 import { findCheckoutHintPrAttachment, syncPickerPrAttachment } from "./new-workspace-picker-state";
+import {
+  resolveNewWorkspaceAutomaticServerId,
+  resolveNewWorkspaceInitialServerId,
+} from "./new-workspace-initial-context";
 
 function resolveCheckoutRequest(
   selectedItem: PickerItem | null,
@@ -91,6 +112,37 @@ function resolveCheckoutRequest(
     action: "branch-off",
     refName: currentBranch,
   };
+}
+
+function useIsNewWorkspaceDraftHandoffActive(input: {
+  draftId: string | undefined;
+  selectedServerId: string;
+}): boolean {
+  const normalizedDraftId = input.draftId?.trim() ?? "";
+  return useCreateFlowStore((state) =>
+    isActiveCreateFlowForDraft({
+      draftId: normalizedDraftId,
+      serverId: input.selectedServerId,
+      pending: normalizedDraftId ? state.pendingByDraftId[normalizedDraftId] : null,
+    }),
+  );
+}
+
+function resolveVisibleDraftContextScopeKeys(input: {
+  isDraftHandoffActive: boolean;
+  draftContextScopeKey: string;
+}): readonly string[] {
+  if (input.isDraftHandoffActive || !input.draftContextScopeKey) {
+    return [];
+  }
+  return [input.draftContextScopeKey];
+}
+
+function isNewWorkspacePending(input: {
+  pendingAction: "chat" | "empty" | null;
+  isDraftHandoffActive: boolean;
+}): boolean {
+  return input.pendingAction !== null || input.isDraftHandoffActive;
 }
 
 function buildFirstAgentContext(input: {
@@ -113,6 +165,7 @@ interface NewWorkspaceScreenProps {
   sourceDirectory?: string;
   projectId?: string;
   displayName?: string;
+  draftId?: string;
 }
 
 interface PickerOptionData {
@@ -959,6 +1012,18 @@ function getContentStyle(input: { isCompact: boolean; insetBottom: number }) {
   return [styles.content, styles.contentCentered];
 }
 
+function buildNewWorkspaceDraftKey(input: {
+  selectedServerId: string;
+  selectedSourceDirectory: string | null;
+  draftId?: string;
+}): string {
+  const explicitDraftId = input.draftId?.trim();
+  if (explicitDraftId) {
+    return `new-workspace:draft:${explicitDraftId}`;
+  }
+  return `new-workspace:${input.selectedServerId}:${input.selectedSourceDirectory ?? "choose-project"}`;
+}
+
 function getSelectedPickerItem(selection: PickerSelection | null): PickerItem | null {
   if (!selection) return null;
   return selection.item;
@@ -978,12 +1043,28 @@ function normalizeBranchDetails(
 interface SubmitDraftInput {
   serverId: string;
   draftKey: string;
+  draftId?: string;
+  initialSetup?: WorkspaceDraftTabSetup;
   workspaceId: string;
   workspaceDirectory: string;
   text: string;
   attachments: ComposerAttachment[];
   provider: AgentProvider;
-  composerState: NonNullable<ReturnType<typeof useAgentInputDraft>["composerState"]>;
+  composerState: NewWorkspaceComposerState;
+}
+
+type NewWorkspaceComposerState = NonNullable<
+  ReturnType<typeof useAgentInputDraft>["composerState"]
+>;
+
+interface WorkspaceDraftSubmissionConfig {
+  cwd: string;
+  provider: AgentProvider;
+  modeId: string | null;
+  model: string | null;
+  thinkingOptionId: string | null;
+  featureValues: Record<string, unknown> | undefined;
+  target: WorkspaceTabTarget;
 }
 
 async function createAndMergeWorkspace(input: {
@@ -1065,6 +1146,7 @@ async function createMultiplicityWorkspace(input: {
 interface CreateChatAgentInput {
   payload: MessagePayload;
   composerState: ReturnType<typeof useAgentInputDraft>["composerState"];
+  forkDraftSetup?: PendingWorkspaceDraftSetup | null;
   ensureWorkspace: (input: {
     cwd: string;
     prompt: string;
@@ -1073,10 +1155,65 @@ interface CreateChatAgentInput {
   }) => Promise<ReturnType<typeof normalizeWorkspaceDescriptor>>;
   serverId: string;
   draftKey: string;
+  draftId?: string;
   labels: {
     composerStateRequired: string;
     selectModel: string;
   };
+}
+
+function buildWorkspaceDraftSetupFromComposer(input: {
+  cwd: string;
+  provider: AgentProvider;
+  composerState: NewWorkspaceComposerState;
+}): WorkspaceDraftTabSetup {
+  return {
+    provider: input.provider,
+    cwd: input.cwd,
+    modeId: input.composerState.selectedMode || null,
+    model: input.composerState.effectiveModelId || null,
+    thinkingOptionId: input.composerState.effectiveThinkingOptionId || null,
+    featureValues: input.composerState.featureValues ?? {},
+  };
+}
+
+function buildWorkspaceDraftSetupForCreatedWorkspace(input: {
+  forkDraftSetup: PendingWorkspaceDraftSetup | null | undefined;
+  workspaceDirectory: string;
+  provider: AgentProvider;
+  composerState: NewWorkspaceComposerState;
+}): WorkspaceDraftTabSetup | undefined {
+  if (!input.forkDraftSetup) {
+    return undefined;
+  }
+  return buildWorkspaceDraftSetupFromComposer({
+    cwd: remapDraftCwdToWorkspace({
+      cwd: input.forkDraftSetup.setup.cwd,
+      sourceDirectory: input.forkDraftSetup.sourceDirectory,
+      workspaceDirectory: input.workspaceDirectory,
+    }),
+    provider: input.provider,
+    composerState: input.composerState,
+  });
+}
+
+function buildComposerInitialValues(input: {
+  workingDir: string | undefined;
+  initialSetup?: WorkspaceDraftTabSetup | null;
+}): CreateAgentInitialValues | undefined {
+  if (input.initialSetup) {
+    return {
+      workingDir: input.workingDir ?? input.initialSetup.cwd,
+      provider: input.initialSetup.provider,
+      modeId: input.initialSetup.modeId,
+      model: input.initialSetup.model,
+      thinkingOptionId: input.initialSetup.thinkingOptionId,
+    };
+  }
+  if (input.workingDir) {
+    return { workingDir: input.workingDir };
+  }
+  return undefined;
 }
 
 async function runCreateChatAgent(input: CreateChatAgentInput): Promise<void> {
@@ -1090,15 +1227,24 @@ async function runCreateChatAgent(input: CreateChatAgentInput): Promise<void> {
     throw new Error(input.labels.selectModel);
   }
   const { attachments: reviewAttachments } = splitComposerAttachmentsForSubmit(attachments);
+  const workspaceNamingAttachments = getWorkspaceNamingAttachments(reviewAttachments);
   const ensuredWorkspace = await ensureWorkspace({
     cwd,
     prompt: text,
-    attachments: reviewAttachments,
+    attachments: workspaceNamingAttachments,
     withInitialAgent: true,
+  });
+  const initialSetup = buildWorkspaceDraftSetupForCreatedWorkspace({
+    forkDraftSetup: input.forkDraftSetup,
+    workspaceDirectory: ensuredWorkspace.workspaceDirectory,
+    provider,
+    composerState,
   });
   submitWorkspaceDraft({
     serverId,
     draftKey,
+    draftId: input.draftId,
+    initialSetup,
     workspaceId: ensuredWorkspace.id,
     workspaceDirectory: ensuredWorkspace.workspaceDirectory,
     text,
@@ -1113,12 +1259,14 @@ function buildComposerConfig(input: {
   isConnected: boolean;
   workspaceDirectory: string | null;
   sourceDirectory: string | null;
+  initialSetup?: WorkspaceDraftTabSetup | null;
 }): Parameters<typeof useAgentInputDraft>[0]["composer"] {
-  const { serverId, isConnected, workspaceDirectory, sourceDirectory } = input;
+  const { serverId, isConnected, workspaceDirectory, sourceDirectory, initialSetup } = input;
   const workingDir = workspaceDirectory || sourceDirectory || undefined;
   return {
     initialServerId: serverId || null,
-    initialValues: workingDir ? { workingDir } : undefined,
+    initialValues: buildComposerInitialValues({ workingDir, initialSetup }),
+    initialFeatureValues: initialSetup?.featureValues,
     isVisible: true,
     onlineServerIds: isConnected && serverId ? [serverId] : [],
     lockedWorkingDir: workingDir,
@@ -1166,21 +1314,72 @@ function useCheckoutHintDismissals(attachments: ReadonlyArray<UserComposerAttach
   return [dismissedPrNumbers, setDismissedPrNumbers] as const;
 }
 
+function usePendingWorkspaceDraftSetup(
+  draftId: string | undefined,
+): PendingWorkspaceDraftSetup | null {
+  const normalizedDraftId = draftId?.trim() ?? "";
+  return useWorkspaceDraftSubmissionStore((state) => {
+    if (!normalizedDraftId) {
+      return null;
+    }
+    return state.setupByDraftId[normalizedDraftId] ?? null;
+  });
+}
+
+function resolveWorkspaceDraftSubmissionConfig(input: {
+  draftId: string;
+  workspaceDirectory: string;
+  provider: AgentProvider;
+  composerState: NewWorkspaceComposerState;
+  initialSetup?: WorkspaceDraftTabSetup;
+}): WorkspaceDraftSubmissionConfig {
+  const { draftId, workspaceDirectory, provider, composerState, initialSetup } = input;
+  if (initialSetup) {
+    return {
+      cwd: initialSetup.cwd,
+      provider: initialSetup.provider,
+      modeId: initialSetup.modeId,
+      model: initialSetup.model,
+      thinkingOptionId: initialSetup.thinkingOptionId,
+      featureValues: initialSetup.featureValues,
+      target: { kind: "draft", draftId, setup: initialSetup },
+    };
+  }
+  return {
+    cwd: workspaceDirectory,
+    provider,
+    modeId: composerState.selectedMode || null,
+    model: composerState.effectiveModelId || null,
+    thinkingOptionId: composerState.effectiveThinkingOptionId || null,
+    featureValues: composerState.featureValues,
+    target: { kind: "draft", draftId },
+  };
+}
+
 function submitWorkspaceDraft(input: SubmitDraftInput): void {
   const {
     serverId,
     draftKey,
+    draftId: draftIdInput,
     workspaceId,
     workspaceDirectory,
     text,
     attachments,
     provider,
     composerState,
+    initialSetup,
   } = input;
-  const draftId = generateDraftId();
+  const draftId = draftIdInput?.trim() || generateDraftId();
   const clientMessageId = generateMessageId();
   const timestamp = Date.now();
   const wirePayload = splitComposerAttachmentsForSubmit(attachments);
+  const submission = resolveWorkspaceDraftSubmissionConfig({
+    draftId,
+    workspaceDirectory,
+    provider,
+    composerState,
+    initialSetup,
+  });
   useCreateFlowStore.getState().setPending({
     serverId,
     draftId,
@@ -1198,50 +1397,114 @@ function submitWorkspaceDraft(input: SubmitDraftInput): void {
     draftId,
     text: text.trim(),
     attachments,
-    cwd: workspaceDirectory,
-    provider,
+    cwd: submission.cwd,
+    provider: submission.provider,
     clientMessageId,
     timestamp,
-    ...(composerState.selectedMode !== "" ? { modeId: composerState.selectedMode } : {}),
-    ...(composerState.effectiveModelId ? { model: composerState.effectiveModelId } : {}),
-    ...(composerState.effectiveThinkingOptionId
-      ? { thinkingOptionId: composerState.effectiveThinkingOptionId }
-      : {}),
-    ...(composerState.featureValues ? { featureValues: composerState.featureValues } : {}),
+    ...(submission.modeId ? { modeId: submission.modeId } : {}),
+    ...(submission.model ? { model: submission.model } : {}),
+    ...(submission.thinkingOptionId ? { thinkingOptionId: submission.thinkingOptionId } : {}),
+    ...(submission.featureValues ? { featureValues: submission.featureValues } : {}),
     allowEmptyText: true,
   });
   navigateToPreparedWorkspaceTab({
     serverId,
     workspaceId,
     currentPathname: "/new",
-    target: { kind: "draft", draftId },
+    target: submission.target,
   });
   useDraftStore.getState().clearDraftInput({ draftKey, lifecycle: "sent" });
 }
 
-function useNewWorkspaceHostSelector(initialServerId: string) {
-  const allHosts = useHosts();
-  const allServerIds = useMemo(() => allHosts.map((h) => h.serverId), [allHosts]);
-  const lastWorkspaceSelection = useLastWorkspaceSelection();
-  const normalizedInitialServerId = initialServerId.trim();
-  const routeInitialServerId = allServerIds.includes(normalizedInitialServerId)
-    ? normalizedInitialServerId
-    : null;
-  const fallbackServerId =
-    lastWorkspaceSelection && allServerIds.includes(lastWorkspaceSelection.serverId)
-      ? lastWorkspaceSelection.serverId
-      : (allServerIds[0] ?? "");
-  const [manualServerId, setManualServerId] = useState<string | null>(null);
+function useNewWorkspaceHostSelector(input: {
+  initialServerId: string;
+  allServerIds: string[];
+  projects: HostProjectListItem[];
+  lastActiveProject: HostProjectListItem | null;
+  hostConnectionStatusByServerId: ReadonlyMap<string, HostRuntimeConnectionStatus>;
+  workspaceMultiplicityByServerId: ReadonlyMap<string, boolean>;
+}) {
+  const routeServerId = input.initialServerId.trim();
+  const defaultServerId = useMemo(
+    () =>
+      resolveNewWorkspaceInitialServerId({
+        allServerIds: input.allServerIds,
+        routeServerId: input.initialServerId,
+        lastActiveProject: input.lastActiveProject,
+        projects: input.projects,
+        hostConnectionStatusByServerId: input.hostConnectionStatusByServerId,
+        workspaceMultiplicityByServerId: input.workspaceMultiplicityByServerId,
+      }),
+    [
+      input.allServerIds,
+      input.hostConnectionStatusByServerId,
+      input.initialServerId,
+      input.lastActiveProject,
+      input.projects,
+      input.workspaceMultiplicityByServerId,
+    ],
+  );
+  const [automaticSelection, setAutomaticSelection] = useState(() => ({
+    routeServerId,
+    serverId: defaultServerId,
+  }));
+  const [manualSelection, setManualSelection] = useState<{
+    routeServerId: string;
+    serverId: string;
+  } | null>(null);
   const [hostPickerOpen, setHostPickerOpen] = useState(false);
-  const selectedServerId =
-    manualServerId && allServerIds.includes(manualServerId)
-      ? manualServerId
-      : (routeInitialServerId ?? fallbackServerId);
 
-  const handleSelectHost = useCallback((id: string) => {
-    setManualServerId(id);
-    setHostPickerOpen(false);
-  }, []);
+  useEffect(() => {
+    setAutomaticSelection((current) => {
+      const nextServerId =
+        current.routeServerId === routeServerId
+          ? resolveNewWorkspaceAutomaticServerId({
+              allServerIds: input.allServerIds,
+              routeServerId: input.initialServerId,
+              lastActiveProject: input.lastActiveProject,
+              projects: input.projects,
+              hostConnectionStatusByServerId: input.hostConnectionStatusByServerId,
+              workspaceMultiplicityByServerId: input.workspaceMultiplicityByServerId,
+              currentServerId: current.serverId,
+              nextServerId: defaultServerId,
+            })
+          : defaultServerId;
+
+      if (current.routeServerId === routeServerId && current.serverId === nextServerId) {
+        return current;
+      }
+
+      return { routeServerId, serverId: nextServerId };
+    });
+  }, [
+    defaultServerId,
+    input.allServerIds,
+    input.hostConnectionStatusByServerId,
+    input.initialServerId,
+    input.lastActiveProject,
+    input.projects,
+    input.workspaceMultiplicityByServerId,
+    routeServerId,
+  ]);
+
+  const automaticServerId =
+    automaticSelection.routeServerId === routeServerId &&
+    input.allServerIds.includes(automaticSelection.serverId)
+      ? automaticSelection.serverId
+      : defaultServerId;
+  const selectedServerId =
+    manualSelection?.routeServerId === routeServerId &&
+    input.allServerIds.includes(manualSelection.serverId)
+      ? manualSelection.serverId
+      : automaticServerId;
+
+  const handleSelectHost = useCallback(
+    (id: string) => {
+      setManualSelection({ routeServerId, serverId: id });
+      setHostPickerOpen(false);
+    },
+    [routeServerId],
+  );
 
   const handleHostPickerOpenChange = useCallback((open: boolean) => {
     setHostPickerOpen(open);
@@ -1252,8 +1515,6 @@ function useNewWorkspaceHostSelector(initialServerId: string) {
   }, []);
 
   return {
-    allHosts,
-    allServerIds,
     selectedServerId,
     hostPickerOpen,
     handleSelectHost,
@@ -1262,9 +1523,93 @@ function useNewWorkspaceHostSelector(initialServerId: string) {
   };
 }
 
-interface NewWorkspaceProjectPickerInput extends HostProjectRouteContext {
+interface NewWorkspaceInitialContextState {
+  allHosts: HostProfile[];
   selectedServerId: string;
-  allServerIds: string[];
+  hostPickerOpen: boolean;
+  handleSelectHost: (id: string) => void;
+  handleHostPickerOpenChange: (open: boolean) => void;
+  openHostPicker: () => void;
+  projects: HostProjectListItem[];
+  routeProject: HostProjectListItem | null;
+  lastActiveProject: HostProjectListItem | null;
+  routeDisplayName: string;
+}
+
+function useNewWorkspaceInitialContext({
+  serverId,
+  sourceDirectory: sourceDirectoryProp,
+  projectId,
+  displayName: displayNameProp,
+}: NewWorkspaceScreenProps): NewWorkspaceInitialContextState {
+  const allHosts = useHosts();
+  const allServerIds = useMemo(() => allHosts.map((h) => h.serverId), [allHosts]);
+  const projects = useHostProjects(allServerIds);
+  const routeDisplayName = displayNameProp?.trim() ?? "";
+  const routeProject = useMemo(
+    () =>
+      hostProjectFromRoute({
+        serverId,
+        projectId,
+        displayName: routeDisplayName,
+        sourceDirectory: sourceDirectoryProp,
+      }),
+    [projectId, routeDisplayName, serverId, sourceDirectoryProp],
+  );
+  const lastWorkspaceSelection = useLastWorkspaceSelection();
+  const lastWorkspaceServerId = useMemo(
+    () =>
+      lastWorkspaceSelection && allServerIds.includes(lastWorkspaceSelection.serverId)
+        ? lastWorkspaceSelection.serverId
+        : null,
+    [allServerIds, lastWorkspaceSelection],
+  );
+  const lastWorkspaceId = lastWorkspaceServerId ? lastWorkspaceSelection!.workspaceId : null;
+  const lastWorkspace = useWorkspace(lastWorkspaceServerId, lastWorkspaceId);
+  const lastActiveProject = useMemo(
+    () =>
+      lastWorkspaceServerId
+        ? hostProjectFromWorkspace({ serverId: lastWorkspaceServerId, workspace: lastWorkspace })
+        : null,
+    [lastWorkspace, lastWorkspaceServerId],
+  );
+  const hostConnectionStatusByServerId = useHostRuntimeConnectionStatuses(allServerIds);
+  const workspaceMultiplicityByServerId = useHostFeatureMap(allServerIds, "workspaceMultiplicity");
+  const {
+    selectedServerId,
+    hostPickerOpen,
+    handleSelectHost,
+    handleHostPickerOpenChange,
+    openHostPicker,
+  } = useNewWorkspaceHostSelector({
+    initialServerId: serverId,
+    allServerIds,
+    projects,
+    lastActiveProject,
+    hostConnectionStatusByServerId,
+    workspaceMultiplicityByServerId,
+  });
+
+  return {
+    allHosts,
+    selectedServerId,
+    hostPickerOpen,
+    handleSelectHost,
+    handleHostPickerOpenChange,
+    openHostPicker,
+    projects,
+    routeProject,
+    lastActiveProject,
+    routeDisplayName,
+  };
+}
+
+interface NewWorkspaceProjectPickerInput {
+  selectedServerId: string;
+  projects: HostProjectListItem[];
+  routeProject: HostProjectListItem | null;
+  lastActiveProject: HostProjectListItem | null;
+  displayName?: string;
   allowAllProjects: boolean;
 }
 
@@ -1281,39 +1626,15 @@ interface NewWorkspaceProjectPickerState {
 }
 
 function useNewWorkspaceProjectPicker({
-  serverId,
   selectedServerId,
-  allServerIds,
-  sourceDirectory,
-  projectId,
+  projects,
+  routeProject,
+  lastActiveProject,
   displayName: displayNameProp,
   allowAllProjects,
 }: NewWorkspaceProjectPickerInput): NewWorkspaceProjectPickerState {
   const [manualProjectKey, setManualProjectKey] = useState<string | null>(null);
   const displayName = displayNameProp?.trim() ?? "";
-  const projects = useHostProjects(allServerIds);
-  const lastWorkspaceSelection = useLastWorkspaceSelection();
-  const lastWorkspaceServerId = useMemo(
-    () =>
-      lastWorkspaceSelection && allServerIds.includes(lastWorkspaceSelection.serverId)
-        ? lastWorkspaceSelection.serverId
-        : null,
-    [allServerIds, lastWorkspaceSelection],
-  );
-  const lastWorkspaceId = lastWorkspaceServerId ? lastWorkspaceSelection!.workspaceId : null;
-  const lastWorkspace = useWorkspace(lastWorkspaceServerId, lastWorkspaceId);
-
-  const routeProject = useMemo(
-    () => hostProjectFromRoute({ serverId, projectId, displayName, sourceDirectory }),
-    [displayName, projectId, serverId, sourceDirectory],
-  );
-  const lastActiveProject = useMemo(
-    () =>
-      lastWorkspaceServerId
-        ? hostProjectFromWorkspace({ serverId: lastWorkspaceServerId, workspace: lastWorkspace })
-        : null,
-    [lastWorkspace, lastWorkspaceServerId],
-  );
   const selectableProjects = useMemo(
     () =>
       filterWorkspaceProjectsForHost({ projects, serverId: selectedServerId, allowAllProjects }),
@@ -1644,6 +1965,7 @@ export function NewWorkspaceScreen({
   sourceDirectory: sourceDirectoryProp,
   projectId,
   displayName: displayNameProp,
+  draftId,
 }: NewWorkspaceScreenProps) {
   const { theme } = useUnistyles();
   const { t } = useTranslation();
@@ -1653,18 +1975,23 @@ export function NewWorkspaceScreen({
   const mergeWorkspaces = useSessionStore((state) => state.mergeWorkspaces);
   const {
     allHosts,
-    allServerIds,
     selectedServerId,
     hostPickerOpen,
     handleSelectHost,
     handleHostPickerOpenChange,
     openHostPicker,
-  } = useNewWorkspaceHostSelector(serverId);
+    projects,
+    routeProject,
+    lastActiveProject,
+    routeDisplayName,
+  } = useNewWorkspaceInitialContext({
+    serverId,
+    sourceDirectory: sourceDirectoryProp,
+    projectId,
+    displayName: displayNameProp,
+  });
   // COMPAT(workspaceMultiplicity): added in v0.1.97, drop the gate when floor >= v0.1.97
-  const supportsWorkspaceMultiplicity = useSessionStore(
-    (state) =>
-      state.sessions[selectedServerId]?.serverInfo?.features?.workspaceMultiplicity === true,
-  );
+  const supportsWorkspaceMultiplicity = useHostFeature(selectedServerId, "workspaceMultiplicity");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [createdWorkspace, setCreatedWorkspace] = useState<ReturnType<
     typeof normalizeWorkspaceDescriptor
@@ -1680,6 +2007,7 @@ export function NewWorkspaceScreen({
   const projectPickerAnchorRef = useRef<View>(null);
   const isolationPickerAnchorRef = useRef<View>(null);
   const hostPickerAnchorRef = useRef<View | null>(null);
+  const isDraftHandoffActive = useIsNewWorkspaceDraftHandoffActive({ draftId, selectedServerId });
 
   useEffect(() => {
     const trimmed = pickerSearchQuery.trim();
@@ -1688,11 +2016,10 @@ export function NewWorkspaceScreen({
   }, [pickerSearchQuery]);
 
   const workspace = createdWorkspace;
-  const isPending = pendingAction !== null;
+  const isPending = isNewWorkspacePending({ pendingAction, isDraftHandoffActive });
   const client = useHostRuntimeClient(selectedServerId);
   const isConnected = useHostRuntimeIsConnected(selectedServerId);
   const {
-    projects,
     selectedProject,
     selectedSourceDirectory,
     projectPickerOptions,
@@ -1701,12 +2028,11 @@ export function NewWorkspaceScreen({
     projectTriggerLabel,
     handleSelectProjectOption,
   } = useNewWorkspaceProjectPicker({
-    serverId,
     selectedServerId,
-    allServerIds,
-    sourceDirectory: sourceDirectoryProp,
-    projectId,
-    displayName: displayNameProp,
+    projects,
+    routeProject,
+    lastActiveProject,
+    displayName: routeDisplayName,
     allowAllProjects: supportsWorkspaceMultiplicity,
   });
   const handleRepoSelected = useCallback(() => {
@@ -1748,7 +2074,17 @@ export function NewWorkspaceScreen({
   const projectIconDataByProjectKey = useProjectIconDataByProjectKey({
     projects: projectIconTargets,
   });
-  const draftKey = `new-workspace:${selectedServerId}:${selectedSourceDirectory ?? "choose-project"}`;
+  const draftKey = buildNewWorkspaceDraftKey({
+    selectedServerId,
+    selectedSourceDirectory,
+    draftId,
+  });
+  const forkDraftSetup = usePendingWorkspaceDraftSetup(draftId);
+  const draftContextScopeKey = useDraftWorkspaceAttachmentScopeKey(draftId);
+  const visibleDraftContextScopeKeys = useMemo(
+    () => resolveVisibleDraftContextScopeKeys({ isDraftHandoffActive, draftContextScopeKey }),
+    [draftContextScopeKey, isDraftHandoffActive],
+  );
   const chatDraft = useAgentInputDraft({
     draftKey,
     composer: buildComposerConfig({
@@ -1756,6 +2092,7 @@ export function NewWorkspaceScreen({
       isConnected,
       workspaceDirectory: workspace?.workspaceDirectory ?? null,
       sourceDirectory: effectiveSourceDirectory,
+      initialSetup: forkDraftSetup?.setup,
     }),
   });
   const composerState = chatDraft.composerState;
@@ -2124,9 +2461,11 @@ export function NewWorkspaceScreen({
         await runCreateChatAgent({
           payload,
           composerState,
+          forkDraftSetup,
           ensureWorkspace,
           serverId: selectedServerId,
           draftKey,
+          draftId,
           labels: {
             composerStateRequired: t("newWorkspace.errors.composerStateRequired"),
             selectModel: t("newWorkspace.errors.selectModel"),
@@ -2139,7 +2478,7 @@ export function NewWorkspaceScreen({
         toast.error(message);
       }
     },
-    [composerState, draftKey, ensureWorkspace, selectedServerId, t, toast],
+    [composerState, draftId, draftKey, ensureWorkspace, forkDraftSetup, selectedServerId, t, toast],
   );
 
   const renderPickerOption = useCallback(
@@ -2326,7 +2665,7 @@ export function NewWorkspaceScreen({
   const screenHeaderLeft = useMemo(() => <SidebarMenuToggle />, []);
 
   return (
-    <View style={styles.container}>
+    <FileDropZone style={styles.container}>
       <ScreenHeader left={screenHeaderLeft} borderless surfaceStyle={styles.headerSurface} />
       <View style={contentStyle}>
         <TitlebarDragRegion />
@@ -2345,12 +2684,13 @@ export function NewWorkspaceScreen({
             submitButtonAccessibilityLabel={t("newWorkspace.create")}
             submitButtonTestID="workspace-create-submit"
             submitIcon="return"
-            isSubmitLoading={pendingAction !== null}
+            isSubmitLoading={isPending}
             submitBehavior="preserve-and-lock"
             blurOnSubmit={true}
             value={chatDraft.text}
             onChangeText={chatDraft.setText}
             attachments={chatDraft.attachments}
+            attachmentScopeKeys={visibleDraftContextScopeKeys}
             onChangeAttachments={chatDraft.setAttachments}
             cwd={effectiveSourceDirectory ?? ""}
             clearDraft={handleClearDraft}
@@ -2362,7 +2702,7 @@ export function NewWorkspaceScreen({
           {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
         </ReanimatedAnimated.View>
       </View>
-    </View>
+    </FileDropZone>
   );
 }
 

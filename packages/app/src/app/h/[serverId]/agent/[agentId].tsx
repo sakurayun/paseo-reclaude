@@ -134,7 +134,7 @@ function HostAgentReadyRouteContent() {
 
     let cancelled = false;
     void client
-      .fetchAgent(agentId)
+      .fetchAgent({ agentId })
       .then((result) => {
         if (cancelled || redirectedRef.current) {
           return;
