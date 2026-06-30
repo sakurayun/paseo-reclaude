@@ -3,9 +3,9 @@ import type { ProjectCheckoutLitePayload } from "@getpaseo/protocol/messages";
 import { scanGitRepos, type ScanGitReposInput, type ScanGitReposResult } from "./scan-git-repos.js";
 import type { WorkspaceGitService } from "./workspace-git-service.js";
 
-const CHILD_REPO_SCAN_DEPTH = 1;
+const DESCENDANT_REPO_SCAN_DEPTH = 3;
 
-export type LocalCheckoutWorkspaceTargetReason = "input" | "single-child-git-repo";
+export type LocalCheckoutWorkspaceTargetReason = "input" | "single-descendant-git-repo";
 
 export interface LocalCheckoutWorkspaceTarget {
   cwd: string;
@@ -28,32 +28,36 @@ export async function resolveLocalCheckoutWorkspaceTarget(
     return { cwd: normalizedCwd, checkout, reason: "input" };
   }
 
-  const childRepoPath = await findSingleChildGitRepo(
+  const descendantRepoPath = await findSingleDescendantGitRepo(
     normalizedCwd,
     deps.scanGitRepos ?? scanGitRepos,
   );
-  if (!childRepoPath) {
+  if (!descendantRepoPath) {
     return { cwd: normalizedCwd, checkout, reason: "input" };
   }
 
-  const childCheckout = await deps.workspaceGitService.getCheckout(childRepoPath);
-  if (!childCheckout.isGit) {
+  const descendantCheckout = await deps.workspaceGitService.getCheckout(descendantRepoPath);
+  if (!descendantCheckout.isGit) {
     return { cwd: normalizedCwd, checkout, reason: "input" };
   }
 
-  return { cwd: childRepoPath, checkout: childCheckout, reason: "single-child-git-repo" };
+  return {
+    cwd: descendantRepoPath,
+    checkout: descendantCheckout,
+    reason: "single-descendant-git-repo",
+  };
 }
 
-async function findSingleChildGitRepo(
+async function findSingleDescendantGitRepo(
   cwd: string,
   scan: (input: ScanGitReposInput) => Promise<ScanGitReposResult>,
 ): Promise<string | null> {
   try {
-    const result = await scan({ rootPath: cwd, maxDepth: CHILD_REPO_SCAN_DEPTH });
-    const childRepos = result.repos
+    const result = await scan({ rootPath: cwd, maxDepth: DESCENDANT_REPO_SCAN_DEPTH });
+    const descendantRepos = result.repos
       .map((repo) => resolve(repo.path))
       .filter((repoPath) => repoPath !== cwd);
-    return childRepos.length === 1 ? childRepos[0] : null;
+    return descendantRepos.length === 1 ? descendantRepos[0] : null;
   } catch {
     return null;
   }

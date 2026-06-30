@@ -168,7 +168,7 @@ export function createWorkspaceProvisioningService(deps: {
       if (
         existingWorkspace.archivedAt &&
         inputCwd !== normalizedCwd &&
-        resolvedDirectory.reason !== "single-child-git-repo"
+        resolvedDirectory.reason !== "single-descendant-git-repo"
       ) {
         const timestamp = new Date().toISOString();
         const checkout = checkoutLiteFromGitSnapshot(inputCwd, {

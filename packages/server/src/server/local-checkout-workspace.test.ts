@@ -5,6 +5,7 @@ import { resolveLocalCheckoutWorkspaceTarget } from "./local-checkout-workspace.
 
 const PARENT_CWD = resolve("/tmp/parent");
 const REPO_CWD = resolve("/tmp/parent/repo");
+const NESTED_REPO_CWD = resolve("/tmp/parent/a/b/repo");
 const OTHER_REPO_CWD = resolve("/tmp/parent/other");
 
 function checkout(input: {
@@ -68,10 +69,35 @@ describe("resolveLocalCheckoutWorkspaceTarget", () => {
     ).resolves.toEqual({
       cwd: REPO_CWD,
       checkout: childCheckout,
-      reason: "single-child-git-repo",
+      reason: "single-descendant-git-repo",
     });
 
-    expect(scanGitRepos).toHaveBeenCalledWith({ rootPath: PARENT_CWD, maxDepth: 1 });
+    expect(scanGitRepos).toHaveBeenCalledWith({ rootPath: PARENT_CWD, maxDepth: 3 });
+    expect(workspaceGitService.getCheckout).toHaveBeenCalledTimes(2);
+  });
+
+  test("uses the only git repo nested three directories below the selected cwd", async () => {
+    const parentCheckout = checkout({ cwd: PARENT_CWD, isGit: false });
+    const nestedCheckout = checkout({ cwd: NESTED_REPO_CWD, isGit: true });
+    const workspaceGitService = {
+      getCheckout: vi.fn(async (cwd: string) =>
+        cwd === NESTED_REPO_CWD ? nestedCheckout : parentCheckout,
+      ),
+    };
+    const scanGitRepos = vi.fn(async () => ({
+      repos: [repo(NESTED_REPO_CWD, "a/b/repo")],
+      truncated: false,
+    }));
+
+    await expect(
+      resolveLocalCheckoutWorkspaceTarget(PARENT_CWD, { workspaceGitService, scanGitRepos }),
+    ).resolves.toEqual({
+      cwd: NESTED_REPO_CWD,
+      checkout: nestedCheckout,
+      reason: "single-descendant-git-repo",
+    });
+
+    expect(scanGitRepos).toHaveBeenCalledWith({ rootPath: PARENT_CWD, maxDepth: 3 });
     expect(workspaceGitService.getCheckout).toHaveBeenCalledTimes(2);
   });
 
