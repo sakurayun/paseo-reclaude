@@ -165,6 +165,63 @@ test("creates a distinct local checkout workspace for the same cwd on every call
   expect(deps.workspaces.size).toBe(2);
 });
 
+test("creates a local checkout workspace at the only child repo when cwd is its parent", async () => {
+  const { repoDir, tempDir } = createGitRepo();
+  cleanupPaths.push(tempDir);
+  const parentDir = tempDir;
+  const deps = createDeps();
+  const workspaceGitService = {
+    ...createWorkspaceGitServiceStub(),
+    getCheckout: async (cwd) => {
+      if (cwd === repoDir) {
+        return {
+          cwd,
+          isGit: true,
+          currentBranch: "main",
+          remoteUrl: null,
+          worktreeRoot: repoDir,
+          isPaseoOwnedWorktree: false,
+          mainRepoRoot: null,
+        };
+      }
+      return {
+        cwd,
+        isGit: false,
+        currentBranch: null,
+        remoteUrl: null,
+        worktreeRoot: null,
+        isPaseoOwnedWorktree: false,
+        mainRepoRoot: null,
+      };
+    },
+  };
+
+  const workspace = await createLocalCheckoutWorkspace(
+    { cwd: parentDir },
+    {
+      ...deps,
+      workspaceGitService,
+      scanGitRepos: async () => ({
+        repos: [
+          {
+            path: repoDir,
+            relativePath: "repo",
+            currentBranch: "main",
+            branches: ["main"],
+            defaultBranch: null,
+          },
+        ],
+        truncated: false,
+      }),
+    },
+  );
+
+  expect(workspace.cwd).toBe(repoDir);
+  expect(workspace.kind).toBe("local_checkout");
+  expect(workspace.displayName).toBe("main");
+  expect(workspace.branch).toBe("main");
+});
+
 test("renames an eligible unnamed branch-off worktree once on first agent context", async () => {
   const { repoDir, tempDir } = createGitRepo();
   cleanupPaths.push(tempDir);

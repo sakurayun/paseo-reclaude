@@ -98,6 +98,45 @@ test("fresh non-git directory creates a directory workspace at the exact path", 
   expect(workspace.cwd).toBe(dir);
 });
 
+test("fresh parent directory with one child git repo creates the workspace at the child repo", async () => {
+  const parent = path.join(tmpDir, "parent");
+  const repo = path.join(parent, "repo");
+  const service = createWorkspaceProvisioningService({
+    workspaceRegistry,
+    projectRegistry,
+    workspaceGitService: createNoopWorkspaceGitService({
+      getCheckout: async (cwd: string) => ({
+        cwd,
+        isGit: cwd === repo,
+        currentBranch: cwd === repo ? "main" : null,
+        remoteUrl: null,
+        worktreeRoot: cwd === repo ? repo : null,
+        isPaseoOwnedWorktree: false,
+        mainRepoRoot: null,
+      }),
+      peekSnapshot: () => null,
+    }),
+    scanGitRepos: async () => ({
+      repos: [
+        {
+          path: repo,
+          relativePath: "repo",
+          currentBranch: "main",
+          branches: ["main"],
+          defaultBranch: null,
+        },
+      ],
+      truncated: false,
+    }),
+  });
+
+  const workspace = await service.findOrCreateWorkspaceForDirectory(parent);
+
+  expect(workspace.cwd).toBe(repo);
+  expect(workspace.kind).toBe("local_checkout");
+  expect(workspace.displayName).toBe("main");
+});
+
 test("re-opening an active workspace by exact path returns the same record without duplicating", async () => {
   const repo = path.join(tmpDir, "repo");
   gitRoots.add(repo);
@@ -213,4 +252,43 @@ test("findOrCreateProjectForDirectory reuses the active project for the same roo
 
   expect(second.projectId).toBe(first.projectId);
   expect(await projectRegistry.list()).toHaveLength(1);
+});
+
+test("findOrCreateProjectForDirectory resolves a parent directory to its only child git repo", async () => {
+  const parent = path.join(tmpDir, "project-parent");
+  const repo = path.join(parent, "repo");
+  const service = createWorkspaceProvisioningService({
+    workspaceRegistry,
+    projectRegistry,
+    workspaceGitService: createNoopWorkspaceGitService({
+      getCheckout: async (cwd: string) => ({
+        cwd,
+        isGit: cwd === repo,
+        currentBranch: cwd === repo ? "main" : null,
+        remoteUrl: null,
+        worktreeRoot: cwd === repo ? repo : null,
+        isPaseoOwnedWorktree: false,
+        mainRepoRoot: null,
+      }),
+      peekSnapshot: () => null,
+    }),
+    scanGitRepos: async () => ({
+      repos: [
+        {
+          path: repo,
+          relativePath: "repo",
+          currentBranch: "main",
+          branches: ["main"],
+          defaultBranch: null,
+        },
+      ],
+      truncated: false,
+    }),
+  });
+
+  const project = await service.findOrCreateProjectForDirectory(parent);
+
+  expect(project.rootPath).toBe(repo);
+  expect(project.kind).toBe("git");
+  expect(project.displayName).toBe("repo");
 });

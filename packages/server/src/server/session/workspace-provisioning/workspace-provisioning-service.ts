@@ -5,6 +5,11 @@ import {
   generateWorkspaceId,
 } from "../../workspace-registry-model.js";
 import {
+  resolveLocalCheckoutWorkspaceTarget,
+  type LocalCheckoutWorkspaceTargetDeps,
+  type LocalCheckoutWorkspaceTargetReason,
+} from "../../local-checkout-workspace.js";
+import {
   createPersistedProjectRecord,
   createPersistedWorkspaceRecord,
   type PersistedProjectRecord,
@@ -51,28 +56,29 @@ export function createWorkspaceProvisioningService(deps: {
   workspaceRegistry: WorkspaceRegistry;
   projectRegistry: ProjectRegistry;
   workspaceGitService: Pick<WorkspaceGitService, "getCheckout" | "peekSnapshot">;
+  scanGitRepos?: LocalCheckoutWorkspaceTargetDeps["scanGitRepos"];
 }): WorkspaceProvisioningService {
   const { workspaceRegistry, projectRegistry, workspaceGitService } = deps;
 
   async function resolveWorkspaceDirectory(
     cwd: string,
     options?: { refreshGit?: boolean },
-  ): Promise<string> {
+  ): Promise<{ cwd: string; reason: LocalCheckoutWorkspaceTargetReason }> {
     const normalizedCwd = resolve(cwd);
     if (options?.refreshGit === false) {
       const snapshot = workspaceGitService.peekSnapshot(normalizedCwd);
-      return resolve(snapshot?.git.repoRoot ?? normalizedCwd);
+      return { cwd: resolve(snapshot?.git.repoRoot ?? normalizedCwd), reason: "input" };
     }
 
-    const checkout = await workspaceGitService.getCheckout(normalizedCwd);
-    return resolve(checkout.worktreeRoot ?? normalizedCwd);
+    const target = await resolveLocalCheckoutWorkspaceTarget(normalizedCwd, deps);
+    return { cwd: resolve(target.checkout.worktreeRoot ?? target.cwd), reason: target.reason };
   }
 
   async function findExactWorkspaceByDirectory(
     cwd: string,
     options?: { refreshGit?: boolean },
   ): Promise<PersistedWorkspaceRecord | null> {
-    const normalizedCwd = await resolveWorkspaceDirectory(cwd, options);
+    const normalizedCwd = (await resolveWorkspaceDirectory(cwd, options)).cwd;
     const workspaces = await workspaceRegistry.list();
     return workspaces.find((workspace) => workspace.cwd === normalizedCwd) ?? null;
   }
@@ -153,12 +159,17 @@ export function createWorkspaceProvisioningService(deps: {
 
   async function findOrCreateWorkspaceForDirectory(cwd: string): Promise<PersistedWorkspaceRecord> {
     const inputCwd = resolve(cwd);
-    const normalizedCwd = await resolveWorkspaceDirectory(cwd);
+    const resolvedDirectory = await resolveWorkspaceDirectory(cwd);
+    const normalizedCwd = resolvedDirectory.cwd;
     const existingWorkspace = await findExactWorkspaceByDirectory(normalizedCwd, {
       refreshGit: false,
     });
     if (existingWorkspace) {
-      if (existingWorkspace.archivedAt && inputCwd !== normalizedCwd) {
+      if (
+        existingWorkspace.archivedAt &&
+        inputCwd !== normalizedCwd &&
+        resolvedDirectory.reason !== "single-child-git-repo"
+      ) {
         const timestamp = new Date().toISOString();
         const checkout = checkoutLiteFromGitSnapshot(inputCwd, {
           isGit: false,
@@ -214,8 +225,11 @@ export function createWorkspaceProvisioningService(deps: {
     cwd: string,
     title?: string | null,
   ): Promise<PersistedWorkspaceRecord> {
-    const checkout = await workspaceGitService.getCheckout(cwd);
-    const membership = classifyDirectoryForProjectMembership({ cwd, checkout });
+    const target = await resolveLocalCheckoutWorkspaceTarget(cwd, deps);
+    const membership = classifyDirectoryForProjectMembership({
+      cwd: target.cwd,
+      checkout: target.checkout,
+    });
     const timestamp = new Date().toISOString();
 
     const projectRecord = await resolveProjectRecordForPlacement({
@@ -227,7 +241,7 @@ export function createWorkspaceProvisioningService(deps: {
     const workspaceRecord = createPersistedWorkspaceRecord({
       workspaceId: generateWorkspaceId(),
       projectId: projectRecord.projectId,
-      cwd,
+      cwd: target.cwd,
       kind: membership.workspaceKind,
       displayName: membership.workspaceDisplayName,
       title: title ?? null,
@@ -239,9 +253,11 @@ export function createWorkspaceProvisioningService(deps: {
   }
 
   async function findOrCreateProjectForDirectory(cwd: string): Promise<PersistedProjectRecord> {
-    const normalizedCwd = resolve(cwd);
-    const checkout = await workspaceGitService.getCheckout(normalizedCwd);
-    const membership = classifyDirectoryForProjectMembership({ cwd: normalizedCwd, checkout });
+    const target = await resolveLocalCheckoutWorkspaceTarget(cwd, deps);
+    const membership = classifyDirectoryForProjectMembership({
+      cwd: target.cwd,
+      checkout: target.checkout,
+    });
     const projectRecord = await resolveProjectRecordForPlacement({
       membership,
       timestamp: new Date().toISOString(),

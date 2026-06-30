@@ -13,6 +13,10 @@ import {
   generateWorkspaceId,
 } from "./workspace-registry-model.js";
 import {
+  resolveLocalCheckoutWorkspaceTarget,
+  type LocalCheckoutWorkspaceTargetDeps,
+} from "./local-checkout-workspace.js";
+import {
   createWorktreeCore,
   type CreateWorktreeCoreDeps,
   type CreateWorktreeCoreInput,
@@ -275,18 +279,21 @@ export interface CreateLocalCheckoutWorkspaceDeps {
   projectRegistry: Pick<ProjectRegistry, "get" | "list" | "upsert">;
   workspaceRegistry: Pick<WorkspaceRegistry, "list" | "upsert">;
   workspaceGitService: Pick<WorkspaceGitService, "getCheckout">;
+  scanGitRepos?: LocalCheckoutWorkspaceTargetDeps["scanGitRepos"];
 }
 
-// Always create a NEW workspace record backed by the existing directory `cwd`.
+// Always create a NEW workspace record backed by the resolved checkout directory.
 // Never reuses a same-cwd record: a directory may back any number of
 // workspaces. Used by explicit user creation.
 export async function createLocalCheckoutWorkspace(
   options: { cwd: string; title?: string | null },
   deps: CreateLocalCheckoutWorkspaceDeps,
 ): Promise<PersistedWorkspaceRecord> {
-  const normalizedCwd = resolve(options.cwd);
-  const checkout = await deps.workspaceGitService.getCheckout(normalizedCwd);
-  const membership = classifyDirectoryForProjectMembership({ cwd: normalizedCwd, checkout });
+  const target = await resolveLocalCheckoutWorkspaceTarget(options.cwd, deps);
+  const membership = classifyDirectoryForProjectMembership({
+    cwd: target.cwd,
+    checkout: target.checkout,
+  });
   const now = new Date().toISOString();
   const projectRecord = await resolveProjectRecordForMembership({
     membership,
@@ -300,12 +307,12 @@ export async function createLocalCheckoutWorkspace(
   // buildWorkspaceCheckout reports the real branch for directory/local_checkout
   // workspaces too (it reads workspace.branch). Same source deriveWorkspaceDisplayName
   // reads. HEAD/detached resolves to null — there is no branch to report.
-  const currentBranch = checkout.currentBranch?.trim() ?? null;
+  const currentBranch = target.checkout.currentBranch?.trim() ?? null;
   const branch = currentBranch && currentBranch.toUpperCase() !== "HEAD" ? currentBranch : null;
   const workspace = createPersistedWorkspaceRecord({
     workspaceId: generateWorkspaceId(),
     projectId: projectRecord.projectId,
-    cwd: normalizedCwd,
+    cwd: target.cwd,
     kind: membership.workspaceKind,
     displayName: membership.workspaceDisplayName,
     branch,
