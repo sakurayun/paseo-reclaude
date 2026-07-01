@@ -117,6 +117,20 @@ const CLAUDE_MODELS: AgentModelDefinition[] = [
   },
   {
     provider: "claude",
+    id: "claude-sonnet-5[1m]",
+    label: "Sonnet 5 1M",
+    description: "Sonnet 5 with 1M context window",
+    thinkingOptions: [...CLAUDE_EXTENDED_THINKING_OPTIONS],
+  },
+  {
+    provider: "claude",
+    id: "claude-sonnet-5",
+    label: "Sonnet 5",
+    description: "Sonnet 5 · Best for everyday tasks",
+    thinkingOptions: [...CLAUDE_EXTENDED_THINKING_OPTIONS],
+  },
+  {
+    provider: "claude",
     id: "claude-sonnet-4-6[1m]",
     label: "Sonnet 4.6 1M",
     description: "Sonnet 4.6 with 1M context window",
@@ -126,7 +140,7 @@ const CLAUDE_MODELS: AgentModelDefinition[] = [
     provider: "claude",
     id: "claude-sonnet-4-6",
     label: "Sonnet 4.6",
-    description: "Sonnet 4.6 · Best for everyday tasks",
+    description: "Sonnet 4.6 · Previous release",
     thinkingOptions: [...CLAUDE_THINKING_OPTIONS],
   },
   {
@@ -327,6 +341,15 @@ function inferClaudeThinkingOptions(
   const lowered = modelId.toLowerCase();
   if (lowered.includes("fable")) {
     return [...CLAUDE_EXTENDED_THINKING_OPTIONS];
+  }
+  // Sonnet 5+ uses single-segment version IDs (claude-sonnet-5) and is the first
+  // Sonnet tier to support the extra-high effort level. Opus keeps two-segment
+  // IDs, so it is handled by the version regex below.
+  const singleSegmentSonnet = parseClaudeRuntimeModelId(lowered);
+  if (singleSegmentSonnet?.family === "sonnet" && singleSegmentSonnet.minor === null) {
+    return Number(singleSegmentSonnet.major) >= 5
+      ? [...CLAUDE_EXTENDED_THINKING_OPTIONS]
+      : [...CLAUDE_THINKING_OPTIONS];
   }
   const versionMatch = lowered.match(/(opus|sonnet)[-_ ]+(\d+)[-.](\d{1,2})(?!\d)/);
   if (versionMatch) {

@@ -135,6 +135,8 @@ describe("getClaudeModels", () => {
       "claude-opus-4-7",
       "claude-opus-4-6[1m]",
       "claude-opus-4-6",
+      "claude-sonnet-5[1m]",
+      "claude-sonnet-5",
       "claude-sonnet-4-6[1m]",
       "claude-sonnet-4-6",
       "claude-haiku-4-5",
@@ -177,6 +179,29 @@ describe("getClaudeModels", () => {
       "xhigh",
       "max",
     ]);
+  });
+
+  it("gives Sonnet 5 the extended thinking options including xhigh", () => {
+    const models = getClaudeModels();
+    const sonnet5 = models.find((m) => m.id === "claude-sonnet-5");
+    const sonnet5With1m = models.find((m) => m.id === "claude-sonnet-5[1m]");
+    expect(sonnet5?.thinkingOptions?.map((option) => option.id)).toEqual([
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max",
+    ]);
+    expect(sonnet5With1m?.thinkingOptions?.map((option) => option.id)).toEqual([
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max",
+    ]);
+    // Sonnet 4.6 stays on the base options without xhigh.
+    const sonnet46 = models.find((m) => m.id === "claude-sonnet-4-6");
+    expect(sonnet46?.thinkingOptions?.map((option) => option.id)).not.toContain("xhigh");
   });
 
   it("returns fresh copies each call", () => {
@@ -694,6 +719,15 @@ describe("normalizeClaudeRuntimeModelId", () => {
     expect(normalizeClaudeRuntimeModelId("claude-fable-5-20260101")).toBe("claude-fable-5");
     expect(normalizeClaudeRuntimeModelId("us.anthropic.claude-fable-5[1m]")).toBe(
       "claude-fable-5[1m]",
+    );
+  });
+
+  it("normalizes sonnet 5 model IDs with single-segment versions", () => {
+    expect(normalizeClaudeRuntimeModelId("claude-sonnet-5")).toBe("claude-sonnet-5");
+    expect(normalizeClaudeRuntimeModelId("claude-sonnet-5[1m]")).toBe("claude-sonnet-5[1m]");
+    expect(normalizeClaudeRuntimeModelId("claude-sonnet-5-20260101")).toBe("claude-sonnet-5");
+    expect(normalizeClaudeRuntimeModelId("us.anthropic.claude-sonnet-5[1m]")).toBe(
+      "claude-sonnet-5[1m]",
     );
   });
 

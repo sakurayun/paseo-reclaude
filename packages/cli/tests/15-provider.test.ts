@@ -81,6 +81,16 @@ const EXPECTED_CLAUDE_MODELS = [
     descriptionFragment: "1M context window",
   },
   {
+    id: "claude-sonnet-5[1m]",
+    model: "Sonnet 5 1M",
+    descriptionFragment: "1M context window",
+  },
+  {
+    id: "claude-sonnet-5",
+    model: "Sonnet 5",
+    descriptionFragment: "Best for everyday tasks",
+  },
+  {
     id: "claude-sonnet-4-6[1m]",
     model: "Sonnet 4.6 1M",
     descriptionFragment: "1M context window",
@@ -88,7 +98,7 @@ const EXPECTED_CLAUDE_MODELS = [
   {
     id: "claude-sonnet-4-6",
     model: "Sonnet 4.6",
-    descriptionFragment: "Best for everyday tasks",
+    descriptionFragment: "Previous release",
   },
   {
     id: "claude-opus-4-6",
@@ -397,7 +407,7 @@ try {
       "--quiet should print the current Claude catalog IDs",
     );
     assert(
-      claudeModelsFromJson.some((m) => m.id === "claude-sonnet-4-6"),
+      claudeModelsFromJson.some((m) => m.id === "claude-sonnet-5"),
       "captured --json output should include the current Claude everyday model id",
     );
     console.log("✓ provider models --quiet outputs model IDs only\n");
