@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.122 - 2026-07-01
+
+### Added
+
+- Claude Sonnet 5 is now available in the model picker, including its 1M context window variant
+
 ## 0.1.120 - 2026-06-30
 
 ### Changed
