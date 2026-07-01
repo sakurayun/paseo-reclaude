@@ -337,6 +337,7 @@ export interface PaseoDaemonConfig {
   trustedProxies?: true | string[];
   mcpEnabled?: boolean;
   mcpInjectIntoAgents?: boolean;
+  browserToolsEnabled?: boolean;
   autoArchiveAfterMerge?: boolean;
   enableTerminalAgentHooks?: boolean;
   appendSystemPrompt?: string;
@@ -402,6 +403,7 @@ function buildDaemonConfigStoreSettings(
 ): ConstructorParameters<typeof DaemonConfigStore>[1] {
   return {
     mcp: { injectIntoAgents: config.mcpInjectIntoAgents ?? true },
+    browserTools: { enabled: config.browserToolsEnabled ?? false },
     providers: Object.fromEntries(
       Object.entries(config.providerOverrides ?? {}).map(([providerId, override]) => [
         providerId,

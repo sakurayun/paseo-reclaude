@@ -39,24 +39,25 @@ describe("sidebar view store", () => {
   beforeEach(() => {
     useSidebarViewStore.setState({
       groupMode: "project",
-      hostFilter: null,
+      hostFilters: [],
+      searchQuery: "",
     });
   });
 
   it("keeps a host filter that still points at an available host", () => {
-    useSidebarViewStore.getState().setHostFilter("host-a");
+    useSidebarViewStore.getState().toggleHostFilter("host-a");
 
-    useSidebarViewStore.getState().reconcileHostFilter(["host-a", "host-b"]);
+    useSidebarViewStore.getState().reconcileHostFilters(["host-a", "host-b"]);
 
-    expect(useSidebarViewStore.getState().hostFilter).toBe("host-a");
+    expect(useSidebarViewStore.getState().hostFilters).toEqual(["host-a"]);
   });
 
   it("clears a host filter after that host is removed", () => {
-    useSidebarViewStore.getState().setHostFilter("removed-host");
+    useSidebarViewStore.getState().toggleHostFilter("removed-host");
 
-    useSidebarViewStore.getState().reconcileHostFilter(["host-a"]);
+    useSidebarViewStore.getState().reconcileHostFilters(["host-a"]);
 
-    expect(useSidebarViewStore.getState().hostFilter).toBeNull();
+    expect(useSidebarViewStore.getState().hostFilters).toEqual([]);
   });
 
   it("migrates legacy per-host group modes to the new global mode", () => {
@@ -69,7 +70,7 @@ describe("sidebar view store", () => {
       }),
     ).toEqual({
       groupMode: "status",
-      hostFilter: null,
+      hostFilters: [],
       searchQuery: "",
     });
   });
@@ -78,12 +79,26 @@ describe("sidebar view store", () => {
     expect(
       migrateSidebarViewState({
         groupMode: "status",
-        hostFilter: "host-a",
+        hostFilters: ["host-a", "host-b"],
         searchQuery: "auth",
       }),
     ).toEqual({
       groupMode: "status",
-      hostFilter: "host-a",
+      hostFilters: ["host-a", "host-b"],
+      searchQuery: "auth",
+    });
+  });
+
+  it("migrates the legacy single host filter to the multi-host shape", () => {
+    expect(
+      migrateSidebarViewState({
+        groupMode: "workspace",
+        hostFilter: "host-a",
+        searchQuery: "auth",
+      }),
+    ).toEqual({
+      groupMode: "workspace",
+      hostFilters: ["host-a"],
       searchQuery: "auth",
     });
   });

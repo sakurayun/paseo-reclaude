@@ -82,8 +82,12 @@ contextBridge.exposeInMainWorld("paseoDesktop", {
       ipcRenderer.invoke("paseo:menu:showContextMenu", input),
   },
   browser: {
-    setWorkspaceActiveBrowser: (browserId: string | null) =>
-      ipcRenderer.invoke("paseo:browser:set-workspace-active-browser", browserId),
+    registerWorkspaceBrowser: (input: { browserId: string; workspaceId: string }) =>
+      ipcRenderer.invoke("paseo:browser:register-workspace-browser", input),
+    setWorkspaceActiveBrowser: (input: { workspaceId: string; browserId: string | null }) =>
+      ipcRenderer.invoke("paseo:browser:set-workspace-active-browser", input),
+    setAgentActiveBrowser: (input: { agentId: string; browserId: string | null }) =>
+      ipcRenderer.invoke("paseo:browser:set-agent-active-browser", input),
     openDevTools: (browserId: string) =>
       ipcRenderer.invoke("paseo:browser:open-devtools", browserId),
     clearPartition: (browserId: string) =>
@@ -114,6 +118,8 @@ contextBridge.exposeInMainWorld("paseoDesktop", {
         ipcRenderer.removeListener("paseo:event:browser-found-in-page", ipcListener);
       };
     },
+    executeAutomationCommand: (request: Record<string, unknown>) =>
+      ipcRenderer.invoke("paseo:browser:execute-automation-command", request),
     captureElement: (
       browserId: string,
       rect: { x: number; y: number; width: number; height: number },

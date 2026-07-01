@@ -107,6 +107,7 @@ import { useWorkspaceTerminalSessionRetention } from "@/terminal/hooks/use-works
 import type { CheckoutStatusPayload } from "@/git/use-status-query";
 import { confirmDialog } from "@/utils/confirm-dialog";
 import { useStableEvent } from "@/hooks/use-stable-event";
+import { removeResidentBrowserWebview } from "@/components/browser-webview-resident";
 import { createWorkspaceBrowser, useBrowserStore } from "@/stores/browser-store";
 import { getDesktopHost } from "@/desktop/host";
 import { buildProviderCommand } from "@/utils/provider-command-templates";
@@ -314,19 +315,22 @@ function decodeSegment(value: string): string {
 function useSyncWorkspaceActiveBrowser(input: {
   workspaceLayout: WorkspaceLayout | null;
   isRouteFocused: boolean;
+  workspaceId: string;
 }) {
   const focusedBrowserId = useMemo(
     () => getFocusedBrowserId(input.workspaceLayout),
     [input.workspaceLayout],
   );
-  const desktopActiveBrowserId = input.isRouteFocused ? focusedBrowserId : null;
 
   useEffect(() => {
     if (!getIsElectron()) {
       return;
     }
-    void getDesktopHost()?.browser?.setWorkspaceActiveBrowser?.(desktopActiveBrowserId);
-  }, [desktopActiveBrowserId]);
+    void getDesktopHost()?.browser?.setWorkspaceActiveBrowser?.({
+      workspaceId: input.workspaceId,
+      browserId: focusedBrowserId,
+    });
+  }, [focusedBrowserId, input.workspaceId]);
 }
 
 function getFallbackTabOptionLabel(
@@ -1956,7 +1960,11 @@ function WorkspaceScreenContent({
     () => (workspaceLayout ? collectAllTabs(workspaceLayout.root) : EMPTY_UI_TABS),
     [workspaceLayout],
   );
-  useSyncWorkspaceActiveBrowser({ workspaceLayout, isRouteFocused });
+  useSyncWorkspaceActiveBrowser({
+    workspaceLayout,
+    isRouteFocused,
+    workspaceId: normalizedWorkspaceId,
+  });
   const openWorkspaceTabInBackground = useWorkspaceLayoutStore(
     (state) => state.openTabInBackground,
   );
@@ -2001,6 +2009,7 @@ function WorkspaceScreenContent({
       if (input.target?.kind === "browser") {
         const { browserId } = input.target;
         useBrowserStore.getState().removeBrowser(browserId);
+        removeResidentBrowserWebview(browserId);
         void getDesktopHost()?.browser?.clearPartition?.(browserId);
       }
       closeWorkspaceTab(persistenceKey, normalizedTabId);

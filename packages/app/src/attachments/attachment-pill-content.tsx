@@ -9,7 +9,7 @@ import {
 } from "lucide-react-native";
 import { withUnistyles } from "react-native-unistyles";
 import type { AgentAttachment } from "@getpaseo/protocol/messages";
-import type { WorkspaceComposerAttachment } from "@/attachments/types";
+import type { BrowserAnnotationIntent, WorkspaceComposerAttachment } from "@/attachments/types";
 import { getFileTypeLabel } from "@/attachments/file-types";
 import { isPullRequestContextAttachment } from "@/attachments/workspace-attachment-utils";
 import { ICON_SIZE, type Theme } from "@/styles/theme";
@@ -35,6 +35,13 @@ function getPullRequestContextSubtitle(attachment: WorkspaceComposerAttachment):
   }
   return "Review";
 }
+
+const BROWSER_INTENT_LABEL_KEYS: Record<BrowserAnnotationIntent, string> = {
+  fix: "workspace.browser.annotate.intents.fix",
+  change: "workspace.browser.annotate.intents.change",
+  question: "workspace.browser.annotate.intents.question",
+  approve: "workspace.browser.annotate.intents.approve",
+};
 
 function getTextAttachmentSubtitle(
   attachment: Extract<AgentAttachment, { type: "text" }>,
@@ -89,10 +96,11 @@ export function getWorkspaceAttachmentPillContent(
   t: TFunction,
 ): AttachmentPillContent {
   if (attachment.kind === "browser_element") {
+    const intent = attachment.attachment.intent;
     return {
       icon: attachmentBrowserIcon,
       title: attachment.attachment.tag,
-      subtitle: t("composer.attachments.element"),
+      subtitle: intent ? t(BROWSER_INTENT_LABEL_KEYS[intent]) : t("composer.attachments.element"),
     };
   }
   if (isPullRequestContextAttachment(attachment)) {

@@ -1,5 +1,15 @@
 import { Platform } from "react-native";
 import { getElectronHost } from "@/desktop/electron/host";
+import type { SessionInboundMessage, SessionOutboundMessage } from "@getpaseo/protocol/messages";
+
+type BrowserAutomationExecuteRequest = Extract<
+  SessionOutboundMessage,
+  { type: "browser.automation.execute.request" }
+>;
+type BrowserAutomationExecuteResponse = Extract<
+  SessionInboundMessage,
+  { type: "browser.automation.execute.response" }
+>;
 
 export type DesktopNotificationPermission = "granted" | "denied" | "default";
 
@@ -132,19 +142,27 @@ export interface DesktopBrowserFoundInPageResult {
 }
 
 export interface DesktopBrowserBridge {
-  setWorkspaceActiveBrowser?: (browserId: string | null) => Promise<void>;
+  registerWorkspaceBrowser?: (input: { browserId: string; workspaceId: string }) => Promise<void>;
+  setWorkspaceActiveBrowser?: (input: {
+    workspaceId: string;
+    browserId: string | null;
+  }) => Promise<void>;
+  setAgentActiveBrowser?: (input: { agentId: string; browserId: string | null }) => Promise<void>;
   openDevTools?: (browserId: string) => Promise<unknown>;
   clearPartition?: (browserId: string) => Promise<void>;
-  findInPage: (
+  findInPage?: (
     browserId: string,
     text: string,
     options?: DesktopBrowserFindOptions,
   ) => Promise<number | null> | number | null;
-  stopFindInPage: (browserId: string, action: DesktopBrowserFindAction) => Promise<void> | void;
-  onFoundInPage: (
+  stopFindInPage?: (browserId: string, action: DesktopBrowserFindAction) => Promise<void> | void;
+  onFoundInPage?: (
     browserId: string,
     listener: (result: DesktopBrowserFoundInPageResult) => void,
   ) => Promise<() => void> | (() => void);
+  executeAutomationCommand?: (
+    request: BrowserAutomationExecuteRequest,
+  ) => Promise<BrowserAutomationExecuteResponse["payload"]>;
   /** Capture a PNG screenshot of the guest viewport cropped to `rect`. */
   captureElement?: (
     browserId: string,

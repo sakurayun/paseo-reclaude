@@ -57,6 +57,11 @@ import {
 import { isDev } from "@/constants/platform";
 import { FindBar, usePaneFind, type PaneFindMatchState } from "@/panels/pane-find";
 import { useBrowserStore, normalizeWorkspaceBrowserUrl } from "@/stores/browser-store";
+import {
+  prepareBrowserWebview,
+  releaseResidentBrowserWebview,
+  takeResidentBrowserWebview,
+} from "./browser-webview-resident";
 
 type ElectronWebview = HTMLElement & {
   canGoBack?: () => boolean;
@@ -890,16 +895,16 @@ export function BrowserPane({
       initialUrlRef.current,
       browserErrorLabelsRef.current,
     );
-    const webview = document.createElement("webview") as ElectronWebview;
+    const residentWebview = takeResidentBrowserWebview(browserId) as ElectronWebview | null;
+    const webview = residentWebview ?? (document.createElement("webview") as ElectronWebview);
     webviewRef.current = webview;
-    webview.setAttribute("partition", `persist:paseo-browser-${browserId}`);
-    webview.setAttribute("allowpopups", "true");
-    webview.setAttribute("spellcheck", "false");
-    webview.setAttribute("autosize", "on");
-    webview.setAttribute(
-      "src",
-      initialUnsafeNavigationMessage ? "about:blank" : initialUrlRef.current,
-    );
+    void getDesktopHost()?.browser?.registerWorkspaceBrowser?.({ browserId, workspaceId });
+    if (!residentWebview) {
+      prepareBrowserWebview(webview, {
+        browserId,
+        initialUrl: initialUnsafeNavigationMessage ? "about:blank" : initialUrlRef.current,
+      });
+    }
     webview.style.display = "flex";
     webview.style.flex = "1";
     webview.style.width = "100%";
@@ -1056,7 +1061,14 @@ export function BrowserPane({
         });
       }
       if (host.contains(webview)) {
-        host.removeChild(webview);
+        const browserStillExists = Boolean(
+          useBrowserStore.getState().browsersById[browserIdRef.current],
+        );
+        if (browserStillExists) {
+          releaseResidentBrowserWebview(browserIdRef.current, webview);
+        } else {
+          host.removeChild(webview);
+        }
       }
       if (webviewRef.current === webview) {
         webviewRef.current = null;

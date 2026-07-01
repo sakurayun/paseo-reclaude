@@ -10,6 +10,8 @@ import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-
 
 const SCHEDULE_LIST_POLL_MS = 10_000;
 
+export const schedulesQueryBaseKey = ["schedule"] as const;
+
 export function scheduleQueryRoot(serverId: string | null): readonly unknown[] {
   return ["schedule", serverId ?? ""];
 }

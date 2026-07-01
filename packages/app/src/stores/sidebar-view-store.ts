@@ -6,21 +6,22 @@ export type SidebarGroupMode = "project" | "workspace" | "status";
 
 const SIDEBAR_VIEW_STORAGE_KEY = "sidebar-view";
 const LEGACY_SIDEBAR_GROUP_MODE_STORAGE_KEY = "sidebar-group-mode";
-const SIDEBAR_VIEW_STORE_VERSION = 1;
+const SIDEBAR_VIEW_STORE_VERSION = 2;
 
 interface SidebarViewStoreState {
   groupMode: SidebarGroupMode;
-  hostFilter: string | null;
+  hostFilters: string[];
   searchQuery: string;
   setGroupMode: (mode: SidebarGroupMode) => void;
-  setHostFilter: (serverId: string | null) => void;
+  toggleHostFilter: (serverId: string) => void;
+  clearHostFilters: () => void;
   setSearchQuery: (query: string) => void;
-  reconcileHostFilter: (serverIds: readonly string[]) => void;
+  reconcileHostFilters: (serverIds: readonly string[]) => void;
 }
 
 interface SidebarViewPersistedState {
   groupMode: SidebarGroupMode;
-  hostFilter: string | null;
+  hostFilters: string[];
   searchQuery: string;
 }
 
@@ -43,9 +44,20 @@ function readLegacyGroupMode(persistedState: Record<string, unknown>): SidebarGr
   return modes.includes("status") ? "status" : "project";
 }
 
+function readHostFilters(persistedState: Record<string, unknown>): string[] {
+  const hostFilters = persistedState.hostFilters;
+  if (Array.isArray(hostFilters)) {
+    return hostFilters.filter((value): value is string => typeof value === "string");
+  }
+  // COMPAT(sidebarHostFilters): added in v0.1.120, remove after 2027-01-01 once
+  // pre-v2 persisted sidebar state (a single `hostFilter` string) has aged out.
+  const legacyHostFilter = persistedState.hostFilter;
+  return typeof legacyHostFilter === "string" ? [legacyHostFilter] : [];
+}
+
 export function migrateSidebarViewState(persistedState: unknown): SidebarViewPersistedState {
   if (!isRecord(persistedState)) {
-    return { groupMode: "project", hostFilter: null, searchQuery: "" };
+    return { groupMode: "project", hostFilters: [], searchQuery: "" };
   }
 
   const searchQuery =
@@ -53,12 +65,12 @@ export function migrateSidebarViewState(persistedState: unknown): SidebarViewPer
 
   const legacyGroupMode = readLegacyGroupMode(persistedState);
   if (legacyGroupMode) {
-    return { groupMode: legacyGroupMode, hostFilter: null, searchQuery };
+    return { groupMode: legacyGroupMode, hostFilters: [], searchQuery };
   }
 
   return {
     groupMode: isSidebarGroupMode(persistedState.groupMode) ? persistedState.groupMode : "project",
-    hostFilter: typeof persistedState.hostFilter === "string" ? persistedState.hostFilter : null,
+    hostFilters: readHostFilters(persistedState),
     searchQuery,
   };
 }
@@ -83,17 +95,28 @@ export const useSidebarViewStore = create<SidebarViewStoreState>()(
   persist(
     (set) => ({
       groupMode: "project",
-      hostFilter: null,
+      hostFilters: [],
       searchQuery: "",
       setGroupMode: (mode) => set({ groupMode: mode }),
-      setHostFilter: (serverId) => set({ hostFilter: serverId }),
+      toggleHostFilter: (serverId) =>
+        set((state) => ({
+          hostFilters: state.hostFilters.includes(serverId)
+            ? state.hostFilters.filter((id) => id !== serverId)
+            : [...state.hostFilters, serverId],
+        })),
+      clearHostFilters: () => set({ hostFilters: [] }),
       setSearchQuery: (query) => set({ searchQuery: query }),
-      reconcileHostFilter: (serverIds) =>
+      reconcileHostFilters: (serverIds) =>
         set((state) => {
-          if (!state.hostFilter || serverIds.includes(state.hostFilter)) {
+          if (state.hostFilters.length === 0) {
             return state;
           }
-          return { hostFilter: null };
+          const allowed = new Set(serverIds);
+          const next = state.hostFilters.filter((id) => allowed.has(id));
+          if (next.length === state.hostFilters.length) {
+            return state;
+          }
+          return { hostFilters: next };
         }),
     }),
     {
@@ -102,7 +125,7 @@ export const useSidebarViewStore = create<SidebarViewStoreState>()(
       storage: createJSONStorage(createSidebarViewStorage),
       partialize: (state) => ({
         groupMode: state.groupMode,
-        hostFilter: state.hostFilter,
+        hostFilters: state.hostFilters,
         searchQuery: state.searchQuery,
       }),
       migrate: migrateSidebarViewState,
