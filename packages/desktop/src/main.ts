@@ -93,6 +93,7 @@ const FORWARDED_PASEO_SHORTCUT_KEYS = new Set([
   "w",
   "t",
   "k",
+  "o",
   "/",
   "\\",
   ",",

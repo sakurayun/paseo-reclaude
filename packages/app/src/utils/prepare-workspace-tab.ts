@@ -15,9 +15,7 @@ export interface PrepareWorkspaceTabInput {
   pin?: boolean;
 }
 
-export interface NavigateToPreparedWorkspaceTabInput extends PrepareWorkspaceTabInput {
-  currentPathname?: string | null;
-}
+export type NavigateToPreparedWorkspaceTabInput = PrepareWorkspaceTabInput;
 
 export interface PrepareWorkspaceTabDeps {
   openTabFocused: (workspaceKey: string, target: WorkspaceTabTarget) => string | null;
@@ -29,11 +27,7 @@ export interface PrepareWorkspaceTabDeps {
 }
 
 export interface NavigateToPreparedWorkspaceTabDeps extends PrepareWorkspaceTabDeps {
-  navigateToWorkspace: (
-    serverId: string,
-    workspaceId: string,
-    options: { currentPathname?: string | null },
-  ) => void;
+  navigateToWorkspace: (serverId: string, workspaceId: string) => void;
 }
 
 export interface WorkspaceDraftBusyInput {
@@ -181,8 +175,6 @@ export function navigateToPreparedWorkspaceTab(
   deps: NavigateToPreparedWorkspaceTabDeps,
 ): string {
   const route = prepareWorkspaceTab(input, deps);
-  deps.navigateToWorkspace(input.serverId, input.workspaceId, {
-    currentPathname: input.currentPathname,
-  });
+  deps.navigateToWorkspace(input.serverId, input.workspaceId);
   return route;
 }

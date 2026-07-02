@@ -2348,7 +2348,7 @@ class ClaudeAgentSession implements AgentSession {
       featureValues = this.config.featureValues;
     }
     this.contextUsage.setInitialContextWindowMaxTokens(
-      resolveInitialContextWindowSize(this.config.model),
+      this.resolveSelectedModelContextWindowMaxTokens(),
     );
     this.lastOptionsModel = normalizedModelId ?? this.lastOptionsModel;
     this.lastRuntimeModel = null;

@@ -536,10 +536,9 @@ export function useCommandCenter() {
       navigateToAgent({
         serverId: agent.serverId,
         agentId: agent.id,
-        currentPathname: pathname,
       });
     },
-    [pathname, setOpen],
+    [setOpen],
   );
 
   const handleSelectFile = useCallback(
@@ -551,10 +550,9 @@ export function useCommandCenter() {
         serverId: file.serverId,
         workspaceId: file.workspaceId,
         target: { kind: "file", path: file.path },
-        currentPathname: pathname,
       });
     },
-    [pathname, setOpen],
+    [setOpen],
   );
 
   const requestSessionSearchFocus = useSessionSearchFocusStore((state) => state.requestFocus);
@@ -574,10 +572,9 @@ export function useCommandCenter() {
       navigateToAgent({
         serverId: message.serverId,
         agentId: message.match.agentId,
-        currentPathname: pathname,
       });
     },
-    [pathname, requestSessionSearchFocus, setOpen, trimmedQuery],
+    [requestSessionSearchFocus, setOpen, trimmedQuery],
   );
 
   const handleSelectFileContent = useCallback(
@@ -593,10 +590,9 @@ export function useCommandCenter() {
           path: fileContent.match.relPath,
           lineStart: fileContent.match.line,
         },
-        currentPathname: pathname,
       });
     },
-    [pathname, setOpen],
+    [setOpen],
   );
 
   const openProjectPicker = useOpenProjectPicker();

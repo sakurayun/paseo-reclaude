@@ -63,12 +63,9 @@ import { generateMessageId } from "@/types/stream";
 import { toErrorMessage } from "@/utils/error-messages";
 import { navigateToPreparedWorkspaceTab } from "@/utils/workspace-navigation";
 import {
-  filterWorkspaceProjectsForHost,
   getHostProjectSourceDirectory,
   hostProjectFromRoute,
   hostProjectFromWorkspace,
-  resolveInitialWorkspaceProject,
-  resolveSelectedHostProject,
   useHostProjects,
   type HostProjectListItem,
 } from "@/projects/host-projects";
@@ -100,6 +97,7 @@ import {
   resolveNewWorkspaceAutomaticServerId,
   resolveNewWorkspaceInitialServerId,
 } from "./new-workspace-initial-context";
+import { useNewWorkspaceProjectPicker } from "./new-workspace/project-picker";
 
 function resolveCheckoutRequest(
   selectedItem: PickerItem | null,
@@ -180,7 +178,6 @@ interface PickerSelection {
 
 const BRANCH_OPTION_PREFIX = "branch:";
 const PR_OPTION_PREFIX = "github-pr:";
-const PROJECT_OPTION_PREFIX = "project:";
 const REPO_OPTION_PREFIX = "repo:";
 const PROJECT_ICON_FALLBACK_FONT_SIZE = 10;
 // Height of a single picker-trigger badge. The Base-row spacer reserves exactly
@@ -570,10 +567,6 @@ function prOptionId(number: number): string {
   return `${PR_OPTION_PREFIX}${number}`;
 }
 
-function projectOptionId(projectId: string): string {
-  return `${PROJECT_OPTION_PREFIX}${projectId}`;
-}
-
 function repoOptionId(path: string): string {
   return `${REPO_OPTION_PREFIX}${path}`;
 }
@@ -758,16 +751,6 @@ function useNewWorkspaceRepoScan({
     handleRepoPickerOpenChange,
     handleSelectRepoOption,
   };
-}
-
-function computeProjectOptionData(projects: readonly HostProjectListItem[]) {
-  const projectByOptionId = new Map<string, HostProjectListItem>();
-  const options = projects.map((project) => {
-    const id = projectOptionId(project.projectKey);
-    projectByOptionId.set(id, project);
-    return { id, label: project.projectName };
-  });
-  return { options, projectByOptionId };
 }
 
 function NewWorkspacePickerOption({
@@ -1410,7 +1393,6 @@ function submitWorkspaceDraft(input: SubmitDraftInput): void {
   navigateToPreparedWorkspaceTab({
     serverId,
     workspaceId,
-    currentPathname: "/new",
     target: submission.target,
   });
   useDraftStore.getState().clearDraftInput({ draftKey, lifecycle: "sent" });
@@ -1533,7 +1515,6 @@ interface NewWorkspaceInitialContextState {
   projects: HostProjectListItem[];
   routeProject: HostProjectListItem | null;
   lastActiveProject: HostProjectListItem | null;
-  routeDisplayName: string;
 }
 
 function useNewWorkspaceInitialContext({
@@ -1600,112 +1581,6 @@ function useNewWorkspaceInitialContext({
     projects,
     routeProject,
     lastActiveProject,
-    routeDisplayName,
-  };
-}
-
-interface NewWorkspaceProjectPickerInput {
-  selectedServerId: string;
-  projects: HostProjectListItem[];
-  routeProject: HostProjectListItem | null;
-  lastActiveProject: HostProjectListItem | null;
-  displayName?: string;
-  allowAllProjects: boolean;
-}
-
-interface NewWorkspaceProjectPickerState {
-  projects: HostProjectListItem[];
-  selectedProject: HostProjectListItem | null;
-  selectedSourceDirectory: string | null;
-  selectedDisplayName: string;
-  projectPickerOptions: Array<{ id: string; label: string }>;
-  projectByOptionId: Map<string, HostProjectListItem>;
-  selectedProjectOptionId: string;
-  projectTriggerLabel: string;
-  handleSelectProjectOption: (id: string) => void;
-}
-
-function useNewWorkspaceProjectPicker({
-  selectedServerId,
-  projects,
-  routeProject,
-  lastActiveProject,
-  displayName: displayNameProp,
-  allowAllProjects,
-}: NewWorkspaceProjectPickerInput): NewWorkspaceProjectPickerState {
-  const [manualProjectKey, setManualProjectKey] = useState<string | null>(null);
-  const displayName = displayNameProp?.trim() ?? "";
-  const selectableProjects = useMemo(
-    () =>
-      filterWorkspaceProjectsForHost({ projects, serverId: selectedServerId, allowAllProjects }),
-    [allowAllProjects, projects, selectedServerId],
-  );
-  const initialProject = useMemo(
-    () =>
-      resolveInitialWorkspaceProject({
-        routeProject,
-        lastActiveProject,
-        projects: selectableProjects,
-        serverId: selectedServerId,
-        allowAllProjects,
-      }),
-    [allowAllProjects, lastActiveProject, routeProject, selectableProjects, selectedServerId],
-  );
-
-  const routeProjectKey = routeProject?.projectKey ?? null;
-  useEffect(() => {
-    setManualProjectKey(null);
-  }, [routeProjectKey]);
-
-  const selectedProjectKey = useMemo(() => {
-    if (manualProjectKey) {
-      const manual = resolveSelectedHostProject({
-        selectedProjectKey: manualProjectKey,
-        projects: selectableProjects,
-        routeProject: null,
-        lastActiveProject: null,
-      });
-      if (manual) return manual.projectKey;
-    }
-    return initialProject?.projectKey ?? null;
-  }, [initialProject, manualProjectKey, selectableProjects]);
-
-  const selectedProject = useMemo(
-    () =>
-      resolveSelectedHostProject({
-        selectedProjectKey,
-        projects: selectableProjects,
-        routeProject,
-        lastActiveProject,
-      }),
-    [lastActiveProject, routeProject, selectableProjects, selectedProjectKey],
-  );
-  const { options: projectPickerOptions, projectByOptionId } = useMemo(
-    () => computeProjectOptionData(selectableProjects),
-    [selectableProjects],
-  );
-  const handleSelectProjectOption = useCallback(
-    (id: string) => {
-      const project = projectByOptionId.get(id);
-      if (!project) return;
-      if (!allowAllProjects && !project.hosts.some((host) => host.canCreateWorktree)) return;
-      setManualProjectKey(project.projectKey);
-    },
-    [allowAllProjects, projectByOptionId],
-  );
-
-  return {
-    projects,
-    selectedProject,
-    selectedSourceDirectory: selectedProject
-      ? getHostProjectSourceDirectory(selectedProject, selectedServerId)
-      : null,
-    selectedDisplayName: selectedProject?.projectName ?? displayName,
-    projectPickerOptions,
-    projectByOptionId,
-    selectedProjectOptionId: selectedProject ? projectOptionId(selectedProject.projectKey) : "",
-    projectTriggerLabel: selectedProject?.projectName ?? "Choose project",
-    handleSelectProjectOption,
   };
 }
 
@@ -1983,7 +1858,6 @@ export function NewWorkspaceScreen({
     projects,
     routeProject,
     lastActiveProject,
-    routeDisplayName,
   } = useNewWorkspaceInitialContext({
     serverId,
     sourceDirectory: sourceDirectoryProp,
@@ -2032,7 +1906,6 @@ export function NewWorkspaceScreen({
     projects,
     routeProject,
     lastActiveProject,
-    displayName: routeDisplayName,
     allowAllProjects: supportsWorkspaceMultiplicity,
   });
   const handleRepoSelected = useCallback(() => {
@@ -2452,7 +2325,7 @@ export function NewWorkspaceScreen({
             ensureWorkspace,
             serverId: selectedServerId,
             navigate: (targetServerId, workspaceId) =>
-              navigateToWorkspace(targetServerId, workspaceId, { currentPathname: "/new" }),
+              navigateToWorkspace(targetServerId, workspaceId),
           });
           return;
         }

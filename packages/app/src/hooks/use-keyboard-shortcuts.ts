@@ -141,7 +141,7 @@ export function useKeyboardShortcuts({
             serverId: action.serverId,
             workspaceId: action.workspaceId,
           };
-          navigateToWorkspace(action.serverId, action.workspaceId, { currentPathname: pathname });
+          navigateToWorkspace(action.serverId, action.workspaceId);
           return true;
         case "navigate-last-workspace":
           return navigateToLastWorkspace();
