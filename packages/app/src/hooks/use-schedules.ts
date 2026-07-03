@@ -1,225 +1,65 @@
-import { useCallback, useMemo } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useTranslation } from "react-i18next";
-import type {
-  CreateScheduleOptions,
-  UpdateScheduleOptions,
-} from "@getpaseo/client/internal/daemon-client";
-import type { ScheduleSummary, StoredSchedule } from "@getpaseo/protocol/schedule/types";
-import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
+import { useMemo, useSyncExternalStore } from "react";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { getHostRuntimeStore, useHosts } from "@/runtime/host-runtime";
+import {
+  fetchAggregatedSchedules,
+  type AggregatedSchedule,
+  type ScheduleHostError,
+  type ScheduleHostInput,
+} from "@/schedules/aggregated-schedules";
 
-const SCHEDULE_LIST_POLL_MS = 10_000;
+export type { AggregatedSchedule, ScheduleHostError } from "@/schedules/aggregated-schedules";
 
-export const schedulesQueryBaseKey = ["schedule"] as const;
+export const schedulesQueryBaseKey = ["schedules"] as const;
 
-export function scheduleQueryRoot(serverId: string | null): readonly unknown[] {
-  return ["schedule", serverId ?? ""];
+// Cache identity for the host set. The query also carries the runtime version
+// (below) so it retries as connectivity changes and reliably fetches once a host
+// comes online — even on a cold deep-link. The full-screen spinner flash that
+// keying on the version used to cause is prevented by keepPreviousData plus the
+// isInitialLoad(data === undefined) gate, not by dropping the version.
+export function schedulesQueryKey(serverIds: readonly string[]) {
+  return [...schedulesQueryBaseKey, [...serverIds].sort().join("|")] as const;
 }
 
-export function scheduleListQueryKey(serverId: string | null): readonly unknown[] {
-  return ["schedule", serverId ?? "", "list"];
-}
-
-export function scheduleDetailQueryKey(serverId: string | null, id: string): readonly unknown[] {
-  return ["schedule", serverId ?? "", "detail", id];
-}
-
-interface UseSchedulesResult {
-  schedules: ScheduleSummary[];
-  isLoading: boolean;
-  isFetching: boolean;
-  error: string | null;
+export interface UseSchedulesResult {
+  schedules: AggregatedSchedule[];
+  hostErrors: ScheduleHostError[];
+  isInitialLoad: boolean;
+  isError: boolean;
+  error: Error | null;
   refetch: () => void;
+  isRefetching: boolean;
 }
 
-export function useSchedules(serverId: string | null): UseSchedulesResult {
-  const { t } = useTranslation();
-  const client = useHostRuntimeClient(serverId ?? "");
-  const isConnected = useHostRuntimeIsConnected(serverId ?? "");
-
-  const query = useQuery({
-    queryKey: scheduleListQueryKey(serverId),
-    enabled: Boolean(serverId && client && isConnected),
-    refetchInterval: SCHEDULE_LIST_POLL_MS,
-    queryFn: async () => {
-      if (!client) {
-        throw new Error(t("workspace.terminal.hostDisconnected"));
-      }
-      const payload = await client.scheduleList();
-      if (payload.error) {
-        throw new Error(payload.error);
-      }
-      return payload.schedules;
-    },
-  });
-
-  const refetch = useCallback(() => {
-    void query.refetch();
-  }, [query]);
-
-  return {
-    schedules: query.data ?? [],
-    isLoading: query.isLoading,
-    isFetching: query.isFetching,
-    error: query.error instanceof Error ? query.error.message : null,
-    refetch,
-  };
-}
-
-interface UseScheduleDetailResult {
-  schedule: StoredSchedule | null;
-  isLoading: boolean;
-  error: string | null;
-  refetch: () => void;
-}
-
-export function useScheduleDetail(
-  serverId: string | null,
-  id: string | null,
-): UseScheduleDetailResult {
-  const { t } = useTranslation();
-  const client = useHostRuntimeClient(serverId ?? "");
-  const isConnected = useHostRuntimeIsConnected(serverId ?? "");
-
-  const query = useQuery({
-    queryKey: scheduleDetailQueryKey(serverId, id ?? ""),
-    enabled: Boolean(serverId && id && client && isConnected),
-    refetchInterval: SCHEDULE_LIST_POLL_MS,
-    queryFn: async () => {
-      if (!client || !id) {
-        throw new Error(t("workspace.terminal.hostDisconnected"));
-      }
-      const payload = await client.scheduleInspect({ id });
-      if (payload.error) {
-        throw new Error(payload.error);
-      }
-      return payload.schedule;
-    },
-  });
-
-  const refetch = useCallback(() => {
-    void query.refetch();
-  }, [query]);
-
-  return {
-    schedule: query.data ?? null,
-    isLoading: query.isLoading,
-    error: query.error instanceof Error ? query.error.message : null,
-    refetch,
-  };
-}
-
-export interface ScheduleMutations {
-  create: (options: Omit<CreateScheduleOptions, "requestId">) => Promise<ScheduleSummary | null>;
-  update: (options: Omit<UpdateScheduleOptions, "requestId">) => Promise<StoredSchedule | null>;
-  pause: (id: string) => Promise<void>;
-  resume: (id: string) => Promise<void>;
-  runOnce: (id: string) => Promise<void>;
-  remove: (id: string) => Promise<void>;
-}
-
-export function useScheduleMutations(serverId: string | null): ScheduleMutations {
-  const { t } = useTranslation();
-  const queryClient = useQueryClient();
-  const client = useHostRuntimeClient(serverId ?? "");
-
-  const invalidate = useCallback(() => {
-    void queryClient.invalidateQueries({ queryKey: scheduleQueryRoot(serverId), exact: false });
-  }, [queryClient, serverId]);
-
-  const requireClient = useCallback(() => {
-    if (!client) {
-      throw new Error(t("workspace.terminal.hostDisconnected"));
-    }
-    return client;
-  }, [client, t]);
-
-  const createMutation = useMutation({
-    mutationFn: async (options: Omit<CreateScheduleOptions, "requestId">) => {
-      const payload = await requireClient().scheduleCreate(options);
-      if (payload.error) {
-        throw new Error(payload.error);
-      }
-      return payload.schedule;
-    },
-    onSuccess: invalidate,
-  });
-
-  const updateMutation = useMutation({
-    mutationFn: async (options: Omit<UpdateScheduleOptions, "requestId">) => {
-      const payload = await requireClient().scheduleUpdate(options);
-      if (payload.error) {
-        throw new Error(payload.error);
-      }
-      return payload.schedule;
-    },
-    onSuccess: invalidate,
-  });
-
-  const pauseMutation = useMutation({
-    mutationFn: async (id: string) => {
-      const payload = await requireClient().schedulePause({ id });
-      if (payload.error) {
-        throw new Error(payload.error);
-      }
-    },
-    onSuccess: invalidate,
-  });
-
-  const resumeMutation = useMutation({
-    mutationFn: async (id: string) => {
-      const payload = await requireClient().scheduleResume({ id });
-      if (payload.error) {
-        throw new Error(payload.error);
-      }
-    },
-    onSuccess: invalidate,
-  });
-
-  const runOnceMutation = useMutation({
-    mutationFn: async (id: string) => {
-      const payload = await requireClient().scheduleRunOnce({ id });
-      if (payload.error) {
-        throw new Error(payload.error);
-      }
-    },
-    onSuccess: invalidate,
-  });
-
-  const removeMutation = useMutation({
-    mutationFn: async (id: string) => {
-      const payload = await requireClient().scheduleDelete({ id });
-      if (payload.error) {
-        throw new Error(payload.error);
-      }
-    },
-    onSuccess: invalidate,
-  });
-
-  return useMemo(
-    () => ({
-      create: (options) => createMutation.mutateAsync(options),
-      update: (options) => updateMutation.mutateAsync(options),
-      pause: async (id) => {
-        await pauseMutation.mutateAsync(id);
-      },
-      resume: async (id) => {
-        await resumeMutation.mutateAsync(id);
-      },
-      runOnce: async (id) => {
-        await runOnceMutation.mutateAsync(id);
-      },
-      remove: async (id) => {
-        await removeMutation.mutateAsync(id);
-      },
-    }),
-    [
-      createMutation,
-      updateMutation,
-      pauseMutation,
-      resumeMutation,
-      runOnceMutation,
-      removeMutation,
-    ],
+export function useSchedules(): UseSchedulesResult {
+  const hosts = useHosts();
+  const runtime = getHostRuntimeStore();
+  const runtimeVersion = useSyncExternalStore(
+    (onStoreChange) => runtime.subscribeAll(onStoreChange),
+    () => runtime.getVersion(),
+    () => runtime.getVersion(),
   );
+  const hostInputs = useMemo<ScheduleHostInput[]>(
+    () => hosts.map((host) => ({ serverId: host.serverId, serverName: host.label })),
+    [hosts],
+  );
+
+  const query = useQuery({
+    queryKey: [...schedulesQueryKey(hostInputs.map((host) => host.serverId)), runtimeVersion],
+    queryFn: () => fetchAggregatedSchedules({ hosts: hostInputs, runtime }),
+    staleTime: 5_000,
+    placeholderData: keepPreviousData,
+  });
+
+  return {
+    schedules: query.data?.schedules ?? [],
+    hostErrors: query.data?.hostErrors ?? [],
+    isInitialLoad: query.isLoading && query.data === undefined,
+    isError: query.isError,
+    error: query.error,
+    refetch: () => {
+      void query.refetch();
+    },
+    isRefetching: query.isRefetching,
+  };
 }

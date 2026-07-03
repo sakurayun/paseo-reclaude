@@ -108,31 +108,6 @@ export class BrowserSnapshotEngine {
     return input.ref && result === false ? { ok: false, reason: "stale_ref" } : { ok: true };
   }
 
-  async focus(input: {
-    browserId: string;
-    page: SnapshotPage;
-    ref: string;
-  }): Promise<BrowserRefActionResult> {
-    return this.runRefScript(input, (selector) => buildFocusScript(selector));
-  }
-
-  async clear(input: {
-    browserId: string;
-    page: SnapshotPage;
-    ref: string;
-  }): Promise<BrowserRefActionResult> {
-    return this.runRefScript(input, (selector) => buildClearScript(selector));
-  }
-
-  async check(input: {
-    browserId: string;
-    page: SnapshotPage;
-    ref: string;
-    checked: boolean;
-  }): Promise<BrowserRefActionResult> {
-    return this.runRefScript(input, (selector) => buildCheckScript(selector, input.checked));
-  }
-
   async select(input: {
     browserId: string;
     page: SnapshotPage;
@@ -301,57 +276,6 @@ function buildKeypressScript(selector: string | undefined, key: string): string 
     element.dispatchEvent(new KeyboardEvent('keypress', eventInit));
     element.dispatchEvent(new KeyboardEvent('keyup', eventInit));
     return true;
-  })()`;
-}
-
-function buildFocusScript(selector: string): string {
-  return String.raw`(() => {
-    const element = document.querySelector(${JSON.stringify(selector)});
-    if (!element) return false;
-    element.scrollIntoView?.({ block: 'center', inline: 'center' });
-    element.focus?.();
-    return document.activeElement === element;
-  })()`;
-}
-
-function buildClearScript(selector: string): string {
-  return String.raw`(() => {
-    const element = document.querySelector(${JSON.stringify(selector)});
-    if (!element) return false;
-    element.scrollIntoView?.({ block: 'center', inline: 'center' });
-    element.focus?.();
-    if ('value' in element) {
-      element.value = '';
-      element.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'deleteContent' }));
-      element.dispatchEvent(new Event('change', { bubbles: true }));
-      return true;
-    }
-    element.textContent = '';
-    element.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'deleteContent' }));
-    return true;
-  })()`;
-}
-
-function buildCheckScript(selector: string, checked: boolean): string {
-  return String.raw`(() => {
-    const element = document.querySelector(${JSON.stringify(selector)});
-    if (!element) return false;
-    element.scrollIntoView?.({ block: 'center', inline: 'center' });
-    element.focus?.();
-    const nextChecked = ${JSON.stringify(checked)};
-    if ('checked' in element) {
-      element.checked = nextChecked;
-      element.dispatchEvent(new Event('input', { bubbles: true }));
-      element.dispatchEvent(new Event('change', { bubbles: true }));
-      return true;
-    }
-    if (element.getAttribute('role') === 'checkbox' || element.getAttribute('role') === 'radio') {
-      element.setAttribute('aria-checked', String(nextChecked));
-      element.dispatchEvent(new Event('input', { bubbles: true }));
-      element.dispatchEvent(new Event('change', { bubbles: true }));
-      return true;
-    }
-    return false;
   })()`;
 }
 

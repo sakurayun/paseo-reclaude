@@ -16,6 +16,16 @@ const ownerWebContentsIdsByBrowserId = new Map<string, number>();
 const activeFindBrowserIdsByOwnerWebContentsId = new Map<number, string>();
 const ownerFoundInPageListenerWebContentsIds = new Set<number>();
 
+interface BrowserWebContentsIdentity {
+  readonly id: number;
+  isDestroyed(): boolean;
+}
+
+interface RegisteredBrowserWebContents extends BrowserWebContentsIdentity {
+  setBackgroundThrottling(allowed: boolean): void;
+  once(event: "destroyed", listener: () => void): void;
+}
+
 function getBrowserIdFromWebviewPartition(partition: string | undefined): string | null {
   const prefix = "persist:paseo-browser-";
   if (!partition?.startsWith(prefix)) {
@@ -71,10 +81,11 @@ function ensureOwnerFoundInPageListener(ownerContents: WebContents): void {
 }
 
 export function registerPaseoBrowserWebContents(
-  contents: WebContents,
+  contents: RegisteredBrowserWebContents,
   browserId: string,
   ownerContents?: WebContents,
 ): void {
+  contents.setBackgroundThrottling(false);
   browserRegistry.registerWebContents({ webContentsId: contents.id, browserId });
   if (ownerContents && !ownerContents.isDestroyed()) {
     ownerWebContentsIdsByBrowserId.set(browserId, ownerContents.id);
@@ -93,7 +104,9 @@ export function registerPaseoBrowserWebContents(
   });
 }
 
-export function getPaseoBrowserIdForWebContents(contents: WebContents | null): string | null {
+export function getPaseoBrowserIdForWebContents(
+  contents: BrowserWebContentsIdentity | null,
+): string | null {
   if (!contents || contents.isDestroyed()) {
     return null;
   }
@@ -123,17 +136,6 @@ export function setWorkspaceActivePaseoBrowserId(input: {
 
 export function getWorkspaceActivePaseoBrowserId(workspaceId: string): string | null {
   return browserRegistry.getWorkspaceActiveBrowserId(workspaceId);
-}
-
-export function setAgentActivePaseoBrowserId(input: {
-  agentId: string;
-  browserId: string | null;
-}): void {
-  browserRegistry.setAgentActiveBrowser(input);
-}
-
-export function getAgentActivePaseoBrowserId(agentId: string): string | null {
-  return browserRegistry.getAgentActiveBrowserId(agentId);
 }
 
 export function getPaseoBrowserWebContents(browserId: string): WebContents | null {
@@ -174,11 +176,6 @@ export function clearActivePaseoBrowserFind(browserId: string): void {
 
 export function getWorkspaceActivePaseoBrowserWebContents(workspaceId: string): WebContents | null {
   const activeBrowserId = getWorkspaceActivePaseoBrowserId(workspaceId);
-  return activeBrowserId ? getPaseoBrowserWebContents(activeBrowserId) : null;
-}
-
-export function getAgentActivePaseoBrowserWebContents(agentId: string): WebContents | null {
-  const activeBrowserId = getAgentActivePaseoBrowserId(agentId);
   return activeBrowserId ? getPaseoBrowserWebContents(activeBrowserId) : null;
 }
 

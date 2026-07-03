@@ -59,7 +59,6 @@ import {
   registerPaseoBrowserWorkspace,
   registerPaseoBrowserWebContents,
   setActivePaseoBrowserFind,
-  setAgentActivePaseoBrowserId,
   setWorkspaceActivePaseoBrowserId,
 } from "./features/browser-webviews/index.js";
 import { parseOpenProjectPathFromArgv } from "./open-project-routing.js";
@@ -145,20 +144,6 @@ function readActiveBrowserInput(
   }
   const browserId = typeof record.browserId === "string" ? record.browserId.trim() : null;
   return { workspaceId: record.workspaceId.trim(), browserId: browserId || null };
-}
-
-function readAgentActiveBrowserInput(
-  input: unknown,
-): { agentId: string; browserId: string | null } | null {
-  if (typeof input !== "object" || input === null || Array.isArray(input)) {
-    return null;
-  }
-  const record = input as Record<string, unknown>;
-  if (typeof record.agentId !== "string" || record.agentId.trim().length === 0) {
-    return null;
-  }
-  const browserId = typeof record.browserId === "string" ? record.browserId.trim() : null;
-  return { agentId: record.agentId.trim(), browserId: browserId || null };
 }
 
 const pendingBrowserWebviewIds: string[] = [];
@@ -350,13 +335,6 @@ ipcMain.handle("paseo:browser:set-workspace-active-browser", (_event, rawInput: 
   const input = readActiveBrowserInput(rawInput);
   if (input) {
     setWorkspaceActivePaseoBrowserId(input);
-  }
-});
-
-ipcMain.handle("paseo:browser:set-agent-active-browser", (_event, rawInput: unknown) => {
-  const input = readAgentActiveBrowserInput(rawInput);
-  if (input) {
-    setAgentActivePaseoBrowserId(input);
   }
 });
 

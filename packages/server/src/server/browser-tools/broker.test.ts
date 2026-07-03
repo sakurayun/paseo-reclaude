@@ -7,6 +7,8 @@ import type {
 import { BrowserToolsBroker, type BrowserToolsDesktopClient } from "./broker.js";
 import { StaticBrowserToolsPolicy } from "./policy.js";
 
+const BROWSER_ID = "11111111-1111-4111-8111-111111111111";
+
 class FakeDesktopClient implements BrowserToolsDesktopClient {
   public readonly receivedRequests: BrowserAutomationExecuteRequest[] = [];
 
@@ -43,8 +45,8 @@ function createBroker(options: { enabled: boolean; timeoutMs?: number }): Browse
   });
 }
 
-function pageInfoCommand(): BrowserAutomationCommand {
-  return { command: "page_info", args: { browserId: "browser-1" } };
+function snapshotCommand(): BrowserAutomationCommand {
+  return { command: "snapshot", args: { browserId: BROWSER_ID } };
 }
 
 describe("BrowserToolsBroker", () => {
@@ -55,7 +57,7 @@ describe("BrowserToolsBroker", () => {
   test("disabled returns browser_disabled", async () => {
     const broker = createBroker({ enabled: false });
 
-    await expect(broker.execute({ command: pageInfoCommand() })).resolves.toEqual({
+    await expect(broker.execute({ command: snapshotCommand() })).resolves.toEqual({
       requestId: "req-1",
       ok: false,
       error: {
@@ -69,7 +71,7 @@ describe("BrowserToolsBroker", () => {
   test("no capable desktop returns browser_no_desktop", async () => {
     const broker = createBroker({ enabled: true });
 
-    await expect(broker.execute({ command: pageInfoCommand() })).resolves.toEqual({
+    await expect(broker.execute({ command: snapshotCommand() })).resolves.toEqual({
       requestId: "req-1",
       ok: false,
       error: {
@@ -111,7 +113,7 @@ describe("BrowserToolsBroker", () => {
     broker.registerClient(client);
 
     const resultPromise = broker.execute({
-      command: { command: "list_tabs", args: { workspaceId: "workspace-1" } },
+      command: { command: "list_tabs", args: {} },
       workspaceId: "workspace-1",
     });
 
@@ -120,7 +122,7 @@ describe("BrowserToolsBroker", () => {
         type: "browser.automation.execute.request",
         requestId: "req-1",
         workspaceId: "workspace-1",
-        command: { command: "list_tabs", args: { workspaceId: "workspace-1" } },
+        command: { command: "list_tabs", args: {} },
       },
     ]);
     expect(broker.getPendingRequestCount()).toBe(1);
@@ -133,7 +135,7 @@ describe("BrowserToolsBroker", () => {
           command: "list_tabs",
           tabs: [
             {
-              browserId: "browser-1",
+              browserId: BROWSER_ID,
               workspaceId: "workspace-1",
               url: "https://example.com",
               title: "Example",
@@ -150,7 +152,7 @@ describe("BrowserToolsBroker", () => {
         command: "list_tabs",
         tabs: [
           {
-            browserId: "browser-1",
+            browserId: BROWSER_ID,
             workspaceId: "workspace-1",
             url: "https://example.com",
             title: "Example",
@@ -169,7 +171,7 @@ describe("BrowserToolsBroker", () => {
     broker.registerClient(client);
 
     const resultPromise = broker.execute({
-      command: { command: "snapshot", args: { workspaceId: "workspace-1" } },
+      command: { command: "snapshot", args: { browserId: BROWSER_ID } },
       workspaceId: "workspace-1",
     });
 
@@ -178,7 +180,7 @@ describe("BrowserToolsBroker", () => {
         type: "browser.automation.execute.request",
         requestId: "req-1",
         workspaceId: "workspace-1",
-        command: { command: "snapshot", args: { workspaceId: "workspace-1" } },
+        command: { command: "snapshot", args: { browserId: BROWSER_ID } },
       },
     ]);
 
@@ -187,7 +189,7 @@ describe("BrowserToolsBroker", () => {
       ok: true,
       result: {
         command: "snapshot",
-        browserId: "browser-1",
+        browserId: BROWSER_ID,
         workspaceId: "workspace-1",
         url: "https://example.com",
         title: "Example",
@@ -200,7 +202,7 @@ describe("BrowserToolsBroker", () => {
       ok: true,
       result: {
         command: "snapshot",
-        browserId: "browser-1",
+        browserId: BROWSER_ID,
         workspaceId: "workspace-1",
         url: "https://example.com",
         title: "Example",
@@ -214,7 +216,7 @@ describe("BrowserToolsBroker", () => {
     const broker = createBroker({ enabled: true, timeoutMs: 50 });
     broker.registerClient(new FakeDesktopClient("desktop-1"));
 
-    const resultPromise = broker.execute({ command: pageInfoCommand() });
+    const resultPromise = broker.execute({ command: snapshotCommand() });
     expect(broker.getPendingRequestCount()).toBe(1);
 
     await vi.advanceTimersByTimeAsync(50);
@@ -236,7 +238,7 @@ describe("BrowserToolsBroker", () => {
     const client = new FakeDesktopClient("desktop-1");
     const unregister = broker.registerClient(client);
 
-    const resultPromise = broker.execute({ command: pageInfoCommand() });
+    const resultPromise = broker.execute({ command: snapshotCommand() });
     expect(broker.getPendingRequestCount()).toBe(1);
 
     unregister();
@@ -257,7 +259,7 @@ describe("BrowserToolsBroker", () => {
     const broker = createBroker({ enabled: true });
     broker.registerClient(new FailingDesktopClient());
 
-    await expect(broker.execute({ command: pageInfoCommand() })).resolves.toEqual({
+    await expect(broker.execute({ command: snapshotCommand() })).resolves.toEqual({
       requestId: "req-1",
       ok: false,
       error: {
@@ -274,14 +276,14 @@ describe("BrowserToolsBroker", () => {
     const client = new FakeDesktopClient("desktop-1");
     broker.registerClient(client);
 
-    const resultPromise = broker.execute({ command: pageInfoCommand() });
+    const resultPromise = broker.execute({ command: snapshotCommand() });
 
     client.resolveLatestWith(broker, {
       requestId: "req-1",
       ok: false,
       error: {
         code: "browser_tab_not_found",
-        message: "Browser tab browser-1 was not found.",
+        message: `Browser tab ${BROWSER_ID} was not found.`,
         retryable: false,
       },
     });
@@ -291,7 +293,7 @@ describe("BrowserToolsBroker", () => {
       ok: false,
       error: {
         code: "browser_tab_not_found",
-        message: "Browser tab browser-1 was not found.",
+        message: `Browser tab ${BROWSER_ID} was not found.`,
         retryable: false,
       },
     });
@@ -303,7 +305,7 @@ describe("BrowserToolsBroker", () => {
     const client = new FakeDesktopClient("desktop-1");
     broker.registerClient(client);
 
-    const resultPromise = broker.execute({ command: pageInfoCommand() });
+    const resultPromise = broker.execute({ command: snapshotCommand() });
     expect(broker.getPendingRequestCount()).toBe(1);
 
     expect(

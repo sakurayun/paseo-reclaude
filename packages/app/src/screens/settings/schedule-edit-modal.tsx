@@ -19,7 +19,7 @@ import {
   type CadenceDraft,
 } from "@/components/schedule-cadence";
 import { useProvidersSnapshot } from "@/hooks/use-providers-snapshot";
-import { useScheduleMutations } from "@/hooks/use-schedules";
+import { useScheduleMutations } from "@/hooks/use-schedule-mutations";
 import { buildSelectableProviderSelectorProviders } from "@/provider-selection/provider-selection";
 
 interface ScheduleEditModalProps {
@@ -45,7 +45,7 @@ export function ScheduleEditModal({
 }: ScheduleEditModalProps) {
   const { t } = useTranslation();
   const deviceTimezone = useMemo(() => getDeviceTimezone(), []);
-  const mutations = useScheduleMutations(serverId);
+  const mutations = useScheduleMutations({ serverId });
 
   const [name, setName] = useState("");
   const [prompt, setPrompt] = useState("");
@@ -181,7 +181,7 @@ export function ScheduleEditModal({
     setIsPending(true);
     try {
       if (schedule) {
-        await mutations.update({
+        await mutations.updateSchedule({
           id: schedule.id,
           name: name.trim() || null,
           prompt: trimmedPrompt,
@@ -194,7 +194,7 @@ export function ScheduleEditModal({
           maxRuns: parsedMaxRuns,
         });
       } else {
-        await mutations.create({
+        await mutations.createSchedule({
           name: name.trim() || null,
           prompt: trimmedPrompt,
           cadence: cadenceResult.cadence,

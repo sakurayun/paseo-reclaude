@@ -1,640 +1,310 @@
-import { useCallback, useMemo, useRef, useState } from "react";
-import { Pressable, type PressableStateCallbackType, ScrollView, Text, View } from "react-native";
-import { useIsFocused } from "@react-navigation/native";
-import { useTranslation } from "react-i18next";
-import type { TFunction } from "i18next";
-import { ChevronDown, History, Pencil, Play, Plus, Trash2 } from "lucide-react-native";
-import { StyleSheet, useUnistyles, withUnistyles } from "react-native-unistyles";
-import type { ScheduleRun, ScheduleSummary } from "@getpaseo/protocol/schedule/types";
-import { MenuHeader } from "@/components/headers/menu-header";
-import { AdaptiveModalSheet, type SheetHeader } from "@/components/adaptive-modal-sheet";
-import { Button } from "@/components/ui/button";
-import { Switch } from "@/components/ui/switch";
-import { getHostPickerLabel, HostPicker, HostStatusDotSlot } from "@/components/hosts/host-picker";
-import { ScheduleEditModal } from "@/screens/settings/schedule-edit-modal";
-import { formatCadenceSummary } from "@/components/schedule-cadence";
-import { useScheduleDetail, useScheduleMutations, useSchedules } from "@/hooks/use-schedules";
-import { useHostRuntimeIsConnected, useHosts } from "@/runtime/host-runtime";
-import { useLocalDaemonServerId } from "@/hooks/use-is-local-daemon";
-import { isElectronRuntime } from "@/desktop/host";
-import type { HostProfile } from "@/types/host-connection";
-import { settingsStyles } from "@/styles/settings";
-import { confirmDialog } from "@/utils/confirm-dialog";
-import { useToast } from "@/contexts/toast-context";
-import { toErrorMessage } from "@/utils/error-messages";
-import { ICON_SIZE } from "@/styles/theme";
-import type { Theme } from "@/styles/theme";
 import {
-  HEADER_INNER_HEIGHT,
-  HEADER_INNER_HEIGHT_MOBILE,
-  NEW_THEME_HEADER_HEIGHT_DESKTOP,
-} from "@/constants/layout";
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  useSyncExternalStore,
+  type ReactElement,
+} from "react";
+import { ScrollView, Text, View } from "react-native";
+import { useIsFocused } from "@react-navigation/native";
+import { Plus } from "lucide-react-native";
+import { StyleSheet } from "react-native-unistyles";
+import { MenuHeader } from "@/components/headers/menu-header";
+import { HostFilter } from "@/components/hosts/host-filter";
+import { ALL_HOSTS_OPTION_ID } from "@/components/hosts/host-picker";
+import { ScheduleFormSheet } from "@/components/schedules/schedule-form-sheet";
+import { SchedulesTable, type ScheduleRowView } from "@/components/schedules/schedules-table";
+import { Button } from "@/components/ui/button";
+import { LoadingSpinner } from "@/components/ui/loading-spinner";
+import { SegmentedControl } from "@/components/ui/segmented-control";
+import { useAggregatedAgents } from "@/hooks/use-aggregated-agents";
+import { useProjects } from "@/hooks/use-projects";
+import {
+  useSchedules,
+  type AggregatedSchedule,
+  type ScheduleHostError,
+} from "@/hooks/use-schedules";
+import { getHostRuntimeStore, useHosts } from "@/runtime/host-runtime";
+import {
+  resolveSchedule,
+  type ScheduleBucket,
+  type ScheduleTargetAgent,
+} from "@/schedules/schedule-derivation";
+import {
+  buildProjectNameByCwd,
+  buildScheduleProjectTargets,
+} from "@/schedules/schedule-project-targets";
+import type { ScheduleSummary } from "@getpaseo/protocol/schedule/types";
 
-const ThemedPlus = withUnistyles(Plus);
-const ThemedPlay = withUnistyles(Play);
-const ThemedHistory = withUnistyles(History);
-const ThemedPencil = withUnistyles(Pencil);
-const ThemedTrash2 = withUnistyles(Trash2);
+type FormState =
+  | { mode: "closed" }
+  | { mode: "create" }
+  | { mode: "edit"; serverId: string; schedule: ScheduleSummary };
 
-const mutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
-const destructiveColorMapping = (theme: Theme) => ({ color: theme.colors.destructive });
+const STATUS_FILTER_OPTIONS: { value: ScheduleBucket; label: string; testID: string }[] = [
+  { value: "runnable", label: "Active", testID: "schedules-filter-active" },
+  { value: "ended", label: "Ended", testID: "schedules-filter-ended" },
+];
 
-const newIcon = <ThemedPlus size={ICON_SIZE.sm} uniProps={mutedColorMapping} />;
-const runNowIcon = <ThemedPlay size={ICON_SIZE.sm} uniProps={mutedColorMapping} />;
-const viewRunsIcon = <ThemedHistory size={ICON_SIZE.sm} uniProps={mutedColorMapping} />;
-const editIcon = <ThemedPencil size={ICON_SIZE.sm} uniProps={mutedColorMapping} />;
-const deleteIcon = <ThemedTrash2 size={ICON_SIZE.sm} uniProps={destructiveColorMapping} />;
-
-function formatTimestamp(value: string | null): string | null {
-  if (!value) {
-    return null;
-  }
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return null;
-  }
-  return date.toLocaleString();
-}
-
-function resolveScheduleStatusLabel(status: ScheduleSummary["status"], t: TFunction): string {
-  if (status === "active") {
-    return t("settings.host.schedules.status.active");
-  }
-  if (status === "paused") {
-    return t("settings.host.schedules.status.paused");
-  }
-  return t("settings.host.schedules.status.completed");
-}
-
-function resolveRunStatusLabel(status: ScheduleRun["status"], t: TFunction): string {
-  if (status === "running") {
-    return t("settings.host.schedules.runStatus.running");
-  }
-  if (status === "succeeded") {
-    return t("settings.host.schedules.runStatus.succeeded");
-  }
-  return t("settings.host.schedules.runStatus.failed");
-}
-
-export function SchedulesScreen() {
+export function SchedulesScreen(): ReactElement {
   const isFocused = useIsFocused();
+
   if (!isFocused) {
     return <View style={styles.container} />;
   }
+
   return <SchedulesScreenContent />;
 }
 
-function SchedulesScreenContent() {
-  const { t } = useTranslation();
-  const isDesktop = isElectronRuntime();
+function SchedulesScreenContent(): ReactElement {
+  const { schedules, hostErrors, isInitialLoad, isError, refetch } = useSchedules();
+  const { agents } = useAggregatedAgents({ includeArchived: true });
+  const { projects } = useProjects();
   const hosts = useHosts();
-  const localServerId = useLocalDaemonServerId();
-  const [selectedHost, setSelectedHost] = useState<string | null>(null);
-
-  const resolvedServerId = useMemo(() => {
-    if (selectedHost && hosts.some((host) => host.serverId === selectedHost)) {
-      return selectedHost;
-    }
-    if (localServerId && hosts.some((host) => host.serverId === localServerId)) {
-      return localServerId;
-    }
-    return hosts[0]?.serverId ?? null;
-  }, [selectedHost, localServerId, hosts]);
-
-  const isConnected = useHostRuntimeIsConnected(resolvedServerId ?? "");
-  const { schedules, isLoading, error } = useSchedules(resolvedServerId);
-  const mutations = useScheduleMutations(resolvedServerId);
-
-  const [editorVisible, setEditorVisible] = useState(false);
-  const [editingSchedule, setEditingSchedule] = useState<ScheduleSummary | null>(null);
-  const [runsScheduleId, setRunsScheduleId] = useState<string | null>(null);
-
-  const handleCreate = useCallback(() => {
-    setEditingSchedule(null);
-    setEditorVisible(true);
-  }, []);
-
-  const handleEdit = useCallback((schedule: ScheduleSummary) => {
-    setEditingSchedule(schedule);
-    setEditorVisible(true);
-  }, []);
-
-  const handleCloseEditor = useCallback(() => {
-    setEditorVisible(false);
-    setEditingSchedule(null);
-  }, []);
-
-  const handleViewRuns = useCallback((scheduleId: string) => {
-    setRunsScheduleId(scheduleId);
-  }, []);
-
-  const handleCloseRuns = useCallback(() => {
-    setRunsScheduleId(null);
-  }, []);
-
-  const canCreate = isDesktop && Boolean(resolvedServerId) && isConnected;
-  const addButton = useMemo(
-    () => (
-      <Button
-        variant="ghost"
-        size="sm"
-        leftIcon={newIcon}
-        onPress={handleCreate}
-        disabled={!canCreate}
-        testID="schedules-add-button"
-      >
-        {t("settings.host.schedules.create")}
-      </Button>
-    ),
-    [canCreate, handleCreate, t],
+  const runtime = getHostRuntimeStore();
+  const runtimeVersion = useSyncExternalStore(
+    (onStoreChange) => runtime.subscribeAll(onStoreChange),
+    () => runtime.getVersion(),
+    () => runtime.getVersion(),
   );
 
+  // Per-host agent-directory readiness from the runtime, not the aggregate agent
+  // flag: the aggregate `isInitialLoad` flips false as soon as *any* host has
+  // agents, so a still-loading host would falsely mark its agent-target
+  // schedules "gone". `hasEverLoadedAgentDirectory` is true only once that
+  // host's directory has loaded at least once.
+  const agentDirReadyHosts = useMemo(() => {
+    void runtimeVersion;
+    const ready = new Set<string>();
+    for (const host of hosts) {
+      if (runtime.getSnapshot(host.serverId)?.hasEverLoadedAgentDirectory) {
+        ready.add(host.serverId);
+      }
+    }
+    return ready;
+  }, [hosts, runtime, runtimeVersion]);
+
+  const [form, setForm] = useState<FormState>({ mode: "closed" });
+  const [selectedHost, setSelectedHost] = useState(ALL_HOSTS_OPTION_ID);
+  const [statusFilter, setStatusFilter] = useState<ScheduleBucket>("runnable");
+
+  useEffect(() => {
+    if (
+      selectedHost !== ALL_HOSTS_OPTION_ID &&
+      !hosts.some((host) => host.serverId === selectedHost)
+    ) {
+      setSelectedHost(ALL_HOSTS_OPTION_ID);
+    }
+  }, [hosts, selectedHost]);
+
+  const openCreate = useCallback(() => setForm({ mode: "create" }), []);
+  const openEdit = useCallback((schedule: AggregatedSchedule) => {
+    setForm({ mode: "edit", serverId: schedule.serverId, schedule });
+  }, []);
+  const closeForm = useCallback(() => setForm({ mode: "closed" }), []);
+
+  const agentsByKey = useMemo(() => {
+    const map = new Map<string, ScheduleTargetAgent>();
+    for (const agent of agents) {
+      map.set(`${agent.serverId}:${agent.id}`, { title: agent.title, provider: agent.provider });
+    }
+    return map;
+  }, [agents]);
+
+  const projectNameByCwd = useMemo(
+    () => buildProjectNameByCwd(buildScheduleProjectTargets(projects)),
+    [projects],
+  );
+
+  // Resolve every schedule's derived state and target line once, then partition
+  // by the host and status filters. Sorted newest-first for a stable order
+  // across hosts.
+  const resolvedRows = useMemo(() => {
+    const now = Date.now();
+    return schedules.map((schedule) => ({
+      schedule,
+      resolved: resolveSchedule({
+        schedule,
+        serverId: schedule.serverId,
+        now,
+        agentsByKey,
+        projectNameByCwd,
+        agentDataLoaded: agentDirReadyHosts.has(schedule.serverId),
+      }),
+    }));
+  }, [schedules, agentsByKey, projectNameByCwd, agentDirReadyHosts]);
+
+  const visibleRows = useMemo<ScheduleRowView[]>(() => {
+    const singleHost = hosts.length <= 1;
+    return resolvedRows
+      .filter(
+        ({ schedule, resolved }) =>
+          (selectedHost === ALL_HOSTS_OPTION_ID || schedule.serverId === selectedHost) &&
+          resolved.bucket === statusFilter,
+      )
+      .sort((a, b) => Date.parse(b.schedule.createdAt) - Date.parse(a.schedule.createdAt))
+      .map(({ schedule, resolved }) => ({
+        schedule,
+        targetLabel: resolved.target.label,
+        provider: resolved.target.provider,
+        state: resolved.state,
+        serverName: schedule.serverName,
+        singleHost,
+      }));
+  }, [resolvedRows, selectedHost, statusFilter, hosts.length]);
+
+  const showLoadError = isError && schedules.length === 0;
   const showHostFilter = hosts.length > 1;
 
   return (
     <View style={styles.container}>
-      <MenuHeader
-        title={t("settings.hostSections.schedules")}
-        rightContent={isDesktop ? addButton : undefined}
-        surfaceStyle={styles.headerSurface}
-        rowStyle={styles.headerRow}
+      <MenuHeader title="Schedules" />
+      <SchedulesScreenBody
+        rows={visibleRows}
+        hostErrors={hostErrors}
+        hasSchedules={schedules.length > 0}
+        isInitialLoad={isInitialLoad}
+        showLoadError={showLoadError}
+        statusFilter={statusFilter}
+        onStatusFilterChange={setStatusFilter}
+        showHostFilter={showHostFilter}
+        hosts={hosts}
+        selectedHost={selectedHost}
+        onSelectHost={setSelectedHost}
+        onRetry={refetch}
+        onCreate={openCreate}
+        onEdit={openEdit}
       />
-      <View style={styles.content}>
-        {isDesktop && showHostFilter && resolvedServerId ? (
-          <View style={styles.filterContainer}>
-            <SchedulesHostFilter
-              hosts={hosts}
-              selectedHost={resolvedServerId}
-              onSelectHost={setSelectedHost}
-            />
-          </View>
-        ) : null}
-
-        <SchedulesBody
-          isDesktop={isDesktop}
-          serverId={resolvedServerId}
-          isConnected={isConnected}
-          schedules={schedules}
-          isLoading={isLoading}
-          error={error}
-          onEdit={handleEdit}
-          onViewRuns={handleViewRuns}
-          onPause={mutations.pause}
-          onResume={mutations.resume}
-          onRunOnce={mutations.runOnce}
-          onDelete={mutations.remove}
-        />
-      </View>
-
-      {resolvedServerId ? (
-        <ScheduleEditModal
-          visible={editorVisible}
-          serverId={resolvedServerId}
-          schedule={editingSchedule}
-          onClose={handleCloseEditor}
-        />
-      ) : null}
-
-      {resolvedServerId ? (
-        <ScheduleRunsModal
-          serverId={resolvedServerId}
-          scheduleId={runsScheduleId}
-          onClose={handleCloseRuns}
-        />
-      ) : null}
+      <ScheduleFormSheet
+        serverId={form.mode === "edit" ? form.serverId : undefined}
+        visible={form.mode === "create" || form.mode === "edit"}
+        onClose={closeForm}
+        mode={form.mode === "edit" ? "edit" : "create"}
+        schedule={form.mode === "edit" ? form.schedule : undefined}
+      />
     </View>
   );
 }
 
-function SchedulesHostFilter({
+function SchedulesScreenBody({
+  rows,
+  hostErrors,
+  hasSchedules,
+  isInitialLoad,
+  showLoadError,
+  statusFilter,
+  onStatusFilterChange,
+  showHostFilter,
   hosts,
   selectedHost,
   onSelectHost,
+  onRetry,
+  onCreate,
+  onEdit,
 }: {
-  hosts: HostProfile[];
+  rows: ScheduleRowView[];
+  hostErrors: ScheduleHostError[];
+  hasSchedules: boolean;
+  isInitialLoad: boolean;
+  showLoadError: boolean;
+  statusFilter: ScheduleBucket;
+  onStatusFilterChange: (value: ScheduleBucket) => void;
+  showHostFilter: boolean;
+  hosts: ReturnType<typeof useHosts>;
   selectedHost: string;
   onSelectHost: (serverId: string) => void;
-}) {
-  const [isFilterOpen, setIsFilterOpen] = useState(false);
-  const filterAnchorRef = useRef<View>(null);
-
-  const selectedHostLabel = useMemo(
-    () => getHostPickerLabel(hosts, selectedHost),
-    [hosts, selectedHost],
-  );
-
-  const handleFilterOpen = useCallback(() => setIsFilterOpen(true), []);
-
-  const filterTriggerStyle = useCallback(
-    ({ pressed, hovered = false }: PressableStateCallbackType & { hovered?: boolean }) => [
-      styles.filterTrigger,
-      Boolean(hovered) && styles.filterTriggerHovered,
-      pressed && styles.filterTriggerPressed,
-    ],
-    [],
-  );
-
-  return (
-    <HostPicker
-      hosts={hosts}
-      value={selectedHost}
-      onSelect={onSelectHost}
-      open={isFilterOpen}
-      onOpenChange={setIsFilterOpen}
-      anchorRef={filterAnchorRef}
-      searchable={false}
-      title="Run on host"
-      desktopPlacement="bottom-start"
-    >
-      <View ref={filterAnchorRef} collapsable={false} style={styles.filterTriggerWrap}>
-        <Pressable
-          onPress={handleFilterOpen}
-          style={filterTriggerStyle}
-          testID="schedules-host-filter-trigger"
-          accessibilityRole="button"
-          accessibilityLabel={`Host: ${selectedHostLabel}`}
-        >
-          <HostStatusDotSlot serverId={selectedHost} />
-          <Text style={styles.filterTriggerText} numberOfLines={1}>
-            {selectedHostLabel}
-          </Text>
-          <FilterChevron />
-        </Pressable>
-      </View>
-    </HostPicker>
-  );
-}
-
-function FilterChevron() {
-  const { theme } = useUnistyles();
-  return <ChevronDown size={14} color={theme.colors.foregroundMuted} />;
-}
-
-interface SchedulesBodyProps {
-  isDesktop: boolean;
-  serverId: string | null;
-  isConnected: boolean;
-  schedules: ScheduleSummary[];
-  isLoading: boolean;
-  error: string | null;
-  onEdit: (schedule: ScheduleSummary) => void;
-  onViewRuns: (scheduleId: string) => void;
-  onPause: (id: string) => Promise<void>;
-  onResume: (id: string) => Promise<void>;
-  onRunOnce: (id: string) => Promise<void>;
-  onDelete: (id: string) => Promise<void>;
-}
-
-function SchedulesBody({
-  isDesktop,
-  serverId,
-  isConnected,
-  schedules,
-  isLoading,
-  error,
-  onEdit,
-  onViewRuns,
-  onPause,
-  onResume,
-  onRunOnce,
-  onDelete,
-}: SchedulesBodyProps) {
-  const { t } = useTranslation();
-
-  if (!isDesktop) {
+  onRetry: () => void;
+  onCreate: () => void;
+  onEdit: (schedule: AggregatedSchedule) => void;
+}): ReactElement {
+  if (isInitialLoad) {
     return (
-      <View style={styles.centeredCard}>
-        <Text style={styles.emptyText}>{t("settings.host.schedules.desktopOnly")}</Text>
-      </View>
-    );
-  }
-  if (!serverId || !isConnected) {
-    return (
-      <View style={styles.centeredCard}>
-        <Text style={styles.emptyText}>{t("settings.host.schedules.unavailable")}</Text>
+      <View style={styles.centered}>
+        <LoadingSpinner size="large" color={styles.spinner.color} />
       </View>
     );
   }
 
-  return (
-    <ScrollView contentContainerStyle={styles.scrollContent}>
-      <View style={settingsStyles.card} testID="schedules-card">
-        <ScheduleListContent
-          error={error}
-          isLoading={isLoading}
-          schedules={schedules}
-          onEdit={onEdit}
-          onViewRuns={onViewRuns}
-          onPause={onPause}
-          onResume={onResume}
-          onRunOnce={onRunOnce}
-          onDelete={onDelete}
-        />
-      </View>
-    </ScrollView>
-  );
-}
-
-interface ScheduleListContentProps {
-  error: string | null;
-  isLoading: boolean;
-  schedules: ScheduleSummary[];
-  onEdit: (schedule: ScheduleSummary) => void;
-  onViewRuns: (scheduleId: string) => void;
-  onPause: (id: string) => Promise<void>;
-  onResume: (id: string) => Promise<void>;
-  onRunOnce: (id: string) => Promise<void>;
-  onDelete: (id: string) => Promise<void>;
-}
-
-function ScheduleListContent({
-  error,
-  isLoading,
-  schedules,
-  onEdit,
-  onViewRuns,
-  onPause,
-  onResume,
-  onRunOnce,
-  onDelete,
-}: ScheduleListContentProps) {
-  const { t } = useTranslation();
-  if (error) {
+  if (showLoadError) {
     return (
-      <View style={styles.emptyCard}>
-        <Text style={styles.errorText}>{error}</Text>
+      <View style={styles.centered}>
+        <Text style={styles.message}>Unable to load schedules</Text>
+        <Button variant="ghost" onPress={onRetry} testID="schedules-retry">
+          Try again
+        </Button>
       </View>
     );
   }
-  if (schedules.length === 0) {
+
+  if (!hasSchedules) {
     return (
-      <View style={styles.emptyCard}>
-        <Text style={styles.emptyText}>
-          {isLoading
-            ? t("settings.host.schedules.loading")
-            : t("settings.host.schedules.emptyState")}
-        </Text>
+      <View style={styles.centered} testID="schedules-empty">
+        {hostErrors.length > 0 ? <ScheduleHostErrorsBanner errors={hostErrors} /> : null}
+        <Text style={styles.message}>No schedules yet</Text>
+        <Button variant="ghost" leftIcon={Plus} onPress={onCreate} testID="schedules-empty-new">
+          Create a schedule
+        </Button>
       </View>
     );
   }
-  return (
-    <>
-      {schedules.map((schedule, index) => (
-        <ScheduleRow
-          key={schedule.id}
-          schedule={schedule}
-          isFirst={index === 0}
-          onEdit={onEdit}
-          onViewRuns={onViewRuns}
-          onPause={onPause}
-          onResume={onResume}
-          onRunOnce={onRunOnce}
-          onDelete={onDelete}
-        />
-      ))}
-    </>
-  );
-}
 
-interface ScheduleRowProps {
-  schedule: ScheduleSummary;
-  isFirst: boolean;
-  onEdit: (schedule: ScheduleSummary) => void;
-  onViewRuns: (scheduleId: string) => void;
-  onPause: (id: string) => Promise<void>;
-  onResume: (id: string) => Promise<void>;
-  onRunOnce: (id: string) => Promise<void>;
-  onDelete: (id: string) => Promise<void>;
-}
-
-function ScheduleRow({
-  schedule,
-  isFirst,
-  onEdit,
-  onViewRuns,
-  onPause,
-  onResume,
-  onRunOnce,
-  onDelete,
-}: ScheduleRowProps) {
-  const { t } = useTranslation();
-  const toast = useToast();
-  const [isBusy, setIsBusy] = useState(false);
-
-  const isCompleted = schedule.status === "completed";
-  const isActive = schedule.status === "active";
-  // The edit modal can only represent "new-agent" targets; saving it always
-  // writes a newAgentConfig block. Offering Edit on an "agent" target (only
-  // creatable via CLI/MCP) would open a blank form and silently convert the
-  // target type on save, so hide Edit for anything the modal can't round-trip.
-  const isEditable = schedule.target.type === "new-agent";
-  const title =
-    schedule.name?.trim() || schedule.prompt.trim() || t("settings.host.schedules.untitled");
-  const cadenceSummary = formatCadenceSummary(schedule.cadence);
-  const nextRunText = isActive ? formatTimestamp(schedule.nextRunAt) : null;
-  const statusLabel = resolveScheduleStatusLabel(schedule.status, t);
-
-  // Run a row mutation and surface any daemon error as a toast — the mutations
-  // throw on failure but have no onError, so the call site is the only place
-  // the user can be told the action didn't take effect.
-  const runRowAction = useCallback(
-    async (action: Promise<void>) => {
-      setIsBusy(true);
-      try {
-        await action;
-      } catch (error) {
-        toast.error(toErrorMessage(error));
-      } finally {
-        setIsBusy(false);
-      }
-    },
-    [toast],
-  );
-
-  const handleToggle = useCallback(
-    (next: boolean) => {
-      if (isBusy || isCompleted) return;
-      void runRowAction(next ? onResume(schedule.id) : onPause(schedule.id));
-    },
-    [isBusy, isCompleted, onPause, onResume, runRowAction, schedule.id],
-  );
-
-  const handleRunOnce = useCallback(() => {
-    if (isBusy) return;
-    void runRowAction(onRunOnce(schedule.id));
-  }, [isBusy, onRunOnce, runRowAction, schedule.id]);
-
-  const handleEdit = useCallback(() => onEdit(schedule), [onEdit, schedule]);
-  const handleViewRuns = useCallback(() => onViewRuns(schedule.id), [onViewRuns, schedule.id]);
-
-  const handleDelete = useCallback(() => {
-    void confirmDialog({
-      title: t("settings.host.schedules.deleteConfirmTitle"),
-      message: t("settings.host.schedules.deleteConfirmMessage", { name: title }),
-      confirmLabel: t("settings.host.schedules.delete"),
-      cancelLabel: t("common.actions.cancel"),
-      destructive: true,
-    }).then((confirmed) => {
-      if (!confirmed) {
-        return;
-      }
-      void runRowAction(onDelete(schedule.id));
-      return;
-    });
-  }, [onDelete, runRowAction, schedule.id, t, title]);
-
-  const rowStyle = useMemo(
-    () => [settingsStyles.row, !isFirst && settingsStyles.rowBorder, styles.row],
-    [isFirst],
-  );
+  const emptyFilterText = statusFilter === "ended" ? "No ended schedules" : "No active schedules";
 
   return (
-    <View style={rowStyle} testID={`schedule-row-${schedule.id}`}>
-      <View style={settingsStyles.rowContent}>
-        <Text style={settingsStyles.rowTitle} numberOfLines={1}>
-          {title}
-        </Text>
-        <Text style={settingsStyles.rowHint} numberOfLines={1}>
-          {statusLabel} · {cadenceSummary}
-          {nextRunText ? ` · ${t("settings.host.schedules.nextRun", { time: nextRunText })}` : ""}
-        </Text>
-      </View>
-      <View style={styles.rowActions}>
-        <Switch
-          value={isActive}
-          onValueChange={handleToggle}
-          disabled={isBusy || isCompleted}
-          accessibilityLabel={t("settings.host.schedules.toggleAccessibility")}
-          testID={`schedule-toggle-${schedule.id}`}
-        />
-        <Button
-          variant="ghost"
-          size="sm"
-          leftIcon={runNowIcon}
-          onPress={handleRunOnce}
-          disabled={isBusy || isCompleted}
-          accessibilityLabel={t("settings.host.schedules.runNow")}
-          testID={`schedule-run-now-${schedule.id}`}
-        />
-        <Button
-          variant="ghost"
-          size="sm"
-          leftIcon={viewRunsIcon}
-          onPress={handleViewRuns}
-          accessibilityLabel={t("settings.host.schedules.viewRuns")}
-          testID={`schedule-view-runs-${schedule.id}`}
-        />
-        {isEditable ? (
-          <Button
-            variant="ghost"
+    <View style={styles.body}>
+      <View style={styles.filterRow}>
+        <View style={styles.filterRowControls}>
+          {showHostFilter ? (
+            <HostFilter
+              hosts={hosts}
+              selectedHost={selectedHost}
+              onSelectHost={onSelectHost}
+              triggerTestID="schedules-host-filter-trigger"
+            />
+          ) : null}
+          <SegmentedControl
             size="sm"
-            leftIcon={editIcon}
-            onPress={handleEdit}
-            disabled={isBusy}
-            accessibilityLabel={t("settings.host.schedules.edit")}
-            testID={`schedule-edit-${schedule.id}`}
+            value={statusFilter}
+            onValueChange={onStatusFilterChange}
+            options={STATUS_FILTER_OPTIONS}
+            testID="schedules-status-filter"
           />
-        ) : null}
-        <Button
-          variant="ghost"
-          size="sm"
-          leftIcon={deleteIcon}
-          onPress={handleDelete}
-          disabled={isBusy}
-          accessibilityLabel={t("settings.host.schedules.delete")}
-          testID={`schedule-delete-${schedule.id}`}
-        />
+        </View>
+        <Button leftIcon={Plus} onPress={onCreate} size="sm" testID="schedules-new">
+          New schedule
+        </Button>
       </View>
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        testID="schedules-list"
+      >
+        {hostErrors.length > 0 ? <ScheduleHostErrorsBanner errors={hostErrors} /> : null}
+        {rows.length > 0 ? (
+          <SchedulesTable rows={rows} onEditSchedule={onEdit} />
+        ) : (
+          <View style={styles.filterEmpty}>
+            <Text style={styles.filterEmptyText}>{emptyFilterText}</Text>
+          </View>
+        )}
+      </ScrollView>
     </View>
   );
 }
 
-function ScheduleRunsModal({
-  serverId,
-  scheduleId,
-  onClose,
-}: {
-  serverId: string;
-  scheduleId: string | null;
-  onClose: () => void;
-}) {
-  const { t } = useTranslation();
-  const { schedule, isLoading, error } = useScheduleDetail(serverId, scheduleId);
-
-  const header = useMemo<SheetHeader>(
-    () => ({ title: t("settings.host.schedules.runsTitle") }),
-    [t],
-  );
-
-  const runs = useMemo(() => {
-    if (!schedule) return [];
-    return [...schedule.runs].sort((left, right) => right.startedAt.localeCompare(left.startedAt));
-  }, [schedule]);
-
-  if (!scheduleId) {
-    return null;
-  }
-
+function ScheduleHostErrorsBanner({ errors }: { errors: ScheduleHostError[] }): ReactElement {
   return (
-    <AdaptiveModalSheet
-      visible
-      header={header}
-      onClose={onClose}
-      testID="schedule-runs-modal"
-      desktopMaxWidth={560}
-    >
-      <View style={styles.runsBody}>
-        <ScheduleRunsContent error={error} isLoading={isLoading} runs={runs} />
+    <View style={styles.errorsBannerWrap}>
+      <View style={styles.errorsBanner} testID="schedules-host-errors">
+        {errors.map((error) => (
+          <Text key={error.serverId} style={styles.errorsBannerText}>
+            {`${error.serverName}: Could not load schedules`}
+          </Text>
+        ))}
       </View>
-    </AdaptiveModalSheet>
-  );
-}
-
-function ScheduleRunsContent({
-  error,
-  isLoading,
-  runs,
-}: {
-  error: string | null;
-  isLoading: boolean;
-  runs: ScheduleRun[];
-}) {
-  const { t } = useTranslation();
-  if (error) {
-    return <Text style={styles.errorText}>{error}</Text>;
-  }
-  if (isLoading && runs.length === 0) {
-    return <Text style={styles.emptyText}>{t("settings.host.schedules.loading")}</Text>;
-  }
-  if (runs.length === 0) {
-    return <Text style={styles.emptyText}>{t("settings.host.schedules.noRuns")}</Text>;
-  }
-  return (
-    <>
-      {runs.map((run) => (
-        <RunRow key={run.id} run={run} />
-      ))}
-    </>
-  );
-}
-
-function RunRow({ run }: { run: ScheduleRun }) {
-  const { t } = useTranslation();
-  const startedText = formatTimestamp(run.startedAt);
-  const statusLabel = resolveRunStatusLabel(run.status, t);
-  const detail = run.error ?? run.output ?? null;
-
-  return (
-    <View style={styles.runRow} testID={`schedule-run-${run.id}`}>
-      <View style={styles.runHeader}>
-        <Text style={styles.runStatus}>{statusLabel}</Text>
-        {startedText ? <Text style={styles.runTime}>{startedText}</Text> : null}
-      </View>
-      {detail ? (
-        <Text style={styles.runDetail} numberOfLines={6}>
-          {detail}
-        </Text>
-      ) : null}
     </View>
   );
 }
@@ -642,129 +312,74 @@ function RunRow({ run }: { run: ScheduleRun }) {
 const styles = StyleSheet.create((theme) => ({
   container: {
     flex: 1,
-    backgroundColor: { xs: theme.colors.surface0, md: theme.colors.surfaceShell },
+    backgroundColor: theme.colors.surface0,
   },
-  // New theme: the title sits exposed on the #fafafa shell with no bottom
-  // divider (chromeDivider == 0). Classic themes stay byte-identical
-  // (surfaceShell == surface0, chromeDivider == 1).
-  headerSurface: {
-    backgroundColor: { xs: theme.colors.surface0, md: theme.colors.surfaceShell },
-  },
-  headerRow: {
-    borderBottomWidth: theme.shell.chromeDivider,
-    // Match the workspace header's vertical size (shorter on desktop in the new theme).
-    height: {
-      xs: HEADER_INNER_HEIGHT_MOBILE,
-      md: theme.shell.floating ? NEW_THEME_HEADER_HEIGHT_DESKTOP : HEADER_INNER_HEIGHT,
-    },
-  },
-  // New theme: the schedules content floats as a rounded white card on the
-  // shell, inset on all sides (desktop only). Classic = full-bleed transparent
-  // (shell tokens are 0 / 0 / visible), so the screen is unchanged.
-  content: {
+  body: {
     flex: 1,
     minHeight: 0,
-    backgroundColor: theme.shell.floating ? theme.colors.surfaceWorkspace : "transparent",
-    marginTop: 0,
-    marginHorizontal: { xs: 0, md: theme.shell.contentMargin },
-    marginBottom: { xs: 0, md: theme.shell.contentMargin },
-    borderRadius: { xs: 0, md: theme.shell.contentRadius },
-    overflow: { xs: "visible", md: theme.shell.contentOverflow },
   },
-  filterContainer: {
-    paddingHorizontal: {
-      xs: theme.spacing[3],
-      md: theme.spacing[6],
-    },
-    paddingTop: theme.spacing[4],
-  },
-  filterTriggerWrap: {
-    alignSelf: "flex-start",
-  },
-  filterTrigger: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing[1.5],
-    alignSelf: "flex-start",
-    paddingVertical: theme.spacing[1.5],
-    paddingHorizontal: theme.spacing[3],
-    borderRadius: theme.borderRadius.md,
-    backgroundColor: theme.colors.surface1,
-    borderWidth: theme.shell.controlBorder,
-    borderColor: theme.colors.border,
-  },
-  filterTriggerHovered: {
-    backgroundColor: theme.colors.surface2,
-  },
-  filterTriggerPressed: {
-    backgroundColor: theme.colors.surface3,
-  },
-  filterTriggerText: {
-    color: theme.colors.foreground,
-    fontSize: theme.fontSize.sm,
-    fontWeight: theme.fontWeight.medium,
-  },
-  scrollContent: {
-    padding: {
-      xs: theme.spacing[3],
-      md: theme.spacing[6],
-    },
-  },
-  centeredCard: {
+  centered: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
+    gap: theme.spacing[6],
     padding: theme.spacing[6],
   },
-  row: {
-    minHeight: 56,
-    gap: theme.spacing[2],
-  },
-  rowActions: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing[1],
-  },
-  emptyCard: {
-    padding: theme.spacing[4],
-    alignItems: "center",
-  },
-  emptyText: {
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.sm,
-    textAlign: "center",
-  },
-  errorText: {
-    color: theme.colors.palette.red[300],
-    fontSize: theme.fontSize.sm,
-  },
-  runsBody: {
-    gap: theme.spacing[3],
-    paddingBottom: theme.spacing[2],
-  },
-  runRow: {
-    gap: theme.spacing[1],
-    paddingBottom: theme.spacing[3],
-    // New theme: drop the row divider (chromeDivider == 0); classic keeps it.
-    borderBottomWidth: theme.shell.chromeDivider,
-    borderBottomColor: theme.colors.border,
-  },
-  runHeader: {
+  filterRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+    gap: theme.spacing[3],
+    paddingHorizontal: { xs: theme.spacing[3], md: theme.spacing[6] },
+    paddingTop: theme.spacing[4],
   },
-  runStatus: {
-    color: theme.colors.foreground,
+  filterRowControls: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[3],
+    flexShrink: 1,
+    flexWrap: "wrap",
+  },
+  scroll: {
+    flex: 1,
+    minHeight: 0,
+  },
+  scrollContent: {
+    gap: theme.spacing[3],
+    paddingTop: theme.spacing[4],
+    paddingBottom: theme.spacing[6],
+  },
+  errorsBannerWrap: {
+    paddingHorizontal: { xs: theme.spacing[3], md: theme.spacing[6] },
+  },
+  errorsBanner: {
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    borderRadius: theme.borderRadius.lg,
+    padding: theme.spacing[3],
+    gap: theme.spacing[1],
+  },
+  errorsBannerText: {
+    color: theme.colors.palette.red[300],
+    fontSize: theme.fontSize.xs,
+  },
+  filterEmpty: {
+    paddingHorizontal: { xs: theme.spacing[3], md: theme.spacing[6] },
+    paddingVertical: theme.spacing[6],
+    alignItems: "center",
+  },
+  filterEmptyText: {
+    color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.sm,
-    fontWeight: theme.fontWeight.medium,
   },
-  runTime: {
+  message: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.lg,
+    textAlign: "center",
   },
-  runDetail: {
+  // Static color holder read by the spinner; keeps the muted token without
+  // useUnistyles (banned in new code).
+  spinner: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
   },
 }));

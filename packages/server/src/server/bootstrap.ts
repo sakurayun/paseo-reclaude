@@ -844,9 +844,9 @@ export async function createPaseoDaemon(
   await scheduleService.start();
   agentManager.setAgentArchivedCallback(async (agentId) => {
     try {
-      await scheduleService.deleteForAgent(agentId);
+      await scheduleService.completeForAgent(agentId);
     } catch (error) {
-      logger.warn({ err: error, agentId }, "Failed to delete schedules for archived agent");
+      logger.warn({ err: error, agentId }, "Failed to complete schedules for archived agent");
     }
   });
   logger.info({ elapsed: elapsed() }, "Schedule service initialized");
@@ -1002,6 +1002,7 @@ export async function createPaseoDaemon(
     listActiveWorkspaces: listActiveWorkspacesExternal,
     archiveWorkspaceRecord: archiveWorkspaceRecordExternal,
     emitWorkspaceUpdatesForWorkspaceIds: emitWorkspaceUpdatesExternal,
+    workspaceRegistry,
     markWorkspaceArchiving: markWorkspaceArchivingExternal,
     clearWorkspaceArchiving: clearWorkspaceArchivingExternal,
     ensureWorkspaceForCreate: ensureWorkspaceForCreateExternal,

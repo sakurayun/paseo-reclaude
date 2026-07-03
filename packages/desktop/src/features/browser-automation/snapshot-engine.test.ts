@@ -44,7 +44,9 @@ describe("BrowserSnapshotEngine", () => {
       ok: false,
       reason: "stale_ref",
     });
-    await expect(engine.focus({ browserId: "browser-1", page, ref: "@e1" })).resolves.toEqual({
+    await expect(
+      engine.select({ browserId: "browser-1", page, ref: "@e1", value: "us" }),
+    ).resolves.toEqual({
       ok: false,
       reason: "stale_ref",
     });

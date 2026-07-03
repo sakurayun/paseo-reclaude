@@ -56,6 +56,7 @@ import { NestableScrollContainer } from "react-native-draggable-flatlist";
 import { DraggableList, type DraggableRenderItemInfo } from "./draggable-list";
 import type { DraggableListDragHandleProps } from "./draggable-list.types";
 import { getHostRuntimeStore, useHosts } from "@/runtime/host-runtime";
+import { useHostFeatureMap } from "@/runtime/host-features";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { useProjectIconDataByProjectKey } from "@/projects/project-icons";
 import {
@@ -1882,6 +1883,7 @@ function ProjectBlock({
   activeWorkspaceSelection,
   hostLabelByServerId,
   showHostLabels,
+  supportsMultiplicityByServerId,
 }: {
   project: SidebarProjectEntry;
   collapsed: boolean;
@@ -1903,14 +1905,16 @@ function ProjectBlock({
   activeWorkspaceSelection: ActiveWorkspaceSelection | null;
   hostLabelByServerId: ReadonlyMap<string, string>;
   showHostLabels: boolean;
+  supportsMultiplicityByServerId: ReadonlyMap<string, boolean>;
 }) {
   const rowModel = useMemo(
     () =>
       buildSidebarProjectRowModel({
         project,
         collapsed,
+        supportsMultiplicityByServerId,
       }),
-    [collapsed, project],
+    [collapsed, project, supportsMultiplicityByServerId],
   );
 
   const active = isProjectSelectedByRoute({
@@ -2063,7 +2067,7 @@ function ProjectBlock({
           containerStyle={styles.workspaceListContainer}
         />
       );
-    } else if (rowModel.trailingAction.kind === "new_worktree") {
+    } else if (rowModel.trailingAction.kind === "new_workspace") {
       projectChildren = (
         <NewWorkspaceGhostRow
           project={project}
@@ -2086,7 +2090,7 @@ function ProjectBlock({
         chevron={rowModel.chevron}
         onPress={handleToggleCollapsed}
         worktreeTarget={
-          rowModel.trailingAction.kind === "new_worktree" ? rowModel.trailingAction.target : null
+          rowModel.trailingAction.kind === "new_workspace" ? rowModel.trailingAction.target : null
         }
         isProjectActive={active}
         onWorkspacePress={onWorkspacePress}
@@ -2107,6 +2111,7 @@ function ProjectBlock({
 
 type ProjectBlockProps = Parameters<typeof ProjectBlock>[0];
 
+// oxlint-disable-next-line complexity
 function areProjectBlockPropsEqual(previous: ProjectBlockProps, next: ProjectBlockProps): boolean {
   return (
     previous.project === next.project &&
@@ -2118,6 +2123,7 @@ function areProjectBlockPropsEqual(previous: ProjectBlockProps, next: ProjectBlo
     previous.shortcutIndexByWorkspaceKey === next.shortcutIndexByWorkspaceKey &&
     previous.hostLabelByServerId === next.hostLabelByServerId &&
     previous.showHostLabels === next.showHostLabels &&
+    previous.supportsMultiplicityByServerId === next.supportsMultiplicityByServerId &&
     previous.parentGestureRef === next.parentGestureRef &&
     previous.onToggleCollapsed === next.onToggleCollapsed &&
     previous.onWorkspacePress === next.onWorkspacePress &&
@@ -2184,6 +2190,8 @@ export function SidebarWorkspaceList({
     }
     return labels;
   }, [hosts]);
+  const serverIds = useMemo(() => hosts.map((host) => host.serverId), [hosts]);
+  const supportsMultiplicityByServerId = useHostFeatureMap(serverIds, "workspaceMultiplicity");
   const showHostLabels = useMemo(() => shouldShowSidebarHostLabels(projects), [projects]);
 
   const content =
@@ -2209,6 +2217,7 @@ export function SidebarWorkspaceList({
         pathname={pathname}
         hostLabelByServerId={hostLabelByServerId}
         showHostLabels={showHostLabels}
+        supportsMultiplicityByServerId={supportsMultiplicityByServerId}
       />
     );
 
@@ -2257,6 +2266,7 @@ function ProjectModeList({
   pathname,
   hostLabelByServerId,
   showHostLabels,
+  supportsMultiplicityByServerId,
 }: Omit<
   SidebarWorkspaceListProps,
   "statusWorkspacePlacements" | "projectNamesByKey" | "groupMode" | "isRefreshing" | "onRefresh"
@@ -2264,6 +2274,7 @@ function ProjectModeList({
   pathname: string;
   hostLabelByServerId: ReadonlyMap<string, string>;
   showHostLabels: boolean;
+  supportsMultiplicityByServerId: ReadonlyMap<string, boolean>;
 }) {
   const { t } = useTranslation();
   const [creatingWorkspaceIds, setCreatingWorkspaceIds] = useState<Set<string>>(() => new Set());
@@ -2452,6 +2463,7 @@ function ProjectModeList({
           activeWorkspaceSelection={activeWorkspaceSelection}
           hostLabelByServerId={hostLabelByServerId}
           showHostLabels={showHostLabels}
+          supportsMultiplicityByServerId={supportsMultiplicityByServerId}
         />
       );
     },
@@ -2462,6 +2474,7 @@ function ProjectModeList({
       handleWorkspaceReorder,
       hostLabelByServerId,
       showHostLabels,
+      supportsMultiplicityByServerId,
       onWorkspacePress,
       onToggleProjectCollapsed,
       parentGestureRef,
