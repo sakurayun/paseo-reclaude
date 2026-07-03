@@ -41,6 +41,26 @@ const ReclaudeUsageWindowSchema = z
   })
   .nullish();
 
+// Per-model weekly limits (e.g. Fable) are not exposed as dedicated top-level
+// `seven_day_*` fields. They arrive as scoped entries inside `usage_snapshot.limits[]`
+// with `kind: "weekly_scoped"` and `scope.model.display_name` naming the model.
+const ReclaudeUsageLimitSchema = z.object({
+  kind: z.string().nullish(),
+  percent: ApiNullableNumberSchema.optional(),
+  resets_at: z.string().nullish(),
+  is_active: z.boolean().nullish(),
+  scope: z
+    .object({
+      model: z
+        .object({
+          display_name: z.string().nullish(),
+          id: z.string().nullish(),
+        })
+        .nullish(),
+    })
+    .nullish(),
+});
+
 const ReclaudeUsageSnapshotSchema = z
   .object({
     five_hour: ReclaudeUsageWindowSchema,
@@ -48,6 +68,9 @@ const ReclaudeUsageSnapshotSchema = z
     seven_day_opus: ReclaudeUsageWindowSchema,
     seven_day_omelette: ReclaudeUsageWindowSchema,
     seven_day_sonnet: ReclaudeUsageWindowSchema,
+    // Element-level nullable: a stray null in the array must not fail the whole
+    // parse (which would blank the usage card). Null elements are skipped below.
+    limits: z.array(ReclaudeUsageLimitSchema.nullable()).nullish(),
     extra_usage: z.object({ is_enabled: z.boolean().nullish() }).nullish(),
   })
   .nullish();
@@ -142,6 +165,31 @@ function formatPlanLabel(subscriptionType: string | null | undefined): string | 
     .split("_")
     .map((part) => (part ? part.charAt(0).toUpperCase() + part.slice(1) : part))
     .join(" ");
+}
+
+// Slugify a scoped model's display name so its window id lines up with the
+// top-level ids ("Fable" -> "fable", "Opus" -> "opus") and can de-dupe against
+// them. Returns "" for a name with no [a-z0-9] chars; the caller disambiguates.
+function scopedWeeklyModelSlug(modelName: string): string {
+  return modelName
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
+// Keep the fresher refresh snapshot but preserve the orgs snapshot's per-model
+// limits[] (Fable et al.) when the force re-pull returned a snapshot without
+// them, so a scoped weekly window is never dropped on refresh.
+function backfillScopedLimits(
+  primary: ReclaudeUsageSnapshot,
+  fallback: ReclaudeUsageSnapshot,
+): ReclaudeUsageSnapshot {
+  if (!primary) return fallback;
+  if (primary.limits && primary.limits.length > 0) return primary;
+  const fallbackLimits = fallback?.limits;
+  if (!fallbackLimits || fallbackLimits.length === 0) return primary;
+  return { ...primary, limits: fallbackLimits };
 }
 
 export class ReclaudeClient {
@@ -259,7 +307,10 @@ export class ReclaudeClient {
     }
     return {
       account,
-      snapshot: refreshed.snapshot,
+      // Adopt the fresher refresh windows, but keep the orgs snapshot's per-model
+      // limits[] (Fable) when the refresh omitted them — otherwise a refresh that
+      // only returned top-level windows would silently drop the scoped window.
+      snapshot: backfillScopedLimits(refreshed.snapshot, fallback.snapshot),
       updatedAtMs: refreshed.updatedAtMs ?? fallback.updatedAtMs,
     };
   }
@@ -312,6 +363,34 @@ export class ReclaudeClient {
     pushWindow(snapshot?.seven_day_opus, "weekly_opus", "Weekly · Opus");
     pushWindow(snapshot?.seven_day_omelette, "weekly_omelette", "Weekly · Omelette");
     pushWindow(snapshot?.seven_day_sonnet, "weekly_sonnet", "Weekly · Sonnet");
+
+    // Per-model weekly limits (e.g. Fable) only appear as scoped entries in
+    // limits[], not as top-level seven_day_* fields — surface each as its own
+    // "Weekly · <Model>" window. De-dupe by the derived id so a scoped entry that
+    // duplicates a top-level window (e.g. Opus) is skipped rather than shown twice.
+    const seenIds = new Set(windows.map((w) => w.id));
+    let scopedFallbackSeq = 0;
+    for (const limit of snapshot?.limits ?? []) {
+      if (limit?.kind !== "weekly_scoped") continue;
+      const modelName = limit.scope?.model?.display_name?.trim();
+      if (!modelName) continue;
+      const slug = scopedWeeklyModelSlug(modelName);
+      // A name with no [a-z0-9] chars slugs to "" — give each such model a
+      // distinct id so no window is silently dropped by the de-dup below.
+      const id = slug ? `weekly_${slug}` : `weekly_scoped_${scopedFallbackSeq++}`;
+      if (seenIds.has(id)) continue;
+      seenIds.add(id);
+      windows.push({
+        ...windowFromUsedPct({
+          id,
+          label: `Weekly · ${modelName}`,
+          utilizationPct: limit.percent ?? null,
+          resetsAt: limit.resets_at ?? null,
+          tone: "ok",
+        }),
+        fullCountdown: true,
+      });
+    }
     return windows;
   }
 

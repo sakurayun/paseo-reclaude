@@ -83,7 +83,12 @@ Cookie: rc_sid=<token>
       "seven_day": null, "seven_day_opus": null, "seven_day_omelette": null,
       "seven_day_sonnet": null, "seven_day_cowork": null, "seven_day_oauth_apps": null,
       "extra_usage": { "is_enabled": false, ... },
-      "limits": [ { "group": "session", "kind": "session", "percent": 0, "resets_at": null, "severity": "normal", "is_active": true } ],
+      "limits": [
+        { "group": "session", "kind": "session",      "percent": 0, "resets_at": null, "scope": null,                                    "severity": "normal", "is_active": true },
+        { "group": "weekly",  "kind": "weekly_all",    "percent": 11, "resets_at": "…", "scope": null,                                    "severity": "normal", "is_active": true },
+        // ★ per-model weekly limit (Fable / fable5) — NOT a top-level seven_day_* field; only here:
+        { "group": "weekly",  "kind": "weekly_scoped", "percent": 0, "resets_at": null, "scope": { "model": { "display_name": "Fable", "id": null } }, "severity": "normal", "is_active": false }
+      ],
       "spend":  { "enabled": false, "limit": null, "percent": 0, "used": { "amount_minor": 0, "currency": "USD", "exponent": 2 } }
       // 还有若干代号字段（amber_ladder/cinder_cove/iguana_necktie/omelette_promotional/tangelo），通常为 null，忽略
     }
@@ -116,13 +121,14 @@ Cookie: rc_sid=<token>
 
 ReClaude 用量天然契合现有 `ProviderUsage`（`packages/protocol/src/messages.ts`）：
 
-| ReClaude 字段                                                      | → Paseo 字段                                                                     |
-| ------------------------------------------------------------------ | -------------------------------------------------------------------------------- |
-| `usage_snapshot.five_hour/seven_day/...`（透传官方窗口）           | `windows[]`（复用 `windowFromUsedPct`，label：Session / Weekly / Weekly·Opus …） |
-| `usage_remaining_usd` / `usage_quota_limit_usd` / `usage_used_usd` | `balances[]`（美元额度条，tone 由剩余额度决定）                                  |
-| `subscription_type`(+ status/expiry)                               | `planLabel`（如 "Carpool" / "Dedicated"，可附到期）                              |
-| `usage_status` / `usage_enabled`                                   | `status` + `details[]`                                                           |
-| `usage_updated_at`                                                 | 响应 `fetchedAt` / 卡片 "Updated …"                                              |
+| ReClaude 字段                                                                          | → Paseo 字段                                                                                                                                                                                     |
+| -------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `usage_snapshot.five_hour/seven_day/...`（透传官方窗口）                               | `windows[]`（复用 `windowFromUsedPct`，label：Session / Weekly / Weekly·Opus …）                                                                                                                 |
+| `usage_snapshot.limits[]` 中 `kind:"weekly_scoped"`（按模型的周限额，如 Fable/fable5） | 额外 `windows[]` 项 `Weekly · <display_name>`（id `weekly_<slug>`，按 id 去重避免与顶层窗口重复；`buildUsageWindows`）。refresh 若缺 `limits[]` 会从 orgs 快照回填，防止 scoped 窗口在同步时丢失 |
+| `usage_remaining_usd` / `usage_quota_limit_usd` / `usage_used_usd`                     | `balances[]`（美元额度条，tone 由剩余额度决定）                                                                                                                                                  |
+| `subscription_type`(+ status/expiry)                                                   | `planLabel`（如 "Carpool" / "Dedicated"，可附到期）                                                                                                                                              |
+| `usage_status` / `usage_enabled`                                                       | `status` + `details[]`                                                                                                                                                                           |
+| `usage_updated_at`                                                                     | 响应 `fetchedAt` / 卡片 "Updated …"                                                                                                                                                              |
 
 ## 6. Paseo 接入设计
 
