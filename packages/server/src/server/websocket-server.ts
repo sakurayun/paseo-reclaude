@@ -51,6 +51,7 @@ import { Session, type SessionLifecycleIntent, type SessionRuntimeMetrics } from
 import type { AgentProvider } from "./agent/agent-sdk-types.js";
 import { ProviderSnapshotManager } from "./agent/provider-snapshot-manager.js";
 import type { WorkspaceGitRuntimeSnapshot, WorkspaceGitService } from "./workspace-git-service.js";
+import type { WorkspaceAutoName } from "./workspace-auto-name.js";
 import { buildWorkspaceGitMetadataFromSnapshot } from "./workspace-git-metadata.js";
 import { PushTokenStore } from "./push/token-store.js";
 import { createPushNotificationSender, type PushNotificationSender } from "./push/notifications.js";
@@ -91,6 +92,13 @@ import {
   CLIENT_SHUTDOWN_RPC_REASON,
   normalizeClientRestartRpcReason,
 } from "./lifecycle-reasons.js";
+import { CLIENT_CAPS } from "@getpaseo/protocol/client-capabilities";
+import type { BrowserAutomationExecuteResponse } from "@getpaseo/protocol/browser-automation/rpc-schemas";
+import {
+  BrowserAutomationHostCapabilitySchema,
+  type BrowserAutomationHostCapability,
+} from "@getpaseo/protocol/browser-automation/capabilities";
+import type { BrowserToolsBroker } from "./browser-tools/broker.js";
 
 const WS_CLOSE_DAEMON_AUTH_FAILED = 4401;
 
@@ -326,6 +334,15 @@ function bufferFromWsData(data: Buffer | ArrayBuffer | Buffer[] | string): Buffe
   return Buffer.from(data);
 }
 
+function getBrowserHostCapability(
+  capabilities: Record<string, unknown> | null,
+): BrowserAutomationHostCapability | null {
+  const parsed = BrowserAutomationHostCapabilitySchema.safeParse(
+    capabilities?.[CLIENT_CAPS.browserHost],
+  );
+  return parsed.success ? parsed.data : null;
+}
+
 interface WebSocketLike {
   readyState: number;
   bufferedAmount?: number;
@@ -343,6 +360,11 @@ interface SessionConnection {
   connectionLogger: pino.Logger;
   sockets: Set<WebSocketLike>;
   externalDisconnectCleanupTimeout: ReturnType<typeof setTimeout> | null;
+}
+
+interface BrowserToolsRegistration {
+  capabilitySignature: string;
+  unregister: () => void;
 }
 
 const SLOW_REQUEST_THRESHOLD_MS = 500;
@@ -430,6 +452,7 @@ export class VoiceAssistantWebSocketServer {
   private readonly checkoutDiffManager: CheckoutDiffManager;
   private readonly github: GitHubService;
   private readonly workspaceGitService: WorkspaceGitService;
+  private readonly workspaceAutoName: WorkspaceAutoName;
   private readonly downloadTokenStore: DownloadTokenStore;
   private readonly paseoHome: string;
   private readonly worktreesRoot: string | undefined;
@@ -472,6 +495,8 @@ export class VoiceAssistantWebSocketServer {
   private readonly reclaudeCredentialsStore: ReclaudeCredentialsStore;
   private readonly reclaudeAccountService: ReclaudeAccountService;
   private unsubscribeTerminalActivity: (() => void) | null = null;
+  private readonly browserToolsBroker: BrowserToolsBroker | null;
+  private readonly browserToolsRegistrations = new Map<string, BrowserToolsRegistration>();
 
   constructor(
     server: HTTPServer,
@@ -484,6 +509,7 @@ export class VoiceAssistantWebSocketServer {
     daemonConfigStore: DaemonConfigStore,
     mcpBaseUrl: string | null,
     wsConfig: WebSocketServerConfig,
+    workspaceAutoName: WorkspaceAutoName,
     auth?: DaemonAuthConfig,
     speech?: SpeechService | null,
     terminalManager?: TerminalManager | null,
@@ -531,6 +557,7 @@ export class VoiceAssistantWebSocketServer {
     appearanceSettingsStore?: AppearanceSettingsStore | null,
     modelPreferencesStore?: ModelPreferencesStore | null,
     composerDraftsStore?: ComposerDraftsStore | null,
+    browserToolsBroker: BrowserToolsBroker | null = null,
   ) {
     this.logger = logger.child({ module: "websocket-server" });
     this.serverId = serverId;
@@ -539,6 +566,7 @@ export class VoiceAssistantWebSocketServer {
     }
     this.daemonVersion = daemonVersion.trim();
     this.daemonRuntimeConfig = daemonRuntimeConfig;
+    this.browserToolsBroker = browserToolsBroker;
     this.agentManager = agentManager;
     this.agentStorage = agentStorage;
     this.projectRegistry = projectRegistry ?? createNoopProjectRegistry();
@@ -560,6 +588,7 @@ export class VoiceAssistantWebSocketServer {
     this.checkoutDiffManager = requiredServices.checkoutDiffManager;
     this.github = github ?? createGitHubService();
     this.workspaceGitService = workspaceGitService ?? createFallbackWorkspaceGitService();
+    this.workspaceAutoName = workspaceAutoName;
     this.downloadTokenStore = downloadTokenStore;
     this.paseoHome = paseoHome;
     this.worktreesRoot = daemonRuntimeConfig?.worktreesRoot;
@@ -583,23 +612,7 @@ export class VoiceAssistantWebSocketServer {
       throw new Error("providerSnapshotManager is required");
     }
     this.providerSnapshotManager = providerSnapshotManager;
-    this.serverCapabilities = buildServerCapabilities({
-      readiness: this.speech?.getReadiness() ?? null,
-    });
-    this.unsubscribeSpeechReadiness =
-      this.speech?.onReadinessChange((snapshot) => {
-        this.publishSpeechReadiness(snapshot);
-      }) ?? null;
-    // Backs the speech.dictation.* model-selection RPCs. Reuses the live speech stack so
-    // switching models hot-reconfigures in place (no daemon restart).
-    this.dictationSettings = this.speech
-      ? createDictationSettingsController({
-          paseoHome: this.paseoHome,
-          env: process.env,
-          speechService: this.speech,
-          logger: this.logger,
-        })
-      : null;
+    this.initializeSpeechServices();
     this.unsubscribeDaemonConfigChange = this.daemonConfigStore.onChange((config) => {
       const nextAgentManagerState = this.providerSnapshotManager.applyMutableProviderConfig(
         config.providers,
@@ -669,6 +682,26 @@ export class VoiceAssistantWebSocketServer {
     this.startRuntimeMetricsInterval();
 
     this.logger.info("WebSocket server initialized on /ws");
+  }
+
+  private initializeSpeechServices(): void {
+    this.serverCapabilities = buildServerCapabilities({
+      readiness: this.speech?.getReadiness() ?? null,
+    });
+    this.unsubscribeSpeechReadiness =
+      this.speech?.onReadinessChange((snapshot) => {
+        this.publishSpeechReadiness(snapshot);
+      }) ?? null;
+    // Backs the speech.dictation.* model-selection RPCs. Reuses the live speech stack so
+    // switching models hot-reconfigures in place (no daemon restart).
+    this.dictationSettings = this.speech
+      ? createDictationSettingsController({
+          paseoHome: this.paseoHome,
+          env: process.env,
+          speechService: this.speech,
+          logger: this.logger,
+        })
+      : null;
   }
 
   private assignOptionalServices(params: {
@@ -945,6 +978,9 @@ export class VoiceAssistantWebSocketServer {
     this.sessions.clear();
     this.socketIdentities.clear();
     this.externalSessionsByKey.clear();
+    for (const clientId of this.browserToolsRegistrations.keys()) {
+      this.unregisterBrowserToolsClient(clientId);
+    }
     this.wss.close();
   }
 
@@ -1129,6 +1165,7 @@ export class VoiceAssistantWebSocketServer {
       checkoutDiffManager: this.checkoutDiffManager,
       github: this.github,
       workspaceGitService: this.workspaceGitService,
+      workspaceAutoName: this.workspaceAutoName,
       daemonConfigStore: this.daemonConfigStore,
       mcpBaseUrl: this.mcpBaseUrl,
       stt: () => this.speech?.resolveStt() ?? null,
@@ -1265,10 +1302,12 @@ export class VoiceAssistantWebSocketServer {
       ) {
         existing.clientCapabilities = newClientCapabilities;
         existing.session.updateClientCapabilities(newClientCapabilities);
+        this.syncBrowserToolsClientRegistration(existing);
       }
       existing.sockets.add(ws);
       this.sessions.set(ws, existing);
       pending.identity.sessionId = existing.session.getSessionId();
+      this.syncBrowserToolsClientRegistration(existing);
       this.sendToClient(ws, this.createServerInfoMessage());
       const cachedQuota = this.quotaFetcher.getCached();
       if (cachedQuota) {
@@ -1297,6 +1336,7 @@ export class VoiceAssistantWebSocketServer {
     this.sessions.set(ws, connection);
     this.externalSessionsByKey.set(clientId, connection);
     pending.identity.sessionId = connection.session.getSessionId();
+    this.syncBrowserToolsClientRegistration(connection);
     this.sendToClient(ws, this.createServerInfoMessage());
     const cachedQuota = this.quotaFetcher.getCached();
     if (cachedQuota) {
@@ -1497,6 +1537,7 @@ export class VoiceAssistantWebSocketServer {
     this.socketIdentities.delete(ws);
 
     if (connection.sockets.size === 0) {
+      this.unregisterBrowserToolsClient(connection.clientId);
       this.incrementRuntimeCounter("sessionDisconnectedWaitingReconnect");
       if (connection.externalDisconnectCleanupTimeout) {
         clearTimeout(connection.externalDisconnectCleanupTimeout);
@@ -1558,12 +1599,55 @@ export class VoiceAssistantWebSocketServer {
     if (existing === connection) {
       this.externalSessionsByKey.delete(connection.clientId);
     }
+    this.unregisterBrowserToolsClient(connection.clientId);
 
     connection.connectionLogger.trace(
       { clientId: connection.clientId, totalSessions: this.sessions.size },
       logMessage,
     );
     await connection.session.cleanup();
+  }
+
+  private syncBrowserToolsClientRegistration(connection: SessionConnection): void {
+    if (!this.browserToolsBroker) {
+      return;
+    }
+    const browserHostCapability = getBrowserHostCapability(connection.clientCapabilities);
+    if (!browserHostCapability) {
+      this.unregisterBrowserToolsClient(connection.clientId);
+      return;
+    }
+    const capabilitySignature = JSON.stringify(browserHostCapability);
+    const existing = this.browserToolsRegistrations.get(connection.clientId);
+    if (existing?.capabilitySignature === capabilitySignature) {
+      return;
+    }
+    if (existing) {
+      this.browserToolsRegistrations.delete(connection.clientId);
+      existing.unregister();
+    }
+
+    const unregister = this.browserToolsBroker.registerClient({
+      id: connection.clientId,
+      hostKind: browserHostCapability.hostKind,
+      supportedCommands: browserHostCapability.supportedCommands,
+      sendBrowserAutomationRequest: (request) => {
+        this.sendToConnection(connection, wrapSessionMessage(request));
+      },
+    });
+    this.browserToolsRegistrations.set(connection.clientId, {
+      capabilitySignature,
+      unregister,
+    });
+  }
+
+  private unregisterBrowserToolsClient(clientId: string): void {
+    const registration = this.browserToolsRegistrations.get(clientId);
+    if (!registration) {
+      return;
+    }
+    this.browserToolsRegistrations.delete(clientId);
+    registration.unregister();
   }
 
   private handleInvalidInboundMessage(args: {
@@ -1808,6 +1892,11 @@ export class VoiceAssistantWebSocketServer {
         "ws_control_rpc_received",
       );
     }
+    if (message.message.type === "browser.automation.execute.response") {
+      this.browserToolsBroker?.receiveResponse(message.message as BrowserAutomationExecuteResponse);
+      return;
+    }
+
     const startMs = performance.now();
     await activeConnection.session.handleMessage(message.message);
     const durationMs = performance.now() - startMs;

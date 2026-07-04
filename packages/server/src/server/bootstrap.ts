@@ -124,6 +124,8 @@ import { CheckoutDiffManager } from "./checkout-diff-manager.js";
 import { LoopService } from "./loop-service.js";
 import { ScheduleService } from "./schedule/service.js";
 import { DaemonConfigStore } from "./daemon-config-store.js";
+import { BrowserToolsBroker } from "./browser-tools/broker.js";
+import { DaemonConfigBrowserToolsPolicy } from "./browser-tools/policy.js";
 import { WorkspaceGitServiceImpl } from "./workspace-git-service.js";
 import { resolveWorkspaceIdForPath } from "./resolve-workspace-id-for-path.js";
 import {
@@ -143,7 +145,7 @@ import type { PushNotificationSender } from "./push/notifications.js";
 import { getOrCreateServerId } from "./server-id.js";
 import { resolveDaemonVersion } from "./daemon-version.js";
 import type { AgentClient, AgentProvider } from "./agent/agent-sdk-types.js";
-import type { TerminalProfile } from "@getpaseo/protocol/messages";
+import type { FirstAgentContext, TerminalProfile } from "@getpaseo/protocol/messages";
 import type {
   AgentProviderRuntimeSettingsMap,
   ProviderOverride,
@@ -167,6 +169,10 @@ import {
   type DaemonAuthConfig,
 } from "./auth.js";
 import { createWebUiMiddleware } from "./web-ui.js";
+import { WorkspaceAutoName } from "./workspace-auto-name.js";
+import { createGitMutationService } from "./session/git-mutation/git-mutation-service.js";
+import { workspaceIdsOnCheckout } from "./workspace-directory.js";
+import { resolveFirstAgentPromptTitle } from "./agent/create-agent-title.js";
 
 const MAX_MCP_DEBUG_BATCH_ITEMS = 10;
 const REDACTED_LOG_VALUE = "[redacted]";
@@ -392,6 +398,7 @@ export interface PaseoDaemon {
   terminalManager: TerminalManager;
   serviceProxy: ServiceProxySubsystem;
   scriptRuntimeStore: WorkspaceScriptRuntimeStore;
+  browserToolsBroker: BrowserToolsBroker;
   start(): Promise<void>;
   stop(): Promise<void>;
   getListenTarget(): ListenTarget | null;
@@ -480,6 +487,10 @@ export async function createPaseoDaemon(
     buildDaemonConfigStoreSettings(config),
     logger,
   );
+  const browserToolsPolicy = new DaemonConfigBrowserToolsPolicy(daemonConfigStore);
+  const browserToolsBroker = new BrowserToolsBroker({
+    policy: browserToolsPolicy,
+  });
 
   const serverId = getOrCreateServerId(config.paseoHome, { logger });
   const daemonKeyPair = await loadOrCreateDaemonKeyPair(config.paseoHome, logger);
@@ -880,11 +891,21 @@ export async function createPaseoDaemon(
   const findWorkspaceIdForCwdExternal = async (cwd: string): Promise<string | null> => {
     return resolveWorkspaceIdForPath(cwd, await workspaceRegistry.list());
   };
-  const ensureWorkspaceForCreateExternal = async (cwd: string): Promise<string> => {
+  const ensureWorkspaceForCreateExternal = async (
+    cwd: string,
+    firstAgentContext?: FirstAgentContext,
+  ): Promise<string> => {
     const workspace = await createLocalCheckoutWorkspace(
-      { cwd },
+      { cwd, title: resolveFirstAgentPromptTitle(firstAgentContext) },
       { projectRegistry, workspaceRegistry, workspaceGitService },
     );
+    if (firstAgentContext) {
+      workspaceAutoName.scheduleForDirectory({
+        workspaceId: workspace.workspaceId,
+        cwd: workspace.cwd,
+        firstAgentContext,
+      });
+    }
     return workspace.workspaceId;
   };
   const listActiveWorkspacesExternal = async (): Promise<ActiveWorkspaceRef[]> => {
@@ -917,9 +938,30 @@ export async function createPaseoDaemon(
       ),
     );
   };
+  const emitWorkspaceUpdateForCwdExternal = async (cwd: string) => {
+    const workspaceIds = workspaceIdsOnCheckout(await workspaceRegistry.list(), cwd);
+    await emitWorkspaceUpdatesExternal(workspaceIds);
+  };
   const emitExternalSessionMessage = (message: SessionOutboundMessage) => {
     wsServer?.broadcast(wrapSessionMessage(message));
   };
+  const workspaceAutoName = new WorkspaceAutoName({
+    agentManager,
+    workspaceRegistry,
+    workspaceGitService,
+    providerSnapshotManager,
+    readDaemonConfig: () => ({ metadataGeneration: daemonConfigStore.get().metadataGeneration }),
+    gitMutation: createGitMutationService({
+      workspaceGitService,
+      github,
+      logger,
+    }),
+    emitWorkspaceUpdateForCwd: emitWorkspaceUpdateForCwdExternal,
+    emitWorkspaceUpdateForWorkspaceId: async (workspaceId) => {
+      await emitWorkspaceUpdatesExternal([workspaceId]);
+    },
+    logger,
+  });
 
   setupAutoArchiveOnMerge({
     paseoHome: config.paseoHome,
@@ -967,6 +1009,8 @@ export async function createPaseoDaemon(
               .map((session) => session.warmWorkspaceGitDataForWorkspace(workspace)) ?? [],
           );
         },
+        autoNameWorkspaceBranchForFirstAgent: (autoNameInput) =>
+          workspaceAutoName.scheduleForWorktree(autoNameInput),
         emitWorkspaceUpdateForWorkspaceId: async (workspaceId) => {
           await emitWorkspaceUpdatesExternal([workspaceId]);
         },
@@ -1007,6 +1051,7 @@ export async function createPaseoDaemon(
     clearWorkspaceArchiving: clearWorkspaceArchivingExternal,
     ensureWorkspaceForCreate: ensureWorkspaceForCreateExternal,
     createPaseoWorktree: createPaseoWorktreeForTools,
+    browserToolsBroker,
     paseoHome: config.paseoHome,
     worktreesRoot: config.worktreesRoot,
     callerAgentId: runtime.callerAgentId,
@@ -1233,6 +1278,7 @@ export async function createPaseoDaemon(
               daemonConfigStore,
               mcpBaseUrl,
               { allowedOrigins, hostnames: configuredHostnames },
+              workspaceAutoName,
               config.auth,
               speechService,
               terminalManager,
@@ -1282,6 +1328,7 @@ export async function createPaseoDaemon(
               appearanceSettingsStore,
               modelPreferencesStore,
               composerDraftsStore,
+              browserToolsBroker,
             );
 
             if (relayEnabled) {
@@ -1382,6 +1429,7 @@ export async function createPaseoDaemon(
     terminalManager,
     serviceProxy,
     scriptRuntimeStore,
+    browserToolsBroker,
     start,
     stop,
     getListenTarget: () => boundListenTarget,

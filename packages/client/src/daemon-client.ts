@@ -285,7 +285,7 @@ export interface DaemonClientConfig {
   };
   runtimeMetricsIntervalMs?: number;
   runtimeMetricsWindowMs?: number;
-  capabilities?: Partial<Record<ClientCapability, boolean>>;
+  capabilities?: Partial<Record<ClientCapability, unknown>>;
 }
 
 export interface SendMessageOptions {

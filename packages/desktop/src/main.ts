@@ -56,6 +56,7 @@ import {
   listRegisteredPaseoBrowserIds,
   readBrowserIdFromWebviewAttach,
   registerBrowserWebviewNavigationGuards,
+  unregisterPaseoBrowser,
   registerPaseoBrowserWorkspace,
   registerPaseoBrowserWebContents,
   setActivePaseoBrowserFind,
@@ -328,6 +329,12 @@ ipcMain.handle("paseo:browser:register-workspace-browser", (_event, rawInput: un
   const input = readBrowserWorkspaceInput(rawInput);
   if (input) {
     registerPaseoBrowserWorkspace(input);
+  }
+});
+
+ipcMain.handle("paseo:browser:unregister-workspace-browser", (_event, browserId: unknown) => {
+  if (typeof browserId === "string" && browserId.trim().length > 0) {
+    unregisterPaseoBrowser(browserId.trim());
   }
 });
 

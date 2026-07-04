@@ -143,6 +143,7 @@ export interface DesktopBrowserFoundInPageResult {
 
 export interface DesktopBrowserBridge {
   registerWorkspaceBrowser?: (input: { browserId: string; workspaceId: string }) => Promise<void>;
+  unregisterWorkspaceBrowser?: (browserId: string) => Promise<void>;
   setWorkspaceActiveBrowser?: (input: {
     workspaceId: string;
     browserId: string | null;
