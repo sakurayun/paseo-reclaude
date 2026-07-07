@@ -3,7 +3,7 @@ import {
   getPaseoToolLeafName,
   isPaseoToolName,
   parseMcpToolName,
-} from "@getpaseo/protocol/tool-name-normalization";
+} from "./tool-name-normalization.js";
 import { stripCwdPrefix } from "./path-utils.js";
 
 export type ToolCallDisplayInput = Pick<

@@ -13,8 +13,8 @@ import {
   DaemonUpdateResponseSchema,
   SessionInboundMessageSchema,
   type ServerInfoStatusPayload,
-  WSOutboundMessageSchema,
 } from "@getpaseo/protocol/messages";
+import { validateWSOutboundMessage } from "@getpaseo/protocol/validation/ws-outbound";
 import type {
   AgentStreamEventPayload,
   AgentSnapshotPayload,
@@ -151,6 +151,11 @@ import {
   type WebSocketFactory,
 } from "./daemon-client-transport.js";
 import { DaemonClientRuntimeMetrics } from "./daemon-client-runtime-metrics.js";
+import {
+  normalizeListProviderModelsPayload,
+  normalizeProviderSnapshotUpdateMessage,
+  normalizeProvidersSnapshotPayload,
+} from "./compat/normalize-provider-models.js";
 import { TerminalStreamRouter, type TerminalStreamEvent } from "./terminal-stream-router.js";
 import type {
   BrowserAutomationExecuteRequest,
@@ -418,6 +423,7 @@ type WriteProjectConfigPayload = Extract<
   SessionOutboundMessage,
   { type: "write_project_config_response" }
 >["payload"];
+
 type ListCommandsPayload = ListCommandsResponse["payload"];
 type ListCommandsDraftConfig = Pick<
   AgentSessionConfig,
@@ -4214,7 +4220,7 @@ export class DaemonClient {
     provider: AgentProvider,
     options?: { cwd?: string; requestId?: string },
   ): Promise<ListProviderModelsPayload> {
-    return this.sendCorrelatedSessionRequest({
+    const payload = await this.sendCorrelatedSessionRequest({
       requestId: options?.requestId,
       message: {
         type: "list_provider_models_request",
@@ -4225,6 +4231,7 @@ export class DaemonClient {
       // Provider SDK cold starts (especially model discovery) can exceed 60s.
       timeout: 90000,
     });
+    return normalizeListProviderModelsPayload(payload);
   }
 
   async listProviderModes(
@@ -4274,7 +4281,7 @@ export class DaemonClient {
     cwd?: string;
     requestId?: string;
   }): Promise<GetProvidersSnapshotPayload> {
-    return this.sendCorrelatedSessionRequest({
+    const payload = await this.sendCorrelatedSessionRequest({
       requestId: options?.requestId,
       message: {
         type: "get_providers_snapshot_request",
@@ -4282,6 +4289,7 @@ export class DaemonClient {
       },
       responseType: "get_providers_snapshot_response",
     });
+    return normalizeProvidersSnapshotPayload(payload);
   }
 
   async getDaemonConfig(
@@ -5440,7 +5448,7 @@ export class DaemonClient {
       return;
     }
 
-    const parsed = WSOutboundMessageSchema.safeParse(parsedJson);
+    const parsed = validateWSOutboundMessage(parsedJson);
     if (!parsed.success) {
       const msgType =
         parsedJson != null &&
@@ -5712,8 +5720,10 @@ export class DaemonClient {
   }
 
   private handleSessionMessage(msg: SessionOutboundMessage): void {
-    if (msg.type === "status") {
-      const serverInfo = parseServerInfoStatusPayload(msg.payload);
+    const consumerMessage = normalizeProviderSnapshotUpdateMessage(msg);
+
+    if (consumerMessage.type === "status") {
+      const serverInfo = parseServerInfoStatusPayload(consumerMessage.payload);
       if (serverInfo) {
         this.lastServerInfoMessage = serverInfo;
         if (this.connectionState.status === "connecting") {
@@ -5729,39 +5739,39 @@ export class DaemonClient {
       }
     }
 
-    if (msg.type === "terminal_stream_exit") {
-      this.terminalStreams.removeTerminal(msg.payload.terminalId);
+    if (consumerMessage.type === "terminal_stream_exit") {
+      this.terminalStreams.removeTerminal(consumerMessage.payload.terminalId);
     }
 
     if (this.rawMessageListeners.size > 0) {
       for (const handler of this.rawMessageListeners) {
         try {
-          handler(msg);
+          handler(consumerMessage);
         } catch {
           // no-op
         }
       }
     }
 
-    const handlers = this.messageHandlers.get(msg.type);
+    const handlers = this.messageHandlers.get(consumerMessage.type);
     if (handlers) {
       for (const handler of handlers) {
         try {
-          handler(msg);
+          handler(consumerMessage);
         } catch {
           // no-op
         }
       }
     }
 
-    const event = this.toEvent(msg);
+    const event = this.toEvent(consumerMessage);
     if (event) {
       for (const handler of this.eventListeners) {
         handler(event);
       }
     }
 
-    this.resolveWaiters(msg);
+    this.resolveWaiters(consumerMessage);
   }
 
   private resolveWaiters(msg: SessionOutboundMessage): void {
