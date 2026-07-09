@@ -9,7 +9,7 @@ import {
   pickSyncedAppearance,
   type AppSettings,
 } from "@/hooks/use-settings/storage";
-import { queryClient as appQueryClient } from "@/query/query-client";
+import { queryClient as appQueryClient } from "@/data/query-client";
 import { useSessionStore } from "@/stores/session-store";
 
 const PUSH_DEBOUNCE_MS = 300;

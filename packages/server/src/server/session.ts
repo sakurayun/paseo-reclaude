@@ -34,8 +34,14 @@ import type {
   TerminalWorkspaceContributionChangedEvent,
 } from "../terminal/terminal-manager.js";
 import type { PortForwardManager } from "../port-forward/port-forward-manager.js";
+import type { SshManager } from "../ssh/ssh-manager.js";
+import {
+  createSshSessionController,
+  type SshSessionController,
+} from "../ssh/ssh-session-controller.js";
 import type { WorkspaceLayoutStore } from "./workspace-layout-store.js";
 import type { PromptPresetsStore } from "./prompt-presets-store.js";
+import type { TerminalHistoryStore } from "../terminal/terminal-history-store.js";
 import type { AppearanceSettingsStore } from "./appearance-settings-store.js";
 import type { ModelPreferencesStore } from "./model-preferences-store.js";
 import type { ComposerDraftsStore } from "./composer-drafts-store.js";
@@ -505,8 +511,10 @@ export interface SessionOptions {
   tts: Resolvable<TextToSpeechProvider | null>;
   terminalManager: TerminalManager | null;
   portForwardManager?: PortForwardManager | null;
+  sshManager?: SshManager | null;
   workspaceLayoutStore?: WorkspaceLayoutStore | null;
   promptPresetsStore?: PromptPresetsStore | null;
+  terminalHistoryStore?: TerminalHistoryStore | null;
   // Called after a layout push is accepted, so the WebSocket server can fan the new
   // envelope out to other desktop clients. The session itself has no socket handle.
   onWorkspaceLayoutPushed?: (envelope: WorkspaceLayoutEnvelope) => void;
@@ -651,6 +659,7 @@ export class Session {
   private unsubscribeAgentEvents: (() => void) | null = null;
   private unsubscribeTerminalWorkspaceContributionEvents: (() => void) | null = null;
   private unsubscribePortForwardChanged: (() => void) | null = null;
+  private unsubscribeSshChanged: (() => void)[] = [];
   private readonly agentUpdates: AgentUpdatesService;
   private workspaceUpdatesSubscription: WorkspaceUpdatesSubscriptionState | null = null;
   private clientActivity: {
@@ -663,6 +672,8 @@ export class Session {
   } | null = null;
   private readonly terminalManager: TerminalManager | null;
   private readonly portForwardManager: PortForwardManager | null;
+  private readonly sshManager: SshManager | null;
+  private readonly sshController: SshSessionController | null;
   private readonly providerSnapshotManager: ProviderSnapshotManager;
   private readonly serviceProxy: ServiceProxySubsystem | null;
   private readonly scriptRuntimeStore: WorkspaceScriptRuntimeStore | null;
@@ -713,6 +724,7 @@ export class Session {
       workspaceRegistry,
       workspaceLayoutStore,
       promptPresetsStore,
+      terminalHistoryStore,
       appearanceSettingsStore,
       modelPreferencesStore,
       composerDraftsStore,
@@ -736,6 +748,7 @@ export class Session {
       tts,
       terminalManager,
       portForwardManager,
+      sshManager,
       providerSnapshotManager,
       providerUsageService,
       reclaude,
@@ -925,6 +938,32 @@ export class Session {
     this.daemonConfigStore = daemonConfigStore;
     this.terminalManager = terminalManager;
     this.portForwardManager = portForwardManager ?? null;
+    this.sshManager = sshManager ?? null;
+    this.sshController = this.sshManager
+      ? createSshSessionController({
+          hostStore: this.sshManager.hostStore,
+          keyStore: this.sshManager.keyStore,
+          forwardStore: this.sshManager.forwardStore,
+          knownHostStore: this.sshManager.knownHostStore,
+          logStore: this.sshManager.logStore,
+          emit: (msg) => this.emit(msg),
+          // Read lazily so a handler attached after session start is still used.
+          connectHandler: (connectInput) => {
+            const handler = this.sshManager?.connectHandler;
+            if (!handler) {
+              return Promise.resolve({
+                outcome: "error" as const,
+                error: "SSH connect is not available on this host",
+              });
+            }
+            return handler(connectInput);
+          },
+          forwardStart: (id) =>
+            this.sshManager?.forwardStart?.(id) ??
+            Promise.resolve({ ok: false, error: "Port forwarding is not available on this host" }),
+          forwardStop: (id) => this.sshManager?.forwardStop?.(id) ?? Promise.resolve({ ok: true }),
+        })
+      : null;
     this.terminalController = new TerminalSessionController({
       terminalManager,
       emit: (msg) => this.emit(msg),
@@ -936,6 +975,7 @@ export class Session {
       clientSupportsWrapReflow: () =>
         this.clientCapabilities.has(CLIENT_CAPS.terminalReflowableSnapshot),
       getClientBufferedAmount: () => this.getTransportBufferedAmount(),
+      terminalHistoryStore: terminalHistoryStore ?? null,
     });
     this.tunnelForwarder = new TunnelForwarder({
       emitBinary: (frame) => this.emitBinary(frame),
@@ -1277,6 +1317,26 @@ export class Session {
         this.emit({ type: "port_forward.changed", payload: { forwards } });
       });
     }
+    if (this.sshManager) {
+      const ssh = this.sshManager;
+      this.unsubscribeSshChanged.push(
+        ssh.hostStore.subscribeChanged(({ hosts, groups }) => {
+          this.emit({ type: "ssh.hosts.changed", payload: { hosts, groups } });
+        }),
+        ssh.keyStore.subscribeChanged((keys) => {
+          this.emit({ type: "ssh.keys.changed", payload: { keys } });
+        }),
+        ssh.forwardStore.subscribeChanged(({ forwards, runtime }) => {
+          this.emit({ type: "ssh.forwards.changed", payload: { forwards, runtime } });
+        }),
+        ssh.knownHostStore.subscribeChanged((knownHosts) => {
+          this.emit({ type: "ssh.known_hosts.changed", payload: { knownHosts } });
+        }),
+        ssh.logStore.subscribeUpdated((entry) => {
+          this.emit({ type: "ssh.logs.updated", payload: { entry } });
+        }),
+      );
+    }
     this.providerCatalogSession.start();
   }
 
@@ -1518,7 +1578,7 @@ export class Session {
       this.dispatchTerminalMessage(msg) ??
       this.dispatchPortForwardMessage(msg) ??
       this.dispatchChatScheduleLoopMessage(msg) ??
-      this.dispatchMiscMessage(msg);
+      this.dispatchSshOrMiscMessage(msg);
     if (promise) await promise;
   }
 
@@ -2216,6 +2276,12 @@ export class Session {
       default:
         return undefined;
     }
+  }
+
+  // Fork-owned wrapper: routes ssh.* messages to the SSH controller without
+  // lengthening the dispatchInboundMessage chain (complexity budget).
+  private dispatchSshOrMiscMessage(msg: SessionInboundMessage): Promise<void> {
+    return this.sshController?.dispatch(msg) ?? this.dispatchMiscMessage(msg);
   }
 
   private async dispatchMiscMessage(msg: SessionInboundMessage): Promise<void> {
@@ -6494,6 +6560,10 @@ export class Session {
       this.unsubscribePortForwardChanged();
       this.unsubscribePortForwardChanged = null;
     }
+    for (const unsubscribe of this.unsubscribeSshChanged) {
+      unsubscribe();
+    }
+    this.unsubscribeSshChanged = [];
     this.providerCatalogSession.dispose();
 
     await this.voiceSession.cleanup();

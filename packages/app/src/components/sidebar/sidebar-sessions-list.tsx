@@ -40,6 +40,7 @@ import {
   Plus,
   Server,
   SquarePen,
+  SquareTerminal,
 } from "lucide-react-native";
 import { isNative as platformIsNative } from "@/constants/platform";
 import {
@@ -47,10 +48,12 @@ import {
   type SidebarSessionEntry,
 } from "@/hooks/use-sidebar-sessions-list";
 import {
+  assignTerminalsToSidebarGroups,
   groupSidebarSessionsByProject,
   resolveSidebarSessionGroupWorkspaceTarget,
   type SidebarSessionGroup,
 } from "@/hooks/sidebar-sessions-grouping";
+import { useHostTerminals, type HostTerminalEntry } from "@/hooks/use-host-terminals";
 import { SidebarSessionRow } from "@/components/sidebar/sidebar-workspace-sessions";
 import { SidebarAgentListSkeleton } from "@/components/sidebar-agent-list-skeleton";
 import {
@@ -65,9 +68,9 @@ import { agentHistoryQueryKey } from "@/hooks/agent-history-query-key";
 import { isSidebarActiveAgent } from "@/utils/sidebar-agent-state";
 import type { Theme } from "@/styles/theme";
 import { useProjectNamesMap } from "@/hooks/use-status-mode-workspaces";
-import { projectsQueryKey } from "@/hooks/use-projects";
 import { GitHubIcon } from "@/components/icons/github-icon";
 import {
+  getHostRuntimeStore,
   useHostRuntimeConnectionStatus,
   useHosts,
   type HostRuntimeConnectionStatus,
@@ -80,6 +83,7 @@ import {
 import type { HostProfile } from "@/types/host-connection";
 import { usePanelStore } from "@/stores/panel-store";
 import { navigateToPreparedWorkspaceTab } from "@/utils/workspace-navigation";
+import { navigateToWorkspace } from "@/stores/navigation-active-workspace-store";
 
 interface SidebarSessionsListProps {
   serverId: string | null;
@@ -105,6 +109,30 @@ const ThemedGitHubIcon = withUnistyles(GitHubIcon);
 const ThemedServer = withUnistyles(Server);
 const ThemedSquarePen = withUnistyles(SquarePen);
 const ThemedPlus = withUnistyles(Plus);
+const ThemedSquareTerminal = withUnistyles(SquareTerminal);
+const terminalRunningColorMapping = (theme: Theme) => ({
+  color: theme.colors.palette.green[500],
+});
+const terminalFailedColorMapping = (theme: Theme) => ({ color: theme.colors.palette.red[500] });
+
+type SidebarTerminalTone = "running" | "failed" | "idle";
+
+function sidebarTerminalTone(terminal: HostTerminalEntry): SidebarTerminalTone {
+  if (terminal.status === "exited") {
+    return terminal.exitCode != null && terminal.exitCode !== 0 ? "failed" : "idle";
+  }
+  return "running";
+}
+
+function sidebarTerminalIconMapping(tone: SidebarTerminalTone) {
+  if (tone === "running") {
+    return terminalRunningColorMapping;
+  }
+  if (tone === "failed") {
+    return terminalFailedColorMapping;
+  }
+  return foregroundMutedColorMapping;
+}
 
 /** A session counts as "kept visible while collapsed" until it is fully done. */
 function isSessionActive(session: SidebarSessionEntry): boolean {
@@ -206,6 +234,11 @@ function SidebarSingleHostSessions({ serverId, parentGestureRef }: SidebarSessio
     () => groupSidebarSessionsByProject(sessions, projectNamesByKey),
     [projectNamesByKey, sessions],
   );
+  const { terminals } = useHostTerminals(serverId);
+  const terminalsByGroupKey = useMemo(
+    () => assignTerminalsToSidebarGroups(groups, terminals),
+    [groups, terminals],
+  );
   const { expandedKeys, toggle } = useSidebarExpandedKeys();
 
   if (isInitialLoad) {
@@ -229,6 +262,7 @@ function SidebarSingleHostSessions({ serverId, parentGestureRef }: SidebarSessio
           expandedKeys={expandedKeys}
           onToggle={toggle}
           unknownLabel={t("sidebar.sessionsList.unknownWorkspace")}
+          terminalsByGroupKey={terminalsByGroupKey}
         />
       </SidebarSessionsScroll>
     </Animated.View>
@@ -288,6 +322,11 @@ const SidebarHostSection = memo(function SidebarHostSection({
     () => groupSidebarSessionsByProject(sessions, projectNamesByKey),
     [projectNamesByKey, sessions],
   );
+  const { terminals } = useHostTerminals(host.serverId);
+  const terminalsByGroupKey = useMemo(
+    () => assignTerminalsToSidebarGroups(groups, terminals),
+    [groups, terminals],
+  );
   const connectionStatus = useHostRuntimeConnectionStatus(host.serverId);
   const { expandedKeys, toggle } = useSidebarExpandedKeys();
 
@@ -325,6 +364,7 @@ const SidebarHostSection = memo(function SidebarHostSection({
           expandedKeys={expandedKeys}
           onToggle={toggle}
           unknownLabel={unknownLabel}
+          terminalsByGroupKey={terminalsByGroupKey}
         />
       );
     } else {
@@ -664,18 +704,22 @@ function GroupLeadingIcon({
 }
 
 /** Render a host's project groups (shared by single- and multi-host bodies). */
+const NO_GROUP_TERMINALS: HostTerminalEntry[] = [];
+
 function SidebarProjectGroups({
   groups,
   serverId,
   expandedKeys,
   onToggle,
   unknownLabel,
+  terminalsByGroupKey,
 }: {
   groups: SidebarSessionGroup[];
   serverId: string | null;
   expandedKeys: ReadonlySet<string>;
   onToggle: (key: string) => void;
   unknownLabel: string;
+  terminalsByGroupKey?: ReadonlyMap<string, HostTerminalEntry[]>;
 }) {
   return (
     <>
@@ -687,6 +731,7 @@ function SidebarProjectGroups({
           unknownLabel={unknownLabel}
           serverId={serverId}
           onToggle={onToggle}
+          terminals={terminalsByGroupKey?.get(group.key) ?? NO_GROUP_TERMINALS}
         />
       ))}
     </>
@@ -699,12 +744,14 @@ const SidebarSessionsGroupView = memo(function SidebarSessionsGroupView({
   unknownLabel,
   serverId,
   onToggle,
+  terminals = NO_GROUP_TERMINALS,
 }: {
   group: SidebarSessionGroup;
   expanded: boolean;
   unknownLabel: string;
   serverId: string | null;
   onToggle: (key: string) => void;
+  terminals?: HostTerminalEntry[];
 }) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
@@ -720,8 +767,9 @@ const SidebarSessionsGroupView = memo(function SidebarSessionsGroupView({
 
   // Hover lives on a plain View (canonical pattern, see docs/hover.md): the
   // header's leading icon is a folder by default and swaps to the collapse
-  // chevron on hover. Hover is web-only, so native always shows the folder and
-  // toggles on tap. isHovered drives both the icon swap and the header tint.
+  // chevron on hover. The leading icon is its own Pressable that toggles the
+  // group; pressing the title opens the workspace's tab view instead. Hover is
+  // web-only, so native always shows the folder; tapping it still toggles.
   const [isHovered, setIsHovered] = useState(false);
   const handlePointerEnter = useCallback(() => setIsHovered(true), []);
   const handlePointerLeave = useCallback(() => setIsHovered(false), []);
@@ -733,6 +781,18 @@ const SidebarSessionsGroupView = memo(function SidebarSessionsGroupView({
   const handleToggle = useCallback(() => {
     onToggle(group.key);
   }, [group.key, onToggle]);
+
+  // Pressing the title opens the workspace's tab view; expanding/collapsing is
+  // reserved for the dedicated leading chevron button. Groups without a
+  // resolvable workspace target keep the legacy toggle behavior.
+  const handleOpenWorkspaceTabs = useCallback(() => {
+    if (!newAgentTarget) {
+      onToggle(group.key);
+      return;
+    }
+    navigateToWorkspace(newAgentTarget.serverId, newAgentTarget.workspaceId);
+    usePanelStore.getState().showMobileAgent();
+  }, [group.key, newAgentTarget, onToggle]);
 
   const reduceMotion = useReducedMotion();
 
@@ -761,7 +821,7 @@ const SidebarSessionsGroupView = memo(function SidebarSessionsGroupView({
       const trimmed = nextTitle.trim();
       const customName = trimmed === baseLabel ? null : trimmed;
       await client.renameProject(group.projectKey, customName);
-      void queryClient.invalidateQueries({ queryKey: projectsQueryKey });
+      getHostRuntimeStore().refreshAllAgentDirectories({ serverIds: [serverId] });
       // Refresh history-derived placement labels so the rename surfaces for
       // sessions that aren't live in the session store.
       void queryClient.invalidateQueries({ queryKey: agentHistoryQueryKey(serverId) });
@@ -769,11 +829,12 @@ const SidebarSessionsGroupView = memo(function SidebarSessionsGroupView({
     [baseLabel, group.projectKey, serverId, queryClient, t],
   );
 
-  const headerStyle = useCallback(
-    ({ pressed }: { pressed: boolean }) => [
-      styles.groupHeader,
-      (isHovered || pressed) && styles.groupHeaderHovered,
-    ],
+  // The header row carries the padding + hover background as a plain View, so
+  // the two interactive controls inside it (the collapse toggle and the
+  // open-tabs trigger) are siblings rather than nested buttons — nesting a
+  // <button> inside a <button> is invalid HTML and breaks web hydration.
+  const headerRowStyle = useMemo(
+    () => [styles.groupHeader, isHovered && styles.groupHeaderHovered],
     [isHovered],
   );
 
@@ -784,6 +845,18 @@ const SidebarSessionsGroupView = memo(function SidebarSessionsGroupView({
     [expanded, group.sessions],
   );
 
+  // Terminals mirror the sessions rule: collapsed groups keep running
+  // terminals visible; expanding also reveals the exited ones.
+  const visibleTerminals = useMemo(
+    () => (expanded ? terminals : terminals.filter((terminal) => terminal.status !== "exited")),
+    [expanded, terminals],
+  );
+
+  // Extracted so the header's label Text stays within the JSX nesting budget.
+  const baseLabelSuffix = showBaseLabel ? (
+    <Text style={styles.groupBaseLabel}> {baseLabel}</Text>
+  ) : null;
+
   return (
     <View style={styles.group}>
       <View style={a.groupHeaderRow}>
@@ -792,44 +865,49 @@ const SidebarSessionsGroupView = memo(function SidebarSessionsGroupView({
           onPointerEnter={handlePointerEnter}
           onPointerLeave={handlePointerLeave}
         >
-          <ContextMenu>
-            <ContextMenuTrigger
+          <View style={headerRowStyle}>
+            <Pressable
               accessibilityRole="button"
               accessibilityLabel={displayLabel}
               accessibilityState={expandedState(expanded)}
-              style={headerStyle}
               onPress={handleToggle}
-              testID={`sidebar-sessions-group-${group.key}`}
+              hitSlop={6}
+              style={styles.groupHeaderLeadingSlot}
+              testID={`sidebar-sessions-group-${group.key}-toggle`}
             >
-              <View style={styles.groupHeaderLeadingSlot}>
-                <GroupLeadingIcon
-                  hovered={isHovered}
-                  expanded={expanded}
-                  iconKind={group.iconKind}
-                />
-              </View>
-              <Text style={styles.groupLabel} numberOfLines={1}>
-                {displayLabel}
-                {showBaseLabel ? <Text style={styles.groupBaseLabel}> {baseLabel}</Text> : null}
-              </Text>
-              <Text style={styles.groupCount}>{group.sessions.length}</Text>
-            </ContextMenuTrigger>
-            {canRename ? (
-              <ContextMenuContent
-                align="start"
-                width={200}
-                mobileMode="sheet"
-                testID={`sidebar-sessions-group-context-${group.key}`}
+              <GroupLeadingIcon hovered={isHovered} expanded={expanded} iconKind={group.iconKind} />
+            </Pressable>
+            <ContextMenu>
+              <ContextMenuTrigger
+                accessibilityRole="button"
+                accessibilityLabel={displayLabel}
+                style={styles.groupHeaderTrigger}
+                onPress={handleOpenWorkspaceTabs}
+                testID={`sidebar-sessions-group-${group.key}`}
               >
-                <ContextMenuItem
-                  testID={`sidebar-sessions-group-context-${group.key}-rename`}
-                  onSelect={handleOpenRename}
+                <Text style={styles.groupLabel} numberOfLines={1}>
+                  {displayLabel}
+                  {baseLabelSuffix}
+                </Text>
+                <Text style={styles.groupCount}>{group.sessions.length + terminals.length}</Text>
+              </ContextMenuTrigger>
+              {canRename ? (
+                <ContextMenuContent
+                  align="start"
+                  width={200}
+                  mobileMode="sheet"
+                  testID={`sidebar-sessions-group-context-${group.key}`}
                 >
-                  {t("settings.project.rename.renameLabel")}
-                </ContextMenuItem>
-              </ContextMenuContent>
-            ) : null}
-          </ContextMenu>
+                  <ContextMenuItem
+                    testID={`sidebar-sessions-group-context-${group.key}-rename`}
+                    onSelect={handleOpenRename}
+                  >
+                    {t("settings.project.rename.renameLabel")}
+                  </ContextMenuItem>
+                </ContextMenuContent>
+              ) : null}
+            </ContextMenu>
+          </View>
         </View>
         {canOpenNewAgent ? (
           <GroupNewAgentButton
@@ -840,7 +918,7 @@ const SidebarSessionsGroupView = memo(function SidebarSessionsGroupView({
           />
         ) : null}
       </View>
-      {visibleSessions.length > 0 ? (
+      {visibleSessions.length > 0 || visibleTerminals.length > 0 ? (
         <View style={styles.groupSessions}>
           {visibleSessions.map((session) => (
             <SidebarSessionRow
@@ -848,6 +926,13 @@ const SidebarSessionsGroupView = memo(function SidebarSessionsGroupView({
               session={session}
               timeOverride={session.recencyAt}
               variant="flat"
+            />
+          ))}
+          {visibleTerminals.map((terminal) => (
+            <SidebarTerminalRow
+              key={`terminal:${terminal.id}`}
+              terminal={terminal}
+              workspaceTarget={newAgentTarget}
             />
           ))}
         </View>
@@ -863,6 +948,84 @@ const SidebarSessionsGroupView = memo(function SidebarSessionsGroupView({
           testID={`sidebar-sessions-group-rename-${group.key}`}
         />
       ) : null}
+    </View>
+  );
+});
+
+/**
+ * One terminal in a project group. The icon carries the lifecycle tone:
+ * green while running, red after a non-zero exit, muted after a clean exit.
+ * Pressing opens (or focuses) the terminal's tab in its workspace.
+ */
+const SidebarTerminalRow = memo(function SidebarTerminalRow({
+  terminal,
+  workspaceTarget,
+}: {
+  terminal: HostTerminalEntry;
+  workspaceTarget: { serverId: string; workspaceId: string } | null;
+}) {
+  const [isHovered, setIsHovered] = useState(false);
+  const handlePointerEnter = useCallback(() => setIsHovered(true), []);
+  const handlePointerLeave = useCallback(() => setIsHovered(false), []);
+
+  const tone = sidebarTerminalTone(terminal);
+  const label = terminal.title?.trim() || terminal.name;
+
+  // Standalone ids are a daemon-side grouping artifact, not real workspaces —
+  // fall back to the group's workspace target for navigation.
+  const terminalWorkspaceId =
+    terminal.workspaceId && !terminal.workspaceId.startsWith("standalone:")
+      ? terminal.workspaceId
+      : null;
+  const serverId = workspaceTarget?.serverId ?? null;
+  const workspaceId = terminalWorkspaceId ?? workspaceTarget?.workspaceId ?? null;
+
+  const handlePress = useCallback(() => {
+    if (!serverId || !workspaceId) {
+      return;
+    }
+    navigateToPreparedWorkspaceTab({
+      serverId,
+      workspaceId,
+      target: { kind: "terminal", terminalId: terminal.id },
+    });
+    usePanelStore.getState().showMobileAgent();
+  }, [serverId, workspaceId, terminal.id]);
+
+  const rowStyle = useCallback(
+    ({ pressed }: { pressed: boolean }) => [
+      styles.terminalRow,
+      (isHovered || pressed) && styles.groupHeaderHovered,
+    ],
+    [isHovered],
+  );
+
+  const titleStyle = useMemo(
+    () => [
+      styles.terminalRowTitle,
+      tone === "idle" && styles.terminalRowTitleExited,
+      tone === "failed" && styles.terminalRowTitleFailed,
+    ],
+    [tone],
+  );
+
+  return (
+    <View onPointerEnter={handlePointerEnter} onPointerLeave={handlePointerLeave}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={label}
+        style={rowStyle}
+        onPress={handlePress}
+        disabled={!serverId || !workspaceId}
+        testID={`sidebar-terminal-${terminal.id}`}
+      >
+        <View style={styles.groupHeaderLeadingSlot}>
+          <ThemedSquareTerminal size={14} uniProps={sidebarTerminalIconMapping(tone)} />
+        </View>
+        <Text style={titleStyle} numberOfLines={1}>
+          {label}
+        </Text>
+      </Pressable>
     </View>
   );
 });
@@ -1011,6 +1174,15 @@ const styles = StyleSheet.create((theme) => ({
   groupHeaderHovered: {
     backgroundColor: theme.colors.surfaceSidebarHover,
   },
+  // The open-tabs trigger fills the row beside the collapse toggle; label +
+  // count lay out as a row inside it.
+  groupHeaderTrigger: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[1],
+  },
   // Trailing "+" on a project group header — sized for the 32px group row.
   groupNewAgentButton: {
     width: 24,
@@ -1041,6 +1213,27 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.xs,
     fontWeight: theme.fontWeight.normal,
     color: theme.colors.foregroundMuted,
+  },
+  terminalRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[1],
+    minHeight: 30,
+    paddingVertical: theme.spacing[1],
+    paddingHorizontal: theme.spacing[2],
+    borderRadius: theme.shell.contentRadius,
+  },
+  terminalRowTitle: {
+    flex: 1,
+    minWidth: 0,
+    fontSize: theme.fontSize.sm,
+    color: theme.colors.foreground,
+  },
+  terminalRowTitleExited: {
+    color: theme.colors.foregroundMuted,
+  },
+  terminalRowTitleFailed: {
+    color: theme.colors.palette.red[500],
   },
   groupCount: {
     fontSize: theme.fontSize.xs,

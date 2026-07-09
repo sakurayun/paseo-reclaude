@@ -8,7 +8,7 @@ import {
 } from "@/create-agent-preferences/preferences";
 import { createAgentPreferencesService } from "@/create-agent-preferences/service";
 import { FORM_PREFERENCES_QUERY_KEY } from "@/hooks/use-form-preferences";
-import { queryClient as appQueryClient } from "@/query/query-client";
+import { queryClient as appQueryClient } from "@/data/query-client";
 import { useSessionStore } from "@/stores/session-store";
 
 const PUSH_DEBOUNCE_MS = 300;

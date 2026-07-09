@@ -14,6 +14,7 @@ import { buildTerminalsQueryKey } from "@/screens/workspace/terminals/state";
 import { usePanelStore } from "@/stores/panel-store";
 import { useSessionStore } from "@/stores/session-store";
 import { useWorkspaceDirectory, useWorkspaceFields } from "@/stores/session-store-hooks";
+import { useSshTerminalMeta } from "@/stores/ssh-terminal-meta-store";
 
 type ListTerminalsPayload = ListTerminalsResponse["payload"];
 
@@ -38,6 +39,7 @@ function useTerminalPanelDescriptor(
   context: { serverId: string; workspaceId: string },
 ): PanelDescriptor {
   const { t } = useTranslation();
+  const remote = useSshTerminalMeta(target.terminalId);
   const client = useSessionStore((state) => state.sessions[context.serverId]?.client ?? null);
   const workspaceDirectory = useWorkspaceDirectory(context.serverId, context.workspaceId);
   const terminalsQuery = useQuery(
@@ -64,7 +66,10 @@ function useTerminalPanelDescriptor(
     terminalsQuery.data?.terminals.find((entry) => entry.id === target.terminalId) ?? null;
 
   return {
+    // Remote terminals aren't in this workspace's listTerminals, so use the
+    // host label from the meta store rather than the "Terminal" fallback.
     label:
+      trimNonEmpty(remote?.label ?? null) ??
       trimNonEmpty(terminal?.title ?? terminal?.name ?? null) ??
       t("workspace.tabs.fallback.terminal"),
     subtitle: t("workspace.tabs.fallback.terminal"),
@@ -77,6 +82,12 @@ function useTerminalPanelDescriptor(
 function TerminalPanel() {
   const { serverId, workspaceId, target, openFileInWorkspace } = usePaneContext();
   const { isWorkspaceFocused, isPaneFocused } = usePaneFocus();
+  invariant(target.kind === "terminal", "TerminalPanel requires terminal target");
+  // SSH terminals live in a real workspace's tab bar but run on a remote host:
+  // suppress local file-link/explorer actions (remote paths must not resolve
+  // against the daemon host) and — since the remote terminal isn't in this
+  // workspace's directory — don't gate rendering on a local directory.
+  const remote = useSshTerminalMeta(target.terminalId);
   const workspaceFields = useWorkspaceFields(serverId, workspaceId, (w) => ({
     workspaceDirectory: w.workspaceDirectory,
     isGitCheckout: w.projectKind === "git",
@@ -93,13 +104,15 @@ function TerminalPanel() {
       checkout: { serverId, cwd: workspaceDirectory, isGit: isGitCheckout },
     });
   }, [isGitCheckout, openFileExplorerForCheckout, serverId, workspaceDirectory]);
-  invariant(target.kind === "terminal", "TerminalPanel requires terminal target");
 
   if (!isWorkspaceFocused) {
     return <View style={FLEX_FILL_STYLE} />;
   }
 
-  if (!workspaceDirectory) {
+  // The cwd only scopes the snapshot cache; remote terminals fall back to the
+  // workspace id when no local directory is available.
+  const cwd = workspaceDirectory ?? (remote ? `ssh:${remote.hostId}` : null);
+  if (!cwd) {
     return (
       <View style={CENTERED_PADDED_STYLE}>
         <Text>Workspace directory not found.</Text>
@@ -110,15 +123,18 @@ function TerminalPanel() {
   return (
     <TerminalPane
       serverId={serverId}
-      cwd={workspaceDirectory}
+      cwd={cwd}
       terminalId={target.terminalId}
       isWorkspaceFocused={isWorkspaceFocused}
       isPaneFocused={isPaneFocused}
-      onOpenFileExplorer={handleOpenFileExplorer}
-      onOpenWorkspaceFile={openFileInWorkspace}
+      onOpenFileExplorer={remote ? noop : handleOpenFileExplorer}
+      onOpenWorkspaceFile={remote ? noop : openFileInWorkspace}
+      localFileLinks={!remote}
     />
   );
 }
+
+function noop(): void {}
 
 export const terminalPanelRegistration: PanelRegistration<"terminal"> = {
   kind: "terminal",

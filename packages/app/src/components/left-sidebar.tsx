@@ -86,6 +86,7 @@ import type { ShortcutKey } from "@/utils/format-shortcut";
 import { useAppSettings } from "@/hooks/use-settings";
 import { SidebarSessionsToolbar } from "@/components/sidebar/sidebar-sessions-toolbar";
 import { SidebarSessionsList } from "@/components/sidebar/sidebar-sessions-list";
+import { SidebarSshList } from "@/components/sidebar/sidebar-ssh-list";
 import { SidebarAgentListSkeleton } from "./sidebar-agent-list-skeleton";
 import { SidebarCalloutSlot } from "./sidebar-callout-slot";
 import { SidebarWorkspaceList } from "./sidebar-workspace-list";
@@ -111,6 +112,12 @@ interface SidebarSharedProps {
   activeServerId: string | null;
   /** Fork "new theme": render the flat recency sessions layout instead of the grouped list. */
   isNewThemeSidebar: boolean;
+  /** Host advertises the SSH manager feature: the SSH entry replaces Schedules. */
+  sshEnabled: boolean;
+  /** Whether the sidebar body currently shows the SSH manager vs the session list. */
+  isSshContent: boolean;
+  /** Toggle the sidebar body between the session list and the SSH manager. */
+  onToggleSshContent: () => void;
   collapsedProjectKeys: SidebarShortcutModel["collapsedProjectKeys"];
   shortcutIndexByWorkspaceKey: SidebarShortcutModel["shortcutIndexByWorkspaceKey"];
   toggleProjectCollapsed: SidebarShortcutModel["toggleProjectCollapsed"];
@@ -141,6 +148,7 @@ interface SidebarLabels {
   sessions: string;
   history: string;
   schedules: string;
+  ssh: string;
   closeSidebar: string;
 }
 
@@ -202,6 +210,15 @@ export const LeftSidebar = memo(function LeftSidebar({
     useSidebarShortcutModel({ projects });
 
   const groupMode = useSidebarViewStore((state) => state.groupMode);
+  // SSH host manager: the top entry replaces Schedules and toggles the sidebar
+  // body in place (no navigation). Gated on the host advertising the feature.
+  const sshEnabled = useHostFeature(activeServerId, "sshHosts");
+  const sidebarContentMode = useSidebarViewStore((state) => state.contentMode);
+  const setSidebarContentMode = useSidebarViewStore((state) => state.setContentMode);
+  const isSshContent = sshEnabled && sidebarContentMode === "ssh";
+  const onToggleSshContent = useCallback(() => {
+    setSidebarContentMode(sidebarContentMode === "ssh" ? "sessions" : "ssh");
+  }, [setSidebarContentMode, sidebarContentMode]);
 
   const [isManualRefresh, setIsManualRefresh] = useState(false);
   const queryClient = useQueryClient();
@@ -349,6 +366,7 @@ export const LeftSidebar = memo(function LeftSidebar({
       sessions: t("sidebar.sections.sessions"),
       history: t("sidebar.sessionsList.history"),
       schedules: t("sidebar.sections.schedules"),
+      ssh: t("ssh.title"),
       closeSidebar: t("sidebar.actions.closeSidebar"),
     }),
     [t],
@@ -365,6 +383,9 @@ export const LeftSidebar = memo(function LeftSidebar({
     groupMode,
     activeServerId,
     isNewThemeSidebar,
+    sshEnabled,
+    isSshContent,
+    onToggleSshContent,
     collapsedProjectKeys,
     shortcutIndexByWorkspaceKey,
     toggleProjectCollapsed,
@@ -414,6 +435,55 @@ export const LeftSidebar = memo(function LeftSidebar({
 
 function sidebarHostOptionTestID(serverId: string): string {
   return `sidebar-host-row-${serverId}`;
+}
+
+// The top sidebar entry above History: SSH when the host supports it, else the
+// Schedules entry (Electron desktop), else nothing. Kept as a component to keep
+// both classic layouts free of a nested ternary.
+function SidebarPrimaryEntry({
+  sshEnabled,
+  isSshContent,
+  onToggleSsh,
+  sshLabel,
+  showSchedules,
+  isSchedulesActive,
+  onSchedules,
+  schedulesLabel,
+}: {
+  sshEnabled: boolean;
+  isSshContent: boolean;
+  onToggleSsh: () => void;
+  sshLabel: string;
+  showSchedules: boolean;
+  isSchedulesActive: boolean;
+  onSchedules: () => void;
+  schedulesLabel: string;
+}) {
+  if (sshEnabled) {
+    return (
+      <SidebarHeaderRow
+        icon={Server}
+        label={sshLabel}
+        onPress={onToggleSsh}
+        isActive={isSshContent}
+        testID="sidebar-ssh"
+        variant="compact"
+      />
+    );
+  }
+  if (showSchedules) {
+    return (
+      <SidebarHeaderRow
+        icon={CalendarClock}
+        label={schedulesLabel}
+        onPress={onSchedules}
+        isActive={isSchedulesActive}
+        testID="sidebar-schedules"
+        variant="compact"
+      />
+    );
+  }
+  return null;
 }
 
 function FooterIconButton({
@@ -676,6 +746,9 @@ function MobileSidebar({
   groupMode,
   activeServerId,
   isNewThemeSidebar,
+  sshEnabled,
+  isSshContent,
+  onToggleSshContent,
   collapsedProjectKeys,
   shortcutIndexByWorkspaceKey,
   toggleProjectCollapsed,
@@ -705,6 +778,7 @@ function MobileSidebar({
       openProject: labels.openProject,
       history: labels.history,
       schedules: labels.schedules,
+      ssh: labels.ssh,
       close: labels.closeSidebar,
     }),
     [labels],
@@ -895,6 +969,27 @@ function MobileSidebar({
     [overlayVisible],
   );
 
+  // Classic workspace body (skeleton while loading, else the grouped list).
+  // Held in a variable so the SSH branch below is a flat, single ternary.
+  const classicWorkspaceBody = isInitialLoad ? (
+    <SidebarAgentListSkeleton />
+  ) : (
+    <SidebarWorkspaceList
+      collapsedProjectKeys={collapsedProjectKeys}
+      onToggleProjectCollapsed={toggleProjectCollapsed}
+      shortcutIndexByWorkspaceKey={shortcutIndexByWorkspaceKey}
+      groupMode={groupMode}
+      statusWorkspacePlacements={statusWorkspacePlacements}
+      projects={projects}
+      projectNamesByKey={projectNamesByKey}
+      isRefreshing={isManualRefresh && isRevalidating}
+      onRefresh={handleRefresh}
+      onWorkspacePress={handleWorkspacePress}
+      onAddProject={handleOpenProject}
+      parentGestureRef={closeGestureRef}
+    />
+  );
+
   return (
     <View style={overlayStyle} pointerEvents={overlayPointerEvents}>
       <Animated.View style={backdropStyle} />
@@ -910,15 +1005,21 @@ function MobileSidebar({
                   onOpenProject={handleOpenProjectFolder}
                   onHistory={handleViewMore}
                   isHistoryActive={isSessionsActive}
+                  onSsh={sshEnabled ? onToggleSshContent : undefined}
+                  isSshActive={isSshContent}
                   onSchedules={showSchedules ? handleSchedules : undefined}
                   isSchedulesActive={isSchedulesActive}
                   onClose={closeSidebar}
                 />
-                <SidebarSessionsList
-                  serverId={activeServerId}
-                  parentGestureRef={closeGestureRef}
-                  onNewChatForHost={handleNewChatForHost}
-                />
+                {isSshContent ? (
+                  <SidebarSshList serverId={activeServerId} onNavigate={closeSidebar} />
+                ) : (
+                  <SidebarSessionsList
+                    serverId={activeServerId}
+                    parentGestureRef={closeGestureRef}
+                    onNewChatForHost={handleNewChatForHost}
+                  />
+                )}
               </>
             ) : (
               <>
@@ -930,16 +1031,16 @@ function MobileSidebar({
                     shortcutKeys={newWorkspaceKeys}
                     onBeforeNavigate={closeSidebar}
                   />
-                  {showSchedules ? (
-                    <SidebarHeaderRow
-                      icon={CalendarClock}
-                      label={labels.schedules}
-                      onPress={handleSchedules}
-                      isActive={isSchedulesActive}
-                      testID="sidebar-schedules"
-                      variant="compact"
-                    />
-                  ) : null}
+                  <SidebarPrimaryEntry
+                    sshEnabled={sshEnabled}
+                    isSshContent={isSshContent}
+                    onToggleSsh={onToggleSshContent}
+                    sshLabel={labels.ssh}
+                    showSchedules={showSchedules}
+                    isSchedulesActive={isSchedulesActive}
+                    onSchedules={handleSchedules}
+                    schedulesLabel={labels.schedules}
+                  />
                   <SidebarHeaderRow
                     icon={History}
                     label={labels.sessions}
@@ -970,23 +1071,10 @@ function MobileSidebar({
                   )}
                 </Pressable>
 
-                {isInitialLoad ? (
-                  <SidebarAgentListSkeleton />
+                {isSshContent ? (
+                  <SidebarSshList serverId={activeServerId} onNavigate={closeSidebar} />
                 ) : (
-                  <SidebarWorkspaceList
-                    collapsedProjectKeys={collapsedProjectKeys}
-                    onToggleProjectCollapsed={toggleProjectCollapsed}
-                    shortcutIndexByWorkspaceKey={shortcutIndexByWorkspaceKey}
-                    groupMode={groupMode}
-                    statusWorkspacePlacements={statusWorkspacePlacements}
-                    projects={projects}
-                    projectNamesByKey={projectNamesByKey}
-                    isRefreshing={isManualRefresh && isRevalidating}
-                    onRefresh={handleRefresh}
-                    onWorkspacePress={handleWorkspacePress}
-                    onAddProject={handleOpenProject}
-                    parentGestureRef={closeGestureRef}
-                  />
+                  classicWorkspaceBody
                 )}
               </>
             )}
@@ -1019,6 +1107,9 @@ function DesktopSidebar({
   groupMode,
   activeServerId,
   isNewThemeSidebar,
+  sshEnabled,
+  isSshContent,
+  onToggleSshContent,
   collapsedProjectKeys,
   shortcutIndexByWorkspaceKey,
   toggleProjectCollapsed,
@@ -1046,6 +1137,7 @@ function DesktopSidebar({
       openProject: labels.openProject,
       history: labels.history,
       schedules: labels.schedules,
+      ssh: labels.ssh,
       close: labels.closeSidebar,
     }),
     [labels],
@@ -1136,14 +1228,20 @@ function DesktopSidebar({
                 onOpenProject={handleOpenProjectFolder}
                 onHistory={handleViewMore}
                 isHistoryActive={isSessionsActive}
+                onSsh={sshEnabled ? onToggleSshContent : undefined}
+                isSshActive={isSshContent}
                 onSchedules={showSchedules ? handleSchedulesNavigate : undefined}
                 isSchedulesActive={isSchedulesActive}
               />
             </View>
-            <SidebarSessionsList
-              serverId={activeServerId}
-              onNewChatForHost={handleNewWorkspaceForHost}
-            />
+            {isSshContent ? (
+              <SidebarSshList serverId={activeServerId} />
+            ) : (
+              <SidebarSessionsList
+                serverId={activeServerId}
+                onNewChatForHost={handleNewWorkspaceForHost}
+              />
+            )}
           </>
         ) : (
           <>
@@ -1156,16 +1254,16 @@ function DesktopSidebar({
                   variant="compact"
                   shortcutKeys={newWorkspaceKeys}
                 />
-                {showSchedules ? (
-                  <SidebarHeaderRow
-                    icon={CalendarClock}
-                    label={labels.schedules}
-                    onPress={handleSchedulesNavigate}
-                    isActive={isSchedulesActive}
-                    testID="sidebar-schedules"
-                    variant="compact"
-                  />
-                ) : null}
+                <SidebarPrimaryEntry
+                  sshEnabled={sshEnabled}
+                  isSshContent={isSshContent}
+                  onToggleSsh={onToggleSshContent}
+                  sshLabel={labels.ssh}
+                  showSchedules={showSchedules}
+                  isSchedulesActive={isSchedulesActive}
+                  onSchedules={handleSchedulesNavigate}
+                  schedulesLabel={labels.schedules}
+                />
                 <SidebarHeaderRow
                   icon={History}
                   label={labels.sessions}
@@ -1176,23 +1274,29 @@ function DesktopSidebar({
                 />
               </View>
             </View>
-            <WorkspacesSectionHeader onNewWorkspacePress={handleNewWorkspaceNavigate} />
-
-            {isInitialLoad ? (
-              <SidebarAgentListSkeleton />
+            {isSshContent ? (
+              <SidebarSshList serverId={activeServerId} />
             ) : (
-              <SidebarWorkspaceList
-                collapsedProjectKeys={collapsedProjectKeys}
-                onToggleProjectCollapsed={toggleProjectCollapsed}
-                shortcutIndexByWorkspaceKey={shortcutIndexByWorkspaceKey}
-                groupMode={groupMode}
-                statusWorkspacePlacements={statusWorkspacePlacements}
-                projects={projects}
-                projectNamesByKey={projectNamesByKey}
-                isRefreshing={isManualRefresh && isRevalidating}
-                onRefresh={handleRefresh}
-                onAddProject={handleOpenProject}
-              />
+              <>
+                <WorkspacesSectionHeader onNewWorkspacePress={handleNewWorkspaceNavigate} />
+
+                {isInitialLoad ? (
+                  <SidebarAgentListSkeleton />
+                ) : (
+                  <SidebarWorkspaceList
+                    collapsedProjectKeys={collapsedProjectKeys}
+                    onToggleProjectCollapsed={toggleProjectCollapsed}
+                    shortcutIndexByWorkspaceKey={shortcutIndexByWorkspaceKey}
+                    groupMode={groupMode}
+                    statusWorkspacePlacements={statusWorkspacePlacements}
+                    projects={projects}
+                    projectNamesByKey={projectNamesByKey}
+                    isRefreshing={isManualRefresh && isRevalidating}
+                    onRefresh={handleRefresh}
+                    onAddProject={handleOpenProject}
+                  />
+                )}
+              </>
             )}
           </>
         )}

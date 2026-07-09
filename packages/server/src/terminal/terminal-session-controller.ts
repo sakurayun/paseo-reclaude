@@ -10,10 +10,12 @@ import type {
   SessionOutboundMessage,
   SubscribeTerminalRequest,
   SubscribeTerminalsRequest,
+  TerminalHistoryListRequest,
   TerminalInput,
   UnsubscribeTerminalRequest,
   UnsubscribeTerminalsRequest,
 } from "../server/messages.js";
+import type { TerminalHistoryStore } from "./terminal-history-store.js";
 import { killTerminalsForWorkspace as killWorkspaceTerminals } from "../server/workspace-archive-service.js";
 import {
   TerminalStreamOpcode,
@@ -83,6 +85,8 @@ export interface TerminalSessionControllerOptions {
   // Bytes queued on the client transport but not yet sent, or null when the
   // transport exposes no backpressure signal (e.g. the multiplexed relay socket).
   getClientBufferedAmount?: () => number | null;
+  // Persisted closed-terminal history; absent on hosts that don't wire it.
+  terminalHistoryStore?: TerminalHistoryStore | null;
 }
 
 interface TerminalWorkspaceRef {
@@ -105,7 +109,8 @@ type TerminalDispatchableMessage =
   | TerminalInput
   | KillTerminalRequest
   | CaptureTerminalRequest
-  | RenameTerminalRequest;
+  | RenameTerminalRequest
+  | TerminalHistoryListRequest;
 
 const TERMINAL_MESSAGE_TYPES: ReadonlySet<TerminalDispatchableMessage["type"]> = new Set([
   "subscribe_terminals_request",
@@ -118,6 +123,7 @@ const TERMINAL_MESSAGE_TYPES: ReadonlySet<TerminalDispatchableMessage["type"]> =
   "kill_terminal_request",
   "capture_terminal_request",
   "terminal.rename.request",
+  "terminal.history.list.request",
 ]);
 
 const STANDALONE_WORKSPACE_ID_PREFIX = "standalone:";
@@ -144,6 +150,7 @@ export class TerminalSessionController {
   private readonly listTerminalWorkspaceRoots: () => Promise<readonly string[]>;
   private readonly clientSupportsWrapReflow: () => boolean;
   private readonly getClientBufferedAmount: () => number | null;
+  private readonly terminalHistoryStore: TerminalHistoryStore | null;
 
   // A subscription is scoped to a (cwd, workspaceId) pair, keyed by
   // terminalSubscriptionKey: two workspaces sharing a cwd subscribe and unsub
@@ -172,6 +179,7 @@ export class TerminalSessionController {
       (async () => (await this.listTerminalWorkspaceRefs()).map((workspace) => workspace.cwd));
     this.clientSupportsWrapReflow = options.clientSupportsWrapReflow ?? (() => false);
     this.getClientBufferedAmount = options.getClientBufferedAmount ?? (() => 0);
+    this.terminalHistoryStore = options.terminalHistoryStore ?? null;
   }
 
   start(): void {
@@ -219,6 +227,9 @@ export class TerminalSessionController {
         return this.handleCaptureTerminalRequest(msg);
       case "terminal.rename.request":
         return this.handleRenameTerminalRequest(msg);
+      case "terminal.history.list.request":
+        this.handleTerminalHistoryListRequest(msg);
+        return undefined;
       default:
         return undefined;
     }
@@ -322,9 +333,13 @@ export class TerminalSessionController {
     terminals: Array<{
       id: string;
       name: string;
+      cwd?: string;
       workspaceId: string;
       title?: string;
       activity: TerminalActivity | null;
+      status?: "running" | "exited";
+      exitCode?: number | null;
+      endedAt?: number | null;
     }>;
   }): void {
     this.emit({
@@ -337,22 +352,34 @@ export class TerminalSessionController {
   }
 
   private toTerminalInfo(
-    terminal: Pick<TerminalSession, "id" | "name" | "workspaceId" | "getTitle" | "getActivity">,
+    terminal: Pick<
+      TerminalSession,
+      "id" | "name" | "cwd" | "workspaceId" | "getTitle" | "getActivity" | "getExitInfo"
+    >,
   ): {
     id: string;
     name: string;
+    cwd: string;
     workspaceId: string;
     title?: string;
     activity: TerminalActivity | null;
+    status?: "running" | "exited";
+    exitCode?: number | null;
+    endedAt?: number | null;
   } {
     const title = terminal.getTitle();
     const activity = terminal.getActivity();
+    const exitInfo = terminal.getExitInfo();
     return {
       id: terminal.id,
       name: terminal.name,
+      cwd: terminal.cwd,
       workspaceId: terminal.workspaceId,
       ...(title ? { title } : {}),
       activity,
+      status: exitInfo ? "exited" : "running",
+      exitCode: exitInfo?.exitCode ?? null,
+      endedAt: exitInfo?.endedAt ?? null,
     };
   }
 
@@ -363,11 +390,22 @@ export class TerminalSessionController {
     // aggregated list — so the client's cache replacement doesn't drop the
     // terminals that live directly at the root.
     const matchingSubscriptions = Array.from(this.subscribedDirectories.values()).filter(
-      (subscription) => this.isPathWithinRoot(subscription.cwd, event.cwd),
+      (subscription) =>
+        subscription.cwd === "" || this.isPathWithinRoot(subscription.cwd, event.cwd),
     );
     for (const subscription of matchingSubscriptions) {
       await this.emitTerminalsSnapshotForSubscription(subscription);
     }
+  }
+
+  private handleTerminalHistoryListRequest(msg: TerminalHistoryListRequest): void {
+    this.emit({
+      type: "terminal.history.list.response",
+      payload: {
+        entries: this.terminalHistoryStore?.list() ?? [],
+        requestId: msg.requestId,
+      },
+    });
   }
 
   private handleSubscribeTerminalsRequest(msg: SubscribeTerminalsRequest): void {
@@ -471,6 +509,15 @@ export class TerminalSessionController {
   ): Promise<TerminalSession[]> {
     if (!this.terminalManager) {
       return [];
+    }
+
+    // "" is the host-wide root: list every terminal on the daemon. Used by the
+    // sidebar's cross-workspace terminal list (COMPAT terminalLifecycle).
+    if (cwd === "") {
+      const allTerminals = await this.getAllTerminalSessions();
+      return workspaceId !== undefined
+        ? allTerminals.filter((terminal) => terminal.workspaceId === workspaceId)
+        : allTerminals;
     }
 
     const terminals = await this.terminalManager.getTerminals(cwd, { workspaceId });

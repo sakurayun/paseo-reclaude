@@ -89,11 +89,37 @@ import type {
   PortForwardListResponse,
   PortForwardCreateResponse,
   PortForwardDeleteResponse,
+  SshHostsListResponse,
+  SshHostsCreateResponse,
+  SshHostsUpdateResponse,
+  SshHostsDeleteResponse,
+  SshHostsConnectResponse,
+  SshHostGroupsCreateResponse,
+  SshHostGroupsRenameResponse,
+  SshHostGroupsDeleteResponse,
+  SshKeysListResponse,
+  SshKeysCreateResponse,
+  SshKeysUpdateResponse,
+  SshKeysDeleteResponse,
+  SshForwardsListResponse,
+  SshForwardsCreateResponse,
+  SshForwardsUpdateResponse,
+  SshForwardsDeleteResponse,
+  SshForwardsStartResponse,
+  SshForwardsStopResponse,
+  SshKnownHostsListResponse,
+  SshKnownHostsTrustResponse,
+  SshKnownHostsDeleteResponse,
+  SshKnownHostsImportResponse,
+  SshLogsListResponse,
+  SshHostUpsert,
+  SshHostPatch,
   CreateTerminalResponse,
   SubscribeTerminalResponse,
   SubscribeTerminalRequest,
   CloseItemsResponse,
   KillTerminalResponse,
+  TerminalHistoryListResponse,
   CaptureTerminalResponse,
   TerminalInput,
   SessionInboundMessage,
@@ -454,11 +480,35 @@ type ListTerminalsPayload = ListTerminalsResponse["payload"];
 type PortForwardListPayload = PortForwardListResponse["payload"];
 type PortForwardCreatePayload = PortForwardCreateResponse["payload"];
 type PortForwardDeletePayload = PortForwardDeleteResponse["payload"];
+type SshHostsListPayload = SshHostsListResponse["payload"];
+type SshHostsCreatePayload = SshHostsCreateResponse["payload"];
+type SshHostsUpdatePayload = SshHostsUpdateResponse["payload"];
+type SshHostsDeletePayload = SshHostsDeleteResponse["payload"];
+type SshHostsConnectPayload = SshHostsConnectResponse["payload"];
+type SshHostGroupsCreatePayload = SshHostGroupsCreateResponse["payload"];
+type SshHostGroupsRenamePayload = SshHostGroupsRenameResponse["payload"];
+type SshHostGroupsDeletePayload = SshHostGroupsDeleteResponse["payload"];
+type SshKeysListPayload = SshKeysListResponse["payload"];
+type SshKeysCreatePayload = SshKeysCreateResponse["payload"];
+type SshKeysUpdatePayload = SshKeysUpdateResponse["payload"];
+type SshKeysDeletePayload = SshKeysDeleteResponse["payload"];
+type SshForwardsListPayload = SshForwardsListResponse["payload"];
+type SshForwardsCreatePayload = SshForwardsCreateResponse["payload"];
+type SshForwardsUpdatePayload = SshForwardsUpdateResponse["payload"];
+type SshForwardsDeletePayload = SshForwardsDeleteResponse["payload"];
+type SshForwardsStartPayload = SshForwardsStartResponse["payload"];
+type SshForwardsStopPayload = SshForwardsStopResponse["payload"];
+type SshKnownHostsListPayload = SshKnownHostsListResponse["payload"];
+type SshKnownHostsTrustPayload = SshKnownHostsTrustResponse["payload"];
+type SshKnownHostsDeletePayload = SshKnownHostsDeleteResponse["payload"];
+type SshKnownHostsImportPayload = SshKnownHostsImportResponse["payload"];
+type SshLogsListPayload = SshLogsListResponse["payload"];
 type CreateTerminalPayload = CreateTerminalResponse["payload"];
 export type RenameTerminalResult = z.infer<typeof RenameTerminalResponseSchema>["payload"];
 type SubscribeTerminalPayload = SubscribeTerminalResponse["payload"];
 type CloseItemsPayload = CloseItemsResponse["payload"];
 type KillTerminalPayload = KillTerminalResponse["payload"];
+type TerminalHistoryListPayload = TerminalHistoryListResponse["payload"];
 type CaptureTerminalPayload = CaptureTerminalResponse["payload"];
 type ChatCreatePayload = Extract<
   SessionOutboundMessage,
@@ -4895,6 +4945,20 @@ export class DaemonClient {
     });
   }
 
+  async listTerminalHistory(requestId?: string): Promise<TerminalHistoryListPayload> {
+    const resolvedRequestId = this.createRequestId(requestId);
+    const message = SessionInboundMessageSchema.parse({
+      type: "terminal.history.list.request",
+      requestId: resolvedRequestId,
+    });
+    return this.sendCorrelatedRequest({
+      requestId: resolvedRequestId,
+      message,
+      responseType: "terminal.history.list.response",
+      options: { skipQueue: true },
+    });
+  }
+
   // ============================================================================
   // Port Forwards (global, multi-client-synced TCP forward list)
   // ============================================================================
@@ -4946,6 +5010,462 @@ export class DaemonClient {
       requestId: resolvedRequestId,
       message,
       responseType: "port_forward.delete.response",
+      timeout: 10000,
+      options: { skipQueue: true },
+    });
+  }
+
+  // ============================================================================
+  // SSH host manager (fork feature; gated by server_info.features.sshHosts)
+  // ============================================================================
+
+  async listSshHosts(requestId?: string): Promise<SshHostsListPayload> {
+    const resolvedRequestId = this.createRequestId(requestId);
+    return this.sendCorrelatedRequest({
+      requestId: resolvedRequestId,
+      message: SessionInboundMessageSchema.parse({
+        type: "ssh.hosts.list.request",
+        requestId: resolvedRequestId,
+      }),
+      responseType: "ssh.hosts.list.response",
+      timeout: 10000,
+      options: { skipQueue: true },
+    });
+  }
+
+  async createSshHost(
+    input: { host: SshHostUpsert; password?: string; proxyPassword?: string },
+    requestId?: string,
+  ): Promise<SshHostsCreatePayload> {
+    const resolvedRequestId = this.createRequestId(requestId);
+    return this.sendCorrelatedRequest({
+      requestId: resolvedRequestId,
+      message: SessionInboundMessageSchema.parse({
+        type: "ssh.hosts.create.request",
+        host: input.host,
+        ...(input.password !== undefined ? { password: input.password } : {}),
+        ...(input.proxyPassword !== undefined ? { proxyPassword: input.proxyPassword } : {}),
+        requestId: resolvedRequestId,
+      }),
+      responseType: "ssh.hosts.create.response",
+      timeout: 10000,
+      options: { skipQueue: true },
+    });
+  }
+
+  async updateSshHost(
+    input: {
+      id: string;
+      host: SshHostPatch;
+      password?: string | null;
+      proxyPassword?: string | null;
+    },
+    requestId?: string,
+  ): Promise<SshHostsUpdatePayload> {
+    const resolvedRequestId = this.createRequestId(requestId);
+    return this.sendCorrelatedRequest({
+      requestId: resolvedRequestId,
+      message: SessionInboundMessageSchema.parse({
+        type: "ssh.hosts.update.request",
+        id: input.id,
+        host: input.host,
+        ...(input.password !== undefined ? { password: input.password } : {}),
+        ...(input.proxyPassword !== undefined ? { proxyPassword: input.proxyPassword } : {}),
+        requestId: resolvedRequestId,
+      }),
+      responseType: "ssh.hosts.update.response",
+      timeout: 10000,
+      options: { skipQueue: true },
+    });
+  }
+
+  async deleteSshHost(id: string, requestId?: string): Promise<SshHostsDeletePayload> {
+    const resolvedRequestId = this.createRequestId(requestId);
+    return this.sendCorrelatedRequest({
+      requestId: resolvedRequestId,
+      message: SessionInboundMessageSchema.parse({
+        type: "ssh.hosts.delete.request",
+        id,
+        requestId: resolvedRequestId,
+      }),
+      responseType: "ssh.hosts.delete.response",
+      timeout: 10000,
+      options: { skipQueue: true },
+    });
+  }
+
+  async connectSshHost(
+    input: { hostId: string; cols?: number; rows?: number },
+    requestId?: string,
+  ): Promise<SshHostsConnectPayload> {
+    const resolvedRequestId = this.createRequestId(requestId);
+    return this.sendCorrelatedRequest({
+      requestId: resolvedRequestId,
+      message: SessionInboundMessageSchema.parse({
+        type: "ssh.hosts.connect.request",
+        hostId: input.hostId,
+        ...(input.cols !== undefined ? { cols: input.cols } : {}),
+        ...(input.rows !== undefined ? { rows: input.rows } : {}),
+        requestId: resolvedRequestId,
+      }),
+      responseType: "ssh.hosts.connect.response",
+      // Connecting includes the SSH handshake (and possibly host chaining);
+      // allow more time than a plain CRUD call.
+      timeout: 30000,
+      options: { skipQueue: true },
+    });
+  }
+
+  async createSshHostGroup(
+    input: { name: string; parentId?: string | null },
+    requestId?: string,
+  ): Promise<SshHostGroupsCreatePayload> {
+    const resolvedRequestId = this.createRequestId(requestId);
+    return this.sendCorrelatedRequest({
+      requestId: resolvedRequestId,
+      message: SessionInboundMessageSchema.parse({
+        type: "ssh.host_groups.create.request",
+        name: input.name,
+        ...(input.parentId !== undefined ? { parentId: input.parentId } : {}),
+        requestId: resolvedRequestId,
+      }),
+      responseType: "ssh.host_groups.create.response",
+      timeout: 10000,
+      options: { skipQueue: true },
+    });
+  }
+
+  async renameSshHostGroup(
+    input: { id: string; name: string },
+    requestId?: string,
+  ): Promise<SshHostGroupsRenamePayload> {
+    const resolvedRequestId = this.createRequestId(requestId);
+    return this.sendCorrelatedRequest({
+      requestId: resolvedRequestId,
+      message: SessionInboundMessageSchema.parse({
+        type: "ssh.host_groups.rename.request",
+        id: input.id,
+        name: input.name,
+        requestId: resolvedRequestId,
+      }),
+      responseType: "ssh.host_groups.rename.response",
+      timeout: 10000,
+      options: { skipQueue: true },
+    });
+  }
+
+  async deleteSshHostGroup(id: string, requestId?: string): Promise<SshHostGroupsDeletePayload> {
+    const resolvedRequestId = this.createRequestId(requestId);
+    return this.sendCorrelatedRequest({
+      requestId: resolvedRequestId,
+      message: SessionInboundMessageSchema.parse({
+        type: "ssh.host_groups.delete.request",
+        id,
+        requestId: resolvedRequestId,
+      }),
+      responseType: "ssh.host_groups.delete.response",
+      timeout: 10000,
+      options: { skipQueue: true },
+    });
+  }
+
+  async listSshKeys(requestId?: string): Promise<SshKeysListPayload> {
+    const resolvedRequestId = this.createRequestId(requestId);
+    return this.sendCorrelatedRequest({
+      requestId: resolvedRequestId,
+      message: SessionInboundMessageSchema.parse({
+        type: "ssh.keys.list.request",
+        requestId: resolvedRequestId,
+      }),
+      responseType: "ssh.keys.list.response",
+      timeout: 10000,
+      options: { skipQueue: true },
+    });
+  }
+
+  async createSshKey(
+    input: {
+      label: string;
+      privateKey: string;
+      publicKey?: string;
+      certificate?: string;
+      passphrase?: string;
+    },
+    requestId?: string,
+  ): Promise<SshKeysCreatePayload> {
+    const resolvedRequestId = this.createRequestId(requestId);
+    return this.sendCorrelatedRequest({
+      requestId: resolvedRequestId,
+      message: SessionInboundMessageSchema.parse({
+        type: "ssh.keys.create.request",
+        label: input.label,
+        privateKey: input.privateKey,
+        ...(input.publicKey !== undefined ? { publicKey: input.publicKey } : {}),
+        ...(input.certificate !== undefined ? { certificate: input.certificate } : {}),
+        ...(input.passphrase !== undefined ? { passphrase: input.passphrase } : {}),
+        requestId: resolvedRequestId,
+      }),
+      responseType: "ssh.keys.create.response",
+      timeout: 10000,
+      options: { skipQueue: true },
+    });
+  }
+
+  async updateSshKey(
+    input: {
+      id: string;
+      label?: string;
+      privateKey?: string;
+      publicKey?: string | null;
+      certificate?: string | null;
+      passphrase?: string | null;
+    },
+    requestId?: string,
+  ): Promise<SshKeysUpdatePayload> {
+    const resolvedRequestId = this.createRequestId(requestId);
+    return this.sendCorrelatedRequest({
+      requestId: resolvedRequestId,
+      message: SessionInboundMessageSchema.parse({
+        type: "ssh.keys.update.request",
+        id: input.id,
+        ...(input.label !== undefined ? { label: input.label } : {}),
+        ...(input.privateKey !== undefined ? { privateKey: input.privateKey } : {}),
+        ...(input.publicKey !== undefined ? { publicKey: input.publicKey } : {}),
+        ...(input.certificate !== undefined ? { certificate: input.certificate } : {}),
+        ...(input.passphrase !== undefined ? { passphrase: input.passphrase } : {}),
+        requestId: resolvedRequestId,
+      }),
+      responseType: "ssh.keys.update.response",
+      timeout: 10000,
+      options: { skipQueue: true },
+    });
+  }
+
+  async deleteSshKey(id: string, requestId?: string): Promise<SshKeysDeletePayload> {
+    const resolvedRequestId = this.createRequestId(requestId);
+    return this.sendCorrelatedRequest({
+      requestId: resolvedRequestId,
+      message: SessionInboundMessageSchema.parse({
+        type: "ssh.keys.delete.request",
+        id,
+        requestId: resolvedRequestId,
+      }),
+      responseType: "ssh.keys.delete.response",
+      timeout: 10000,
+      options: { skipQueue: true },
+    });
+  }
+
+  async listSshForwards(requestId?: string): Promise<SshForwardsListPayload> {
+    const resolvedRequestId = this.createRequestId(requestId);
+    return this.sendCorrelatedRequest({
+      requestId: resolvedRequestId,
+      message: SessionInboundMessageSchema.parse({
+        type: "ssh.forwards.list.request",
+        requestId: resolvedRequestId,
+      }),
+      responseType: "ssh.forwards.list.response",
+      timeout: 10000,
+      options: { skipQueue: true },
+    });
+  }
+
+  async createSshForward(
+    input: {
+      hostId: string;
+      forwardType: "local" | "remote" | "dynamic";
+      listenPort: number;
+      label?: string;
+      bindAddress?: string;
+      targetHost?: string;
+      targetPort?: number;
+      autoStart?: boolean;
+    },
+    requestId?: string,
+  ): Promise<SshForwardsCreatePayload> {
+    const resolvedRequestId = this.createRequestId(requestId);
+    return this.sendCorrelatedRequest({
+      requestId: resolvedRequestId,
+      message: SessionInboundMessageSchema.parse({
+        type: "ssh.forwards.create.request",
+        hostId: input.hostId,
+        forwardType: input.forwardType,
+        listenPort: input.listenPort,
+        ...(input.label !== undefined ? { label: input.label } : {}),
+        ...(input.bindAddress !== undefined ? { bindAddress: input.bindAddress } : {}),
+        ...(input.targetHost !== undefined ? { targetHost: input.targetHost } : {}),
+        ...(input.targetPort !== undefined ? { targetPort: input.targetPort } : {}),
+        ...(input.autoStart !== undefined ? { autoStart: input.autoStart } : {}),
+        requestId: resolvedRequestId,
+      }),
+      responseType: "ssh.forwards.create.response",
+      timeout: 10000,
+      options: { skipQueue: true },
+    });
+  }
+
+  async updateSshForward(
+    input: {
+      id: string;
+      hostId?: string;
+      forwardType?: "local" | "remote" | "dynamic";
+      listenPort?: number;
+      label?: string;
+      bindAddress?: string;
+      targetHost?: string;
+      targetPort?: number;
+      autoStart?: boolean;
+    },
+    requestId?: string,
+  ): Promise<SshForwardsUpdatePayload> {
+    const resolvedRequestId = this.createRequestId(requestId);
+    return this.sendCorrelatedRequest({
+      requestId: resolvedRequestId,
+      message: SessionInboundMessageSchema.parse({
+        type: "ssh.forwards.update.request",
+        id: input.id,
+        ...(input.hostId !== undefined ? { hostId: input.hostId } : {}),
+        ...(input.forwardType !== undefined ? { forwardType: input.forwardType } : {}),
+        ...(input.listenPort !== undefined ? { listenPort: input.listenPort } : {}),
+        ...(input.label !== undefined ? { label: input.label } : {}),
+        ...(input.bindAddress !== undefined ? { bindAddress: input.bindAddress } : {}),
+        ...(input.targetHost !== undefined ? { targetHost: input.targetHost } : {}),
+        ...(input.targetPort !== undefined ? { targetPort: input.targetPort } : {}),
+        ...(input.autoStart !== undefined ? { autoStart: input.autoStart } : {}),
+        requestId: resolvedRequestId,
+      }),
+      responseType: "ssh.forwards.update.response",
+      timeout: 10000,
+      options: { skipQueue: true },
+    });
+  }
+
+  async deleteSshForward(id: string, requestId?: string): Promise<SshForwardsDeletePayload> {
+    const resolvedRequestId = this.createRequestId(requestId);
+    return this.sendCorrelatedRequest({
+      requestId: resolvedRequestId,
+      message: SessionInboundMessageSchema.parse({
+        type: "ssh.forwards.delete.request",
+        id,
+        requestId: resolvedRequestId,
+      }),
+      responseType: "ssh.forwards.delete.response",
+      timeout: 10000,
+      options: { skipQueue: true },
+    });
+  }
+
+  async startSshForward(id: string, requestId?: string): Promise<SshForwardsStartPayload> {
+    const resolvedRequestId = this.createRequestId(requestId);
+    return this.sendCorrelatedRequest({
+      requestId: resolvedRequestId,
+      message: SessionInboundMessageSchema.parse({
+        type: "ssh.forwards.start.request",
+        id,
+        requestId: resolvedRequestId,
+      }),
+      responseType: "ssh.forwards.start.response",
+      timeout: 10000,
+      options: { skipQueue: true },
+    });
+  }
+
+  async stopSshForward(id: string, requestId?: string): Promise<SshForwardsStopPayload> {
+    const resolvedRequestId = this.createRequestId(requestId);
+    return this.sendCorrelatedRequest({
+      requestId: resolvedRequestId,
+      message: SessionInboundMessageSchema.parse({
+        type: "ssh.forwards.stop.request",
+        id,
+        requestId: resolvedRequestId,
+      }),
+      responseType: "ssh.forwards.stop.response",
+      timeout: 10000,
+      options: { skipQueue: true },
+    });
+  }
+
+  async listSshKnownHosts(requestId?: string): Promise<SshKnownHostsListPayload> {
+    const resolvedRequestId = this.createRequestId(requestId);
+    return this.sendCorrelatedRequest({
+      requestId: resolvedRequestId,
+      message: SessionInboundMessageSchema.parse({
+        type: "ssh.known_hosts.list.request",
+        requestId: resolvedRequestId,
+      }),
+      responseType: "ssh.known_hosts.list.response",
+      timeout: 10000,
+      options: { skipQueue: true },
+    });
+  }
+
+  async trustSshKnownHost(
+    input: { host: string; port?: number; keyType: string; publicKeyBase64: string },
+    requestId?: string,
+  ): Promise<SshKnownHostsTrustPayload> {
+    const resolvedRequestId = this.createRequestId(requestId);
+    return this.sendCorrelatedRequest({
+      requestId: resolvedRequestId,
+      message: SessionInboundMessageSchema.parse({
+        type: "ssh.known_hosts.trust.request",
+        host: input.host,
+        ...(input.port !== undefined ? { port: input.port } : {}),
+        keyType: input.keyType,
+        publicKeyBase64: input.publicKeyBase64,
+        requestId: resolvedRequestId,
+      }),
+      responseType: "ssh.known_hosts.trust.response",
+      timeout: 10000,
+      options: { skipQueue: true },
+    });
+  }
+
+  async deleteSshKnownHost(id: string, requestId?: string): Promise<SshKnownHostsDeletePayload> {
+    const resolvedRequestId = this.createRequestId(requestId);
+    return this.sendCorrelatedRequest({
+      requestId: resolvedRequestId,
+      message: SessionInboundMessageSchema.parse({
+        type: "ssh.known_hosts.delete.request",
+        id,
+        requestId: resolvedRequestId,
+      }),
+      responseType: "ssh.known_hosts.delete.response",
+      timeout: 10000,
+      options: { skipQueue: true },
+    });
+  }
+
+  async importSshKnownHosts(
+    input: { path?: string },
+    requestId?: string,
+  ): Promise<SshKnownHostsImportPayload> {
+    const resolvedRequestId = this.createRequestId(requestId);
+    return this.sendCorrelatedRequest({
+      requestId: resolvedRequestId,
+      message: SessionInboundMessageSchema.parse({
+        type: "ssh.known_hosts.import.request",
+        ...(input.path !== undefined ? { path: input.path } : {}),
+        requestId: resolvedRequestId,
+      }),
+      responseType: "ssh.known_hosts.import.response",
+      timeout: 10000,
+      options: { skipQueue: true },
+    });
+  }
+
+  async listSshLogs(
+    input: { limit?: number } = {},
+    requestId?: string,
+  ): Promise<SshLogsListPayload> {
+    const resolvedRequestId = this.createRequestId(requestId);
+    return this.sendCorrelatedRequest({
+      requestId: resolvedRequestId,
+      message: SessionInboundMessageSchema.parse({
+        type: "ssh.logs.list.request",
+        ...(input.limit !== undefined ? { limit: input.limit } : {}),
+        requestId: resolvedRequestId,
+      }),
+      responseType: "ssh.logs.list.response",
       timeout: 10000,
       options: { skipQueue: true },
     });

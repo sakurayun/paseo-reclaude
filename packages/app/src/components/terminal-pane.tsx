@@ -29,7 +29,10 @@ import { resolveTerminalRestoreOptions } from "@/terminal/runtime/terminal-resto
 import { usePanelStore } from "@/stores/panel-store";
 import { useSessionStore } from "@/stores/session-store";
 import { toXtermTheme } from "@/utils/to-xterm-theme";
-import { resolveTerminalPalette } from "@/constants/terminal-color-presets";
+import {
+  resolveTerminalPalette,
+  type TerminalColorSchemeId,
+} from "@/constants/terminal-color-presets";
 import TerminalEmulator, { type TerminalEmulatorHandle } from "./terminal-emulator";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import {
@@ -60,6 +63,12 @@ interface TerminalPaneProps {
   isPaneFocused: boolean;
   onOpenFileExplorer: () => void;
   onOpenWorkspaceFile: (request: WorkspaceFileOpenRequest) => void;
+  // Resolve terminal file paths as daemon-local files (default). SSH terminals
+  // set this false: remote paths must not be resolved against the daemon host.
+  localFileLinks?: boolean;
+  // Pin a named terminal palette (host terminal theme) instead of the app-wide
+  // setting. Null / undefined falls back to the user's terminalColorScheme.
+  terminalThemeOverride?: TerminalColorSchemeId | null;
 }
 
 const TERMINAL_REFIT_DELAYS_MS = [0, 48, 144, 320];
@@ -207,6 +216,8 @@ export function TerminalPane({
   isPaneFocused,
   onOpenFileExplorer,
   onOpenWorkspaceFile,
+  localFileLinks = true,
+  terminalThemeOverride = null,
 }: TerminalPaneProps) {
   const { t } = useTranslation();
   const isAppVisible = useAppVisible();
@@ -218,8 +229,14 @@ export function TerminalPane({
   // scheme changes the `theme` reference is unchanged, so the memo would not
   // recompute without it.
   const xtermTheme = useMemo(
-    () => toXtermTheme(resolveTerminalPalette(settings.terminalColorScheme, theme.colors.terminal)),
-    [theme, settings.terminalColorScheme],
+    () =>
+      toXtermTheme(
+        resolveTerminalPalette(
+          terminalThemeOverride ?? settings.terminalColorScheme,
+          theme.colors.terminal,
+        ),
+      ),
+    [theme, settings.terminalColorScheme, terminalThemeOverride],
   );
   const terminalFontFamily = useMemo(() => {
     const trimmed = settings.monoFontFamily.trim();
@@ -927,8 +944,8 @@ export function TerminalPane({
               onResize={handleTerminalResize}
               onTerminalKey={handleTerminalKey}
               onInputModeChange={handleInputModeChange}
-              onResolveLocalFileLink={handleResolveLocalFileLink}
-              onOpenLocalFileLink={handleOpenLocalFileLink}
+              onResolveLocalFileLink={localFileLinks ? handleResolveLocalFileLink : undefined}
+              onOpenLocalFileLink={localFileLinks ? handleOpenLocalFileLink : undefined}
               onPendingModifiersConsumed={handlePendingModifiersConsumed}
               pendingModifiers={modifiers}
               focusRequestToken={focusRequestToken}

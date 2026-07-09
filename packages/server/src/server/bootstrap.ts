@@ -138,7 +138,13 @@ import { setupAutoArchiveOnMerge } from "./auto-archive-on-merge/index.js";
 import { wrapSessionMessage, type SessionOutboundMessage } from "./messages.js";
 import type { TerminalManager } from "../terminal/terminal-manager.js";
 import { createConfiguredTerminalManager } from "../terminal/terminal-manager-factory.js";
+import { FileBackedTerminalHistoryStore } from "../terminal/terminal-history-store.js";
 import { createPortForwardManager } from "../port-forward/port-forward-manager.js";
+import { createSshManager } from "../ssh/ssh-manager.js";
+import { createSshConnectService, sshHomeDirectory } from "../ssh/ssh-connect-service.js";
+import { createSshForwardRuntime } from "../ssh/ssh-forward-runtime.js";
+import { createCompositeTerminalManager } from "../terminal/composite-terminal-manager.js";
+import { createTerminalManager } from "../terminal/terminal-manager.js";
 import { applyTerminalAgentHookSetting } from "../terminal/agent-hooks/terminal-agent-hook-setting.js";
 import { createConnectionOfferV2, encodeOfferToFragmentUrl } from "./connection-offer.js";
 import { loadOrCreateDaemonKeyPair } from "./daemon-keypair.js";
@@ -529,13 +535,45 @@ export async function createPaseoDaemon(
   app.set("trust proxy", resolveExpressTrustProxySetting(config));
   let boundListenTarget: ListenTarget | null = null;
   let workspaceRegistry: FileBackedWorkspaceRegistry | null = null;
+  // Closed-terminal history: terminals removed for good (explicit close or
+  // exited-cap prune) are persisted so clients can list them again later.
+  const terminalHistoryStore = new FileBackedTerminalHistoryStore(
+    path.join(config.paseoHome, "terminal-history.json"),
+    logger,
+  );
+  await terminalHistoryStore.initialize();
   const terminalManager = createConfiguredTerminalManager({
     getTerminalActivityUrl: () => createTerminalActivityUrl(boundListenTarget),
+    onTerminalClosed: (record) => terminalHistoryStore.append(record),
   });
   // Global, persisted port-forward list synced to every connected client.
   const portForwardManager = createPortForwardManager({
     storePath: path.join(config.paseoHome, "port-forwards.json"),
   });
+  // Daemon-global SSH host manager stores (hosts/keys/forwards/known-hosts/logs).
+  const sshManager = createSshManager({ directory: config.paseoHome });
+  // SSH shell sessions run in-process (they share the ssh2 Client used for TOFU
+  // verification, exec platform detection, and port forwarding), so they use a
+  // dedicated in-process terminal manager, fronted by a composite so the
+  // existing terminal RPCs (subscribe/kill/capture) work over both.
+  const sshTerminalManager = createTerminalManager();
+  const compositeTerminalManager = createCompositeTerminalManager(
+    terminalManager,
+    sshTerminalManager,
+  );
+  const sshConnectService = createSshConnectService({
+    sshManager,
+    sshTerminalManager,
+    fallbackTerminalManager: terminalManager,
+    sshHome: sshHomeDirectory(config.paseoHome),
+  });
+  sshManager.connectHandler = sshConnectService.createConnectHandler();
+  const sshForwardRuntime = createSshForwardRuntime({
+    forwardStore: sshManager.forwardStore,
+    pool: sshConnectService.pool,
+  });
+  sshManager.forwardStart = (id) => sshForwardRuntime.start(id);
+  sshManager.forwardStop = (id) => sshForwardRuntime.stop(id);
   applyTerminalAgentHookSetting({ store: daemonConfigStore, logger });
 
   const serviceProxyPublicBaseUrl = config.serviceProxy?.publicBaseUrl
@@ -1372,7 +1410,7 @@ export async function createPaseoDaemon(
               workspaceAutoName,
               config.auth,
               speechService,
-              terminalManager,
+              compositeTerminalManager,
               {
                 finalTimeoutMs: config.dictationFinalTimeoutMs,
               },
@@ -1420,6 +1458,8 @@ export async function createPaseoDaemon(
               modelPreferencesStore,
               composerDraftsStore,
               browserToolsBroker,
+              terminalHistoryStore,
+              sshManager,
             );
 
             if (relayEnabled) {
@@ -1489,6 +1529,10 @@ export async function createPaseoDaemon(
     await providerSnapshotManager.shutdown();
     terminalManager.killAll();
     portForwardManager.dispose();
+    void sshForwardRuntime.dispose();
+    sshConnectService.dispose();
+    sshTerminalManager.killAll();
+    sshManager.dispose();
     speechService.stop();
     await scheduleService.stop().catch(() => undefined);
     await relayTransport?.stop().catch(() => undefined);

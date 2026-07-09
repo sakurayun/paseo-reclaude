@@ -1,0 +1,33 @@
+{
+  "id": "ssh-host-manager",
+  "name": "ssh-host-manager",
+  "title": "Paseo 内建 SSH 主机管理器",
+  "description": "Termius 式 SSH 主机管理：侧边栏入口替换定时任务、主机卡片面板、全字段编辑、密钥库、端口转发、设备指纹、连接日志；daemon 内嵌 ssh2",
+  "status": "planning",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P1",
+  "creator": "paseo",
+  "assignee": "paseo",
+  "createdAt": "2026-07-07",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [
+    "07-07-p1-protocol-store-rpc",
+    "07-07-p2-connection-terminal-bridge",
+    "07-07-p3-sidebar-hosts-ui",
+    "07-07-p4-host-edit-form",
+    "07-07-p5-keychain-knownhosts-logs-forwards",
+    "07-07-p6-fallback-polish"
+  ],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {}
+}

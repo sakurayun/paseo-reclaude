@@ -18,6 +18,7 @@ import {
   CalendarClock,
   FolderPlus,
   History,
+  Server,
   SquarePen,
   X,
   type LucideIcon,
@@ -32,6 +33,7 @@ export interface SidebarSessionsToolbarLabels {
   openProject: string;
   history: string;
   schedules: string;
+  ssh: string;
   close: string;
 }
 
@@ -44,6 +46,9 @@ interface SidebarSessionsToolbarProps {
   /** Desktop (Electron) only: render a Schedules action after History. */
   onSchedules?: () => void;
   isSchedulesActive?: boolean;
+  /** Render an SSH action (replaces Schedules when the host supports it). */
+  onSsh?: () => void;
+  isSshActive?: boolean;
   /** Compact layout only: render an inline close (X) at the trailing edge. */
   onClose?: () => void;
 }
@@ -65,6 +70,8 @@ export function SidebarSessionsToolbar({
   isHistoryActive = false,
   onSchedules,
   isSchedulesActive = false,
+  onSsh,
+  isSshActive = false,
   onClose,
 }: SidebarSessionsToolbarProps) {
   return (
@@ -91,19 +98,58 @@ export function SidebarSessionsToolbar({
         index={2}
         testID="sidebar-toolbar-history"
       />
-      {onSchedules ? (
-        <ToolbarButton
-          icon={CalendarClock}
-          label={labels.schedules}
-          onPress={onSchedules}
-          isActive={isSchedulesActive}
-          index={3}
-          testID="sidebar-toolbar-schedules"
-        />
-      ) : null}
+      <TrailingToolbarAction
+        labels={labels}
+        onSsh={onSsh}
+        isSshActive={isSshActive}
+        onSchedules={onSchedules}
+        isSchedulesActive={isSchedulesActive}
+      />
       {onClose ? <CloseButton label={labels.close} onPress={onClose} /> : null}
     </View>
   );
+}
+
+// The trailing slot shows SSH when the host supports it, else Schedules
+// (Electron desktop), else nothing — kept out of JSX to avoid a nested ternary.
+function TrailingToolbarAction({
+  labels,
+  onSsh,
+  isSshActive,
+  onSchedules,
+  isSchedulesActive,
+}: {
+  labels: SidebarSessionsToolbarLabels;
+  onSsh?: () => void;
+  isSshActive: boolean;
+  onSchedules?: () => void;
+  isSchedulesActive: boolean;
+}) {
+  if (onSsh) {
+    return (
+      <ToolbarButton
+        icon={Server}
+        label={labels.ssh}
+        onPress={onSsh}
+        isActive={isSshActive}
+        index={3}
+        testID="sidebar-toolbar-ssh"
+      />
+    );
+  }
+  if (onSchedules) {
+    return (
+      <ToolbarButton
+        icon={CalendarClock}
+        label={labels.schedules}
+        onPress={onSchedules}
+        isActive={isSchedulesActive}
+        index={3}
+        testID="sidebar-toolbar-schedules"
+      />
+    );
+  }
+  return null;
 }
 
 function ToolbarButton({

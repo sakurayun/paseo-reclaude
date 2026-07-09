@@ -492,9 +492,14 @@ function applyTerminalsChanged(input: {
       continue;
     }
 
-    const matchingTerminals = input.message.payload.terminals.filter(
-      (terminal) => terminal.workspaceId === route.workspaceId,
-    );
+    // The host-wide route (cwd "") carries every terminal on the daemon —
+    // keep the full list; per-workspace routes keep their workspace filter.
+    const matchingTerminals =
+      route.cwd === ""
+        ? input.message.payload.terminals
+        : input.message.payload.terminals.filter(
+            (terminal) => terminal.workspaceId === route.workspaceId,
+          );
 
     input.queryClient.setQueryData<ListTerminalsPayload>(query.queryKey, (current) => ({
       cwd: input.message.payload.cwd,

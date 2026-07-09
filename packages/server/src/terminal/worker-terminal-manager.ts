@@ -18,6 +18,7 @@ import type { CaptureTerminalLinesResult } from "./terminal-capture.js";
 import type {
   TerminalActivityListener,
   TerminalActivityTransitionEvent,
+  TerminalClosedRecord,
   TerminalListItem,
   TerminalManager,
   TerminalWorkspaceContributionChangedEvent,
@@ -93,7 +94,15 @@ interface WorkerTerminalManagerOptions {
   requestTimeoutMs?: number;
   forkWorker?: () => TerminalWorkerProcess;
   getTerminalActivityUrl?: () => string | null;
+  // Invoked when a terminal is removed for good (explicit close or
+  // exited-cap prune) so the daemon can persist it to closed-terminal history.
+  onTerminalClosed?: (record: TerminalClosedRecord) => void;
 }
+
+// Exited terminals are retained in the mirror so clients can show them as
+// "not running" / "failed"; cap them per cwd so long-lived daemons don't
+// accumulate unbounded dead entries. Overflow goes straight to history.
+const MAX_EXITED_TERMINALS_PER_CWD = 10;
 
 function createActivityToken(): string {
   return randomBytes(32).toString("base64url");
@@ -213,6 +222,9 @@ export function createWorkerTerminalManager(
         workspaceId: record.info.workspaceId,
         ...(record.info.title ? { title: record.info.title } : {}),
         activity: record.activity,
+        status: record.exitInfo ? "exited" : "running",
+        exitCode: record.exitInfo?.exitCode ?? null,
+        endedAt: record.exitInfo?.endedAt ?? null,
       });
     }
     return terminals;
@@ -434,6 +446,40 @@ export function createWorkerTerminalManager(
     }
   }
 
+  function recordClosed(record: WorkerTerminalRecord): void {
+    managerOptions.onTerminalClosed?.({
+      id: record.info.id,
+      name: record.info.name,
+      cwd: record.info.cwd,
+      workspaceId: record.info.workspaceId,
+      ...(record.info.title ? { title: record.info.title } : {}),
+      exitCode: record.exitInfo?.exitCode ?? null,
+      closedAt: Date.now(),
+    });
+  }
+
+  function pruneExitedTerminalsForCwd(cwd: string): void {
+    const terminalIds = terminalIdsByCwd.get(cwd);
+    if (!terminalIds) {
+      return;
+    }
+    const exited: WorkerTerminalRecord[] = [];
+    for (const terminalId of terminalIds) {
+      const record = recordsById.get(terminalId);
+      if (record?.exitInfo) {
+        exited.push(record);
+      }
+    }
+    if (exited.length <= MAX_EXITED_TERMINALS_PER_CWD) {
+      return;
+    }
+    exited.sort((left, right) => (left.exitInfo?.endedAt ?? 0) - (right.exitInfo?.endedAt ?? 0));
+    for (const record of exited.slice(0, exited.length - MAX_EXITED_TERMINALS_PER_CWD)) {
+      removeRecord(record.info.id);
+      recordClosed(record);
+    }
+  }
+
   function handleTerminalExitEvent(
     message: Extract<TerminalWorkerToParentMessage, { type: "terminalExit" }>,
   ): void {
@@ -441,20 +487,23 @@ export function createWorkerTerminalManager(
     if (!record) {
       return;
     }
-    record.exitInfo = message.info;
+    // Keep the record: exited terminals stay listed (status "exited") until
+    // explicitly closed, so clients can surface "not running" / "failed".
+    record.exitInfo = { ...message.info, endedAt: message.info.endedAt ?? Date.now() };
     for (const listener of Array.from(record.exitListeners)) {
-      listener(message.info);
+      listener(record.exitInfo);
     }
     record.exitListeners.clear();
     const previousBucket = deriveTerminalActivityStatusBucket(record.activity);
-    const removedRecord = removeRecord(message.terminalId);
-    if (previousBucket !== null && removedRecord) {
+    record.activity = null;
+    if (previousBucket !== null) {
       emitTerminalWorkspaceContributionChanged({
-        terminalId: removedRecord.info.id,
-        cwd: removedRecord.info.cwd,
-        workspaceId: removedRecord.info.workspaceId,
+        terminalId: record.info.id,
+        cwd: record.info.cwd,
+        workspaceId: record.info.workspaceId,
       });
     }
+    pruneExitedTerminalsForCwd(record.info.cwd);
     emitTerminalsChanged({
       cwd: record.info.cwd,
       terminals: listTerminalItemsForCwd(record.info.cwd),
@@ -780,6 +829,31 @@ export function createWorkerTerminalManager(
     },
 
     killTerminal(id: string): void {
+      const record = recordsById.get(id);
+      const wasExited = Boolean(record?.exitInfo);
+      if (record) {
+        // Kill removes the terminal for good: drop the mirror entry now (the
+        // late terminalExit event finds no record and is ignored) and persist
+        // it to closed-terminal history.
+        const previousBucket = deriveTerminalActivityStatusBucket(record.activity);
+        removeRecord(id);
+        recordClosed(record);
+        if (previousBucket !== null) {
+          emitTerminalWorkspaceContributionChanged({
+            terminalId: record.info.id,
+            cwd: record.info.cwd,
+            workspaceId: record.info.workspaceId,
+          });
+        }
+        emitTerminalsChanged({
+          cwd: record.info.cwd,
+          terminals: listTerminalItemsForCwd(record.info.cwd),
+        });
+      }
+      if (wasExited) {
+        // The worker already dropped the session on exit; nothing to kill.
+        return;
+      }
       void sendRequest({ type: "killTerminal", terminalId: id }).catch(() => {
         // no-op; kill is intentionally best-effort and synchronous in the public interface.
       });
@@ -789,11 +863,33 @@ export function createWorkerTerminalManager(
       id: string,
       options?: { gracefulTimeoutMs?: number; forceTimeoutMs?: number },
     ): Promise<void> {
-      await sendRequest({
-        type: "killTerminalAndWait",
-        terminalId: id,
-        ...(options ? { options } : {}),
-      });
+      const record = recordsById.get(id);
+      if (!record?.exitInfo) {
+        await sendRequest({
+          type: "killTerminalAndWait",
+          terminalId: id,
+          ...(options ? { options } : {}),
+        });
+      }
+      // The terminalExit event may have marked the record exited while we
+      // waited; remove whatever is still mirrored and persist it to history.
+      const current = recordsById.get(id);
+      if (current) {
+        const previousBucket = deriveTerminalActivityStatusBucket(current.activity);
+        removeRecord(id);
+        recordClosed(current);
+        if (previousBucket !== null) {
+          emitTerminalWorkspaceContributionChanged({
+            terminalId: current.info.id,
+            cwd: current.info.cwd,
+            workspaceId: current.info.workspaceId,
+          });
+        }
+        emitTerminalsChanged({
+          cwd: current.info.cwd,
+          terminals: listTerminalItemsForCwd(current.info.cwd),
+        });
+      }
     },
 
     async captureTerminal(

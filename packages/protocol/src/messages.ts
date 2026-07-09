@@ -2386,6 +2386,13 @@ export const UnsubscribeTerminalsRequestSchema = z.object({
   workspaceId: z.string().optional(),
 });
 
+// Closed-terminal history: terminals removed via kill land in a persisted
+// history list so they can be found (and re-created) after the fact.
+export const TerminalHistoryListRequestSchema = z.object({
+  type: z.literal("terminal.history.list.request"),
+  requestId: z.string(),
+});
+
 // Windows-only default-shell preferences for a newly opened terminal. The
 // daemon consults these only on win32; every field is optional so older daemons
 // simply ignore them and older clients omit the object entirely.
@@ -2551,6 +2558,605 @@ export const PortForwardsChangedSchema = z.object({
   }),
 });
 
+// ============================================================================
+// SSH Host Manager Messages (fork feature)
+// ============================================================================
+// Termius-style SSH host manager: hosts/groups, keychain, per-host port
+// forwarding rules, known-host fingerprints (TOFU), and connection logs, all
+// persisted daemon-side under PASEO_HOME. Secrets (passwords, private keys,
+// passphrases) travel client -> daemon only; downstream payloads carry
+// presence flags and metadata, never the secret material itself.
+// Gated by server_info.features.sshHosts.
+
+export const SshHostPlatformSchema = z.object({
+  // Distro/OS slug detected from /etc/os-release (e.g. "ubuntu", "debian",
+  // "fedora", "darwin", "linux"). Free-form so new distros need no protocol
+  // change; clients map unknown values to a generic icon.
+  os: z.string(),
+  name: z.string().optional(),
+  version: z.string().optional(),
+  detectedAt: z.number().optional(),
+});
+export type SshHostPlatform = z.infer<typeof SshHostPlatformSchema>;
+
+export const SshHostGroupSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  parentId: z.string().nullable().optional(),
+});
+export type SshHostGroup = z.infer<typeof SshHostGroupSchema>;
+
+export const SshHostProxySchema = z.object({
+  proxyType: z.enum(["http", "socks4", "socks5"]),
+  host: z.string(),
+  port: z.number().int().min(1).max(65535),
+  username: z.string().optional(),
+  hasPassword: z.boolean().optional(),
+});
+export type SshHostProxy = z.infer<typeof SshHostProxySchema>;
+
+export const SshHostMoshSchema = z.object({
+  enabled: z.boolean(),
+  serverPath: z.string().optional(),
+});
+export type SshHostMosh = z.infer<typeof SshHostMoshSchema>;
+
+export const SshHostInfoSchema = z.object({
+  id: z.string(),
+  label: z.string(),
+  address: z.string(),
+  port: z.number().int().min(1).max(65535).optional(),
+  groupId: z.string().nullable().optional(),
+  tags: z.array(z.string()).optional(),
+  username: z.string().optional(),
+  // Presence flag only — the password itself never travels daemon -> client.
+  hasPassword: z.boolean().optional(),
+  keyId: z.string().nullable().optional(),
+  useAgent: z.boolean().optional(),
+  useFido2: z.boolean().optional(),
+  backspaceMode: z.enum(["del", "ctrl-h"]).optional(),
+  agentForwarding: z.boolean().optional(),
+  startupSnippet: z.string().optional(),
+  chainHostIds: z.array(z.string()).optional(),
+  proxy: SshHostProxySchema.nullable().optional(),
+  env: z.record(z.string(), z.string()).optional(),
+  charset: z.string().optional(),
+  mosh: SshHostMoshSchema.optional(),
+  terminalThemeId: z.string().nullable().optional(),
+  platform: SshHostPlatformSchema.nullable().optional(),
+  createdAt: z.number().optional(),
+  updatedAt: z.number().optional(),
+});
+export type SshHostInfo = z.infer<typeof SshHostInfoSchema>;
+
+// Mutable host fields shared by create (all semantics apply) and update
+// (partial variant below). Secrets ride alongside as dedicated request fields.
+export const SshHostUpsertSchema = z.object({
+  label: z.string(),
+  address: z.string(),
+  port: z.number().int().min(1).max(65535).optional(),
+  groupId: z.string().nullable().optional(),
+  tags: z.array(z.string()).optional(),
+  username: z.string().optional(),
+  keyId: z.string().nullable().optional(),
+  useAgent: z.boolean().optional(),
+  useFido2: z.boolean().optional(),
+  backspaceMode: z.enum(["del", "ctrl-h"]).optional(),
+  agentForwarding: z.boolean().optional(),
+  startupSnippet: z.string().optional(),
+  chainHostIds: z.array(z.string()).optional(),
+  proxy: SshHostProxySchema.nullable().optional(),
+  env: z.record(z.string(), z.string()).optional(),
+  charset: z.string().optional(),
+  mosh: SshHostMoshSchema.optional(),
+  terminalThemeId: z.string().nullable().optional(),
+});
+export type SshHostUpsert = z.infer<typeof SshHostUpsertSchema>;
+
+export const SshHostPatchSchema = SshHostUpsertSchema.partial();
+export type SshHostPatch = z.infer<typeof SshHostPatchSchema>;
+
+export const SshKeyInfoSchema = z.object({
+  id: z.string(),
+  label: z.string(),
+  // Parsed key algorithm (e.g. "ssh-ed25519", "ssh-rsa"); absent when the
+  // private key could not be parsed (still stored, surfaced as unknown type).
+  keyType: z.string().optional(),
+  publicKey: z.string().optional(),
+  hasCertificate: z.boolean().optional(),
+  hasPassphrase: z.boolean().optional(),
+  createdAt: z.number().optional(),
+});
+export type SshKeyInfo = z.infer<typeof SshKeyInfoSchema>;
+
+export const SshForwardInfoSchema = z.object({
+  id: z.string(),
+  hostId: z.string(),
+  forwardType: z.enum(["local", "remote", "dynamic"]),
+  label: z.string().optional(),
+  bindAddress: z.string().optional(),
+  listenPort: z.number().int().min(1).max(65535),
+  targetHost: z.string().optional(),
+  targetPort: z.number().int().min(1).max(65535).optional(),
+  autoStart: z.boolean().optional(),
+  createdAt: z.number().optional(),
+});
+export type SshForwardInfo = z.infer<typeof SshForwardInfoSchema>;
+
+export const SshForwardRuntimeSchema = z.object({
+  id: z.string(),
+  status: z.enum(["stopped", "starting", "active", "error"]),
+  error: z.string().nullable().optional(),
+});
+export type SshForwardRuntime = z.infer<typeof SshForwardRuntimeSchema>;
+
+export const SshKnownHostInfoSchema = z.object({
+  id: z.string(),
+  host: z.string(),
+  port: z.number().int().min(1).max(65535).optional(),
+  keyType: z.string(),
+  fingerprintSha256: z.string(),
+  publicKeyBase64: z.string(),
+  firstSeenAt: z.number().optional(),
+  lastSeenAt: z.number().optional(),
+  source: z.enum(["tofu", "imported"]).optional(),
+});
+export type SshKnownHostInfo = z.infer<typeof SshKnownHostInfoSchema>;
+
+export const SshLogEntrySchema = z.object({
+  id: z.string(),
+  hostId: z.string(),
+  hostLabel: z.string(),
+  username: z.string().optional(),
+  address: z.string(),
+  port: z.number().int().min(1).max(65535).optional(),
+  protocol: z.enum(["ssh", "mosh"]),
+  startedAt: z.number(),
+  endedAt: z.number().nullable().optional(),
+  durationMs: z.number().nullable().optional(),
+  status: z.enum(["connected", "failed", "closed"]),
+  error: z.string().optional(),
+});
+export type SshLogEntry = z.infer<typeof SshLogEntrySchema>;
+
+// The host key observed during a rejected connect (fingerprint mismatch);
+// clients echo it back via ssh.known_hosts.trust.request to accept the change.
+export const SshObservedHostKeySchema = z.object({
+  host: z.string(),
+  port: z.number().int().min(1).max(65535).optional(),
+  keyType: z.string(),
+  fingerprintSha256: z.string(),
+  publicKeyBase64: z.string(),
+});
+export type SshObservedHostKey = z.infer<typeof SshObservedHostKeySchema>;
+
+// --- ssh.hosts.* ---
+
+export const SshHostsListRequestSchema = z.object({
+  type: z.literal("ssh.hosts.list.request"),
+  requestId: z.string(),
+});
+
+export const SshHostsCreateRequestSchema = z.object({
+  type: z.literal("ssh.hosts.create.request"),
+  host: SshHostUpsertSchema,
+  password: z.string().optional(),
+  proxyPassword: z.string().optional(),
+  requestId: z.string(),
+});
+
+export const SshHostsUpdateRequestSchema = z.object({
+  type: z.literal("ssh.hosts.update.request"),
+  id: z.string(),
+  host: SshHostPatchSchema,
+  // undefined = keep the stored secret; null = clear it; string = replace it.
+  password: z.string().nullable().optional(),
+  proxyPassword: z.string().nullable().optional(),
+  requestId: z.string(),
+});
+
+export const SshHostsDeleteRequestSchema = z.object({
+  type: z.literal("ssh.hosts.delete.request"),
+  id: z.string(),
+  requestId: z.string(),
+});
+
+export const SshHostsConnectRequestSchema = z.object({
+  type: z.literal("ssh.hosts.connect.request"),
+  hostId: z.string(),
+  cols: z.number().int().positive().optional(),
+  rows: z.number().int().positive().optional(),
+  requestId: z.string(),
+});
+
+export const SshHostsListResponseSchema = z.object({
+  type: z.literal("ssh.hosts.list.response"),
+  payload: z.object({
+    hosts: z.array(SshHostInfoSchema),
+    groups: z.array(SshHostGroupSchema),
+    requestId: z.string(),
+  }),
+});
+
+export const SshHostsCreateResponseSchema = z.object({
+  type: z.literal("ssh.hosts.create.response"),
+  payload: z.object({
+    host: SshHostInfoSchema.nullable(),
+    error: z.string().nullable(),
+    requestId: z.string(),
+  }),
+});
+
+export const SshHostsUpdateResponseSchema = z.object({
+  type: z.literal("ssh.hosts.update.response"),
+  payload: z.object({
+    host: SshHostInfoSchema.nullable(),
+    error: z.string().nullable(),
+    requestId: z.string(),
+  }),
+});
+
+export const SshHostsDeleteResponseSchema = z.object({
+  type: z.literal("ssh.hosts.delete.response"),
+  payload: z.object({
+    id: z.string(),
+    success: z.boolean(),
+    error: z.string().nullable(),
+    requestId: z.string(),
+  }),
+});
+
+export const SshHostsChangedSchema = z.object({
+  type: z.literal("ssh.hosts.changed"),
+  payload: z.object({
+    hosts: z.array(SshHostInfoSchema),
+    groups: z.array(SshHostGroupSchema),
+  }),
+});
+
+// --- ssh.host_groups.* ---
+
+export const SshHostGroupsCreateRequestSchema = z.object({
+  type: z.literal("ssh.host_groups.create.request"),
+  name: z.string(),
+  parentId: z.string().nullable().optional(),
+  requestId: z.string(),
+});
+
+export const SshHostGroupsRenameRequestSchema = z.object({
+  type: z.literal("ssh.host_groups.rename.request"),
+  id: z.string(),
+  name: z.string(),
+  requestId: z.string(),
+});
+
+export const SshHostGroupsDeleteRequestSchema = z.object({
+  type: z.literal("ssh.host_groups.delete.request"),
+  id: z.string(),
+  requestId: z.string(),
+});
+
+export const SshHostGroupsCreateResponseSchema = z.object({
+  type: z.literal("ssh.host_groups.create.response"),
+  payload: z.object({
+    group: SshHostGroupSchema.nullable(),
+    error: z.string().nullable(),
+    requestId: z.string(),
+  }),
+});
+
+export const SshHostGroupsRenameResponseSchema = z.object({
+  type: z.literal("ssh.host_groups.rename.response"),
+  payload: z.object({
+    group: SshHostGroupSchema.nullable(),
+    error: z.string().nullable(),
+    requestId: z.string(),
+  }),
+});
+
+export const SshHostGroupsDeleteResponseSchema = z.object({
+  type: z.literal("ssh.host_groups.delete.response"),
+  payload: z.object({
+    id: z.string(),
+    success: z.boolean(),
+    error: z.string().nullable(),
+    requestId: z.string(),
+  }),
+});
+
+// --- ssh.keys.* ---
+
+export const SshKeysListRequestSchema = z.object({
+  type: z.literal("ssh.keys.list.request"),
+  requestId: z.string(),
+});
+
+export const SshKeysCreateRequestSchema = z.object({
+  type: z.literal("ssh.keys.create.request"),
+  label: z.string(),
+  privateKey: z.string(),
+  publicKey: z.string().optional(),
+  certificate: z.string().optional(),
+  passphrase: z.string().optional(),
+  requestId: z.string(),
+});
+
+export const SshKeysUpdateRequestSchema = z.object({
+  type: z.literal("ssh.keys.update.request"),
+  id: z.string(),
+  label: z.string().optional(),
+  privateKey: z.string().optional(),
+  // undefined = keep; null = clear; string = replace.
+  publicKey: z.string().nullable().optional(),
+  certificate: z.string().nullable().optional(),
+  passphrase: z.string().nullable().optional(),
+  requestId: z.string(),
+});
+
+export const SshKeysDeleteRequestSchema = z.object({
+  type: z.literal("ssh.keys.delete.request"),
+  id: z.string(),
+  requestId: z.string(),
+});
+
+export const SshKeysListResponseSchema = z.object({
+  type: z.literal("ssh.keys.list.response"),
+  payload: z.object({
+    keys: z.array(SshKeyInfoSchema),
+    requestId: z.string(),
+  }),
+});
+
+export const SshKeysCreateResponseSchema = z.object({
+  type: z.literal("ssh.keys.create.response"),
+  payload: z.object({
+    key: SshKeyInfoSchema.nullable(),
+    error: z.string().nullable(),
+    requestId: z.string(),
+  }),
+});
+
+export const SshKeysUpdateResponseSchema = z.object({
+  type: z.literal("ssh.keys.update.response"),
+  payload: z.object({
+    key: SshKeyInfoSchema.nullable(),
+    error: z.string().nullable(),
+    requestId: z.string(),
+  }),
+});
+
+export const SshKeysDeleteResponseSchema = z.object({
+  type: z.literal("ssh.keys.delete.response"),
+  payload: z.object({
+    id: z.string(),
+    success: z.boolean(),
+    error: z.string().nullable(),
+    requestId: z.string(),
+  }),
+});
+
+export const SshKeysChangedSchema = z.object({
+  type: z.literal("ssh.keys.changed"),
+  payload: z.object({
+    keys: z.array(SshKeyInfoSchema),
+  }),
+});
+
+// --- ssh.forwards.* ---
+
+export const SshForwardsListRequestSchema = z.object({
+  type: z.literal("ssh.forwards.list.request"),
+  requestId: z.string(),
+});
+
+export const SshForwardsCreateRequestSchema = z.object({
+  type: z.literal("ssh.forwards.create.request"),
+  hostId: z.string(),
+  forwardType: z.enum(["local", "remote", "dynamic"]),
+  label: z.string().optional(),
+  bindAddress: z.string().optional(),
+  listenPort: z.number().int().min(1).max(65535),
+  targetHost: z.string().optional(),
+  targetPort: z.number().int().min(1).max(65535).optional(),
+  autoStart: z.boolean().optional(),
+  requestId: z.string(),
+});
+
+export const SshForwardsUpdateRequestSchema = z.object({
+  type: z.literal("ssh.forwards.update.request"),
+  id: z.string(),
+  hostId: z.string().optional(),
+  forwardType: z.enum(["local", "remote", "dynamic"]).optional(),
+  label: z.string().optional(),
+  bindAddress: z.string().optional(),
+  listenPort: z.number().int().min(1).max(65535).optional(),
+  targetHost: z.string().optional(),
+  targetPort: z.number().int().min(1).max(65535).optional(),
+  autoStart: z.boolean().optional(),
+  requestId: z.string(),
+});
+
+export const SshForwardsDeleteRequestSchema = z.object({
+  type: z.literal("ssh.forwards.delete.request"),
+  id: z.string(),
+  requestId: z.string(),
+});
+
+export const SshForwardsStartRequestSchema = z.object({
+  type: z.literal("ssh.forwards.start.request"),
+  id: z.string(),
+  requestId: z.string(),
+});
+
+export const SshForwardsStopRequestSchema = z.object({
+  type: z.literal("ssh.forwards.stop.request"),
+  id: z.string(),
+  requestId: z.string(),
+});
+
+export const SshForwardsListResponseSchema = z.object({
+  type: z.literal("ssh.forwards.list.response"),
+  payload: z.object({
+    forwards: z.array(SshForwardInfoSchema),
+    runtime: z.array(SshForwardRuntimeSchema),
+    requestId: z.string(),
+  }),
+});
+
+export const SshForwardsCreateResponseSchema = z.object({
+  type: z.literal("ssh.forwards.create.response"),
+  payload: z.object({
+    forward: SshForwardInfoSchema.nullable(),
+    error: z.string().nullable(),
+    requestId: z.string(),
+  }),
+});
+
+export const SshForwardsUpdateResponseSchema = z.object({
+  type: z.literal("ssh.forwards.update.response"),
+  payload: z.object({
+    forward: SshForwardInfoSchema.nullable(),
+    error: z.string().nullable(),
+    requestId: z.string(),
+  }),
+});
+
+export const SshForwardsDeleteResponseSchema = z.object({
+  type: z.literal("ssh.forwards.delete.response"),
+  payload: z.object({
+    id: z.string(),
+    success: z.boolean(),
+    error: z.string().nullable(),
+    requestId: z.string(),
+  }),
+});
+
+export const SshForwardsStartResponseSchema = z.object({
+  type: z.literal("ssh.forwards.start.response"),
+  payload: z.object({
+    id: z.string(),
+    success: z.boolean(),
+    error: z.string().nullable(),
+    requestId: z.string(),
+  }),
+});
+
+export const SshForwardsStopResponseSchema = z.object({
+  type: z.literal("ssh.forwards.stop.response"),
+  payload: z.object({
+    id: z.string(),
+    success: z.boolean(),
+    error: z.string().nullable(),
+    requestId: z.string(),
+  }),
+});
+
+export const SshForwardsChangedSchema = z.object({
+  type: z.literal("ssh.forwards.changed"),
+  payload: z.object({
+    forwards: z.array(SshForwardInfoSchema),
+    runtime: z.array(SshForwardRuntimeSchema),
+  }),
+});
+
+// --- ssh.known_hosts.* ---
+
+export const SshKnownHostsListRequestSchema = z.object({
+  type: z.literal("ssh.known_hosts.list.request"),
+  requestId: z.string(),
+});
+
+export const SshKnownHostsTrustRequestSchema = z.object({
+  type: z.literal("ssh.known_hosts.trust.request"),
+  host: z.string(),
+  port: z.number().int().min(1).max(65535).optional(),
+  keyType: z.string(),
+  publicKeyBase64: z.string(),
+  requestId: z.string(),
+});
+
+export const SshKnownHostsDeleteRequestSchema = z.object({
+  type: z.literal("ssh.known_hosts.delete.request"),
+  id: z.string(),
+  requestId: z.string(),
+});
+
+export const SshKnownHostsImportRequestSchema = z.object({
+  type: z.literal("ssh.known_hosts.import.request"),
+  // Absent = the daemon user's ~/.ssh/known_hosts.
+  path: z.string().optional(),
+  requestId: z.string(),
+});
+
+export const SshKnownHostsListResponseSchema = z.object({
+  type: z.literal("ssh.known_hosts.list.response"),
+  payload: z.object({
+    knownHosts: z.array(SshKnownHostInfoSchema),
+    requestId: z.string(),
+  }),
+});
+
+export const SshKnownHostsTrustResponseSchema = z.object({
+  type: z.literal("ssh.known_hosts.trust.response"),
+  payload: z.object({
+    knownHost: SshKnownHostInfoSchema.nullable(),
+    error: z.string().nullable(),
+    requestId: z.string(),
+  }),
+});
+
+export const SshKnownHostsDeleteResponseSchema = z.object({
+  type: z.literal("ssh.known_hosts.delete.response"),
+  payload: z.object({
+    id: z.string(),
+    success: z.boolean(),
+    error: z.string().nullable(),
+    requestId: z.string(),
+  }),
+});
+
+export const SshKnownHostsImportResponseSchema = z.object({
+  type: z.literal("ssh.known_hosts.import.response"),
+  payload: z.object({
+    imported: z.number().int().nonnegative(),
+    skipped: z.number().int().nonnegative(),
+    error: z.string().nullable(),
+    requestId: z.string(),
+  }),
+});
+
+export const SshKnownHostsChangedSchema = z.object({
+  type: z.literal("ssh.known_hosts.changed"),
+  payload: z.object({
+    knownHosts: z.array(SshKnownHostInfoSchema),
+  }),
+});
+
+// --- ssh.logs.* ---
+
+export const SshLogsListRequestSchema = z.object({
+  type: z.literal("ssh.logs.list.request"),
+  limit: z.number().int().positive().optional(),
+  requestId: z.string(),
+});
+
+export const SshLogsListResponseSchema = z.object({
+  type: z.literal("ssh.logs.list.response"),
+  payload: z.object({
+    entries: z.array(SshLogEntrySchema),
+    requestId: z.string(),
+  }),
+});
+
+// Upsert semantics: clients merge the entry by id (connect appends an open
+// entry, disconnect updates the same entry with endedAt/durationMs).
+export const SshLogsUpdatedSchema = z.object({
+  type: z.literal("ssh.logs.updated"),
+  payload: z.object({
+    entry: SshLogEntrySchema,
+  }),
+});
+
 export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   BrowserAutomationExecuteResponseSchema,
   VoiceAudioChunkMessageSchema,
@@ -2687,6 +3293,7 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   UnsubscribeTerminalRequestSchema,
   TerminalInputSchema,
   KillTerminalRequestSchema,
+  TerminalHistoryListRequestSchema,
   CaptureTerminalRequestSchema,
   ChatCreateRequestSchema,
   ChatListRequestSchema,
@@ -2712,6 +3319,29 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   PortForwardListRequestSchema,
   PortForwardCreateRequestSchema,
   PortForwardDeleteRequestSchema,
+  SshHostsListRequestSchema,
+  SshHostsCreateRequestSchema,
+  SshHostsUpdateRequestSchema,
+  SshHostsDeleteRequestSchema,
+  SshHostsConnectRequestSchema,
+  SshHostGroupsCreateRequestSchema,
+  SshHostGroupsRenameRequestSchema,
+  SshHostGroupsDeleteRequestSchema,
+  SshKeysListRequestSchema,
+  SshKeysCreateRequestSchema,
+  SshKeysUpdateRequestSchema,
+  SshKeysDeleteRequestSchema,
+  SshForwardsListRequestSchema,
+  SshForwardsCreateRequestSchema,
+  SshForwardsUpdateRequestSchema,
+  SshForwardsDeleteRequestSchema,
+  SshForwardsStartRequestSchema,
+  SshForwardsStopRequestSchema,
+  SshKnownHostsListRequestSchema,
+  SshKnownHostsTrustRequestSchema,
+  SshKnownHostsDeleteRequestSchema,
+  SshKnownHostsImportRequestSchema,
+  SshLogsListRequestSchema,
 ]);
 
 export type SessionInboundMessage = z.infer<typeof SessionInboundMessageSchema>;
@@ -2936,10 +3566,15 @@ export const ServerInfoStatusPayloadSchema = z
         reclaudeUsageBroadcast: z.boolean().optional(),
         // COMPAT(agentDetach): added in v0.1.98, remove gate after 2026-12-19 once daemon floor >= v0.1.98.
         agentDetach: z.boolean().optional(),
+        // COMPAT(terminalLifecycle): added in v0.1.124, remove gate after 2027-01-07.
+        terminalLifecycle: z.boolean().optional(),
         // COMPAT(daemonDiagnostics): added in v0.1.100, remove gate after 2026-12-25 once daemon floor >= v0.1.100.
         daemonDiagnostics: z.boolean().optional(),
         // COMPAT(agentForkContext): added in v0.1.102, remove gate after 2026-12-28.
         agentForkContext: z.boolean().optional(),
+        // COMPAT(sshHosts): fork feature, added in v0.1.124. Old daemons omit it —
+        // clients keep the legacy schedules sidebar entry instead of the SSH one.
+        sshHosts: z.boolean().optional(),
       })
       .optional(),
   })
@@ -4957,6 +5592,11 @@ const TerminalInfoSchema = z.object({
   workspaceId: z.string().optional(),
   title: z.string().optional(),
   activity: TerminalActivitySchema.nullable().optional(),
+  // COMPAT(terminalLifecycle): added in v0.1.124. Old daemons omit these —
+  // clients must treat a missing status as "running".
+  status: z.enum(["running", "exited"]).optional(),
+  exitCode: z.number().nullable().optional(),
+  endedAt: z.number().nullable().optional(),
 });
 
 export const TerminalCellSchema = z.object({
@@ -4999,11 +5639,36 @@ export const TerminalStateSchema = z.object({
   scrollbackWrapped: z.array(z.boolean()).optional(),
 });
 
+// Wire shape for terminal list items. Historically cwd was omitted (lists were
+// per-cwd); host-wide lists need it back, so it returns as an optional field.
+const TerminalInfoWireSchema = TerminalInfoSchema.omit({ cwd: true }).extend({
+  cwd: z.string().optional(),
+});
+
 export const ListTerminalsResponseSchema = z.object({
   type: z.literal("list_terminals_response"),
   payload: z.object({
     cwd: z.string().optional(),
-    terminals: z.array(TerminalInfoSchema.omit({ cwd: true })),
+    terminals: z.array(TerminalInfoWireSchema),
+    requestId: z.string(),
+  }),
+});
+
+export const TerminalHistoryEntrySchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  cwd: z.string(),
+  workspaceId: z.string().optional(),
+  title: z.string().optional(),
+  exitCode: z.number().nullable().optional(),
+  closedAt: z.number(),
+});
+export type TerminalHistoryEntry = z.infer<typeof TerminalHistoryEntrySchema>;
+
+export const TerminalHistoryListResponseSchema = z.object({
+  type: z.literal("terminal.history.list.response"),
+  payload: z.object({
+    entries: z.array(TerminalHistoryEntrySchema),
     requestId: z.string(),
   }),
 });
@@ -5012,7 +5677,7 @@ export const TerminalsChangedSchema = z.object({
   type: z.literal("terminals_changed"),
   payload: z.object({
     cwd: z.string(),
-    terminals: z.array(TerminalInfoSchema.omit({ cwd: true })),
+    terminals: z.array(TerminalInfoWireSchema),
   }),
 });
 
@@ -5021,6 +5686,20 @@ export const CreateTerminalResponseSchema = z.object({
   payload: z.object({
     terminal: TerminalInfoSchema.nullable(),
     error: z.string().nullable(),
+    requestId: z.string(),
+  }),
+});
+
+// Defined here (after TerminalInfoSchema) rather than in the SSH section above
+// to avoid a temporal-dead-zone reference at module evaluation time.
+export const SshHostsConnectResponseSchema = z.object({
+  type: z.literal("ssh.hosts.connect.response"),
+  payload: z.object({
+    terminal: TerminalInfoSchema.nullable(),
+    error: z.string().nullable(),
+    // Structured error discriminator, e.g. "host_key_mismatch".
+    code: z.string().optional(),
+    observedKey: SshObservedHostKeySchema.optional(),
     requestId: z.string(),
   }),
 });
@@ -5343,6 +6022,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   ReclaudeUsageChangedMessageSchema,
   ListCommandsResponseSchema,
   ListTerminalsResponseSchema,
+  TerminalHistoryListResponseSchema,
   TerminalsChangedSchema,
   CreateTerminalResponseSchema,
   RenameTerminalResponseSchema,
@@ -5379,6 +6059,34 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   PortForwardCreateResponseSchema,
   PortForwardDeleteResponseSchema,
   PortForwardsChangedSchema,
+  SshHostsListResponseSchema,
+  SshHostsCreateResponseSchema,
+  SshHostsUpdateResponseSchema,
+  SshHostsDeleteResponseSchema,
+  SshHostsConnectResponseSchema,
+  SshHostsChangedSchema,
+  SshHostGroupsCreateResponseSchema,
+  SshHostGroupsRenameResponseSchema,
+  SshHostGroupsDeleteResponseSchema,
+  SshKeysListResponseSchema,
+  SshKeysCreateResponseSchema,
+  SshKeysUpdateResponseSchema,
+  SshKeysDeleteResponseSchema,
+  SshKeysChangedSchema,
+  SshForwardsListResponseSchema,
+  SshForwardsCreateResponseSchema,
+  SshForwardsUpdateResponseSchema,
+  SshForwardsDeleteResponseSchema,
+  SshForwardsStartResponseSchema,
+  SshForwardsStopResponseSchema,
+  SshForwardsChangedSchema,
+  SshKnownHostsListResponseSchema,
+  SshKnownHostsTrustResponseSchema,
+  SshKnownHostsDeleteResponseSchema,
+  SshKnownHostsImportResponseSchema,
+  SshKnownHostsChangedSchema,
+  SshLogsListResponseSchema,
+  SshLogsUpdatedSchema,
 ]);
 
 export type SessionOutboundMessage = z.infer<typeof SessionOutboundMessageSchema>;
@@ -5772,10 +6480,40 @@ export type RegisterPushTokenMessage = z.infer<typeof RegisterPushTokenMessageSc
 // Terminal message types
 export type ListTerminalsRequest = z.infer<typeof ListTerminalsRequestSchema>;
 export type ListTerminalsResponse = z.infer<typeof ListTerminalsResponseSchema>;
+export type TerminalHistoryListRequest = z.infer<typeof TerminalHistoryListRequestSchema>;
+export type TerminalHistoryListResponse = z.infer<typeof TerminalHistoryListResponseSchema>;
 export type PortForwardListResponse = z.infer<typeof PortForwardListResponseSchema>;
 export type PortForwardCreateResponse = z.infer<typeof PortForwardCreateResponseSchema>;
 export type PortForwardDeleteResponse = z.infer<typeof PortForwardDeleteResponseSchema>;
 export type PortForwardsChanged = z.infer<typeof PortForwardsChangedSchema>;
+export type SshHostsListResponse = z.infer<typeof SshHostsListResponseSchema>;
+export type SshHostsCreateResponse = z.infer<typeof SshHostsCreateResponseSchema>;
+export type SshHostsUpdateResponse = z.infer<typeof SshHostsUpdateResponseSchema>;
+export type SshHostsDeleteResponse = z.infer<typeof SshHostsDeleteResponseSchema>;
+export type SshHostsConnectResponse = z.infer<typeof SshHostsConnectResponseSchema>;
+export type SshHostsChanged = z.infer<typeof SshHostsChangedSchema>;
+export type SshHostGroupsCreateResponse = z.infer<typeof SshHostGroupsCreateResponseSchema>;
+export type SshHostGroupsRenameResponse = z.infer<typeof SshHostGroupsRenameResponseSchema>;
+export type SshHostGroupsDeleteResponse = z.infer<typeof SshHostGroupsDeleteResponseSchema>;
+export type SshKeysListResponse = z.infer<typeof SshKeysListResponseSchema>;
+export type SshKeysCreateResponse = z.infer<typeof SshKeysCreateResponseSchema>;
+export type SshKeysUpdateResponse = z.infer<typeof SshKeysUpdateResponseSchema>;
+export type SshKeysDeleteResponse = z.infer<typeof SshKeysDeleteResponseSchema>;
+export type SshKeysChanged = z.infer<typeof SshKeysChangedSchema>;
+export type SshForwardsListResponse = z.infer<typeof SshForwardsListResponseSchema>;
+export type SshForwardsCreateResponse = z.infer<typeof SshForwardsCreateResponseSchema>;
+export type SshForwardsUpdateResponse = z.infer<typeof SshForwardsUpdateResponseSchema>;
+export type SshForwardsDeleteResponse = z.infer<typeof SshForwardsDeleteResponseSchema>;
+export type SshForwardsStartResponse = z.infer<typeof SshForwardsStartResponseSchema>;
+export type SshForwardsStopResponse = z.infer<typeof SshForwardsStopResponseSchema>;
+export type SshForwardsChanged = z.infer<typeof SshForwardsChangedSchema>;
+export type SshKnownHostsListResponse = z.infer<typeof SshKnownHostsListResponseSchema>;
+export type SshKnownHostsTrustResponse = z.infer<typeof SshKnownHostsTrustResponseSchema>;
+export type SshKnownHostsDeleteResponse = z.infer<typeof SshKnownHostsDeleteResponseSchema>;
+export type SshKnownHostsImportResponse = z.infer<typeof SshKnownHostsImportResponseSchema>;
+export type SshKnownHostsChanged = z.infer<typeof SshKnownHostsChangedSchema>;
+export type SshLogsListResponse = z.infer<typeof SshLogsListResponseSchema>;
+export type SshLogsUpdated = z.infer<typeof SshLogsUpdatedSchema>;
 export type SubscribeTerminalsRequest = z.infer<typeof SubscribeTerminalsRequestSchema>;
 export type UnsubscribeTerminalsRequest = z.infer<typeof UnsubscribeTerminalsRequestSchema>;
 export type TerminalsChanged = z.infer<typeof TerminalsChangedSchema>;

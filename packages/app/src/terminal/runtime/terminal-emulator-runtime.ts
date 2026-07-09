@@ -302,10 +302,12 @@ export class TerminalEmulatorRuntime {
     );
     terminal.loadAddon(searchAddon);
     terminal.loadAddon(new ClipboardAddon());
+    terminal.open(input.host);
+    // LigaturesAddon.activate() throws when terminal.element is missing, so it must load
+    // after open() — loading earlier used to fail silently and ligatures never rendered.
     if (input.ligaturesEnabled !== false) {
       this.loadLigaturesAddon(terminal);
     }
-    terminal.open(input.host);
     this.themeBackgroundElements = this.collectThemeBackgroundElements(input);
     this.applyThemeBackground(input.theme);
     try {
@@ -540,12 +542,13 @@ export class TerminalEmulatorRuntime {
 
     const fontSet = document.fonts;
     const fontReadyHandler = () => {
+      this.remeasureFontMetrics();
       fitAndEmitResize({ force: true, shouldClaim: false });
     };
     fontSet?.addEventListener?.("loadingdone", fontReadyHandler);
     void fontSet?.ready
       .then(() => {
-        fitAndEmitResize({ force: true, shouldClaim: false });
+        fontReadyHandler();
         return;
       })
       .catch(() => {
@@ -832,6 +835,27 @@ export class TerminalEmulatorRuntime {
 
   paste(text: string): void {
     this.terminal?.paste(text);
+  }
+
+  // xterm measures cell width once at open() and only re-measures when fontFamily or
+  // fontSize *changes* — a same-value assignment is a no-op in its options service. If a
+  // bundled web font (e.g. Maple Mono NF CN) finishes loading after open(), the stale
+  // fallback metrics stick and every glyph sits in an oversized cell (reads as huge
+  // letter spacing). Nudge fontFamily through a sentinel and back to force a re-measure
+  // with the now-loaded font.
+  private remeasureFontMetrics(): void {
+    const terminal = this.terminal;
+    if (!terminal) {
+      return;
+    }
+
+    try {
+      const fontFamily = terminal.options.fontFamily ?? DEFAULT_TERMINAL_FONT_FAMILY;
+      terminal.options.fontFamily = fontFamily === "monospace" ? "serif" : "monospace";
+      terminal.options.fontFamily = fontFamily;
+    } catch {
+      // ignore
+    }
   }
 
   private refreshVisibleRows(): void {

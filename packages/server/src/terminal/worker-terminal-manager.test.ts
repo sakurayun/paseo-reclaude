@@ -972,3 +972,89 @@ it("removes a killed worker terminal from terminalExit without duplicate snapsho
     },
   ]);
 });
+
+it("retains exited terminals as status=exited until they are explicitly closed", async () => {
+  const worker = new FakeTerminalWorker();
+  const closedRecords: Array<{ id: string; exitCode: number | null }> = [];
+  manager = createWorkerTerminalManager({
+    requestTimeoutMs: 5,
+    forkWorker: () => worker,
+    onTerminalClosed: (record) => closedRecords.push({ id: record.id, exitCode: record.exitCode }),
+  });
+
+  const changedEvents: Array<{ cwd: string; terminals: { id: string; status?: string }[] }> = [];
+  manager.subscribeTerminalsChanged((event) => {
+    changedEvents.push({ cwd: event.cwd, terminals: event.terminals });
+  });
+
+  worker.emitWorkerMessage({
+    type: "terminalCreated",
+    terminal: {
+      id: "terminal-exiting",
+      name: "Shell",
+      cwd: "/workspace",
+      workspaceId: "ws-test",
+      activity: { state: "working", changedAt: 0 },
+    },
+    state: createTerminalState(),
+  });
+
+  worker.emitWorkerMessage({
+    type: "terminalExit",
+    terminalId: "terminal-exiting",
+    info: { exitCode: 1, signal: null, lastOutputLines: [] },
+  });
+
+  // The exited terminal stays in the mirror with its exit code...
+  const afterExit = changedEvents.at(-1);
+  expect(afterExit?.terminals).toEqual([
+    expect.objectContaining({ id: "terminal-exiting", status: "exited", exitCode: 1 }),
+  ]);
+  const listed = await manager.getTerminals("/workspace");
+  expect(listed.map((terminal) => terminal.id)).toEqual(["terminal-exiting"]);
+  expect(closedRecords).toEqual([]);
+
+  // ...and only an explicit kill removes it and records history.
+  manager.killTerminal("terminal-exiting");
+  expect(closedRecords).toEqual([{ id: "terminal-exiting", exitCode: 1 }]);
+  expect(await manager.getTerminals("/workspace")).toEqual([]);
+  expect(changedEvents.at(-1)?.terminals).toEqual([]);
+  // The worker already dropped the session on exit — no redundant kill request.
+  expect(worker.sentMessages.some((message) => message.type === "killTerminal")).toBe(false);
+});
+
+it("kills a running terminal immediately: removed from the mirror and recorded to history", async () => {
+  const worker = new FakeTerminalWorker();
+  const closedRecords: Array<{ id: string; exitCode: number | null }> = [];
+  manager = createWorkerTerminalManager({
+    requestTimeoutMs: 5,
+    forkWorker: () => worker,
+    onTerminalClosed: (record) => closedRecords.push({ id: record.id, exitCode: record.exitCode }),
+  });
+
+  worker.emitWorkerMessage({
+    type: "terminalCreated",
+    terminal: {
+      id: "terminal-running",
+      name: "Shell",
+      cwd: "/workspace",
+      workspaceId: "ws-test",
+      activity: { state: "idle", changedAt: 0 },
+    },
+    state: createTerminalState(),
+  });
+
+  manager.killTerminal("terminal-running");
+
+  expect(await manager.getTerminals("/workspace")).toEqual([]);
+  expect(closedRecords).toEqual([{ id: "terminal-running", exitCode: null }]);
+  expect(worker.sentMessages.some((message) => message.type === "killTerminal")).toBe(true);
+
+  // The late exit event for the already-removed terminal is ignored.
+  worker.emitWorkerMessage({
+    type: "terminalExit",
+    terminalId: "terminal-running",
+    info: { exitCode: 0, signal: null, lastOutputLines: [] },
+  });
+  expect(closedRecords).toHaveLength(1);
+});

@@ -19,11 +19,7 @@ import type { SheetHeader } from "@/components/adaptive-modal-sheet";
 import { useProviderSettingsStore } from "@/stores/provider-settings-store";
 import { Button } from "@/components/ui/button";
 import { ICON_SIZE, type Theme } from "@/styles/theme";
-import {
-  Combobox,
-  type ComboboxOption,
-  type ComboboxProps,
-} from "@/components/ui/combobox";
+import { Combobox, type ComboboxOption, type ComboboxProps } from "@/components/ui/combobox";
 import { getProviderIcon } from "@/components/provider-icons";
 import {
   buildSelectedTriggerLabel,
@@ -76,6 +72,15 @@ const ThemedSettings = withUnistyles(Settings);
 const ThemedStar = withUnistyles(Star);
 
 const foregroundMutedMapping = (theme: Theme) => ({
+  color: theme.colors.foregroundMuted,
+});
+
+const ThemedCheck = withUnistyles(Check);
+
+// Provider icon in a model row: themed size + muted color via uniProps so the
+// row component itself never needs the theme object in scope.
+const modelRowProviderIconMapping = (theme: Theme) => ({
+  size: theme.iconSize.sm,
   color: theme.colors.foregroundMuted,
 });
 
@@ -212,7 +217,7 @@ function ModelRow({
   onToggleFavorite?: (provider: string, modelId: string) => void;
 }) {
   const { t } = useTranslation();
-  const ProviderIcon = getProviderIcon(row.provider);
+  const ProviderIcon = useMemo(() => withUnistyles(getProviderIcon(row.provider)), [row.provider]);
   const rowStyle = useCallback(
     ({ hovered, pressed }: PressableStateCallbackType & { hovered?: boolean }) => [
       styles.modelRow,
@@ -233,7 +238,7 @@ function ModelRow({
   return (
     <Pressable onPress={onPress} style={rowStyle}>
       <View style={styles.modelRowLeadingSlot}>
-        <ProviderIcon size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
+        <ProviderIcon uniProps={modelRowProviderIconMapping} />
       </View>
       <View style={styles.modelRowContent}>
         <Text style={styles.modelRowLabel}>{row.modelLabel}</Text>
@@ -245,7 +250,7 @@ function ModelRow({
       </View>
       {isSelected ? (
         <View style={styles.modelRowCheckSlot}>
-          <Check size={16} color={theme.colors.foregroundMuted} />
+          <ThemedCheck size={16} uniProps={foregroundMutedMapping} />
         </View>
       ) : null}
       {onToggleFavorite ? (

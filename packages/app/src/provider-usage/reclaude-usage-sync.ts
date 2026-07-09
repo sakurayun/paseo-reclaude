@@ -1,6 +1,6 @@
 import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
 
-import { queryClient as appQueryClient } from "@/query/query-client";
+import { queryClient as appQueryClient } from "@/data/query-client";
 import type { ProviderUsageListPayload } from "./types";
 import { providerUsageQueryKey } from "./use-provider-usage";
 import { reclaudeStatusQueryKey } from "./use-reclaude";

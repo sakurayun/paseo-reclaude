@@ -4,6 +4,10 @@ import { createJSONStorage, persist, type StateStorage } from "zustand/middlewar
 
 export type SidebarGroupMode = "project" | "workspace" | "status";
 
+// Which content the sidebar body shows: the agent/session list or the SSH host
+// manager. Ephemeral (not persisted) so the sidebar always opens on sessions.
+export type SidebarContentMode = "sessions" | "ssh";
+
 const SIDEBAR_VIEW_STORAGE_KEY = "sidebar-view";
 const LEGACY_SIDEBAR_GROUP_MODE_STORAGE_KEY = "sidebar-group-mode";
 const SIDEBAR_VIEW_STORE_VERSION = 2;
@@ -12,11 +16,14 @@ interface SidebarViewStoreState {
   groupMode: SidebarGroupMode;
   hostFilters: string[];
   searchQuery: string;
+  contentMode: SidebarContentMode;
   setGroupMode: (mode: SidebarGroupMode) => void;
   toggleHostFilter: (serverId: string) => void;
   clearHostFilters: () => void;
   setSearchQuery: (query: string) => void;
   reconcileHostFilters: (serverIds: readonly string[]) => void;
+  setContentMode: (mode: SidebarContentMode) => void;
+  toggleContentMode: () => void;
 }
 
 interface SidebarViewPersistedState {
@@ -97,7 +104,11 @@ export const useSidebarViewStore = create<SidebarViewStoreState>()(
       groupMode: "project",
       hostFilters: [],
       searchQuery: "",
+      contentMode: "sessions",
       setGroupMode: (mode) => set({ groupMode: mode }),
+      setContentMode: (mode) => set({ contentMode: mode }),
+      toggleContentMode: () =>
+        set((state) => ({ contentMode: state.contentMode === "ssh" ? "sessions" : "ssh" })),
       toggleHostFilter: (serverId) =>
         set((state) => ({
           hostFilters: state.hostFilters.includes(serverId)

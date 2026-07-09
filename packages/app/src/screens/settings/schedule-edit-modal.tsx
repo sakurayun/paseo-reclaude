@@ -7,7 +7,7 @@ import type { ScheduleSummary } from "@getpaseo/protocol/schedule/types";
 import { AdaptiveModalSheet, type SheetHeader } from "@/components/adaptive-modal-sheet";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
-import { FormField, FormTextInput } from "@/components/ui/form-field";
+import { Field, FormTextInput } from "@/components/ui/form-field";
 import { SettingsTextArea } from "@/components/settings-textarea";
 import { CombinedModelSelector } from "@/components/combined-model-selector";
 import { ScheduleCadencePicker } from "@/components/schedule-cadence-picker";
@@ -245,7 +245,7 @@ export function ScheduleEditModal({
       desktopMaxWidth={560}
     >
       <View style={styles.body}>
-        <FormField label={t("settings.host.schedules.nameLabel")}>
+        <Field label={t("settings.host.schedules.nameLabel")}>
           <FormTextInput
             initialValue={name}
             resetKey={resetKey}
@@ -255,9 +255,9 @@ export function ScheduleEditModal({
             accessibilityLabel={t("settings.host.schedules.nameLabel")}
             testID="schedule-name-input"
           />
-        </FormField>
+        </Field>
 
-        <FormField
+        <Field
           label={t("settings.host.schedules.promptLabel")}
           error={fieldErrors.prompt}
           hint={t("settings.host.schedules.promptHint")}
@@ -271,9 +271,9 @@ export function ScheduleEditModal({
               testID="schedule-prompt-input"
             />
           </View>
-        </FormField>
+        </Field>
 
-        <FormField label={t("settings.host.schedules.providerLabel")} error={fieldErrors.provider}>
+        <Field label={t("settings.host.schedules.providerLabel")} error={fieldErrors.provider}>
           <View style={styles.selectorWrapper}>
             <CombinedModelSelector
               providers={modelSelectorProviders}
@@ -284,9 +284,9 @@ export function ScheduleEditModal({
               serverId={serverId}
             />
           </View>
-        </FormField>
+        </Field>
 
-        <FormField
+        <Field
           label={t("settings.host.schedules.cwdLabel")}
           error={fieldErrors.cwd}
           hint={t("settings.host.schedules.cwdHint")}
@@ -302,7 +302,7 @@ export function ScheduleEditModal({
             accessibilityLabel={t("settings.host.schedules.cwdLabel")}
             testID="schedule-cwd-input"
           />
-        </FormField>
+        </Field>
 
         <ScheduleCadencePicker
           value={cadenceDraft}
@@ -312,7 +312,7 @@ export function ScheduleEditModal({
         />
         {fieldErrors.cadence ? <Text style={styles.fieldError}>{fieldErrors.cadence}</Text> : null}
 
-        <FormField
+        <Field
           label={t("settings.host.schedules.maxRunsLabel")}
           error={fieldErrors.maxRuns}
           hint={t("settings.host.schedules.maxRunsHint")}
@@ -327,7 +327,7 @@ export function ScheduleEditModal({
             accessibilityLabel={t("settings.host.schedules.maxRunsLabel")}
             testID="schedule-max-runs-input"
           />
-        </FormField>
+        </Field>
 
         {!isEdit ? (
           <View style={styles.switchRow}>

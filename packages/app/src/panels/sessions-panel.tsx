@@ -1,7 +1,12 @@
 import { useCallback, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { GitBranch, History } from "lucide-react-native";
+import { GitBranch, History, SquareTerminal } from "lucide-react-native";
 import { Pressable, ScrollView, Text, View, type PressableStateCallbackType } from "react-native";
+import { useQueryClient } from "@tanstack/react-query";
+import { useFetchQuery } from "@/data/query";
+import type { TerminalHistoryEntry } from "@getpaseo/protocol/messages";
+import { useHostFeature } from "@/runtime/host-features";
+import { navigateToPreparedWorkspaceTab } from "@/utils/workspace-navigation";
 import invariant from "tiny-invariant";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
@@ -83,6 +88,48 @@ function SessionRow({
   );
 }
 
+function ClosedTerminalRow({
+  entry,
+  onRestore,
+  restoring,
+}: {
+  entry: TerminalHistoryEntry;
+  onRestore: (entry: TerminalHistoryEntry) => void;
+  restoring: boolean;
+}) {
+  const { t } = useTranslation();
+  const handleRestore = useCallback(() => onRestore(entry), [entry, onRestore]);
+  const failed = entry.exitCode != null && entry.exitCode !== 0;
+
+  return (
+    <View style={styles.sessionRow} testID={`sessions-panel-terminal-${entry.id}`}>
+      <View style={styles.sessionIcon}>
+        <ThemedSquareTerminal size={16} uniProps={mutedColorMapping} />
+      </View>
+      <View style={styles.sessionBody}>
+        <Text style={styles.sessionTitle} numberOfLines={1}>
+          {entry.title?.trim() || entry.name}
+        </Text>
+        <Text style={styles.sessionMeta} numberOfLines={1}>
+          {formatTimeAgo(new Date(entry.closedAt))}
+          {failed ? ` · exit ${entry.exitCode}` : ""}
+        </Text>
+      </View>
+      <Pressable
+        onPress={handleRestore}
+        disabled={restoring}
+        style={styles.archivedToggle}
+        accessibilityRole="button"
+        testID={`sessions-panel-terminal-${entry.id}-restore`}
+      >
+        <Text style={styles.archivedToggleText}>
+          {t("sessions.workspacePanel.restoreTerminal")}
+        </Text>
+      </Pressable>
+    </View>
+  );
+}
+
 function SectionHeader({ section }: { section: WorkspaceSessionSection }) {
   const { t } = useTranslation();
   return (
@@ -136,6 +183,72 @@ function SessionsPanel() {
     navigateToAgentDirectoryEntry(session);
   }, []);
 
+  // Closed-terminal history (kill from the tab close prompt). Only listed when
+  // archived sessions are shown — same "history" gesture — and only on daemons
+  // with the terminalLifecycle capability.
+  const client = useSessionStore((state) => state.sessions[serverId]?.client ?? null);
+  const queryClient = useQueryClient();
+  const supportsTerminalLifecycle = useHostFeature(serverId, "terminalLifecycle");
+  const terminalHistoryEnabled = includeArchived && supportsTerminalLifecycle && Boolean(client);
+  const terminalHistoryQuery = useFetchQuery({
+    queryKey: ["terminal-history", serverId],
+    enabled: terminalHistoryEnabled,
+    dataShape: "list",
+    staleTimeMs: 10_000,
+    queryFn: async () => {
+      if (!client) {
+        throw new Error("Host disconnected");
+      }
+      return await client.listTerminalHistory();
+    },
+  });
+  const currentWorkspace = useMemo(
+    () => workspaces.find((workspace) => workspace.id === target.workspaceId) ?? null,
+    [target.workspaceId, workspaces],
+  );
+  const closedTerminals = useMemo(() => {
+    if (!terminalHistoryEnabled) {
+      return [];
+    }
+    const root = currentWorkspace?.projectRootPath ?? currentWorkspace?.workspaceDirectory ?? null;
+    const entries = terminalHistoryQuery.data?.entries ?? [];
+    if (!root) {
+      return entries;
+    }
+    return entries.filter((entry) => entry.cwd === root || entry.cwd.startsWith(`${root}/`));
+  }, [currentWorkspace, terminalHistoryEnabled, terminalHistoryQuery.data]);
+
+  const [restoringTerminalId, setRestoringTerminalId] = useState<string | null>(null);
+  const handleRestoreTerminal = useCallback(
+    (entry: TerminalHistoryEntry) => {
+      if (!client || restoringTerminalId) {
+        return;
+      }
+      setRestoringTerminalId(entry.id);
+      void (async () => {
+        try {
+          const payload = await client.createTerminal(entry.cwd, entry.name, undefined, {
+            workspaceId: target.workspaceId,
+          });
+          const created = payload.terminal;
+          if (created) {
+            navigateToPreparedWorkspaceTab({
+              serverId,
+              workspaceId: target.workspaceId,
+              target: { kind: "terminal", terminalId: created.id },
+            });
+          }
+        } catch (error) {
+          console.warn("[sessions-panel] failed to restore terminal", error);
+        } finally {
+          setRestoringTerminalId(null);
+          void queryClient.invalidateQueries({ queryKey: ["terminal-history", serverId] });
+        }
+      })();
+    },
+    [client, queryClient, restoringTerminalId, serverId, target.workspaceId],
+  );
+
   const handleToggleArchived = useCallback(() => {
     setIncludeArchived((current) => !current);
   }, []);
@@ -148,7 +261,8 @@ function SessionsPanel() {
     [],
   );
 
-  const hasAnySession = sections.some((section) => section.sessions.length > 0);
+  const hasAnySession =
+    sections.some((section) => section.sessions.length > 0) || closedTerminals.length > 0;
 
   return (
     <View style={styles.container} testID="workspace-sessions-panel">
@@ -195,6 +309,27 @@ function SessionsPanel() {
               </View>
             ) : null,
           )}
+          {closedTerminals.length > 0 ? (
+            <View style={styles.section}>
+              <View style={styles.sectionHeader}>
+                <Text style={styles.sectionTitle} numberOfLines={1}>
+                  {t("sessions.workspacePanel.closedTerminals")}
+                </Text>
+                <View style={styles.sectionSpacer} />
+                <Text style={styles.sectionCount}>{closedTerminals.length}</Text>
+              </View>
+              <View style={styles.sectionBody}>
+                {closedTerminals.map((entry) => (
+                  <ClosedTerminalRow
+                    key={`${entry.id}:${entry.closedAt}`}
+                    entry={entry}
+                    onRestore={handleRestoreTerminal}
+                    restoring={restoringTerminalId === entry.id}
+                  />
+                ))}
+              </View>
+            </View>
+          ) : null}
         </ScrollView>
       ) : null}
     </View>
@@ -208,6 +343,7 @@ export const sessionsPanelRegistration: PanelRegistration<"sessions"> = {
 };
 
 const ThemedGitBranch = withUnistyles(GitBranch);
+const ThemedSquareTerminal = withUnistyles(SquareTerminal);
 const ThemedLoadingSpinner = withUnistyles(LoadingSpinner);
 
 const mutedColorMapping = (theme: Theme) => ({

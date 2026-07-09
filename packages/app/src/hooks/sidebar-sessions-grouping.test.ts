@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { ProjectPlacementPayload } from "@getpaseo/protocol/messages";
 import {
+  assignTerminalsToSidebarGroups,
   groupSidebarSessionsByProject,
   resolveSidebarSessionGroupWorkspaceTarget,
 } from "./sidebar-sessions-grouping";
@@ -343,5 +344,38 @@ describe("resolveSidebarSessionGroupWorkspaceTarget", () => {
 
     expect(resolveSidebarSessionGroupWorkspaceTarget(group, "server")).toBeNull();
     expect(resolveSidebarSessionGroupWorkspaceTarget(group, " ")).toBeNull();
+  });
+});
+
+describe("assignTerminalsToSidebarGroups", () => {
+  it("matches by workspaceId first, then by cwd ancestry, and drops orphans", () => {
+    const groups = groupSidebarSessionsByProject([
+      session({
+        id: "s1",
+        recencyMs: 2,
+        workspaceId: "ws-a",
+        projectPlacement: placement({ projectKey: "proj-a" }),
+      }),
+      session({
+        id: "s2",
+        recencyMs: 1,
+        workspaceId: "ws-b",
+        projectPlacement: placement({ projectKey: "proj-b" }),
+      }),
+    ]);
+    const groupA = groups.find((group) => group.projectKey === "proj-a");
+    const groupB = groups.find((group) => group.projectKey === "proj-b");
+
+    const byWorkspace = { id: "t1", cwd: "/elsewhere", workspaceId: "ws-b" };
+    // session() fixtures all use cwd "/repo": a terminal in a subdirectory of
+    // that cwd resolves through ancestry to the first matching group.
+    const byCwd = { id: "t2", cwd: "/repo/sub", workspaceId: "standalone:/repo/sub" };
+    const orphan = { id: "t3", cwd: "/nowhere", workspaceId: "standalone:/nowhere" };
+
+    const assigned = assignTerminalsToSidebarGroups(groups, [byWorkspace, byCwd, orphan]);
+
+    expect(assigned.get(groupB?.key ?? "")).toEqual([byWorkspace]);
+    expect(assigned.get(groupA?.key ?? "")).toEqual([byCwd]);
+    expect([...assigned.values()].flat()).toHaveLength(2);
   });
 });

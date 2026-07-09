@@ -16,7 +16,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useSessionStore } from "@/stores/session-store";
-import { queryClient as appQueryClient } from "@/query/query-client";
+import { queryClient as appQueryClient } from "@/data/query-client";
 import { invalidateCheckoutGitQueriesForClient } from "@/git/query-keys";
 import { useCheckoutGitActionsStore } from "./actions-store";
 import { useBranchesQuery, useGitRefsQuery, useStashesQuery } from "./use-source-control-queries";

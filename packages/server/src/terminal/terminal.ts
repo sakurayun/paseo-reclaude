@@ -31,6 +31,9 @@ export interface TerminalExitInfo {
   exitCode: number | null;
   signal: number | null;
   lastOutputLines: string[];
+  // Stamped by the daemon-side mirror when the exit event lands; the worker
+  // never sets it.
+  endedAt?: number;
 }
 
 export interface TerminalCommandFinishedInfo {
@@ -115,6 +118,24 @@ function parseCommandFinishedOsc(data: string): TerminalCommandFinishedInfo | nu
   return { exitCode: Number(parts[1]) };
 }
 
+export interface TerminalBackendExitEvent {
+  exitCode: number | null;
+  signal: number | null;
+}
+
+// Byte-transport abstraction under a terminal session. The default backend is
+// a node-pty process; the SSH host manager plugs an ssh2 shell channel in via
+// `CreateTerminalOptions.backend`. Everything above the backend (headless
+// xterm, scrollback, DA1/OSC replies, activity, title) is backend-agnostic.
+export interface TerminalBackend {
+  write(data: string): void;
+  resize(cols: number, rows: number): void;
+  kill(signal?: NodeJS.Signals): void;
+  onData(listener: (data: string) => void): void;
+  onExit(listener: (event: TerminalBackendExitEvent) => void): void;
+  waitForStart?(): Promise<void>;
+}
+
 export interface CreateTerminalOptions {
   id?: string;
   cwd: string;
@@ -131,6 +152,9 @@ export interface CreateTerminalOptions {
   // Windows-only default-shell preferences (pwsh7 / gsudo elevation). Ignored on
   // other platforms and when an explicit `command` is provided.
   windowsShell?: WindowsShellPreference;
+  // When set, the terminal attaches to this transport instead of spawning a
+  // pty process (command/shell/windowsShell are ignored).
+  backend?: TerminalBackend;
 }
 
 function toTerminalActivity(snapshot: {
@@ -890,6 +914,134 @@ function extractLastOutputLinesFromText(text: string, limit: number): string[] {
   return lines.slice(-limit);
 }
 
+interface CreatePtyBackendInput {
+  command?: string;
+  args: string[];
+  shell?: string;
+  windowsShell?: WindowsShellPreference;
+  cwd: string;
+  workspaceId: string;
+  cols: number;
+  rows: number;
+  env: Record<string, string>;
+  activityEnv: Record<string, string>;
+}
+
+// Default terminal backend: spawns a local pty process. Extracted from
+// createTerminal so alternate transports (ssh2 shell channels) can implement
+// TerminalBackend without touching the session pipeline.
+async function createPtyBackend(input: CreatePtyBackendInput): Promise<TerminalBackend> {
+  ensureNodePtySpawnHelperExecutableForCurrentPlatform();
+
+  const { command: spawnCommand, args: spawnArgs } = input.command
+    ? await resolveTerminalSpawnCommand(input.command, input.args)
+    : await resolveDefaultShellSpawn({
+        shell: input.shell,
+        windowsShell: input.windowsShell,
+        onWarn: (message) => console.warn(`[paseo-terminal] ${message}`),
+      });
+  const ptyProcess = pty.spawn(spawnCommand, spawnArgs, {
+    name: "xterm-256color",
+    cols: input.cols,
+    rows: input.rows,
+    cwd: input.cwd,
+    env: buildTerminalEnvironment({
+      shell: spawnCommand,
+      env: {
+        ...input.env,
+        ...input.activityEnv,
+        PASEO_WORKSPACE_ID: input.workspaceId,
+      },
+    }),
+  });
+
+  let processExited = false;
+  let dataListener: ((data: string) => void) | null = null;
+  let exitListener: ((event: TerminalBackendExitEvent) => void) | null = null;
+  ptyProcess.onData((data) => {
+    dataListener?.(data);
+  });
+  ptyProcess.onExit((event) => {
+    processExited = true;
+    exitListener?.({
+      exitCode: event.exitCode ?? null,
+      signal: event.signal ?? null,
+    });
+  });
+
+  return {
+    write(data: string): void {
+      ptyProcess.write(data);
+    },
+    resize(cols: number, rows: number): void {
+      ptyProcess.resize(cols, rows);
+    },
+    kill(signal?: NodeJS.Signals): void {
+      if (process.platform === "win32") {
+        ptyProcess.kill();
+        return;
+      }
+      ptyProcess.kill(signal);
+    },
+    onData(listener: (data: string) => void): void {
+      dataListener = listener;
+    },
+    onExit(listener: (event: TerminalBackendExitEvent) => void): void {
+      exitListener = listener;
+    },
+    async waitForStart(): Promise<void> {
+      // ConPTY starts the process asynchronously; wait for a real pid on
+      // Windows so early input isn't dropped. POSIX ptys are ready at spawn.
+      if (process.platform !== "win32") {
+        return;
+      }
+      const started = (): boolean => {
+        const windowsPtyProcess = ptyProcess as unknown as WindowsPtyProcessReadiness;
+        return ptyProcess.pid > 0 || (windowsPtyProcess._agent?.innerPid ?? 0) > 0 || processExited;
+      };
+      const deadline = Date.now() + 5000;
+      while (!started() && Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+    },
+  };
+}
+
+interface ResolveTerminalBackendContext {
+  command?: string;
+  args: string[];
+  shell?: string;
+  cwd: string;
+  workspaceId: string;
+  cols: number;
+  rows: number;
+  env: Record<string, string>;
+  activityEnv: Record<string, string>;
+}
+
+// Uses a caller-provided backend when present, else spawns the default pty
+// backend. Kept separate so createTerminal stays within its complexity budget.
+function resolveTerminalBackend(
+  options: CreateTerminalOptions,
+  context: ResolveTerminalBackendContext,
+): Promise<TerminalBackend> {
+  if (options.backend) {
+    return Promise.resolve(options.backend);
+  }
+  return createPtyBackend({
+    ...(context.command !== undefined ? { command: context.command } : {}),
+    args: context.args,
+    ...(context.shell !== undefined ? { shell: context.shell } : {}),
+    ...(options.windowsShell !== undefined ? { windowsShell: options.windowsShell } : {}),
+    cwd: context.cwd,
+    workspaceId: context.workspaceId,
+    cols: context.cols,
+    rows: context.rows,
+    env: context.env,
+    activityEnv: context.activityEnv,
+  });
+}
+
 export async function createTerminal(options: CreateTerminalOptions): Promise<TerminalSession> {
   const {
     cwd,
@@ -942,29 +1094,18 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
     allowProposedApi: true,
   });
 
-  ensureNodePtySpawnHelperExecutableForCurrentPlatform();
-
-  // Create PTY
-  const { command: spawnCommand, args: spawnArgs } = command
-    ? await resolveTerminalSpawnCommand(command, args)
-    : await resolveDefaultShellSpawn({
-        shell,
-        windowsShell: options.windowsShell,
-        onWarn: (message) => console.warn(`[paseo-terminal] ${message}`),
-      });
-  const ptyProcess = pty.spawn(spawnCommand, spawnArgs, {
-    name: "xterm-256color",
+  // Create the byte transport — a local pty by default, or a caller-provided
+  // backend (e.g. an ssh2 shell channel).
+  const backend = await resolveTerminalBackend(options, {
+    command,
+    args,
+    shell,
+    cwd,
+    workspaceId,
     cols,
     rows,
-    cwd,
-    env: buildTerminalEnvironment({
-      shell: spawnCommand,
-      env: {
-        ...env,
-        ...activityEnv,
-        PASEO_WORKSPACE_ID: workspaceId,
-      },
-    }),
+    env,
+    activityEnv,
   });
 
   function emitTitleChange(nextTitle: string | undefined): void {
@@ -1024,7 +1165,7 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
   // Respond to DA1 queries (CSI c or CSI 0 c) — apps like nvim query terminal capabilities
   terminal.parser.registerCsiHandler({ final: "c" }, (params) => {
     if (params.length === 0 || (params.length === 1 && params[0] === 0)) {
-      ptyProcess.write("\x1b[?62;4;22c");
+      backend.write("\x1b[?62;4;22c");
       return true;
     }
     return false;
@@ -1034,12 +1175,12 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
       return false;
     }
     if (params[0] === 5) {
-      ptyProcess.write("\x1b[0n");
+      backend.write("\x1b[0n");
       return true;
     }
     if (params[0] === 6) {
       const buffer = terminal.buffer.active;
-      ptyProcess.write(`\x1b[${buffer.cursorY + 1};${buffer.cursorX + 1}R`);
+      backend.write(`\x1b[${buffer.cursorY + 1};${buffer.cursorX + 1}R`);
       return true;
     }
     return false;
@@ -1049,7 +1190,7 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
       return false;
     }
     const buffer = terminal.buffer.active;
-    ptyProcess.write(`\x1b[?${buffer.cursorY + 1};${buffer.cursorX + 1}R`);
+    backend.write(`\x1b[?${buffer.cursorY + 1};${buffer.cursorX + 1}R`);
     return true;
   });
   for (const [code, response] of TERMINAL_OSC_COLOR_QUERY_RESPONSES) {
@@ -1057,7 +1198,7 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
       if (data.trim() !== "?") {
         return false;
       }
-      ptyProcess.write(`\x1b]${code};${response}\x1b\\`);
+      backend.write(`\x1b]${code};${response}\x1b\\`);
       return true;
     });
   }
@@ -1184,12 +1325,12 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
     });
   }
 
-  // Pipe PTY output to terminal emulator
-  ptyProcess.onData((data) => {
+  // Pipe backend output to terminal emulator
+  backend.onData((data) => {
     if (killed) return;
     const inputModeUpdate = inputModeTracker.feed(data);
     for (const response of inputModeUpdate.responses) {
-      ptyProcess.write(response);
+      backend.write(response);
     }
     recentOutputChunks.push(data);
     recentOutputLength += data.length;
@@ -1212,7 +1353,7 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
     writeOutputToHeadless(data);
   });
 
-  ptyProcess.onExit((event) => {
+  backend.onExit((event) => {
     killed = true;
     processExited = true;
     for (const waiter of Array.from(processExitWaiters)) {
@@ -1231,22 +1372,6 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
     );
     disposeResources();
   });
-
-  async function waitForPtyProcessStart(): Promise<void> {
-    if (process.platform !== "win32") {
-      return;
-    }
-
-    const started = (): boolean => {
-      const windowsPtyProcess = ptyProcess as unknown as WindowsPtyProcessReadiness;
-      return ptyProcess.pid > 0 || (windowsPtyProcess._agent?.innerPid ?? 0) > 0 || processExited;
-    };
-
-    const deadline = Date.now() + 5000;
-    while (!started() && Date.now() < deadline) {
-      await new Promise((resolve) => setTimeout(resolve, 10));
-    }
-  }
 
   function getState(snapshotOptions?: TerminalStateSnapshotOptions): TerminalState {
     return {
@@ -1288,7 +1413,7 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
   }
 
   function writeInputToPty(data: string): void {
-    ptyProcess.write(data);
+    backend.write(data);
   }
 
   function flushPendingInput(): void {
@@ -1326,7 +1451,7 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
       case "resize":
         flushPendingInput();
         terminal.resize(msg.cols, msg.rows);
-        ptyProcess.resize(msg.cols, msg.rows);
+        backend.resize(msg.cols, msg.rows);
         stateRevision += 1;
         break;
       case "mouse":
@@ -1473,11 +1598,7 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
   }
 
   function killPtyProcess(signal?: NodeJS.Signals): void {
-    if (process.platform === "win32") {
-      ptyProcess.kill();
-      return;
-    }
-    ptyProcess.kill(signal);
+    backend.kill(signal);
   }
 
   function waitForProcessExit(timeoutMs: number): Promise<boolean> {
@@ -1532,11 +1653,11 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
       await waitForProcessExit(forceTimeoutMs);
     }
 
-    // Finalize bookkeeping (idempotent if ptyProcess.onExit already fired).
+    // Finalize bookkeeping (idempotent if backend.onExit already fired).
     kill();
   }
 
-  await waitForPtyProcessStart();
+  await backend.waitForStart?.();
 
   // Small delay to let shell initialize
   await new Promise((resolve) => setTimeout(resolve, 50));

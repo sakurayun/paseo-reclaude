@@ -9,12 +9,14 @@ import type { AgentStorage } from "./agent/agent-storage.js";
 import type { DownloadTokenStore } from "./file-download/token-store.js";
 import type { TerminalManager } from "../terminal/terminal-manager.js";
 import type { PortForwardManager } from "../port-forward/port-forward-manager.js";
+import type { SshManager } from "../ssh/ssh-manager.js";
 import type pino from "pino";
 import type { ProjectRegistry, WorkspaceRegistry } from "./workspace-registry.js";
 import type { FileBackedChatService } from "./chat/chat-service.js";
 import type { LoopService } from "./loop-service.js";
 import type { WorkspaceLayoutStore } from "./workspace-layout-store.js";
 import type { PromptPresetsStore } from "./prompt-presets-store.js";
+import type { TerminalHistoryStore } from "../terminal/terminal-history-store.js";
 import type { AppearanceSettingsStore } from "./appearance-settings-store.js";
 import type { ModelPreferencesStore } from "./model-preferences-store.js";
 import type { ComposerDraftsStore } from "./composer-drafts-store.js";
@@ -443,6 +445,7 @@ export class VoiceAssistantWebSocketServer {
   private readonly workspaceRegistry: WorkspaceRegistry;
   private readonly workspaceLayoutStore: WorkspaceLayoutStore | null;
   private readonly promptPresetsStore: PromptPresetsStore | null;
+  private readonly terminalHistoryStore: TerminalHistoryStore | null;
   private readonly appearanceSettingsStore: AppearanceSettingsStore | null;
   private readonly modelPreferencesStore: ModelPreferencesStore | null;
   private readonly composerDraftsStore: ComposerDraftsStore | null;
@@ -464,6 +467,7 @@ export class VoiceAssistantWebSocketServer {
   private dictationSettings: DictationSettingsController | null = null;
   private terminalManager!: TerminalManager | null;
   private portForwardManager!: PortForwardManager | null;
+  private sshManager!: SshManager | null;
   private serviceProxy!: ServiceProxySubsystem | null;
   private scriptRuntimeStore!: WorkspaceScriptRuntimeStore | null;
   private getDaemonTcpPort!: (() => number | null) | null;
@@ -558,6 +562,10 @@ export class VoiceAssistantWebSocketServer {
     modelPreferencesStore?: ModelPreferencesStore | null,
     composerDraftsStore?: ComposerDraftsStore | null,
     browserToolsBroker: BrowserToolsBroker | null = null,
+    terminalHistoryStore?: TerminalHistoryStore | null,
+    // Appended at the end (rather than beside portForwardManager) so existing
+    // positional callers stay aligned; only bootstrap passes it.
+    sshManager?: SshManager | null,
   ) {
     this.logger = logger.child({ module: "websocket-server" });
     this.serverId = serverId;
@@ -573,6 +581,7 @@ export class VoiceAssistantWebSocketServer {
     this.workspaceRegistry = workspaceRegistry ?? createNoopWorkspaceRegistry();
     this.workspaceLayoutStore = workspaceLayoutStore ?? null;
     this.promptPresetsStore = promptPresetsStore ?? null;
+    this.terminalHistoryStore = terminalHistoryStore ?? null;
     this.appearanceSettingsStore = appearanceSettingsStore ?? null;
     this.modelPreferencesStore = modelPreferencesStore ?? null;
     this.composerDraftsStore = composerDraftsStore ?? null;
@@ -598,6 +607,7 @@ export class VoiceAssistantWebSocketServer {
       speech,
       terminalManager,
       portForwardManager,
+      sshManager,
       dictation,
       onLifecycleIntent,
       serviceProxy,
@@ -708,6 +718,7 @@ export class VoiceAssistantWebSocketServer {
     speech: SpeechService | null | undefined;
     terminalManager: TerminalManager | null | undefined;
     portForwardManager: PortForwardManager | null | undefined;
+    sshManager: SshManager | null | undefined;
     dictation: { finalTimeoutMs?: number } | undefined;
     onLifecycleIntent: ((intent: SessionLifecycleIntent) => void) | undefined;
     serviceProxy: ServiceProxySubsystem | null | undefined;
@@ -723,6 +734,7 @@ export class VoiceAssistantWebSocketServer {
     this.speech = params.speech ?? null;
     this.terminalManager = params.terminalManager ?? null;
     this.portForwardManager = params.portForwardManager ?? null;
+    this.sshManager = params.sshManager ?? null;
     if (this.terminalManager) {
       this.unsubscribeTerminalActivity = this.terminalManager.subscribeTerminalActivity((event) => {
         const reason = resolveTerminalAttentionReason({
@@ -1126,6 +1138,7 @@ export class VoiceAssistantWebSocketServer {
       workspaceRegistry: this.workspaceRegistry,
       workspaceLayoutStore: this.workspaceLayoutStore,
       promptPresetsStore: this.promptPresetsStore,
+      terminalHistoryStore: this.terminalHistoryStore,
       appearanceSettingsStore: this.appearanceSettingsStore,
       onWorkspaceLayoutPushed: (envelope) => {
         if (!connection) {
@@ -1173,6 +1186,7 @@ export class VoiceAssistantWebSocketServer {
       tts: () => this.speech?.resolveTts() ?? null,
       terminalManager: this.terminalManager,
       portForwardManager: this.portForwardManager,
+      sshManager: this.sshManager,
       providerSnapshotManager: this.providerSnapshotManager,
       providerUsageService: this.providerUsageService,
       reclaude: this.reclaudeAccountService,
@@ -1393,6 +1407,8 @@ export class VoiceAssistantWebSocketServer {
         tcpTunnel: true,
         // COMPAT(portForward): added in v0.1.100, remove gate after 2026-12-17.
         portForward: true,
+        // COMPAT(sshHosts): fork feature, added in v0.1.124.
+        sshHosts: this.sshManager != null,
         // COMPAT(workspaceLayoutSync): added in v0.1.101, remove gate after 2026-12-17.
         workspaceLayoutSync: true,
         // COMPAT(sessionContentSearch): added in v0.1.102, remove gate after 2026-12-17.
@@ -1425,6 +1441,8 @@ export class VoiceAssistantWebSocketServer {
         daemonDiagnostics: true,
         // COMPAT(agentForkContext): added in v0.1.102, remove gate after 2026-12-28.
         agentForkContext: true,
+        // COMPAT(terminalLifecycle): added in v0.1.124, remove gate after 2027-01-07.
+        terminalLifecycle: true,
       },
     };
   }

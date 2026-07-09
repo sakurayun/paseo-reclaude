@@ -3,7 +3,7 @@ import { Pressable, Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
 import { StyleSheet } from "react-native-unistyles";
 import { SegmentedControl } from "@/components/ui/segmented-control";
-import { FormField, FormTextInput } from "@/components/ui/form-field";
+import { Field, FormTextInput } from "@/components/ui/form-field";
 import {
   WEEKDAY_LABELS,
   defaultCronDraft,
@@ -137,18 +137,18 @@ export function ScheduleCadencePicker({
 
   return (
     <View style={styles.container}>
-      <FormField label={t("settings.host.schedules.cadence.modeLabel")}>
+      <Field label={t("settings.host.schedules.cadence.modeLabel")}>
         <SegmentedControl
           options={modeOptions}
           value={value.mode}
           onValueChange={handleModeChange}
         />
-      </FormField>
+      </Field>
 
       {value.mode === "interval" ? (
         <View style={styles.row}>
           <View style={styles.everyField}>
-            <FormField label={t("settings.host.schedules.cadence.intervalEvery")}>
+            <Field label={t("settings.host.schedules.cadence.intervalEvery")}>
               <FormTextInput
                 initialValue={value.every}
                 resetKey="interval"
@@ -158,30 +158,30 @@ export function ScheduleCadencePicker({
                 accessibilityLabel={t("settings.host.schedules.cadence.intervalEvery")}
                 testID="schedule-cadence-every-input"
               />
-            </FormField>
+            </Field>
           </View>
           <View style={styles.unitField}>
-            <FormField label={t("settings.host.schedules.cadence.unitLabel")}>
+            <Field label={t("settings.host.schedules.cadence.unitLabel")}>
               <SegmentedControl
                 options={unitOptions}
                 value={value.unit}
                 onValueChange={handleUnitChange}
               />
-            </FormField>
+            </Field>
           </View>
         </View>
       ) : (
         <>
-          <FormField label={t("settings.host.schedules.cadence.presetLabel")}>
+          <Field label={t("settings.host.schedules.cadence.presetLabel")}>
             <SegmentedControl
               options={presetOptions}
               value={value.preset}
               onValueChange={handlePresetChange}
             />
-          </FormField>
+          </Field>
 
           {value.preset === "custom" ? (
-            <FormField
+            <Field
               label={t("settings.host.schedules.cadence.cronLabel")}
               hint={t("settings.host.schedules.cadence.cronHint")}
             >
@@ -196,9 +196,9 @@ export function ScheduleCadencePicker({
                 accessibilityLabel={t("settings.host.schedules.cadence.cronLabel")}
                 testID="schedule-cadence-cron-input"
               />
-            </FormField>
+            </Field>
           ) : (
-            <FormField label={t("settings.host.schedules.cadence.timeLabel")}>
+            <Field label={t("settings.host.schedules.cadence.timeLabel")}>
               <FormTextInput
                 initialValue={value.time}
                 resetKey={`time-${value.preset}`}
@@ -210,11 +210,11 @@ export function ScheduleCadencePicker({
                 accessibilityLabel={t("settings.host.schedules.cadence.timeLabel")}
                 testID="schedule-cadence-time-input"
               />
-            </FormField>
+            </Field>
           )}
 
           {value.preset === "weekly" ? (
-            <FormField label={t("settings.host.schedules.cadence.dayLabel")}>
+            <Field label={t("settings.host.schedules.cadence.dayLabel")}>
               <View style={styles.dayRow}>
                 {WEEKDAY_LABELS.map((label, index) => (
                   <DayButton
@@ -227,11 +227,11 @@ export function ScheduleCadencePicker({
                   />
                 ))}
               </View>
-            </FormField>
+            </Field>
           ) : null}
 
           {value.preset !== "custom" || value.expression.trim().length > 0 ? (
-            <FormField
+            <Field
               label={t("settings.host.schedules.cadence.timezoneLabel")}
               hint={t("settings.host.schedules.cadence.timezoneHint")}
             >
@@ -246,7 +246,7 @@ export function ScheduleCadencePicker({
                 accessibilityLabel={t("settings.host.schedules.cadence.timezoneLabel")}
                 testID="schedule-cadence-timezone-input"
               />
-            </FormField>
+            </Field>
           ) : null}
         </>
       )}

@@ -66,6 +66,11 @@ import { WorkspaceGitActions } from "@/git/workspace-actions";
 import { WorkspaceOpenInEditorButton } from "@/screens/workspace/workspace-open-in-editor-button";
 import { WorkspaceScriptsButton } from "@/screens/workspace/workspace-scripts-button";
 import { ImportSessionSheet } from "@/components/import-session-sheet";
+import {
+  CloseTabChoiceSheet,
+  type CloseTabChoicePrompt,
+} from "@/components/close-tab-choice-sheet";
+import { useArchiveAgent } from "@/hooks/use-archive-agent";
 import { useToast } from "@/contexts/toast-context";
 import { selectIsFileExplorerOpen, usePanelStore } from "@/stores/panel-store";
 import { type ExplorerCheckoutContext } from "@/stores/explorer-checkout-context";
@@ -2631,31 +2636,78 @@ function WorkspaceScreenContent({
 
   const killTerminalAsync = killTerminalMutation.mutateAsync;
 
+  // Pressing a tab's close button opens a choice sheet instead of acting
+  // immediately: agent tabs offer close-tab vs archive, terminal tabs offer
+  // close-tab (terminal keeps running) vs kill (recorded to terminal history).
+  const [closeTabPrompt, setCloseTabPrompt] = useState<CloseTabChoicePrompt | null>(null);
+  const dismissCloseTabPrompt = useCallback(() => setCloseTabPrompt(null), []);
+  const { archiveAgent } = useArchiveAgent();
+
   const handleCloseTerminalTab = useCallback(
     async (input: { tabId: string; terminalId: string }) => {
-      const { tabId, terminalId } = input;
-      await closeTab(tabId, async () => {
-        const confirmed = await confirmDialog({
-          title: t("workspace.tabs.confirmations.closeTerminalTitle"),
-          message: t("workspace.tabs.confirmations.closeTerminalMessage"),
-          confirmLabel: t("workspace.tabs.confirmations.close"),
-          cancelLabel: t("workspace.tabs.confirmations.cancel"),
-          destructive: true,
-        });
-        if (!confirmed) {
-          return;
-        }
+      setCloseTabPrompt({ kind: "terminal", tabId: input.tabId, terminalId: input.terminalId });
+    },
+    [],
+  );
 
-        removeTerminalFromCache(terminalId);
-        setHoveredCloseTabKey((current) => (current === tabId ? null : current));
+  const handleCloseAgentTab = useCallback(async (input: { tabId: string; agentId: string }) => {
+    setCloseTabPrompt({ kind: "agent", tabId: input.tabId, agentId: input.agentId });
+  }, []);
+
+  // "Close tab": layout-only removal. The agent session stays in the sidebar;
+  // a terminal keeps running and stays in the sidebar's workspace list.
+  const handleCloseTabOnly = useCallback(
+    (prompt: CloseTabChoicePrompt) => {
+      setCloseTabPrompt(null);
+      void closeTab(prompt.tabId, async () => {
+        setHoveredCloseTabKey((current) => (current === prompt.tabId ? null : current));
         if (persistenceKey) {
           closeWorkspaceTabWithCleanup({
-            tabId,
-            target: { kind: "terminal", terminalId },
+            tabId: prompt.tabId,
+            target:
+              prompt.kind === "agent"
+                ? { kind: "agent", agentId: prompt.agentId }
+                : { kind: "terminal", terminalId: prompt.terminalId },
+          });
+        }
+      });
+    },
+    [closeTab, closeWorkspaceTabWithCleanup, persistenceKey],
+  );
+
+  const handleArchiveAgentTab = useCallback(
+    (prompt: Extract<CloseTabChoicePrompt, { kind: "agent" }>) => {
+      setCloseTabPrompt(null);
+      void closeTab(prompt.tabId, async () => {
+        setHoveredCloseTabKey((current) => (current === prompt.tabId ? null : current));
+        if (persistenceKey) {
+          closeWorkspaceTabWithCleanup({
+            tabId: prompt.tabId,
+            target: { kind: "agent", agentId: prompt.agentId },
+          });
+        }
+        if (normalizedServerId) {
+          void archiveAgent({ serverId: normalizedServerId, agentId: prompt.agentId });
+        }
+      });
+    },
+    [archiveAgent, closeTab, closeWorkspaceTabWithCleanup, normalizedServerId, persistenceKey],
+  );
+
+  const handleKillTerminalTab = useCallback(
+    (prompt: Extract<CloseTabChoicePrompt, { kind: "terminal" }>) => {
+      setCloseTabPrompt(null);
+      void closeTab(prompt.tabId, async () => {
+        removeTerminalFromCache(prompt.terminalId);
+        setHoveredCloseTabKey((current) => (current === prompt.tabId ? null : current));
+        if (persistenceKey) {
+          closeWorkspaceTabWithCleanup({
+            tabId: prompt.tabId,
+            target: { kind: "terminal", terminalId: prompt.terminalId },
           });
         }
 
-        void killTerminalAsync(terminalId).catch(invalidateTerminals);
+        void killTerminalAsync(prompt.terminalId).catch(invalidateTerminals);
       });
     },
     [
@@ -2665,26 +2717,7 @@ function WorkspaceScreenContent({
       killTerminalAsync,
       persistenceKey,
       removeTerminalFromCache,
-      t,
     ],
-  );
-
-  // Closing an agent tab only removes it from the layout. Archiving is an
-  // explicit action from the session list's context menu.
-  const handleCloseAgentTab = useCallback(
-    async (input: { tabId: string; agentId: string }) => {
-      const { tabId, agentId } = input;
-      await closeTab(tabId, async () => {
-        setHoveredCloseTabKey((current) => (current === tabId ? null : current));
-        if (persistenceKey) {
-          closeWorkspaceTabWithCleanup({
-            tabId,
-            target: { kind: "agent", agentId },
-          });
-        }
-      });
-    },
-    [closeTab, closeWorkspaceTabWithCleanup, persistenceKey],
   );
 
   const handleCloseDraftOrFileTab = useCallback(
@@ -3802,6 +3835,13 @@ function WorkspaceScreenContent({
               renamingTab={renamingTab}
               onSubmit={handleRenameModalSubmit}
               onClose={handleRenameModalClose}
+            />
+            <CloseTabChoiceSheet
+              prompt={closeTabPrompt}
+              onClose={dismissCloseTabPrompt}
+              onCloseTabOnly={handleCloseTabOnly}
+              onArchiveAgent={handleArchiveAgentTab}
+              onKillTerminal={handleKillTerminalTab}
             />
           </View>
         </RenderProfile>

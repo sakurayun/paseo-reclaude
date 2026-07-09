@@ -164,6 +164,91 @@ export function groupSidebarSessionsByProject(
   return Array.from(groups.values());
 }
 
+interface SidebarTerminalLike {
+  id: string;
+  cwd?: string;
+  workspaceId?: string;
+}
+
+function isSameOrDescendantDirectory(root: string, candidate: string): boolean {
+  return candidate === root || candidate.startsWith(`${root}/`);
+}
+
+/**
+ * Assign host-wide terminals to the sidebar's project groups. A terminal
+ * belongs to the group that contains a session in the same workspace, or —
+ * failing that — a session whose cwd is an ancestor/descendant of the
+ * terminal's cwd (longest ancestor wins). Terminals matching no group (e.g.
+ * standalone terminals outside any listed project) are omitted. Pure and
+ * order-preserving.
+ */
+export function assignTerminalsToSidebarGroups<TTerminal extends SidebarTerminalLike>(
+  groups: readonly SidebarSessionGroup[],
+  terminals: readonly TTerminal[],
+): Map<string, TTerminal[]> {
+  const groupKeyByWorkspaceId = new Map<string, string>();
+  const sessionCwds: Array<{ cwd: string; groupKey: string }> = [];
+  for (const group of groups) {
+    for (const session of group.sessions) {
+      const workspaceId = trimNonEmpty(session.workspaceId);
+      if (workspaceId && !groupKeyByWorkspaceId.has(workspaceId)) {
+        groupKeyByWorkspaceId.set(workspaceId, group.key);
+      }
+      const cwd = trimNonEmpty(session.cwd);
+      if (cwd) {
+        sessionCwds.push({ cwd, groupKey: group.key });
+      }
+    }
+  }
+
+  function resolveGroupKeyForTerminal(terminal: TTerminal): string | null {
+    const workspaceId = trimNonEmpty(terminal.workspaceId);
+    if (workspaceId) {
+      const byWorkspace = groupKeyByWorkspaceId.get(workspaceId);
+      if (byWorkspace) {
+        return byWorkspace;
+      }
+    }
+    const terminalCwd = trimNonEmpty(terminal.cwd);
+    if (!terminalCwd) {
+      return null;
+    }
+    let bestAncestor: { cwd: string; groupKey: string } | null = null;
+    for (const candidate of sessionCwds) {
+      if (!isSameOrDescendantDirectory(candidate.cwd, terminalCwd)) {
+        continue;
+      }
+      if (!bestAncestor || candidate.cwd.length > bestAncestor.cwd.length) {
+        bestAncestor = candidate;
+      }
+    }
+    if (bestAncestor) {
+      return bestAncestor.groupKey;
+    }
+    for (const candidate of sessionCwds) {
+      if (isSameOrDescendantDirectory(terminalCwd, candidate.cwd)) {
+        return candidate.groupKey;
+      }
+    }
+    return null;
+  }
+
+  const byGroupKey = new Map<string, TTerminal[]>();
+  for (const terminal of terminals) {
+    const groupKey = resolveGroupKeyForTerminal(terminal);
+    if (!groupKey) {
+      continue;
+    }
+    const bucket = byGroupKey.get(groupKey);
+    if (bucket) {
+      bucket.push(terminal);
+    } else {
+      byGroupKey.set(groupKey, [terminal]);
+    }
+  }
+  return byGroupKey;
+}
+
 export function resolveSidebarSessionGroupWorkspaceTarget(
   group: SidebarSessionGroup,
   serverId: string | null,

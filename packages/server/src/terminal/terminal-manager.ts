@@ -1,6 +1,7 @@
 import {
   createTerminal,
   type TerminalActivityTransition,
+  type TerminalBackend,
   type TerminalSession,
   type TerminalStateSnapshot,
   type TerminalStateSnapshotOptions,
@@ -20,6 +21,23 @@ export interface TerminalListItem {
   workspaceId: string;
   title?: string;
   activity: TerminalActivity | null;
+  // Lifecycle: exited terminals stay listed (with their exit code) in the
+  // daemon-side mirror until explicitly closed. Absent status means "running".
+  status?: "running" | "exited";
+  exitCode?: number | null;
+  endedAt?: number | null;
+}
+
+// A terminal removed for good (explicit close or exited-cap prune). Appended
+// to the persisted closed-terminal history so it can be found again later.
+export interface TerminalClosedRecord {
+  id: string;
+  name: string;
+  cwd: string;
+  workspaceId?: string;
+  title?: string;
+  exitCode: number | null;
+  closedAt: number;
 }
 
 export interface TerminalsChangedEvent {
@@ -64,6 +82,9 @@ export interface TerminalManager {
     activityToken?: string;
     activityUrl?: string | null;
     windowsShell?: WindowsShellPreference;
+    // Alternate byte transport (e.g. ssh2 shell channel). Only supported by
+    // the in-process manager; the worker manager ignores it.
+    backend?: TerminalBackend;
   }): Promise<TerminalSession>;
   registerCwdEnv(options: { cwd: string; env: Record<string, string> }): void;
   validateTerminalActivityToken(terminalId: string, token: string): "valid" | "unknown" | "invalid";
@@ -320,6 +341,7 @@ export function createTerminalManager(
       activityToken?: string;
       activityUrl?: string | null;
       windowsShell?: WindowsShellPreference;
+      backend?: TerminalBackend;
     }): Promise<TerminalSession> {
       assertAbsolutePath(options.cwd);
 
@@ -353,6 +375,7 @@ export function createTerminalManager(
             ...(options.args ? { args: options.args } : {}),
             ...(options.windowsShell ? { windowsShell: options.windowsShell } : {}),
             ...(mergedEnv ? { env: mergedEnv } : {}),
+            ...(options.backend ? { backend: options.backend } : {}),
             activityEnv,
           }),
         );

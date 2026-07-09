@@ -427,8 +427,26 @@ describe("terminal-session-controller subdirectory aggregation", () => {
         payload: {
           cwd: rootCwd,
           terminals: [
-            { id: "root-term", name: "Terminal 1", workspaceId: "ws-test", activity: null },
-            { id: "subdir-term", name: "Mobile", workspaceId: "ws-test", activity: null },
+            {
+              id: "root-term",
+              name: "Terminal 1",
+              cwd: rootCwd,
+              workspaceId: "ws-test",
+              activity: null,
+              status: "running",
+              exitCode: null,
+              endedAt: null,
+            },
+            {
+              id: "subdir-term",
+              name: "Mobile",
+              cwd: subdirCwd,
+              workspaceId: "ws-test",
+              activity: null,
+              status: "running",
+              exitCode: null,
+              endedAt: null,
+            },
           ],
         },
       },
@@ -492,7 +510,16 @@ describe("terminal-session-controller subdirectory aggregation", () => {
         payload: {
           cwd: rootCwd,
           terminals: [
-            { id: "root-term", name: "Terminal 1", workspaceId: "ws-test", activity: null },
+            {
+              id: "root-term",
+              name: "Terminal 1",
+              cwd: rootCwd,
+              workspaceId: "ws-test",
+              activity: null,
+              status: "running",
+              exitCode: null,
+              endedAt: null,
+            },
           ],
           requestId: "req-root",
         },
@@ -502,7 +529,16 @@ describe("terminal-session-controller subdirectory aggregation", () => {
         payload: {
           cwd: worktreeCwd,
           terminals: [
-            { id: "worktree-term", name: "Feature", workspaceId: "ws-test", activity: null },
+            {
+              id: "worktree-term",
+              name: "Feature",
+              cwd: worktreeCwd,
+              workspaceId: "ws-test",
+              activity: null,
+              status: "running",
+              exitCode: null,
+              endedAt: null,
+            },
           ],
           requestId: "req-worktree",
         },
@@ -575,7 +611,18 @@ describe("terminal-session-controller workspace-scoped subscriptions", () => {
         type: "terminals_changed",
         payload: {
           cwd,
-          terminals: [{ id: "a", name: "A", workspaceId: "ws-a", activity: null }],
+          terminals: [
+            {
+              id: "a",
+              name: "A",
+              cwd,
+              workspaceId: "ws-a",
+              activity: null,
+              status: "running",
+              exitCode: null,
+              endedAt: null,
+            },
+          ],
         },
       },
     ]);
