@@ -2766,6 +2766,13 @@ export const SshHostsConnectRequestSchema = z.object({
   hostId: z.string(),
   cols: z.number().int().positive().optional(),
   rows: z.number().int().positive().optional(),
+  // Workspace the SSH terminal should belong to, so it lists/groups/archives
+  // like a local workspace terminal. Optional: old clients omit it and the
+  // daemon falls back to the synthetic ssh:<hostId> bucket.
+  workspaceId: z.string().optional(),
+  // That workspace's directory; scopes the terminal record (and its snapshot
+  // cache), the remote shell never touches it.
+  cwd: z.string().optional(),
   requestId: z.string(),
 });
 

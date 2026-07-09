@@ -174,7 +174,9 @@ export function navigateToPreparedWorkspaceTab(
   input: NavigateToPreparedWorkspaceTabInput,
   deps: NavigateToPreparedWorkspaceTabDeps,
 ): string {
-  const route = prepareWorkspaceTab(input, deps);
+  // Navigate first: navigateToWorkspace focuses an attention-needing agent tab
+  // as a side effect, and the caller's explicitly requested tab must win that
+  // focus race — so it is opened last.
   deps.navigateToWorkspace(input.serverId, input.workspaceId);
-  return route;
+  return prepareWorkspaceTab(input, deps);
 }

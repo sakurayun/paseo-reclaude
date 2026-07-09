@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
+import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
 import {
   collectAllPanes,
   collectAllTabs,
@@ -10,6 +11,36 @@ import {
   stripWorkspaceLayoutFocus,
   type WorkspaceLayout,
 } from "@/stores/workspace-layout-actions";
+import {
+  pullWorkspaceLayoutIfNeeded,
+  startWorkspaceLayoutSync,
+} from "@/stores/workspace-layout-sync";
+import { useWorkspaceLayoutStore } from "@/stores/workspace-layout-store";
+import { buildWorkspaceTabPersistenceKey } from "@/stores/workspace-tabs-store";
+import { useSessionStore } from "@/stores/session-store";
+
+vi.mock("@react-native-async-storage/async-storage", () => {
+  const storage = new Map<string, string>();
+  return {
+    default: {
+      getItem: vi.fn(async (key: string) => storage.get(key) ?? null),
+      setItem: vi.fn(async (key: string, value: string) => {
+        storage.set(key, value);
+      }),
+      removeItem: vi.fn(async (key: string) => {
+        storage.delete(key);
+      }),
+    },
+  };
+});
+
+vi.mock("@/constants/layout", async (importOriginal) => {
+  const original = await importOriginal<typeof import("@/constants/layout")>();
+  return {
+    ...original,
+    supportsDesktopPaneSplits: () => true,
+  };
+});
 
 // Build a single-pane layout with the given agent tabs; the last one opened is focused
 // (openTabInLayoutFocused focuses each newly opened tab).
@@ -85,5 +116,56 @@ describe("mergeRemoteLayoutPreservingFocus", () => {
     const merged = mergeRemoteLayoutPreservingFocus({ local, remote });
 
     expect(tabIdsOf(merged)).toEqual(["agent_a1", "agent_a3"]);
+  });
+});
+
+describe("layout sync bridge — pending local opens", () => {
+  it("re-opens a tab opened before the first pull on top of the pulled layout", async () => {
+    const serverId = "srv-pending-open";
+    const workspaceId = "ws-pending-open";
+    await useWorkspaceLayoutStore.persist.rehydrate();
+    useSessionStore.setState({
+      sessions: {
+        [serverId]: { serverInfo: { features: { workspaceLayoutSync: true } } },
+      },
+    } as never);
+
+    let resolvePull: (envelope: unknown) => void = () => {};
+    const pullPromise = new Promise((resolve) => {
+      resolvePull = resolve;
+    });
+    const client = {
+      getWorkspaceLayout: vi.fn(() => pullPromise),
+      pushWorkspaceLayout: vi.fn(async () => ({ accepted: true, revision: 1 })),
+      on: vi.fn(() => () => {}),
+    } as unknown as DaemonClient;
+
+    const stop = startWorkspaceLayoutSync({ serverId, client });
+    const key = buildWorkspaceTabPersistenceKey({ serverId, workspaceId });
+    expect(key).toBeTruthy();
+
+    // An SSH connect opens the terminal tab before the workspace has pulled.
+    useWorkspaceLayoutStore
+      .getState()
+      .openTabFocused(key!, { kind: "terminal", terminalId: "term-ssh" });
+    pullWorkspaceLayoutIfNeeded(serverId, workspaceId);
+
+    // The daemon's blob predates the terminal tab: only a peer's agent tab.
+    resolvePull({
+      revision: 3,
+      layout: stripWorkspaceLayoutFocus(buildAgentLayout(["peer-agent"])),
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const tabs = useWorkspaceLayoutStore.getState().getWorkspaceTabs(key!);
+    // Remote structure adopted...
+    expect(tabs.some((tab) => tab.tabId === "agent_peer-agent")).toBe(true);
+    // ...and the locally opened terminal tab survived the structure-wins merge.
+    expect(
+      tabs.some((tab) => tab.target.kind === "terminal" && tab.target.terminalId === "term-ssh"),
+    ).toBe(true);
+
+    stop();
+    useWorkspaceLayoutStore.getState().purgeWorkspace(key!);
   });
 });

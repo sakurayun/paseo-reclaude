@@ -71,6 +71,7 @@ import {
   type CloseTabChoicePrompt,
 } from "@/components/close-tab-choice-sheet";
 import { useArchiveAgent } from "@/hooks/use-archive-agent";
+import { useHostTerminals } from "@/hooks/use-host-terminals";
 import { useToast } from "@/contexts/toast-context";
 import { selectIsFileExplorerOpen, usePanelStore } from "@/stores/panel-store";
 import { type ExplorerCheckoutContext } from "@/stores/explorer-checkout-context";
@@ -2110,6 +2111,25 @@ function WorkspaceScreenContent({
     ],
   );
 
+  // SSH/remote terminals are hosted in this workspace's tab bar but live
+  // outside its cwd bucket, so the workspace-scoped terminals query alone
+  // would prune their tabs the moment it resolves. A terminal tab stays as
+  // long as its terminal exists anywhere on the host; real deletions still
+  // prune via the host-wide push subscription. Old hosts without the
+  // host-wide list keep the workspace-scoped behavior.
+  const { terminals: hostWideTerminals, isReady: hostTerminalsReady } =
+    useHostTerminals(normalizedServerId);
+  const reconcileKnownTerminalIds = useMemo(() => {
+    if (hostWideTerminals.length === 0) {
+      return knownTerminalIds;
+    }
+    const union = new Set<string>(knownTerminalIds);
+    for (const terminal of hostWideTerminals) {
+      union.add(terminal.id);
+    }
+    return [...union];
+  }, [hostWideTerminals, knownTerminalIds]);
+
   useEffect(() => {
     if (!isRouteFocused) {
       return;
@@ -2134,8 +2154,8 @@ function WorkspaceScreenContent({
       buildWorkspaceTabSnapshot({
         agentVisibility: workspaceAgentVisibility,
         agentsHydrated: hasHydratedAgents,
-        terminalsHydrated: terminalsQuery.isSuccess,
-        knownTerminalIds,
+        terminalsHydrated: terminalsQuery.isSuccess && hostTerminalsReady,
+        knownTerminalIds: reconcileKnownTerminalIds,
         standaloneTerminalIds,
         hasActivePendingDraftCreate: hasActivePendingDraftCreateInWorkspace,
       }),
@@ -2143,13 +2163,14 @@ function WorkspaceScreenContent({
   }, [
     hasHydratedAgents,
     hasHydratedWorkspaceLayoutStore,
+    hostTerminalsReady,
     isRouteFocused,
     normalizedServerId,
     normalizedWorkspaceId,
     pendingByDraftId,
     persistenceKey,
     reconcileWorkspaceTabs,
-    knownTerminalIds,
+    reconcileKnownTerminalIds,
     standaloneTerminalIds,
     terminalsQuery.isSuccess,
     uiTabs,

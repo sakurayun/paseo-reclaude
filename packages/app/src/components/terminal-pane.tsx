@@ -539,7 +539,10 @@ export function TerminalPane({
 
     const controller = new TerminalStreamController({
       client,
-      getPreferredSize: () => lastSentTerminalSizeRef.current,
+      // Prefer the size this client already claimed; fall back to the latest
+      // measurement so a first attach still syncs the daemon/remote pty (SSH
+      // terminals are created at 80x24 and must adopt the pane size).
+      getPreferredSize: () => lastSentTerminalSizeRef.current ?? measuredTerminalSizeRef.current,
       onOutput: ({ terminalId: outputTerminalId, data }) => {
         if (!isWorkspaceFocused || terminalIdRef.current !== outputTerminalId) {
           return;
@@ -779,7 +782,17 @@ export function TerminalPane({
       const normalizedCols = Math.floor(cols);
       const nextSize = { rows: normalizedRows, cols: normalizedCols };
       measuredTerminalSizeRef.current = nextSize;
-      if (!input.shouldClaim || !client || !terminalId || !isWorkspaceFocused || !isAppVisible) {
+      // Once this pane has claimed the terminal size, keep pushing follow-up
+      // measurements even from unclaimed refits (font loads shift cols), or
+      // the daemon/remote pty drifts from what this pane renders.
+      const hasClaimedBefore = lastSentTerminalSizeRef.current !== null;
+      if (
+        (!input.shouldClaim && !hasClaimedBefore) ||
+        !client ||
+        !terminalId ||
+        !isWorkspaceFocused ||
+        !isAppVisible
+      ) {
         return;
       }
       const previousSent = lastSentTerminalSizeRef.current;

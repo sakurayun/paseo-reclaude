@@ -210,6 +210,9 @@ export class TerminalEmulatorRuntime {
   private fitAndEmitResize: ((input?: { force?: boolean; shouldClaim?: boolean }) => void) | null =
     null;
   private lastSize: { rows: number; cols: number } | null = null;
+  // Whether any claim-eligible fit has been emitted since mount; the first one
+  // must go through even when the size didn't change (see fitAndEmitResize).
+  private hasEmittedClaimedResize = false;
   private cleanup: (() => void) | null = null;
   private outputOperations: TerminalOutputOperation[] = [];
   private inFlightOutputOperation: TerminalOutputOperation | null = null;
@@ -255,6 +258,7 @@ export class TerminalEmulatorRuntime {
 
     input.host.innerHTML = "";
     this.lastSize = null;
+    this.hasEmittedClaimedResize = false;
     this.inputModeTracker.reset();
     this.emitInputModeChange();
 
@@ -414,11 +418,22 @@ export class TerminalEmulatorRuntime {
       const nextRows = currentTerminal.rows;
       const nextCols = currentTerminal.cols;
       const previous = this.lastSize;
-      if (!force && previous && previous.rows === nextRows && previous.cols === nextCols) {
+      const sameSize =
+        previous !== null && previous.rows === nextRows && previous.cols === nextCols;
+      // The mount-time forced fit is unclaimed by design, but it swallows the
+      // size delta — a later claim-eligible fit (e.g. ResizeObserver's initial
+      // fire) would then bail on "no change" and the daemon/remote pty would
+      // stay at its creation size forever (SSH terminals start at 80x24). Let
+      // the first claimed fit through even without a delta; the pane dedupes
+      // the actual sends.
+      if (!force && sameSize && (!shouldClaim || this.hasEmittedClaimedResize)) {
         return;
       }
 
       this.lastSize = { rows: nextRows, cols: nextCols };
+      if (shouldClaim) {
+        this.hasEmittedClaimedResize = true;
+      }
       this.refreshVisibleRows();
       this.callbacks.onResize?.({
         rows: nextRows,
@@ -919,6 +934,7 @@ export class TerminalEmulatorRuntime {
     this.searchAddon = null;
     this.fitAndEmitResize = null;
     this.lastSize = null;
+    this.hasEmittedClaimedResize = false;
     this.themeBackgroundElements = [];
     this.suppressInput = false;
     this.inputModeDecoder.decode();

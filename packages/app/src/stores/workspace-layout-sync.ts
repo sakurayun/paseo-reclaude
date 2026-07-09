@@ -2,13 +2,14 @@ import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
 
 import { supportsDesktopPaneSplits } from "@/constants/layout";
 import {
+  collectAllTabs,
   normalizeLayout,
   stripWorkspaceLayoutFocus,
   type WorkspaceLayout,
 } from "@/stores/workspace-layout-actions";
 import { useWorkspaceLayoutStore } from "@/stores/workspace-layout-store";
 import { useSessionStore } from "@/stores/session-store";
-import { buildWorkspaceTabPersistenceKey } from "@/stores/workspace-tabs-store";
+import { buildWorkspaceTabPersistenceKey, type WorkspaceTab } from "@/stores/workspace-tabs-store";
 
 // Single, off-React integration point for desktop workspace-layout sync. One bridge
 // per serverId mirrors the local workspace-layout-store to the daemon and applies
@@ -33,6 +34,11 @@ interface LayoutSyncBridge {
   // pulled (so a fresh client's startup prune never clobbers a peer's layout).
   pulledKeys: Set<string>;
   pullingKeys: Set<string>;
+  // Tabs opened locally while the key was still un-pulled (e.g. an SSH connect
+  // opens a terminal tab right before first navigation into the workspace).
+  // The pull's structure-wins merge would silently wipe them, so they're
+  // re-opened on top of the pulled layout once the key syncs.
+  pendingLocalOpensByKey: Map<string, WorkspaceTab[]>;
   // JSON of the last pushed (focus-stripped) blob, so a pure focus change is a no-op.
   lastPushedStrippedByKey: Map<string, string>;
   pushTimers: Map<string, ReturnType<typeof setTimeout>>;
@@ -66,6 +72,66 @@ function applyRemote(bridge: LayoutSyncBridge, key: string, layout: unknown): vo
     // change from applyRemoteLayout is recognized as remote and not pushed back.
     queueMicrotask(() => bridge.applyingRemoteKeys.delete(key));
   }
+}
+
+const MAX_PENDING_LOCAL_OPENS = 8;
+
+// Record entity tabs added locally while the key is still un-pulled. Hydration
+// writes are excluded — only post-hydration changes are genuine user opens.
+function recordPendingLocalOpens(
+  bridge: LayoutSyncBridge,
+  key: string,
+  next: LayoutStoreState,
+  prev: LayoutStoreState,
+): void {
+  if (bridge.pulledKeys.has(key) || bridge.applyingRemoteKeys.has(key)) {
+    return;
+  }
+  if (!useWorkspaceLayoutStore.persist.hasHydrated()) {
+    return;
+  }
+  const nextLayout = next.layoutByWorkspace[key];
+  if (!nextLayout) {
+    return;
+  }
+  const prevLayout = prev.layoutByWorkspace[key];
+  const previousTabIds = new Set(
+    prevLayout ? collectAllTabs(prevLayout.root).map((tab) => tab.tabId) : [],
+  );
+  const addedTabs = collectAllTabs(nextLayout.root).filter((tab) => !previousTabIds.has(tab.tabId));
+  if (addedTabs.length === 0) {
+    return;
+  }
+  const pending = bridge.pendingLocalOpensByKey.get(key) ?? [];
+  for (const tab of addedTabs) {
+    if (!pending.some((entry) => entry.tabId === tab.tabId)) {
+      pending.push(tab);
+    }
+  }
+  bridge.pendingLocalOpensByKey.set(key, pending.slice(-MAX_PENDING_LOCAL_OPENS));
+}
+
+// Re-open recorded local tabs on top of the freshly synced layout. Runs in a
+// microtask so it lands after applyRemote's anti-echo release — the re-open is
+// then a normal local change and pushes to peers.
+function scheduleReopenPendingLocalOpens(bridge: LayoutSyncBridge, key: string): void {
+  const pending = bridge.pendingLocalOpensByKey.get(key);
+  bridge.pendingLocalOpensByKey.delete(key);
+  if (!pending || pending.length === 0) {
+    return;
+  }
+  queueMicrotask(() => {
+    if (bridge.stopped) {
+      return;
+    }
+    const store = useWorkspaceLayoutStore.getState();
+    const existingTabIds = new Set(store.getWorkspaceTabs(key).map((tab) => tab.tabId));
+    for (const tab of pending) {
+      if (!existingTabIds.has(tab.tabId)) {
+        store.openTabFocused(key, tab.target);
+      }
+    }
+  });
 }
 
 async function pushLayout(
@@ -160,6 +226,7 @@ async function ensurePulled(bridge: LayoutSyncBridge, workspaceId: string): Prom
   } finally {
     bridge.pullingKeys.delete(key);
     bridge.pulledKeys.add(key);
+    scheduleReopenPendingLocalOpens(bridge, key);
   }
 }
 
@@ -199,6 +266,7 @@ export function startWorkspaceLayoutSync(params: {
     applyingRemoteKeys: new Set(),
     pulledKeys: new Set(),
     pullingKeys: new Set(),
+    pendingLocalOpensByKey: new Map(),
     lastPushedStrippedByKey: new Map(),
     pushTimers: new Map(),
     unsubscribeStore: null,
@@ -216,6 +284,7 @@ export function startWorkspaceLayoutSync(params: {
     }
     for (const key in next.layoutByWorkspace) {
       if (next.layoutByWorkspace[key] !== prev.layoutByWorkspace[key]) {
+        recordPendingLocalOpens(bridge, key, next, prev);
         maybePush(bridge, key, next, prev);
       }
     }
@@ -236,6 +305,7 @@ export function startWorkspaceLayoutSync(params: {
     bridge.revisionByKey.set(key, revision);
     applyRemote(bridge, key, layout);
     bridge.pulledKeys.add(key); // receiving a change means we're synced; allow pushes
+    scheduleReopenPendingLocalOpens(bridge, key);
   });
 
   return () => stopBridge(bridge);

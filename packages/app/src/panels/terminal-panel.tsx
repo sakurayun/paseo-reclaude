@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useMemo, type ComponentType } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { Terminal } from "lucide-react-native";
@@ -8,7 +8,9 @@ import type { ListTerminalsResponse } from "@getpaseo/protocol/messages";
 import { deriveTerminalActivityStatusBucket } from "@getpaseo/protocol/terminal-activity";
 import { TerminalPane } from "@/components/terminal-pane";
 import { usePaneContext, usePaneFocus } from "@/panels/pane-context";
-import type { PanelDescriptor, PanelRegistration } from "@/panels/panel-registry";
+import type { PanelDescriptor, PanelIconProps, PanelRegistration } from "@/panels/panel-registry";
+import { OsBadge } from "@/components/ssh/os-badge";
+import { useSshTerminalHostOs } from "@/screens/ssh/use-ssh-terminal-host-os";
 import { queryClient } from "@/data/query-client";
 import { buildTerminalsQueryKey } from "@/screens/workspace/terminals/state";
 import { usePanelStore } from "@/stores/panel-store";
@@ -40,6 +42,7 @@ function useTerminalPanelDescriptor(
 ): PanelDescriptor {
   const { t } = useTranslation();
   const remote = useSshTerminalMeta(target.terminalId);
+  const { isSsh, os } = useSshTerminalHostOs(context.serverId, target.terminalId);
   const client = useSessionStore((state) => state.sessions[context.serverId]?.client ?? null);
   const workspaceDirectory = useWorkspaceDirectory(context.serverId, context.workspaceId);
   const terminalsQuery = useQuery(
@@ -65,16 +68,27 @@ function useTerminalPanelDescriptor(
   const terminal =
     terminalsQuery.data?.terminals.find((entry) => entry.id === target.terminalId) ?? null;
 
+  // SSH terminals show the remote host's OS brand badge; the tab row's mono
+  // color is intentionally ignored — the badge is the host's identity.
+  const icon = useMemo<ComponentType<PanelIconProps>>(() => {
+    if (!isSsh) {
+      return Terminal;
+    }
+    return function SshTerminalTabIcon({ size }: PanelIconProps) {
+      return <OsBadge os={os} size={size} />;
+    };
+  }, [isSsh, os]);
+
   return {
-    // Remote terminals aren't in this workspace's listTerminals, so use the
-    // host label from the meta store rather than the "Terminal" fallback.
+    // Remote terminals may not be in this workspace's listTerminals, so use
+    // the host label from the meta store rather than the "Terminal" fallback.
     label:
       trimNonEmpty(remote?.label ?? null) ??
       trimNonEmpty(terminal?.title ?? terminal?.name ?? null) ??
       t("workspace.tabs.fallback.terminal"),
     subtitle: t("workspace.tabs.fallback.terminal"),
     titleState: "ready",
-    icon: Terminal,
+    icon,
     statusBucket: deriveTerminalActivityStatusBucket(terminal?.activity),
   };
 }

@@ -47,7 +47,33 @@ export function createSshConnectService(deps: SshConnectServiceDeps): SshConnect
     knownHostStore: sshManager.knownHostStore,
   });
 
-  async function connectViaFallback(host: SshHostInfo, logId: string): Promise<SshConnectResult> {
+  interface TerminalPlacement {
+    workspaceId: string;
+    cwd: string;
+  }
+
+  // Where the terminal record lives: the client-provided workspace, so the SSH
+  // terminal lists/groups/archives like a local workspace terminal. Old clients
+  // omit the placement and fall back to the synthetic ssh:<hostId> bucket. The
+  // cwd only scopes the record and its snapshot cache — the remote shell never
+  // touches the daemon filesystem — but it must be absolute for createTerminal.
+  function resolveTerminalPlacement(
+    input: { workspaceId?: string; cwd?: string },
+    hostId: string,
+  ): TerminalPlacement {
+    const workspaceId = input.workspaceId?.trim();
+    const cwd = input.cwd?.trim();
+    return {
+      workspaceId: workspaceId || `${WORKSPACE_PREFIX}${hostId}`,
+      cwd: cwd && path.isAbsolute(cwd) ? cwd : sshHome,
+    };
+  }
+
+  async function connectViaFallback(
+    host: SshHostInfo,
+    logId: string,
+    placement: TerminalPlacement,
+  ): Promise<SshConnectResult> {
     const argv = buildFallbackSshArgv(host, {
       hostStore: sshManager.hostStore,
       keyStore: sshManager.keyStore,
@@ -55,8 +81,8 @@ export function createSshConnectService(deps: SshConnectServiceDeps): SshConnect
     });
     try {
       const terminal = await fallbackTerminalManager.createTerminal({
-        cwd: sshHome,
-        workspaceId: `${WORKSPACE_PREFIX}${host.id}`,
+        cwd: placement.cwd,
+        workspaceId: placement.workspaceId,
         name: host.label,
         command: argv.command,
         args: argv.args,
@@ -99,8 +125,9 @@ export function createSshConnectService(deps: SshConnectServiceDeps): SshConnect
       protocol: host.mosh?.enabled ? "mosh" : "ssh",
     });
 
+    const placement = resolveTerminalPlacement(input, host.id);
     if (needsFallback(host)) {
-      return connectViaFallback(host, logId);
+      return connectViaFallback(host, logId, placement);
     }
 
     let acquired;
@@ -155,8 +182,8 @@ export function createSshConnectService(deps: SshConnectServiceDeps): SshConnect
       });
 
       const terminal = await sshTerminalManager.createTerminal({
-        cwd: sshHome,
-        workspaceId: `${WORKSPACE_PREFIX}${host.id}`,
+        cwd: placement.cwd,
+        workspaceId: placement.workspaceId,
         name: host.label,
         backend,
       });

@@ -34,6 +34,9 @@ export type SshConnectHandler = (input: {
   hostId: string;
   cols?: number;
   rows?: number;
+  // Workspace placement for the terminal record (see SshHostsConnectRequestSchema).
+  workspaceId?: string;
+  cwd?: string;
 }) => Promise<SshConnectResult>;
 
 export interface SshSessionControllerDeps {
@@ -498,7 +501,12 @@ export function createSshSessionController(deps: SshSessionControllerDeps): SshS
     try {
       const result = await deps.connectHandler({
         hostId: msg.hostId,
-        ...definedProps({ cols: msg.cols, rows: msg.rows }),
+        ...definedProps({
+          cols: msg.cols,
+          rows: msg.rows,
+          workspaceId: msg.workspaceId,
+          cwd: msg.cwd,
+        }),
       });
       emitConnectResult(result, msg.requestId);
     } catch (error) {

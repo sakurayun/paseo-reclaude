@@ -73,6 +73,37 @@ it("returns existing terminals on subsequent calls", async () => {
   expect(second.length).toBe(1);
 });
 
+it("marks user input as working activity", async () => {
+  manager = createTerminalManager();
+  const cwd = realpathSync(tmpdir());
+  const created = await manager.createTerminal({ cwd, workspaceId: "ws-activity" });
+
+  expect(created.getActivity()).toBeNull();
+  created.send({ type: "input", data: "echo hi" });
+
+  expect(created.getActivity()?.state).toBe("working");
+});
+
+it("reports closed terminals exactly once through onTerminalClosed", async () => {
+  const closedRecords: Array<{ id: string; workspaceId?: string; closedAt: number }> = [];
+  manager = createTerminalManager({
+    onTerminalClosed: (record) => closedRecords.push(record),
+  });
+  const cwd = realpathSync(tmpdir());
+  const created = await manager.createTerminal({ cwd, workspaceId: "ws-closed" });
+
+  await manager.killTerminalAndWait(created.id);
+  // The session's own exit event may race the explicit kill; wait for the
+  // record and assert it stays single.
+  await waitForCondition(() => closedRecords.length > 0, 5_000);
+  await new Promise((resolve) => setTimeout(resolve, 100));
+
+  expect(closedRecords).toHaveLength(1);
+  expect(closedRecords[0].id).toBe(created.id);
+  expect(closedRecords[0].workspaceId).toBe("ws-closed");
+  expect(closedRecords[0].closedAt).toBeGreaterThan(0);
+});
+
 it("throws for relative paths", async () => {
   manager = createTerminalManager();
   await expect(manager.getTerminals("tmp")).rejects.toThrow("cwd must be absolute path");

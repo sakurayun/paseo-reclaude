@@ -5095,7 +5095,13 @@ export class DaemonClient {
   }
 
   async connectSshHost(
-    input: { hostId: string; cols?: number; rows?: number },
+    input: {
+      hostId: string;
+      cols?: number;
+      rows?: number;
+      workspaceId?: string;
+      cwd?: string;
+    },
     requestId?: string,
   ): Promise<SshHostsConnectPayload> {
     const resolvedRequestId = this.createRequestId(requestId);
@@ -5106,6 +5112,8 @@ export class DaemonClient {
         hostId: input.hostId,
         ...(input.cols !== undefined ? { cols: input.cols } : {}),
         ...(input.rows !== undefined ? { rows: input.rows } : {}),
+        ...(input.workspaceId !== undefined ? { workspaceId: input.workspaceId } : {}),
+        ...(input.cwd !== undefined ? { cwd: input.cwd } : {}),
         requestId: resolvedRequestId,
       }),
       responseType: "ssh.hosts.connect.response",

@@ -30,6 +30,8 @@ export interface UseSshHostsResult {
     hostId: string;
     cols?: number;
     rows?: number;
+    workspaceId?: string;
+    cwd?: string;
   }) => Promise<SshHostsConnectResponse["payload"]>;
   createHost: (payload: SshHostSubmitPayload) => Promise<void>;
   updateHost: (id: string, payload: SshHostSubmitPayload) => Promise<void>;
@@ -80,7 +82,13 @@ export function useSshHosts(serverId: string | null): UseSshHostsResult {
   }, [client, queryClient, queryKey]);
 
   const connectMutation = useMutation({
-    mutationFn: async (input: { hostId: string; cols?: number; rows?: number }) => {
+    mutationFn: async (input: {
+      hostId: string;
+      cols?: number;
+      rows?: number;
+      workspaceId?: string;
+      cwd?: string;
+    }) => {
       if (!client) {
         throw new Error("Host disconnected");
       }

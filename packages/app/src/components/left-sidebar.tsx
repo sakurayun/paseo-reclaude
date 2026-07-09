@@ -61,7 +61,13 @@ import { useStatusModeWorkspacePlacements } from "@/hooks/use-status-mode-worksp
 import { useSidebarViewStore, type SidebarGroupMode } from "@/stores/sidebar-view-store";
 import { useKeyboardShortcutsStore } from "@/stores/keyboard-shortcuts-store";
 import { useHosts } from "@/runtime/host-runtime";
-import { useActiveWorkspaceSelection } from "@/stores/navigation-active-workspace-store";
+import {
+  getLastWorkspaceSelection,
+  navigateToWorkspace,
+  useActiveWorkspaceSelection,
+  type ActiveWorkspaceSelection,
+} from "@/stores/navigation-active-workspace-store";
+import { resolveSshExitWorkspace } from "@/screens/ssh/ssh-sidebar-toggle";
 import { useWorkspace } from "@/stores/session-store-hooks";
 import {
   MAX_SIDEBAR_WIDTH,
@@ -116,8 +122,12 @@ interface SidebarSharedProps {
   sshEnabled: boolean;
   /** Whether the sidebar body currently shows the SSH manager vs the session list. */
   isSshContent: boolean;
-  /** Toggle the sidebar body between the session list and the SSH manager. */
-  onToggleSshContent: () => void;
+  /**
+   * Toggle the sidebar body between the session list and the SSH manager.
+   * Returns true when exiting SSH mode navigated the main panel back to the
+   * workspace the user entered from (so compact layouts can close the drawer).
+   */
+  onToggleSshContent: () => boolean;
   collapsedProjectKeys: SidebarShortcutModel["collapsedProjectKeys"];
   shortcutIndexByWorkspaceKey: SidebarShortcutModel["shortcutIndexByWorkspaceKey"];
   toggleProjectCollapsed: SidebarShortcutModel["toggleProjectCollapsed"];
@@ -211,14 +221,33 @@ export const LeftSidebar = memo(function LeftSidebar({
 
   const groupMode = useSidebarViewStore((state) => state.groupMode);
   // SSH host manager: the top entry replaces Schedules and toggles the sidebar
-  // body in place (no navigation). Gated on the host advertising the feature.
+  // body in place. Gated on the host advertising the feature.
   const sshEnabled = useHostFeature(activeServerId, "sshHosts");
   const sidebarContentMode = useSidebarViewStore((state) => state.contentMode);
   const setSidebarContentMode = useSidebarViewStore((state) => state.setContentMode);
   const isSshContent = sshEnabled && sidebarContentMode === "ssh";
-  const onToggleSshContent = useCallback(() => {
-    setSidebarContentMode(sidebarContentMode === "ssh" ? "sessions" : "ssh");
-  }, [setSidebarContentMode, sidebarContentMode]);
+  // Workspace that was active when SSH mode was entered, so the second tap on
+  // the SSH entry can land the main panel back where the user started.
+  const sshEntrySelectionRef = useRef<ActiveWorkspaceSelection | null>(null);
+  const onToggleSshContent = useCallback((): boolean => {
+    if (sidebarContentMode !== "ssh") {
+      sshEntrySelectionRef.current = getLastWorkspaceSelection();
+      setSidebarContentMode("ssh");
+      return false;
+    }
+    setSidebarContentMode("sessions");
+    const returnTo = resolveSshExitWorkspace({
+      pathname,
+      entrySelection: sshEntrySelectionRef.current,
+      lastSelection: getLastWorkspaceSelection(),
+    });
+    sshEntrySelectionRef.current = null;
+    if (returnTo) {
+      navigateToWorkspace(returnTo.serverId, returnTo.workspaceId);
+      return true;
+    }
+    return false;
+  }, [pathname, setSidebarContentMode, sidebarContentMode]);
 
   const [isManualRefresh, setIsManualRefresh] = useState(false);
   const queryClient = useQueryClient();
@@ -819,6 +848,17 @@ function MobileSidebar({
     handleSchedulesNavigate();
   }, [backdropOpacity, closeSidebar, handleSchedulesNavigate, translateX, windowWidth]);
 
+  // Toggling into SSH mode keeps the drawer open (the SSH list lives in it);
+  // toggling back out closes the drawer only when the toggle navigated the
+  // main panel back to the workspace the user entered from.
+  const handleToggleSsh = useCallback(() => {
+    if (onToggleSshContent()) {
+      translateX.value = -windowWidth;
+      backdropOpacity.value = 0;
+      closeSidebar();
+    }
+  }, [backdropOpacity, closeSidebar, onToggleSshContent, translateX, windowWidth]);
+
   const handleWorkspacePress = useCallback(() => {
     closeSidebar();
   }, [closeSidebar]);
@@ -1005,7 +1045,7 @@ function MobileSidebar({
                   onOpenProject={handleOpenProjectFolder}
                   onHistory={handleViewMore}
                   isHistoryActive={isSessionsActive}
-                  onSsh={sshEnabled ? onToggleSshContent : undefined}
+                  onSsh={sshEnabled ? handleToggleSsh : undefined}
                   isSshActive={isSshContent}
                   onSchedules={showSchedules ? handleSchedules : undefined}
                   isSchedulesActive={isSchedulesActive}
@@ -1034,7 +1074,7 @@ function MobileSidebar({
                   <SidebarPrimaryEntry
                     sshEnabled={sshEnabled}
                     isSshContent={isSshContent}
-                    onToggleSsh={onToggleSshContent}
+                    onToggleSsh={handleToggleSsh}
                     sshLabel={labels.ssh}
                     showSchedules={showSchedules}
                     isSchedulesActive={isSchedulesActive}

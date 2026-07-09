@@ -100,6 +100,32 @@ describe("prepareWorkspaceTab", () => {
     expect(navigator.navigations).toEqual([{ serverId: SERVER_ID, workspaceId: WORKSPACE_ID }]);
   });
 
+  it("navigates before opening the tab so the requested tab keeps focus", () => {
+    // navigateToWorkspace focuses an attention-needing agent tab as a side
+    // effect; the explicitly requested tab must be opened after it to win.
+    const calls: string[] = [];
+    const layout = createFakeLayout();
+    navigateToPreparedWorkspaceTab(
+      {
+        serverId: SERVER_ID,
+        workspaceId: WORKSPACE_ID,
+        target: { kind: "terminal", terminalId: "term-1" },
+      },
+      {
+        ...layout,
+        openTabFocused: (key, target) => {
+          calls.push("openTabFocused");
+          return layout.openTabFocused(key, target);
+        },
+        navigateToWorkspace: () => {
+          calls.push("navigateToWorkspace");
+        },
+      },
+    );
+
+    expect(calls).toEqual(["navigateToWorkspace", "openTabFocused"]);
+  });
+
   it("focuses an existing empty draft tab for a new-agent request", () => {
     const layout = createFakeLayout({
       tabs: [

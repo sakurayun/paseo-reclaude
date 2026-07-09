@@ -19,6 +19,9 @@ export type HostTerminalEntry = ListTerminalsPayload["terminals"][number];
 export function useHostTerminals(serverId: string | null): {
   terminals: HostTerminalEntry[];
   supportsTerminalLifecycle: boolean;
+  // True once the host-wide list is authoritative: either loaded, or the host
+  // can't provide one (disabled/unsupported) so there is nothing to wait for.
+  isReady: boolean;
 } {
   const normalizedServerId = serverId?.trim() ?? "";
   const client = useSessionStore((state) =>
@@ -45,5 +48,5 @@ export function useHostTerminals(serverId: string | null): {
   });
 
   const terminals = useMemo(() => query.data?.terminals ?? [], [query.data]);
-  return { terminals, supportsTerminalLifecycle };
+  return { terminals, supportsTerminalLifecycle, isReady: !enabled || query.isSuccess };
 }

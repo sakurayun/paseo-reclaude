@@ -40,7 +40,7 @@
     "dev:server:raw": "npm run dev --workspace=@getpaseo/server",
     "dev:app": "cross-env PASEO_LISTEN=127.0.0.1:6768 EXPO_PORT=8081 ./scripts/dev-app.sh",
     "dev:website": "npm run dev --workspace=@getpaseo/website",
-    "postinstall": "node scripts/postinstall-patches.mjs",
+    "postinstall": "node scripts/postinstall-patches.mjs && node scripts/patch-xterm-viewport.mjs",
     "prepare": "lefthook install --force",
     "build": "npm run build --workspaces --if-present",
     "build:highlight": "npm run build --workspace=@getpaseo/highlight",

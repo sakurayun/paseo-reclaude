@@ -100,16 +100,21 @@ export function SidebarSshList({ serverId, onNavigate }: SidebarSshListProps) {
           {hosts.length === 0 ? (
             <Text style={styles.emptyLabel}>{t("ssh.hosts.empty")}</Text>
           ) : (
-            hosts.map((host) => (
-              <SshHostRow
-                key={host.id}
-                hostId={host.id}
-                label={host.label || host.address}
-                subtitle={host.username ? `${host.username}@${host.address}` : host.address}
-                os={host.platform?.os ?? null}
-                onConnect={handleConnect}
-              />
-            ))
+            hosts.map((host) => {
+              const isConnecting = connectingHostId === host.id;
+              const subtitle = host.username ? `${host.username}@${host.address}` : host.address;
+              return (
+                <SshHostRow
+                  key={host.id}
+                  hostId={host.id}
+                  label={host.label || host.address}
+                  subtitle={isConnecting ? t("ssh.hosts.connecting") : subtitle}
+                  os={host.platform?.os ?? null}
+                  isConnecting={isConnecting}
+                  onConnect={handleConnect}
+                />
+              );
+            })
           )}
         </View>
       </ScrollView>
@@ -152,12 +157,14 @@ function SshHostRow({
   label,
   subtitle,
   os,
+  isConnecting,
   onConnect,
 }: {
   hostId: string;
   label: string;
   subtitle: string;
   os: string | null;
+  isConnecting: boolean;
   onConnect: (hostId: string) => void;
 }) {
   const handlePress = useCallback(() => onConnect(hostId), [onConnect, hostId]);
@@ -173,6 +180,7 @@ function SshHostRow({
     <Pressable
       style={rowStyle}
       onPress={handlePress}
+      disabled={isConnecting}
       accessibilityRole="button"
       accessibilityLabel={label}
     >

@@ -116,6 +116,10 @@ export interface TerminalManager {
 
 export interface TerminalManagerOptions {
   getTerminalActivityUrl?: () => string | null;
+  // Persisted closed-terminal history hook, mirroring the worker manager's
+  // option so in-process terminals (e.g. SSH sessions) are recoverable from
+  // the terminal history too.
+  onTerminalClosed?: (record: TerminalClosedRecord) => void;
 }
 
 function createActivityToken(): string {
@@ -142,6 +146,19 @@ export function createTerminalManager(
     if (!session) {
       return;
     }
+
+    // Early-return above makes this exactly-once per terminal even when an
+    // explicit kill races the session's own exit event.
+    const title = session.getTitle();
+    managerOptions.onTerminalClosed?.({
+      id: session.id,
+      name: session.name,
+      cwd: session.cwd,
+      workspaceId: session.workspaceId,
+      ...(title ? { title } : {}),
+      exitCode: session.getExitInfo()?.exitCode ?? null,
+      closedAt: Date.now(),
+    });
 
     const unsubscribeExit = terminalExitUnsubscribeById.get(id);
     if (unsubscribeExit) {

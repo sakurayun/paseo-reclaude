@@ -556,7 +556,11 @@ export async function createPaseoDaemon(
   // verification, exec platform detection, and port forwarding), so they use a
   // dedicated in-process terminal manager, fronted by a composite so the
   // existing terminal RPCs (subscribe/kill/capture) work over both.
-  const sshTerminalManager = createTerminalManager();
+  const sshTerminalManager = createTerminalManager({
+    // SSH terminals share the persisted history so closed sessions are
+    // recoverable like local workspace terminals.
+    onTerminalClosed: (record) => terminalHistoryStore.append(record),
+  });
   const compositeTerminalManager = createCompositeTerminalManager(
     terminalManager,
     sshTerminalManager,

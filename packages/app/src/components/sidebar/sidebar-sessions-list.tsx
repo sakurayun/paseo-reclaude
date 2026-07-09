@@ -63,6 +63,8 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { AdaptiveRenameModal } from "@/components/rename-modal";
+import { useToast } from "@/contexts/toast-context";
+import { toErrorMessage } from "@/utils/error-messages";
 import { useSessionStore } from "@/stores/session-store";
 import { agentHistoryQueryKey } from "@/hooks/agent-history-query-key";
 import { isSidebarActiveAgent } from "@/utils/sidebar-agent-state";
@@ -83,6 +85,10 @@ import {
 import type { HostProfile } from "@/types/host-connection";
 import { usePanelStore } from "@/stores/panel-store";
 import { navigateToPreparedWorkspaceTab } from "@/utils/workspace-navigation";
+import { isSyntheticTerminalWorkspaceId } from "@/utils/terminal-workspace-id";
+import { OsBadge } from "@/components/ssh/os-badge";
+import { useSshTerminalHostOs } from "@/screens/ssh/use-ssh-terminal-host-os";
+import { deriveTerminalActivityStatusBucket } from "@getpaseo/protocol/terminal-activity";
 import { navigateToWorkspace } from "@/stores/navigation-active-workspace-store";
 
 interface SidebarSessionsListProps {
@@ -121,7 +127,10 @@ function sidebarTerminalTone(terminal: HostTerminalEntry): SidebarTerminalTone {
   if (terminal.status === "exited") {
     return terminal.exitCode != null && terminal.exitCode !== 0 ? "failed" : "idle";
   }
-  return "running";
+  // Activity-driven: a connected-but-quiet shell (e.g. an idle SSH session) is
+  // inactive and collapses with its group; only a running command, recent
+  // input, or a needs-input prompt counts as running.
+  return deriveTerminalActivityStatusBucket(terminal.activity) !== null ? "running" : "idle";
 }
 
 function sidebarTerminalIconMapping(tone: SidebarTerminalTone) {
@@ -845,10 +854,14 @@ const SidebarSessionsGroupView = memo(function SidebarSessionsGroupView({
     [expanded, group.sessions],
   );
 
-  // Terminals mirror the sessions rule: collapsed groups keep running
-  // terminals visible; expanding also reveals the exited ones.
+  // Terminals mirror the sessions rule: collapsed groups keep only actively
+  // running terminals visible (a quiet shell counts as inactive); expanding
+  // reveals the idle and exited ones too.
   const visibleTerminals = useMemo(
-    () => (expanded ? terminals : terminals.filter((terminal) => terminal.status !== "exited")),
+    () =>
+      expanded
+        ? terminals
+        : terminals.filter((terminal) => sidebarTerminalTone(terminal) === "running"),
     [expanded, terminals],
   );
 
@@ -964,17 +977,25 @@ const SidebarTerminalRow = memo(function SidebarTerminalRow({
   terminal: HostTerminalEntry;
   workspaceTarget: { serverId: string; workspaceId: string } | null;
 }) {
+  const { t } = useTranslation();
+  const toast = useToast();
   const [isHovered, setIsHovered] = useState(false);
   const handlePointerEnter = useCallback(() => setIsHovered(true), []);
   const handlePointerLeave = useCallback(() => setIsHovered(false), []);
+  const [isRenameOpen, setIsRenameOpen] = useState(false);
+  const [isKilling, setIsKilling] = useState(false);
 
   const tone = sidebarTerminalTone(terminal);
   const label = terminal.title?.trim() || terminal.name;
+  const { isSsh: isSshTerminal, os: sshHostOs } = useSshTerminalHostOs(
+    workspaceTarget?.serverId ?? null,
+    terminal.id,
+  );
 
-  // Standalone ids are a daemon-side grouping artifact, not real workspaces —
-  // fall back to the group's workspace target for navigation.
+  // Synthetic ids aren't real workspaces — fall back to the group's workspace
+  // target for navigation.
   const terminalWorkspaceId =
-    terminal.workspaceId && !terminal.workspaceId.startsWith("standalone:")
+    terminal.workspaceId && !isSyntheticTerminalWorkspaceId(terminal.workspaceId)
       ? terminal.workspaceId
       : null;
   const serverId = workspaceTarget?.serverId ?? null;
@@ -992,8 +1013,61 @@ const SidebarTerminalRow = memo(function SidebarTerminalRow({
     usePanelStore.getState().showMobileAgent();
   }, [serverId, workspaceId, terminal.id]);
 
+  const handleOpenRename = useCallback(() => {
+    setIsRenameOpen(true);
+  }, []);
+  const handleCloseRename = useCallback(() => {
+    setIsRenameOpen(false);
+  }, []);
+  const handleRenameSubmit = useCallback(
+    async (nextTitle: string) => {
+      const client = serverId
+        ? (useSessionStore.getState().sessions[serverId]?.client ?? null)
+        : null;
+      if (!client) {
+        throw new Error(t("workspace.terminal.hostDisconnected"));
+      }
+      const result = await client.renameTerminal({
+        terminalId: terminal.id,
+        title: nextTitle.trim(),
+      });
+      if (!result.success) {
+        throw new Error(result.error ?? "Failed to rename terminal");
+      }
+      // The daemon's terminals_changed push refreshes the sidebar list.
+    },
+    [serverId, t, terminal.id],
+  );
+
+  const handleKill = useCallback(() => {
+    if (isKilling) {
+      return;
+    }
+    const client = serverId
+      ? (useSessionStore.getState().sessions[serverId]?.client ?? null)
+      : null;
+    if (!client) {
+      toast.error(t("workspace.terminal.hostDisconnected"));
+      return;
+    }
+    setIsKilling(true);
+    const killTerminal = async (): Promise<void> => {
+      const payload = await client.killTerminal(terminal.id);
+      if (!payload.success) {
+        throw new Error("Unable to close terminal");
+      }
+    };
+    void killTerminal()
+      .catch((error: unknown) => {
+        toast.error(toErrorMessage(error));
+      })
+      .finally(() => {
+        setIsKilling(false);
+      });
+  }, [isKilling, serverId, t, terminal.id, toast]);
+
   const rowStyle = useCallback(
-    ({ pressed }: { pressed: boolean }) => [
+    ({ pressed }: PressableStateCallbackType) => [
       styles.terminalRow,
       (isHovered || pressed) && styles.groupHeaderHovered,
     ],
@@ -1011,21 +1085,57 @@ const SidebarTerminalRow = memo(function SidebarTerminalRow({
 
   return (
     <View onPointerEnter={handlePointerEnter} onPointerLeave={handlePointerLeave}>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={label}
-        style={rowStyle}
-        onPress={handlePress}
-        disabled={!serverId || !workspaceId}
-        testID={`sidebar-terminal-${terminal.id}`}
-      >
-        <View style={styles.groupHeaderLeadingSlot}>
-          <ThemedSquareTerminal size={14} uniProps={sidebarTerminalIconMapping(tone)} />
-        </View>
-        <Text style={titleStyle} numberOfLines={1}>
-          {label}
-        </Text>
-      </Pressable>
+      <ContextMenu>
+        <ContextMenuTrigger
+          accessibilityRole="button"
+          accessibilityLabel={label}
+          style={rowStyle}
+          onPress={handlePress}
+          testID={`sidebar-terminal-${terminal.id}`}
+        >
+          <View style={styles.groupHeaderLeadingSlot}>
+            {isSshTerminal ? (
+              <OsBadge os={sshHostOs} size={16} />
+            ) : (
+              <ThemedSquareTerminal size={14} uniProps={sidebarTerminalIconMapping(tone)} />
+            )}
+          </View>
+          <Text style={titleStyle} numberOfLines={1}>
+            {label}
+          </Text>
+        </ContextMenuTrigger>
+        <ContextMenuContent
+          align="start"
+          width={200}
+          mobileMode="sheet"
+          testID={`sidebar-terminal-context-${terminal.id}`}
+        >
+          <ContextMenuItem
+            testID={`sidebar-terminal-context-${terminal.id}-rename`}
+            onSelect={handleOpenRename}
+          >
+            {t("workspace.tabs.menu.rename")}
+          </ContextMenuItem>
+          <ContextMenuItem
+            testID={`sidebar-terminal-context-${terminal.id}-kill`}
+            status={isKilling ? "pending" : "idle"}
+            pendingLabel={t("workspace.tabs.closePrompt.killTerminalLabel")}
+            destructive
+            onSelect={handleKill}
+          >
+            {t("workspace.tabs.closePrompt.killTerminalLabel")}
+          </ContextMenuItem>
+        </ContextMenuContent>
+        <AdaptiveRenameModal
+          visible={isRenameOpen}
+          title={t("workspace.tabs.menu.rename")}
+          initialValue={label}
+          submitLabel={t("workspace.tabs.menu.rename")}
+          onClose={handleCloseRename}
+          onSubmit={handleRenameSubmit}
+          testID={`sidebar-terminal-rename-${terminal.id}`}
+        />
+      </ContextMenu>
     </View>
   );
 });

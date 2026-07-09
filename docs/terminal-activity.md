@@ -6,7 +6,10 @@ Paseo surfaces terminal activity as a tab indicator (the same "running" dot used
 
 Terminal activity is source-agnostic plumbing. `TerminalActivityTracker` holds the current per-terminal state and emits transitions to the manager, worker protocol, websocket subscription, app buckets, dots, and notifications.
 
-The tracker defaults to unknown (`null`). Activity production lives outside terminal stream parsing: agent hook commands report coarse activity to the daemon's local `/api/terminal-activity` endpoint.
+The tracker defaults to unknown (`null`). Activity production lives outside terminal stream parsing and has two sources:
+
+- Agent hook commands report coarse activity to the daemon's local `/api/terminal-activity` endpoint.
+- User input marks the session `working` for a 10s window (refreshed per input), then decays back to unknown via `clear()`. This covers plain shells and SSH sessions, which have no hooks. The decay only downgrades its own mark — a hook-reported transition moves `changedAt` and wins. Note the decay must use `clear()`, not `set("idle")`: idling a working terminal flips it into the `finished` attention state.
 
 ## Architecture
 

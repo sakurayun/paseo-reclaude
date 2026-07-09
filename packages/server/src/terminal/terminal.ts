@@ -1086,6 +1086,43 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
   const activityChangeListeners = new Set<(transition: TerminalActivityTransition) => void>();
   let titleChangeSubscription: { dispose(): void } | null = null;
 
+  // User input marks the terminal "working" for a short window. Agent hooks
+  // are the only other activity source and never fire for plain shells or SSH
+  // sessions, which would otherwise sit permanently at unknown. The decay uses
+  // clear() (back to unknown, no dot) — set("idle") would flip a working
+  // terminal into the "finished" attention state.
+  const INPUT_ACTIVITY_DECAY_MS = 10_000;
+  let inputActivityDecayTimer: NodeJS.Timeout | null = null;
+
+  function armInputActivityDecay(expectedChangedAt: number): void {
+    if (inputActivityDecayTimer) {
+      clearTimeout(inputActivityDecayTimer);
+    }
+    inputActivityDecayTimer = setTimeout(() => {
+      inputActivityDecayTimer = null;
+      const current = activityTracker.getSnapshot();
+      // Only downgrade the exact state this input marked; any later
+      // hook-reported transition moved changedAt and wins.
+      if (current.state === "working" && current.changedAt === expectedChangedAt) {
+        activityTracker.clear();
+      }
+    }, INPUT_ACTIVITY_DECAY_MS);
+    inputActivityDecayTimer.unref?.();
+  }
+
+  function markInputActivity(): void {
+    const before = activityTracker.getSnapshot();
+    activityTracker.set("working");
+    const after = activityTracker.getSnapshot();
+    const transitioned = after.changedAt !== before.changedAt;
+    // Refresh the decay window when this input owns the working state — it
+    // just transitioned it, or an earlier input mark armed the timer. A
+    // hook-owned "working" (no transition, no timer) is left alone.
+    if (transitioned || inputActivityDecayTimer) {
+      armInputActivityDecay(after.changedAt);
+    }
+  }
+
   // Create xterm.js headless terminal
   const terminal = new Terminal({
     rows,
@@ -1304,6 +1341,10 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
     clearPendingTitleChange();
     disposeTitleChangeSubscription();
     disposeCommandLifecycleSubscription.dispose();
+    if (inputActivityDecayTimer) {
+      clearTimeout(inputActivityDecayTimer);
+      inputActivityDecayTimer = null;
+    }
     activityTracker.dispose();
     terminal.dispose();
     listeners.clear();
@@ -1446,6 +1487,7 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
       case "input": {
         pendingInput += msg.data;
         scheduleInputFlush();
+        markInputActivity();
         break;
       }
       case "resize":

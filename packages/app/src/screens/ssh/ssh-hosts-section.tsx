@@ -90,6 +90,7 @@ function SshHostCard({
       <Pressable
         style={connectStyle}
         onPress={handleConnect}
+        disabled={isConnecting}
         accessibilityRole="button"
         accessibilityLabel={host.label || host.address}
         testID={`ssh-host-card-${host.id}`}

@@ -13,13 +13,20 @@ AAAEAmtyzHID7Fl+E4K5B6NG4CIy+Qcm0l4s435WpeV0I3/dYHqLdaiapmXLlKfM3K+wlB
 gFajKgmin2wyF+G82A+3AAAAEnBhc2VvLXRlc3QtZml4dHVyZQECAw==
 -----END OPENSSH PRIVATE KEY-----`;
 
+interface RecordedWindowChange {
+  rows: number;
+  cols: number;
+}
+
 interface RunningSshServer {
+  windowChanges: RecordedWindowChange[];
   port: number;
   close: () => Promise<void>;
 }
 
 function startSshServer(): Promise<RunningSshServer> {
   const sockets = new Set<Connection>();
+  const windowChanges: RecordedWindowChange[] = [];
   const server = new Server({ hostKeys: [TEST_HOST_KEY] }, (client: Connection) => {
     sockets.add(client);
     client.on("close", () => sockets.delete(client));
@@ -36,6 +43,10 @@ function startSshServer(): Promise<RunningSshServer> {
       client.on("session", (accept) => {
         const session = accept();
         session.on("pty", (acceptPty) => acceptPty?.());
+        session.on("window-change", (acceptChange, _rejectChange, info) => {
+          windowChanges.push({ rows: info.rows, cols: info.cols });
+          acceptChange?.();
+        });
         session.on("shell", (acceptShell) => {
           const channel = acceptShell();
           channel.write("ssh-ready\r\n");
@@ -56,6 +67,7 @@ function startSshServer(): Promise<RunningSshServer> {
     server.listen(0, "127.0.0.1", () => {
       const { port } = server.address() as AddressInfo;
       resolve({
+        windowChanges,
         port,
         close: () =>
           new Promise((done) => {
@@ -114,7 +126,56 @@ describe("daemon E2E - SSH host manager", () => {
     const connectResponse = await ctx.client.connectSshHost({ hostId, cols: 80, rows: 24 });
     expect(connectResponse.error).toBeNull();
     expect(connectResponse.terminal?.id).toBeTruthy();
+    // No placement provided (old clients): falls back to the synthetic bucket.
     expect(connectResponse.terminal?.workspaceId).toBe(`ssh:${hostId}`);
+
+    // With a workspace placement the terminal records the real workspace, so
+    // it lists/groups like a local workspace terminal.
+    const placedResponse = await ctx.client.connectSshHost({
+      hostId,
+      workspaceId: "ws-e2e",
+      cwd: "/tmp/ssh-e2e-workspace",
+    });
+    expect(placedResponse.error).toBeNull();
+    expect(placedResponse.terminal?.workspaceId).toBe("ws-e2e");
+    expect(placedResponse.terminal?.cwd).toBe("/tmp/ssh-e2e-workspace");
+
+    // Relative cwd is rejected in favor of the synthetic ssh home scope.
+    const relativeCwdResponse = await ctx.client.connectSshHost({
+      hostId,
+      workspaceId: "ws-e2e",
+      cwd: "not-absolute",
+    });
+    expect(relativeCwdResponse.error).toBeNull();
+    expect(relativeCwdResponse.terminal?.workspaceId).toBe("ws-e2e");
+    expect(relativeCwdResponse.terminal?.cwd).not.toBe("not-absolute");
+  });
+
+  test("forwards a client resize to the remote pty via window-change", async () => {
+    const createResponse = await ctx.client.createSshHost({
+      host: {
+        label: "Resize box",
+        address: "127.0.0.1",
+        port: sshServer.port,
+        username: "tester",
+      },
+      password: "pw",
+    });
+    const hostId = createResponse.host!.id;
+    const connectResponse = await ctx.client.connectSshHost({ hostId, cols: 80, rows: 24 });
+    const terminalId = connectResponse.terminal!.id;
+    expect(terminalId).toBeTruthy();
+
+    ctx.client.sendTerminalInput(terminalId, { type: "resize", rows: 41, cols: 132 });
+
+    const deadline = Date.now() + 5_000;
+    while (Date.now() < deadline) {
+      if (sshServer.windowChanges.some((change) => change.rows === 41 && change.cols === 132)) {
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    expect(sshServer.windowChanges).toContainEqual({ rows: 41, cols: 132 });
   });
 
   test("round-trips the full field set through create + update", async () => {
