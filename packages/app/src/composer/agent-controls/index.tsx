@@ -1090,6 +1090,8 @@ function DesktopAgentControlsContent(props: DesktopAgentControlsContentProps) {
                 onRetryProvider={onRetryModelProvider}
                 isRetryingProvider={isRetryingModelProvider}
                 serverId={modelSelectorServerId}
+                desktopPlacement="top-start"
+                desktopMinWidth={360}
               />
             </View>
           </TooltipTrigger>
@@ -1322,6 +1324,8 @@ function SheetAgentControlsContent(props: SheetAgentControlsContentProps) {
           isRetryingProvider={isRetryingModelProvider}
           renderTrigger={renderModelTrigger}
           serverId={modelSelectorServerId}
+          desktopPlacement="top-start"
+          desktopMinWidth={360}
         />
       ) : null}
 
@@ -2181,6 +2185,8 @@ export function DraftAgentControls({
           onRetryProvider={onRetryModelProvider}
           isRetryingProvider={isRetryingModelProvider}
           serverId={modelSelectorServerId}
+          desktopPlacement="top-start"
+          desktopMinWidth={360}
         />
         {selectedProvider ? (
           <ControlledAgentControls
