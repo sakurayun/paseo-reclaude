@@ -3331,6 +3331,8 @@ interface ToolCallProps {
   forceExpandToken?: number;
   /** Find highlights keyed by tool-call detail segment (shell.output, edit.diff, …). */
   findHighlights?: Map<string, MessageFindHighlight[]>;
+  defaultExpanded?: boolean;
+  forceInline?: boolean;
 }
 
 export const ToolCall = memo(function ToolCall({
@@ -3349,11 +3351,14 @@ export const ToolCall = memo(function ToolCall({
   onOpenFilePath,
   forceExpandToken,
   findHighlights,
+  defaultExpanded,
+  forceInline = false,
 }: ToolCallProps) {
   const { openToolCall } = useToolCallSheet();
   const [expandedOverride, setExpandedOverride] = useState<boolean | null>(null);
 
   const isMobile = useIsCompactFormFactor();
+  const shouldRenderInline = !isMobile || forceInline;
 
   const effectiveDetail = useMemo<ToolCallDetail | undefined>(() => {
     if (detail) {
@@ -3372,17 +3377,19 @@ export const ToolCall = memo(function ToolCall({
   // Edit and write tool calls start expanded so their diffs are visible
   // without a click. Derived from the detail (not initial state) because the
   // detail can arrive after mount while the call is still executing; a manual
-  // toggle always wins once made.
-  const defaultExpanded = effectiveDetail?.type === "edit" || effectiveDetail?.type === "write";
-  const isExpanded = expandedOverride ?? defaultExpanded;
+  // toggle always wins once made. An explicit `defaultExpanded` prop (e.g. the
+  // auto-expand-reasoning setting) takes precedence over the detail heuristic.
+  const autoExpandDefault =
+    defaultExpanded ?? (effectiveDetail?.type === "edit" || effectiveDetail?.type === "write");
+  const isExpanded = expandedOverride ?? autoExpandDefault;
 
   // A cross-session/in-session search jump bumps this token to reveal the matched
   // tool call's inline details on desktop without a manual click.
   useEffect(() => {
-    if (forceExpandToken !== undefined && !isMobile) {
+    if (forceExpandToken !== undefined && shouldRenderInline) {
       setExpandedOverride(true);
     }
-  }, [forceExpandToken, isMobile]);
+  }, [forceExpandToken, shouldRenderInline]);
 
   const presentation = useMemo(
     () =>
@@ -3406,7 +3413,7 @@ export const ToolCall = memo(function ToolCall({
   }, [presentation.openFilePath, onOpenFilePath]);
 
   const handleToggle = useCallback(() => {
-    if (isMobile) {
+    if (!shouldRenderInline) {
       openToolCall({
         displayName: presentation.displayName,
         summary: presentation.summary,
@@ -3417,11 +3424,11 @@ export const ToolCall = memo(function ToolCall({
         showLoadingSkeleton: presentation.isLoadingDetails,
       });
     } else {
-      setExpandedOverride((prev) => !(prev ?? defaultExpanded));
+      setExpandedOverride((prev) => !(prev ?? autoExpandDefault));
     }
   }, [
-    defaultExpanded,
-    isMobile,
+    autoExpandDefault,
+    shouldRenderInline,
     openToolCall,
     presentation.displayName,
     presentation.summary,
@@ -3433,22 +3440,22 @@ export const ToolCall = memo(function ToolCall({
   ]);
 
   useEffect(() => {
-    if (!onInlineDetailsHoverChange || isMobile || isExpanded) {
+    if (!onInlineDetailsHoverChange || !shouldRenderInline || isExpanded) {
       return;
     }
     onInlineDetailsHoverChange(false);
-  }, [isExpanded, isMobile, onInlineDetailsHoverChange]);
+  }, [isExpanded, shouldRenderInline, onInlineDetailsHoverChange]);
 
   useEffect(() => {
     if (!onInlineDetailsExpandedChange) {
       return;
     }
-    if (isMobile) {
+    if (!shouldRenderInline) {
       onInlineDetailsExpandedChange(false);
       return;
     }
     onInlineDetailsExpandedChange(isExpanded);
-  }, [isExpanded, isMobile, onInlineDetailsExpandedChange]);
+  }, [isExpanded, shouldRenderInline, onInlineDetailsExpandedChange]);
 
   useEffect(() => {
     if (!onInlineDetailsExpandedChange) {
@@ -3461,7 +3468,7 @@ export const ToolCall = memo(function ToolCall({
 
   // Render inline details for desktop
   const renderDetails = useCallback(() => {
-    if (isMobile) return null;
+    if (!shouldRenderInline) return null;
     return (
       <ToolCallDetailsContent
         detail={effectiveDetail}
@@ -3472,7 +3479,7 @@ export const ToolCall = memo(function ToolCall({
       />
     );
   }, [
-    isMobile,
+    shouldRenderInline,
     effectiveDetail,
     presentation.errorText,
     presentation.isLoadingDetails,
@@ -3496,10 +3503,10 @@ export const ToolCall = memo(function ToolCall({
       secondaryLabel={presentation.summary}
       icon={presentation.icon}
       labelColor={presentation.labelColor}
-      isExpanded={!isMobile && isExpanded}
+      isExpanded={shouldRenderInline && isExpanded}
       onToggle={presentation.canOpenDetails ? handleToggle : undefined}
       onOpenFile={handleOpenFile}
-      renderDetails={presentation.canOpenDetails && !isMobile ? renderDetails : undefined}
+      renderDetails={presentation.canOpenDetails && shouldRenderInline ? renderDetails : undefined}
       isLoading={status === "running" || status === "executing"}
       isError={status === "failed"}
       isLastInSequence={isLastInSequence}
@@ -3521,5 +3528,7 @@ function areToolCallPropsEqual(previous: ToolCallProps, next: ToolCallProps) {
   if (previous.isLastInSequence !== next.isLastInSequence) return false;
   if (previous.disableOuterSpacing !== next.disableOuterSpacing) return false;
   if (previous.onOpenFilePath !== next.onOpenFilePath) return false;
+  if (previous.defaultExpanded !== next.defaultExpanded) return false;
+  if (previous.forceInline !== next.forceInline) return false;
   return true;
 }

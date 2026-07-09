@@ -59,10 +59,8 @@ export function useProviderUsage(
   });
 
   const refresh = useCallback(async () => {
+    if (!canFetch) return;
     await queryClient.invalidateQueries({ queryKey });
-    if (!canFetch) {
-      return;
-    }
     await queryClient.fetchQuery({
       queryKey,
       queryFn,

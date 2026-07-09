@@ -133,7 +133,7 @@ export function ContextWindowMeter({
       if (isReclaudeClaude) {
         void syncReclaudeUsage().catch(() => undefined);
       } else {
-        void refreshProviderUsage();
+        void refreshProviderUsage().catch(() => {});
       }
     },
     [isReclaudeClaude, refreshProviderUsage, syncReclaudeUsage],

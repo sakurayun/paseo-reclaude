@@ -1019,11 +1019,19 @@ export const ru: TranslationResources = {
         tooLarge: "Разница слишком велика для отображения",
         unified: "Единый дифференциал",
         split: "Параллельная разница",
+        switchToUnified: "Переключить на объединенный diff",
+        switchToSplit: "Переключить на diff рядом",
+        showTreeView: "Показать дерево папок",
+        showFlatView: "Показать плоский список файлов",
+        options: "Параметры diff",
         hideWhitespace: "Скрыть пробелы",
+        showWhitespace: "Показать пробелы",
         scrollLongLines: "Прокручивать длинные строки",
         wrapLongLines: "Перенос длинных строк",
         collapseAll: "Свернуть все файлы",
         expandAll: "Развернуть все файлы",
+        collapseAllFolders: "Свернуть все папки",
+        expandAllFolders: "Развернуть все папки",
         refreshing: "Освежающий",
         refresh: "Обновить",
         refreshState: "Обновить состояние git и GitHub.",
@@ -1421,6 +1429,12 @@ export const ru: TranslationResources = {
         uninstallFailed: "Невозможно удалить навыки оркестровки.",
       },
     },
+  },
+  rootError: {
+    kicker: "Что-то пошло не так",
+    title: "В Paseo возникла проблема.",
+    body: "Попробуйте снова перезагрузить приложение. Если это повторяется, приложите приведенные ниже подробности к отчету.",
+    details: "Подробности",
   },
   startup: {
     errorTitle: "Что- то пошло не так",
@@ -1893,6 +1907,7 @@ export const ru: TranslationResources = {
     },
     backToWorkspace: "Назад",
     addHost: "Добавить хост",
+    enableBuiltInDaemon: "Включить встроенный демон",
     projects: "Проекты",
     projectList: {
       hostLoadFailed: "Не удалось загрузить проекты с хоста{{hostName}}:{{message}}.",
@@ -1901,7 +1916,6 @@ export const ru: TranslationResources = {
     groupInfo: "О{{title}}",
     sections: {
       general: "Общий",
-      daemon: "Daemon",
       appearance: "Появление",
       shortcuts: "Ярлыки",
       integrations: "Интеграции",
@@ -1975,7 +1989,7 @@ export const ru: TranslationResources = {
       providers: "Провайдеры",
       usage: "Использование",
       terminals: "Терминалы",
-      host: "Host",
+      host: "Обзор",
     },
     general: {
       title: "Общий",
@@ -2003,6 +2017,11 @@ export const ru: TranslationResources = {
         label: "Terminal прокрутка назад",
         description: "Строки, хранящиеся во встроенном буфере терминала.",
         accessibilityLabel: "Линии прокрутки Terminal",
+      },
+      autoExpandReasoning: {
+        label: "Всегда разворачивать размышления",
+        description:
+          "По умолчанию показывать блоки размышлений и логики агента полностью развернутыми",
       },
       language: {
         label: "Язык",
@@ -2091,6 +2110,9 @@ export const ru: TranslationResources = {
           ghostty: "Призрачный",
           auto: "Система",
         },
+      },
+      detailLevel: {
+        title: "Уровень детализации",
       },
       fonts: {
         title: "Шрифты",

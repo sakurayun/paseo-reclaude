@@ -73,6 +73,7 @@ export interface AppSettings {
   windowsLaunchAsAdmin: boolean; // Windows: launch default terminals elevated via gsudo
   workspaceTitleSource: WorkspaceTitleSource;
   newThemeEnabled: boolean; // standalone redesigned "new theme", independent of `theme`
+  autoExpandReasoning: boolean;
 }
 
 export interface Settings extends AppSettings {
@@ -102,6 +103,7 @@ export const DEFAULT_CLIENT_SETTINGS: AppSettings = {
   windowsLaunchAsAdmin: DEFAULT_WINDOWS_LAUNCH_AS_ADMIN,
   workspaceTitleSource: "title",
   newThemeEnabled: DEFAULT_NEW_THEME_ENABLED,
+  autoExpandReasoning: false,
 };
 
 export const DEFAULT_APP_SETTINGS: Settings = {
@@ -237,6 +239,9 @@ function pickMiscAppSettings(stored: Partial<AppSettings>): Partial<AppSettings>
   // the new theme on one device does not propagate to others.
   if (typeof stored.newThemeEnabled === "boolean") {
     result.newThemeEnabled = stored.newThemeEnabled;
+  }
+  if (typeof stored.autoExpandReasoning === "boolean") {
+    result.autoExpandReasoning = stored.autoExpandReasoning;
   }
   return result;
 }

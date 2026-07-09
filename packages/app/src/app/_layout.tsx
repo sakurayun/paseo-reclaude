@@ -42,6 +42,7 @@ import { LeftSidebar } from "@/components/left-sidebar";
 import { CompactExplorerSidebarHost } from "@/components/compact-explorer-sidebar-host";
 import { ProjectPickerModal } from "@/components/project-picker-modal";
 import { ProviderSettingsHost } from "@/components/provider-settings-host";
+import { RootErrorBoundary } from "@/components/root-error-boundary";
 import { WorkspaceSetupDialog } from "@/components/workspace-setup-dialog";
 import { WorkspaceShortcutTargetsSubscriber } from "@/components/workspace-shortcut-targets-subscriber";
 import { FloatingPanelPortalHost } from "@/components/ui/floating-panel-portal";
@@ -1027,34 +1028,30 @@ function RuntimeProviders({ children }: { children: ReactNode }) {
   );
 }
 
-// PortalProvider must stay inside normal app-wide context providers here.
+// PortalProvider must stay inside normal app-wide context providers.
 // `@gorhom/portal` renders portaled children at the host's location in the
 // tree, so any context a portaled sheet might consume (QueryClient, theme,
-// auth, settings, …) must wrap PortalProvider — not be wrapped by it.
+// auth, settings, ...) must wrap PortalProvider, not be wrapped by it.
 // BottomSheetModalProvider is the exception: Gorhom modals consume portal
 // context and need one shared provider for sibling sheets to stack.
 function RootProviders({ children }: { children: ReactNode }) {
   return (
-    <QueryProvider>
-      <I18nProvider>
-        <SafeAreaProvider>
-          <KeyboardProvider>
-            <KeyboardShiftProvider>
-              <PortalProvider>
-                <BottomSheetModalProvider>{children}</BottomSheetModalProvider>
-              </PortalProvider>
-            </KeyboardShiftProvider>
-          </KeyboardProvider>
-        </SafeAreaProvider>
-      </I18nProvider>
-    </QueryProvider>
+    <SafeAreaProvider>
+      <KeyboardProvider>
+        <KeyboardShiftProvider>
+          <PortalProvider>
+            <BottomSheetModalProvider>{children}</BottomSheetModalProvider>
+          </PortalProvider>
+        </KeyboardShiftProvider>
+      </KeyboardProvider>
+    </SafeAreaProvider>
   );
 }
 
 const LIGHT_SYSTEM_BARS_STYLE = { statusBar: "dark" as const };
 const DARK_SYSTEM_BARS_STYLE = { statusBar: "light" as const };
 
-export default function RootLayout() {
+function RootAppTree() {
   const { theme } = useUnistyles();
   const systemBarsStyle =
     theme.colorScheme === "light" ? LIGHT_SYSTEM_BARS_STYLE : DARK_SYSTEM_BARS_STYLE;
@@ -1072,6 +1069,18 @@ export default function RootLayout() {
         </View>
       </GrabRoot>
     </GestureHandlerRootView>
+  );
+}
+
+export default function RootLayout() {
+  return (
+    <QueryProvider>
+      <I18nProvider>
+        <RootErrorBoundary>
+          <RootAppTree />
+        </RootErrorBoundary>
+      </I18nProvider>
+    </QueryProvider>
   );
 }
 
