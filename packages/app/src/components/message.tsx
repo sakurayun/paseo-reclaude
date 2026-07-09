@@ -3530,5 +3530,7 @@ function areToolCallPropsEqual(previous: ToolCallProps, next: ToolCallProps) {
   if (previous.onOpenFilePath !== next.onOpenFilePath) return false;
   if (previous.defaultExpanded !== next.defaultExpanded) return false;
   if (previous.forceInline !== next.forceInline) return false;
+  if (previous.forceExpandToken !== next.forceExpandToken) return false;
+  if (previous.findHighlights !== next.findHighlights) return false;
   return true;
 }
