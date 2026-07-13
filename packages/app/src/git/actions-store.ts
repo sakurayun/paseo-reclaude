@@ -213,16 +213,6 @@ function inFlightKey(key: CheckoutKey, actionId: CheckoutGitAsyncActionId): stri
   return `${key}::${actionId}`;
 }
 
-export function isLocalWorktreeArchivePending(input: { serverId: string; cwd: string }): boolean {
-  return (
-    useCheckoutGitActionsStore.getState().getStatus({
-      serverId: input.serverId,
-      cwd: input.cwd,
-      actionId: "archive-worktree",
-    }) === "pending"
-  );
-}
-
 interface CheckoutGitActionsStoreState {
   statusByCheckout: Record<CheckoutKey, StatusMap>;
 

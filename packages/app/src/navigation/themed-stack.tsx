@@ -1,0 +1,39 @@
+import type { NativeStackNavigationOptions } from "@react-navigation/native-stack";
+import { Stack } from "expo-router";
+import { type ComponentProps, type ReactNode, useMemo } from "react";
+import { withUnistyles } from "react-native-unistyles";
+
+type StackScreenLayout = ComponentProps<typeof Stack>["screenLayout"];
+
+interface ThemedStackBaseProps {
+  backgroundColor: string;
+  children?: ReactNode;
+  screenOptions?: NativeStackNavigationOptions;
+  /** Expo Router stack layout wrapper (e.g. GrabScreen for element selection). */
+  screenLayout?: StackScreenLayout;
+}
+
+function ThemedStackBase({
+  backgroundColor,
+  children,
+  screenOptions,
+  screenLayout,
+}: ThemedStackBaseProps) {
+  const themedScreenOptions = useMemo<NativeStackNavigationOptions>(
+    () => ({
+      ...screenOptions,
+      contentStyle: [{ backgroundColor }, screenOptions?.contentStyle],
+    }),
+    [backgroundColor, screenOptions],
+  );
+
+  return (
+    <Stack screenOptions={themedScreenOptions} screenLayout={screenLayout}>
+      {children}
+    </Stack>
+  );
+}
+
+export const ThemedStack = withUnistyles(ThemedStackBase, (theme) => ({
+  backgroundColor: theme.colors.surface0,
+}));

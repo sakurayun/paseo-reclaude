@@ -1488,6 +1488,22 @@ export const SearchWorkspaceFilesResponseMessageSchema = z.object({
   }),
 });
 
+export const ProviderSubagentListRequestMessageSchema = z.object({
+  type: z.literal("agent.provider_subagents.list.request"),
+  parentAgentId: z.string(),
+  requestId: z.string(),
+});
+
+export const ProviderSubagentTimelineRequestMessageSchema = z.object({
+  type: z.literal("agent.provider_subagents.timeline.get.request"),
+  parentAgentId: z.string(),
+  subagentId: z.string(),
+  requestId: z.string(),
+  direction: z.enum(["tail", "before", "after"]).optional(),
+  cursor: AgentTimelineCursorSchema.optional(),
+  limit: z.number().int().nonnegative().optional(),
+});
+
 export const AgentForkContextRequestMessageSchema = z.object({
   type: z.literal("agent.fork_context.request"),
   agentId: z.string(),
@@ -2414,6 +2430,16 @@ export const CreateTerminalRequestSchema = z.object({
   // only once both the floor client and daemon ship it (they never break parse,
   // so this can also just stay optional forever).
   windowsShell: WindowsShellPreferenceSchema.optional(),
+  // COMPAT(createTerminalSize): added in v0.1.107, drop the optional gate when floor >= v0.1.107.
+  // The client seeds the PTY with its measured viewport size so a new terminal isn't born at the
+  // 80x24 default and then visibly reflowed. Old daemons ignore this field and start at 80x24;
+  // the client's first resize corrects it as before.
+  size: z
+    .object({
+      rows: z.number().int().positive(),
+      cols: z.number().int().positive(),
+    })
+    .optional(),
   requestId: z.string(),
 });
 
@@ -3222,6 +3248,8 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   FetchAgentTimelineRequestMessageSchema,
   SearchSessionsContentRequestMessageSchema,
   SearchWorkspaceFilesRequestMessageSchema,
+  ProviderSubagentListRequestMessageSchema,
+  ProviderSubagentTimelineRequestMessageSchema,
   AgentForkContextRequestMessageSchema,
   SetAgentModeRequestMessageSchema,
   SetAgentModelRequestMessageSchema,
@@ -3582,6 +3610,8 @@ export const ServerInfoStatusPayloadSchema = z
         // COMPAT(sshHosts): fork feature, added in v0.1.124. Old daemons omit it —
         // clients keep the legacy schedules sidebar entry instead of the SSH one.
         sshHosts: z.boolean().optional(),
+        // COMPAT(providerSubagents): added in v0.1.107, remove gate after 2027-01-12.
+        providerSubagents: z.boolean().optional(),
       })
       .optional(),
   })
@@ -4182,6 +4212,88 @@ export const FetchAgentTimelineResponseMessageSchema = z.object({
     entries: z.array(AgentTimelineEntryPayloadSchema),
     error: z.string().nullable(),
   }),
+});
+
+export const ProviderSubagentDescriptorPayloadSchema = z.object({
+  id: z.string(),
+  parentAgentId: z.string(),
+  provider: AgentProviderSchema,
+  title: z.string().nullable(),
+  description: z.string().nullable(),
+  status: z.enum(["running", "completed", "failed", "canceled"]),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+  toolCallId: z.string().nullable(),
+  cwd: z.string().nullable().optional(),
+});
+
+export type ProviderSubagentDescriptorPayload = z.infer<
+  typeof ProviderSubagentDescriptorPayloadSchema
+>;
+
+export const ProviderSubagentListResponseMessageSchema = z.object({
+  type: z.literal("agent.provider_subagents.list.response"),
+  payload: z.object({
+    requestId: z.string(),
+    parentAgentId: z.string(),
+    subagents: z.array(ProviderSubagentDescriptorPayloadSchema),
+    error: z.string().nullable(),
+  }),
+});
+
+export const ProviderSubagentTimelineResponseMessageSchema = z.object({
+  type: z.literal("agent.provider_subagents.timeline.get.response"),
+  payload: z.object({
+    requestId: z.string(),
+    parentAgentId: z.string(),
+    subagentId: z.string(),
+    provider: AgentProviderSchema.nullable(),
+    direction: z.enum(["tail", "before", "after"]),
+    epoch: z.string(),
+    reset: z.boolean(),
+    staleCursor: z.boolean(),
+    gap: z.boolean(),
+    window: z.object({
+      minSeq: z.number().int().nonnegative(),
+      maxSeq: z.number().int().nonnegative(),
+      nextSeq: z.number().int().nonnegative(),
+    }),
+    hasOlder: z.boolean(),
+    hasNewer: z.boolean(),
+    rows: z.array(
+      z.object({
+        item: AgentTimelineItemPayloadSchema,
+        timestamp: z.string(),
+        seq: z.number().int().nonnegative(),
+      }),
+    ),
+    error: z.string().nullable(),
+  }),
+});
+
+export const ProviderSubagentUpdateMessageSchema = z.object({
+  type: z.literal("agent.provider_subagents.update"),
+  payload: z.discriminatedUnion("kind", [
+    z.object({
+      kind: z.literal("upsert"),
+      subagent: ProviderSubagentDescriptorPayloadSchema,
+    }),
+    z.object({
+      kind: z.literal("timeline"),
+      parentAgentId: z.string(),
+      subagentId: z.string(),
+      provider: AgentProviderSchema,
+      item: AgentTimelineItemPayloadSchema,
+      timestamp: z.string(),
+      seq: z.number().int().nonnegative(),
+      epoch: z.string(),
+    }),
+    z.object({
+      kind: z.literal("remove"),
+      parentAgentId: z.string(),
+      subagentId: z.string(),
+    }),
+  ]),
 });
 
 export const AgentForkContextResponseMessageSchema = z.object({
@@ -5928,6 +6040,9 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   FetchAgentTimelineResponseMessageSchema,
   SearchSessionsContentResponseMessageSchema,
   SearchWorkspaceFilesResponseMessageSchema,
+  ProviderSubagentListResponseMessageSchema,
+  ProviderSubagentTimelineResponseMessageSchema,
+  ProviderSubagentUpdateMessageSchema,
   AgentForkContextResponseMessageSchema,
   CancelAgentResponseMessageSchema,
   ClearAgentAttentionResponseMessageSchema,
@@ -6574,6 +6689,7 @@ export const WSHelloMessageSchema = z.object({
       [CLIENT_CAPS.reasoningMergeEnum]: z.boolean().optional(),
       [CLIENT_CAPS.customModeIcons]: z.boolean().optional(),
       [CLIENT_CAPS.terminalReflowableSnapshot]: z.boolean().optional(),
+      [CLIENT_CAPS.providerSubagents]: z.boolean().optional(),
       [CLIENT_CAPS.browserHost]: BrowserAutomationHostCapabilitySchema.optional(),
     })
     .passthrough()

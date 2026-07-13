@@ -3,46 +3,56 @@ import { normalizeWorkspaceFileLocation, workspaceFileLocationsEqual } from "@/w
 
 type WorkspaceDraftTabSetup = NonNullable<Extract<WorkspaceTabTarget, { kind: "draft" }>["setup"]>;
 
+/** Tab kind discrimination spans many branches by design. */
+// eslint-disable-next-line complexity -- exhaustive tab-kind discrimination
 export function normalizeWorkspaceTabTarget(
   value: WorkspaceTabTarget | null | undefined,
 ): WorkspaceTabTarget | null {
   if (!value || typeof value !== "object" || typeof value.kind !== "string") {
     return null;
   }
-  if (value.kind === "draft") {
-    const draftId = trimNonEmpty(value.draftId);
-    if (!draftId) {
-      return null;
+  switch (value.kind) {
+    case "draft": {
+      const draftId = trimNonEmpty(value.draftId);
+      if (!draftId) {
+        return null;
+      }
+      const setup = normalizeWorkspaceDraftTabSetup(value.setup);
+      return setup ? { kind: "draft", draftId, setup } : { kind: "draft", draftId };
     }
-    const setup = normalizeWorkspaceDraftTabSetup(value.setup);
-    return setup ? { kind: "draft", draftId, setup } : { kind: "draft", draftId };
+    case "agent": {
+      const agentId = trimNonEmpty(value.agentId);
+      return agentId ? { kind: "agent", agentId } : null;
+    }
+    case "provider_subagent": {
+      const parentAgentId = trimNonEmpty(value.parentAgentId);
+      const subagentId = trimNonEmpty(value.subagentId);
+      return parentAgentId && subagentId
+        ? { kind: "provider_subagent", parentAgentId, subagentId }
+        : null;
+    }
+    case "terminal": {
+      const terminalId = trimNonEmpty(value.terminalId);
+      return terminalId ? { kind: "terminal", terminalId } : null;
+    }
+    case "browser": {
+      const browserId = trimNonEmpty(value.browserId);
+      return browserId ? { kind: "browser", browserId } : null;
+    }
+    case "file":
+      return normalizeFileTabTarget(value);
+    case "file-diff": {
+      const path = trimNonEmpty(value.path);
+      return path ? { kind: "file-diff", path } : null;
+    }
+    case "setup":
+    case "sessions":
+      return normalizeWorkspaceIdTabTarget(value.kind, value.workspaceId);
+    case "port-forwards":
+      return { kind: "port-forwards" };
+    default:
+      return null;
   }
-  if (value.kind === "agent") {
-    const agentId = trimNonEmpty(value.agentId);
-    return agentId ? { kind: "agent", agentId } : null;
-  }
-  if (value.kind === "terminal") {
-    const terminalId = trimNonEmpty(value.terminalId);
-    return terminalId ? { kind: "terminal", terminalId } : null;
-  }
-  if (value.kind === "browser") {
-    const browserId = trimNonEmpty(value.browserId);
-    return browserId ? { kind: "browser", browserId } : null;
-  }
-  if (value.kind === "file") {
-    return normalizeFileTabTarget(value);
-  }
-  if (value.kind === "file-diff") {
-    const path = trimNonEmpty(value.path);
-    return path ? { kind: "file-diff", path } : null;
-  }
-  if (value.kind === "setup" || value.kind === "sessions") {
-    return normalizeWorkspaceIdTabTarget(value.kind, value.workspaceId);
-  }
-  if (value.kind === "port-forwards") {
-    return { kind: "port-forwards" };
-  }
-  return null;
 }
 
 function normalizeWorkspaceIdTabTarget(
@@ -80,6 +90,8 @@ export function normalizeWorkspaceDraftTabSetup(
   };
 }
 
+/** Tab kind discrimination spans many branches by design. */
+// eslint-disable-next-line complexity -- exhaustive tab-kind discrimination
 export function workspaceTabTargetsEqual(
   left: WorkspaceTabTarget,
   right: WorkspaceTabTarget,
@@ -87,32 +99,39 @@ export function workspaceTabTargetsEqual(
   if (left.kind !== right.kind) {
     return false;
   }
-  if (left.kind === "draft" && right.kind === "draft") {
-    return left.draftId === right.draftId && workspaceDraftTabSetupsEqual(left.setup, right.setup);
+  switch (left.kind) {
+    case "draft":
+      return (
+        right.kind === "draft" &&
+        left.draftId === right.draftId &&
+        workspaceDraftTabSetupsEqual(left.setup, right.setup)
+      );
+    case "agent":
+      return right.kind === "agent" && left.agentId === right.agentId;
+    case "provider_subagent":
+      return (
+        right.kind === "provider_subagent" &&
+        left.parentAgentId === right.parentAgentId &&
+        left.subagentId === right.subagentId
+      );
+    case "terminal":
+      return right.kind === "terminal" && left.terminalId === right.terminalId;
+    case "browser":
+      return right.kind === "browser" && left.browserId === right.browserId;
+    case "file":
+      return right.kind === "file" && workspaceFileLocationsEqual(left, right);
+    case "file-diff":
+      return right.kind === "file-diff" && left.path === right.path;
+    case "setup":
+    case "sessions": {
+      const other = right as Extract<WorkspaceTabTarget, { kind: "setup" | "sessions" }>;
+      return left.workspaceId === other.workspaceId;
+    }
+    case "port-forwards":
+      return true;
+    default:
+      return false;
   }
-  if (left.kind === "agent" && right.kind === "agent") {
-    return left.agentId === right.agentId;
-  }
-  if (left.kind === "terminal" && right.kind === "terminal") {
-    return left.terminalId === right.terminalId;
-  }
-  if (left.kind === "browser" && right.kind === "browser") {
-    return left.browserId === right.browserId;
-  }
-  if (left.kind === "file" && right.kind === "file") {
-    return workspaceFileLocationsEqual(left, right);
-  }
-  if (left.kind === "file-diff" && right.kind === "file-diff") {
-    return left.path === right.path;
-  }
-  if (left.kind === "setup" || left.kind === "sessions") {
-    const other = right as Extract<WorkspaceTabTarget, { kind: "setup" | "sessions" }>;
-    return left.workspaceId === other.workspaceId;
-  }
-  if (left.kind === "port-forwards") {
-    return true;
-  }
-  return false;
 }
 
 function workspaceDraftTabSetupsEqual(
@@ -154,6 +173,9 @@ export function buildDeterministicWorkspaceTabId(target: WorkspaceTabTarget): st
   }
   if (target.kind === "agent") {
     return `agent_${target.agentId}`;
+  }
+  if (target.kind === "provider_subagent") {
+    return `provider_subagent_${target.parentAgentId.length}_${target.parentAgentId}_${target.subagentId.length}_${target.subagentId}`;
   }
   if (target.kind === "terminal") {
     return `terminal_${target.terminalId}`;

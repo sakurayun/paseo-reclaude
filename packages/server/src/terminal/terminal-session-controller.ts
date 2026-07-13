@@ -608,6 +608,8 @@ export class TerminalSessionController {
         command: msg.command,
         args: msg.args,
         ...(msg.windowsShell ? { windowsShell: msg.windowsShell } : {}),
+        rows: msg.size?.rows,
+        cols: msg.size?.cols,
       });
       this.ensureExitSubscription(session);
       this.emit({

@@ -1,4 +1,4 @@
-import React, { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useQuery } from "@tanstack/react-query";
 import type { FileReadResult } from "@getpaseo/client/internal/daemon-client";
@@ -44,7 +44,7 @@ import {
   type UsePaneFindResult,
   usePaneFind,
 } from "@/panels/pane-find";
-import { MountedTabActiveContext } from "@/components/split-container";
+import { useRetainedPanelActive } from "@/components/retained-panel";
 import { useAppVisible } from "@/hooks/use-app-visible";
 import { isFileQueryEnabled } from "@/components/file-pane-enabled";
 
@@ -833,7 +833,7 @@ export function FilePane({
   // Re-read the file when this pane becomes visible again (#445). `isActive`
   // covers tab switches, `isAppVisible` the whole-app background/foreground; the
   // gate itself lives in isFileQueryEnabled.
-  const isActive = useContext(MountedTabActiveContext);
+  const isActive = useRetainedPanelActive();
   const isAppVisible = useAppVisible();
 
   const query = useQuery({

@@ -124,6 +124,8 @@ export interface ComboboxProps {
    * "Add project" that should always be reachable from the dropdown.
    */
   listHeader?: ReactNode;
+  /** Content rendered below the scroll area. */
+  footer?: ReactNode;
   /** When true, selecting an option does not close the picker (multi-select mode). */
   keepOpenOnSelect?: boolean;
   anchorRef: React.RefObject<View | null>;
@@ -941,6 +943,7 @@ interface MobileBodyProps {
   onClose: () => void;
   stickyHeader: ReactNode;
   listHeader: ReactNode;
+  footer: ReactNode;
   searchable: boolean;
   hasChildren: boolean;
   mobileChildrenScrollEnabled: boolean;
@@ -1040,6 +1043,7 @@ function MobileComboboxBody(props: MobileBodyProps): ReactElement {
           {body}
         </BottomSheetScrollView>
       )}
+      {props.footer ? <View style={styles.footer}>{props.footer}</View> : null}
     </IsolatedBottomSheetModal>
   );
 }
@@ -1054,6 +1058,7 @@ interface DesktopBodyProps {
   header: SheetHeader | undefined;
   stickyHeader: ReactNode;
   listHeader: ReactNode;
+  footer: ReactNode;
   searchable: boolean;
   searchPlaceholder: string;
   searchQuery: string;
@@ -1210,6 +1215,7 @@ function DesktopComboboxBody(props: DesktopBodyProps): ReactElement {
               renderOption={props.renderOption}
             />
           )}
+          {props.footer ? <View style={styles.footer}>{props.footer}</View> : null}
         </FloatingSurface>
       </View>
     </Modal>
@@ -1243,6 +1249,7 @@ export function Combobox({
   desktopFixedHeight,
   stickyHeader,
   listHeader,
+  footer,
   keepOpenOnSelect = false,
   anchorRef,
   children,
@@ -1525,6 +1532,7 @@ export function Combobox({
         onClose={handleClose}
         stickyHeader={stickyHeader}
         listHeader={listHeader}
+        footer={footer}
         searchable={searchable}
         hasChildren={hasChildren}
         mobileChildrenScrollEnabled={mobileChildrenScrollEnabled}
@@ -1559,6 +1567,7 @@ export function Combobox({
       header={header}
       stickyHeader={stickyHeader}
       listHeader={listHeader}
+      footer={footer}
       searchable={searchable}
       searchPlaceholder={effectiveSearchPlaceholder}
       searchQuery={searchQuery}
@@ -1673,6 +1682,10 @@ const styles = StyleSheet.create((theme) => ({
     paddingVertical: theme.spacing[2],
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.sm,
+  },
+  footer: {
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.border,
   },
   bottomSheetHeader: {
     paddingHorizontal: theme.spacing[6],

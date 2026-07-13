@@ -79,6 +79,8 @@ export interface TerminalManager {
     env?: Record<string, string>;
     command?: string;
     args?: string[];
+    rows?: number;
+    cols?: number;
     activityToken?: string;
     activityUrl?: string | null;
     windowsShell?: WindowsShellPreference;
@@ -355,6 +357,8 @@ export function createTerminalManager(
       env?: Record<string, string>;
       command?: string;
       args?: string[];
+      rows?: number;
+      cols?: number;
       activityToken?: string;
       activityUrl?: string | null;
       windowsShell?: WindowsShellPreference;
@@ -391,6 +395,8 @@ export function createTerminalManager(
             ...(options.command ? { command: options.command } : {}),
             ...(options.args ? { args: options.args } : {}),
             ...(options.windowsShell ? { windowsShell: options.windowsShell } : {}),
+            ...(options.rows !== undefined ? { rows: options.rows } : {}),
+            ...(options.cols !== undefined ? { cols: options.cols } : {}),
             ...(mergedEnv ? { env: mergedEnv } : {}),
             ...(options.backend ? { backend: options.backend } : {}),
             activityEnv,

@@ -164,7 +164,7 @@ export const SidebarWorkspaceRowContent = memo(function SidebarWorkspaceRowConte
               </Text>
               {scriptIconKind ? <WorkspaceScriptIcon kind={scriptIconKind} /> : null}
             </View>
-            <View style={styles.workspaceRowRight}>{children}</View>
+            <View style={sidebarWorkspaceRowStyles.rowRight}>{children}</View>
           </View>
           {subtitle ? (
             <Text style={styles.workspaceSubtitle} numberOfLines={1}>

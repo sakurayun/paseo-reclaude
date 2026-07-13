@@ -209,7 +209,7 @@ import {
   planGitOp,
   requirePaths,
 } from "../utils/git-ops.js";
-import { searchHomeDirectories, searchWorkspaceEntries } from "../utils/directory-suggestions.js";
+import { searchDirectoryEntries } from "../utils/directory-suggestions.js";
 import { toCheckoutError } from "./checkout-git-utils.js";
 import type { CheckoutDiffManager } from "./checkout-diff-manager.js";
 import type { Resolvable } from "./speech/provider-resolver.js";
@@ -262,6 +262,14 @@ import { CreateAgentLifecycleDispatch } from "./agent/create-agent-lifecycle-dis
 // the entire session message if they encounter an unknown provider.
 const LEGACY_PROVIDER_IDS = new Set(["claude", "codex", "opencode"]);
 const MIN_VERSION_ALL_PROVIDERS = "0.1.45";
+const WORKSPACE_SEARCH_HIDDEN_DIRECTORIES = [
+  ".agents",
+  ".claude",
+  ".codex",
+  ".github",
+  ".paseo",
+  ".vscode",
+];
 
 function errorToFriendlyMessage(error: unknown): string {
   if (error instanceof Error) return error.message;
@@ -1362,6 +1370,43 @@ export class Session {
           return;
         }
 
+        if (event.type === "provider_subagent") {
+          if (!this.supports(CLIENT_CAPS.providerSubagents)) {
+            return;
+          }
+          const update = event.event;
+          if (update.type === "upsert") {
+            this.emit({
+              type: "agent.provider_subagents.update",
+              payload: { kind: "upsert", subagent: update.subagent },
+            });
+          } else if (update.type === "timeline") {
+            this.emit({
+              type: "agent.provider_subagents.update",
+              payload: {
+                kind: "timeline",
+                parentAgentId: update.parentAgentId,
+                subagentId: update.subagentId,
+                provider: update.provider,
+                item: update.row.item,
+                timestamp: update.row.timestamp,
+                seq: update.row.seq,
+                epoch: update.epoch,
+              },
+            });
+          } else {
+            this.emit({
+              type: "agent.provider_subagents.update",
+              payload: {
+                kind: "remove",
+                parentAgentId: update.parentAgentId,
+                subagentId: update.subagentId,
+              },
+            });
+          }
+          return;
+        }
+
         if (
           this.voiceSession.isActiveForAgent(event.agentId) &&
           event.event.type === "permission_requested" &&
@@ -1771,6 +1816,10 @@ export class Session {
     switch (msg.type) {
       case "fetch_agent_timeline_request":
         return this.handleFetchAgentTimelineRequest(msg);
+      case "agent.provider_subagents.list.request":
+        return this.handleProviderSubagentListRequest(msg);
+      case "agent.provider_subagents.timeline.get.request":
+        return this.handleProviderSubagentTimelineRequest(msg);
       case "agent.fork_context.request":
         return this.handleAgentForkContextRequest(msg);
       default:
@@ -3439,7 +3488,7 @@ export class Session {
           extractTimestamps(record),
         );
       }
-      await this.agentManager.hydrateTimelineFromProvider(agentId);
+      await this.agentManager.hydrateTimelineFromProvider(agentId, { broadcast: true });
       await this.agentUpdates.forwardLiveAgent(snapshot);
       const timelineSize = this.agentManager.getTimeline(agentId).length;
       if (requestId) {
@@ -3880,22 +3929,23 @@ export class Session {
 
     try {
       const workspaceCwd = cwd?.trim();
-      const entries = workspaceCwd
-        ? await searchWorkspaceEntries({
-            cwd: expandTilde(workspaceCwd),
-            query,
-            limit,
-            includeFiles,
-            includeDirectories,
-            matchMode,
-          })
-        : (
-            await searchHomeDirectories({
-              homeDir: process.env.HOME ?? homedir(),
-              query,
-              limit,
-            })
-          ).map((path) => ({ path, kind: "directory" as const }));
+      const searchesWorkspace = Boolean(workspaceCwd);
+      const entries = await searchDirectoryEntries({
+        root: workspaceCwd ? expandTilde(workspaceCwd) : (process.env.HOME ?? homedir()),
+        query,
+        pathFormat: searchesWorkspace ? "relative" : "absolute",
+        pathQueryPolicy: searchesWorkspace ? "slashes" : "rooted",
+        blankQueryBehavior: searchesWorkspace ? "children" : "none",
+        rootAliases: searchesWorkspace ? [] : ["~"],
+        traversableHiddenDirectoryNames: searchesWorkspace
+          ? WORKSPACE_SEARCH_HIDDEN_DIRECTORIES
+          : [],
+        confidentResultScanThreshold: searchesWorkspace ? undefined : 5_000,
+        includeFiles,
+        includeDirectories,
+        matchMode,
+        limit,
+      });
       const directories = entries
         .filter((entry) => entry.kind === "directory")
         .map((entry) => entry.path);
@@ -6228,6 +6278,96 @@ export class Session {
           hasOlder: false,
           hasNewer: false,
           entries: [],
+          error: error instanceof Error ? error.message : String(error),
+        },
+      });
+    }
+  }
+
+  private async handleProviderSubagentListRequest(
+    msg: Extract<SessionInboundMessage, { type: "agent.provider_subagents.list.request" }>,
+  ): Promise<void> {
+    try {
+      this.emit({
+        type: "agent.provider_subagents.list.response",
+        payload: {
+          requestId: msg.requestId,
+          parentAgentId: msg.parentAgentId,
+          subagents: this.agentManager.listProviderSubagents(msg.parentAgentId),
+          error: null,
+        },
+      });
+    } catch (error) {
+      this.emit({
+        type: "agent.provider_subagents.list.response",
+        payload: {
+          requestId: msg.requestId,
+          parentAgentId: msg.parentAgentId,
+          subagents: [],
+          error: error instanceof Error ? error.message : String(error),
+        },
+      });
+    }
+  }
+
+  private async handleProviderSubagentTimelineRequest(
+    msg: Extract<SessionInboundMessage, { type: "agent.provider_subagents.timeline.get.request" }>,
+  ): Promise<void> {
+    const direction: AgentTimelineFetchDirection = msg.direction ?? (msg.cursor ? "after" : "tail");
+    try {
+      const descriptor = this.agentManager.getProviderSubagent(msg.parentAgentId, msg.subagentId);
+      if (!descriptor) {
+        throw new Error("Provider subagent not found");
+      }
+      const timeline = this.agentManager.fetchProviderSubagentTimeline(
+        msg.parentAgentId,
+        msg.subagentId,
+        {
+          direction,
+          cursor: msg.cursor,
+          limit: msg.limit ?? (direction === "after" ? 0 : 200),
+        },
+      );
+      this.emit({
+        type: "agent.provider_subagents.timeline.get.response",
+        payload: {
+          requestId: msg.requestId,
+          parentAgentId: msg.parentAgentId,
+          subagentId: msg.subagentId,
+          provider: descriptor.provider,
+          direction,
+          epoch: timeline.epoch,
+          reset: timeline.reset,
+          staleCursor: timeline.staleCursor,
+          gap: timeline.gap,
+          window: timeline.window,
+          hasOlder: timeline.hasOlder,
+          hasNewer: timeline.hasNewer,
+          rows: timeline.rows.map((row) => ({
+            item: row.item,
+            timestamp: row.timestamp,
+            seq: row.seq,
+          })),
+          error: null,
+        },
+      });
+    } catch (error) {
+      this.emit({
+        type: "agent.provider_subagents.timeline.get.response",
+        payload: {
+          requestId: msg.requestId,
+          parentAgentId: msg.parentAgentId,
+          subagentId: msg.subagentId,
+          provider: null,
+          direction,
+          epoch: "",
+          reset: false,
+          staleCursor: false,
+          gap: false,
+          window: { minSeq: 0, maxSeq: 0, nextSeq: 0 },
+          hasOlder: false,
+          hasNewer: false,
+          rows: [],
           error: error instanceof Error ? error.message : String(error),
         },
       });

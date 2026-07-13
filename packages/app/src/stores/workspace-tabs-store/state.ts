@@ -19,6 +19,7 @@ export interface WorkspaceDraftTabSetup {
 export type WorkspaceTabTarget =
   | { kind: "draft"; draftId: string; setup?: WorkspaceDraftTabSetup }
   | { kind: "agent"; agentId: string }
+  | { kind: "provider_subagent"; parentAgentId: string; subagentId: string }
   | { kind: "terminal"; terminalId: string }
   | { kind: "browser"; browserId: string }
   | WorkspaceFileTabTarget
@@ -498,43 +499,65 @@ function extractMigrationRawSources(persistedState: unknown): MigrationRawSource
   };
 }
 
+// eslint-disable-next-line complexity -- exhaustive tab-kind coercion from persisted JSON
 function coerceWorkspaceTabTarget(raw: Record<string, unknown>): WorkspaceTabTarget | null {
   const kind = typeof raw.kind === "string" ? raw.kind : null;
-  if (kind === "draft" && typeof raw.draftId === "string") {
-    const setup = normalizeWorkspaceDraftTabSetup(raw.setup);
-    return normalizeWorkspaceTabTarget({
-      kind: "draft",
-      draftId: raw.draftId,
-      ...(setup ? { setup } : {}),
-    });
+  switch (kind) {
+    case "draft":
+      if (typeof raw.draftId !== "string") {
+        return null;
+      }
+      {
+        const setup = normalizeWorkspaceDraftTabSetup(raw.setup);
+        return normalizeWorkspaceTabTarget({
+          kind: "draft",
+          draftId: raw.draftId,
+          ...(setup ? { setup } : {}),
+        });
+      }
+    case "agent":
+      return typeof raw.agentId === "string"
+        ? normalizeWorkspaceTabTarget({ kind: "agent", agentId: raw.agentId })
+        : null;
+    case "provider_subagent":
+      return typeof raw.parentAgentId === "string" && typeof raw.subagentId === "string"
+        ? normalizeWorkspaceTabTarget({
+            kind: "provider_subagent",
+            parentAgentId: raw.parentAgentId,
+            subagentId: raw.subagentId,
+          })
+        : null;
+    case "terminal":
+      return typeof raw.terminalId === "string"
+        ? normalizeWorkspaceTabTarget({ kind: "terminal", terminalId: raw.terminalId })
+        : null;
+    case "browser":
+      return typeof raw.browserId === "string"
+        ? normalizeWorkspaceTabTarget({ kind: "browser", browserId: raw.browserId })
+        : null;
+    case "file":
+      return typeof raw.path === "string"
+        ? normalizeWorkspaceTabTarget({
+            kind: "file",
+            path: raw.path,
+            lineStart: typeof raw.lineStart === "number" ? raw.lineStart : undefined,
+            lineEnd: typeof raw.lineEnd === "number" ? raw.lineEnd : undefined,
+          })
+        : null;
+    case "file-diff":
+      return typeof raw.path === "string"
+        ? normalizeWorkspaceTabTarget({ kind: "file-diff", path: raw.path })
+        : null;
+    case "setup":
+    case "sessions":
+      return typeof raw.workspaceId === "string"
+        ? normalizeWorkspaceTabTarget({ kind, workspaceId: raw.workspaceId })
+        : null;
+    case "port-forwards":
+      return normalizeWorkspaceTabTarget({ kind: "port-forwards" });
+    default:
+      return null;
   }
-  if (kind === "agent" && typeof raw.agentId === "string") {
-    return normalizeWorkspaceTabTarget({ kind: "agent", agentId: raw.agentId });
-  }
-  if (kind === "terminal" && typeof raw.terminalId === "string") {
-    return normalizeWorkspaceTabTarget({ kind: "terminal", terminalId: raw.terminalId });
-  }
-  if (kind === "browser" && typeof raw.browserId === "string") {
-    return normalizeWorkspaceTabTarget({ kind: "browser", browserId: raw.browserId });
-  }
-  if (kind === "file" && typeof raw.path === "string") {
-    return normalizeWorkspaceTabTarget({
-      kind: "file",
-      path: raw.path,
-      lineStart: typeof raw.lineStart === "number" ? raw.lineStart : undefined,
-      lineEnd: typeof raw.lineEnd === "number" ? raw.lineEnd : undefined,
-    });
-  }
-  if (kind === "file-diff" && typeof raw.path === "string") {
-    return normalizeWorkspaceTabTarget({ kind: "file-diff", path: raw.path });
-  }
-  if (kind === "setup" && typeof raw.workspaceId === "string") {
-    return normalizeWorkspaceTabTarget({ kind: "setup", workspaceId: raw.workspaceId });
-  }
-  if (kind === "port-forwards") {
-    return normalizeWorkspaceTabTarget({ kind: "port-forwards" });
-  }
-  return null;
 }
 
 function migrateSingleTab(rawTab: unknown, now: number): WorkspaceTab | null {
