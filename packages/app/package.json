@@ -137,6 +137,7 @@
     "esbuild": "^0.27.3",
     "eslint": "^9.25.0",
     "eslint-config-expo": "~10.0.0",
+    "expo-gradle-jvmargs": "^1.1.2",
     "i18next-parser": "^9.4.0",
     "jsdom": "^20.0.3",
     "material-icon-theme": "^5.32.0",

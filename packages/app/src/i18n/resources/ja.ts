@@ -1103,6 +1103,9 @@ export const ja: TranslationResources = {
       workspace: "ワークスペース",
       status: "ステータス",
     },
+    pinned: {
+      title: "固定済み",
+    },
     host: {
       noHost: "ホストなし",
       switchTitle: "ホストを切り替え",
@@ -1192,6 +1195,8 @@ export const ja: TranslationResources = {
         copyPath: "パスをコピー",
         copyBranchName: "ブランチ名をコピー",
         rename: "ワークスペースの名前を変更",
+        pin: "上部に固定",
+        unpin: "固定解除",
         archive: "アーカイブ",
         archiveWorkspace: "ワークスペースをアーカイブ",
         hideFromSidebar: "サイドバーから非表示",

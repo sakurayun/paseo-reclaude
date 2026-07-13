@@ -1113,6 +1113,9 @@ export const es: TranslationResources = {
       workspace: "Espacio de trabajo",
       status: "Estado",
     },
+    pinned: {
+      title: "Anclados",
+    },
     host: {
       noHost: "Sin anfitrión",
       switchTitle: "Cambiar de anfitrión",
@@ -1202,6 +1205,8 @@ export const es: TranslationResources = {
         copyPath: "Copiar ruta",
         copyBranchName: "Copiar nombre de sucursal",
         rename: "Cambiar nombre del espacio de trabajo",
+        pin: "Anclar arriba",
+        unpin: "Desanclar",
         archive: "Archivo",
         archiveWorkspace: "Archivar espacio de trabajo",
         hideFromSidebar: "Ocultar de la barra lateral",

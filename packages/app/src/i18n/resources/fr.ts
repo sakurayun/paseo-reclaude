@@ -1123,6 +1123,9 @@ export const fr: TranslationResources = {
       workspace: "Espace de travail",
       status: "Statut",
     },
+    pinned: {
+      title: "Épinglés",
+    },
     host: {
       noHost: "Aucun hôte",
       switchTitle: "Changer d'hôte",
@@ -1212,6 +1215,8 @@ export const fr: TranslationResources = {
         copyPath: "Copier le chemin",
         copyBranchName: "Copier le nom de la branche",
         rename: "Renommer l'espace de travail",
+        pin: "Épingler en haut",
+        unpin: "Désépingler",
         archive: "Archive",
         archiveWorkspace: "Archiver l’espace de travail",
         hideFromSidebar: "Masquer de la barre latérale",

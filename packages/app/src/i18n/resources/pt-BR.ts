@@ -1109,6 +1109,9 @@ export const ptBR: TranslationResources = {
       workspace: "Workspace",
       status: "Status",
     },
+    pinned: {
+      title: "Fixados",
+    },
     host: {
       noHost: "Nenhum host",
       switchTitle: "Trocar host",
@@ -1198,6 +1201,8 @@ export const ptBR: TranslationResources = {
         copyPath: "Copiar caminho",
         copyBranchName: "Copiar nome da branch",
         rename: "Renomear workspace",
+        pin: "Fixar no topo",
+        unpin: "Desafixar",
         archive: "Arquivar",
         archiveWorkspace: "Arquivar workspace",
         hideFromSidebar: "Ocultar da barra lateral",

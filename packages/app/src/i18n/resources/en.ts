@@ -1092,6 +1092,9 @@ export const en = {
       workspace: "Workspace",
       status: "Status",
     },
+    pinned: {
+      title: "Pinned",
+    },
     host: {
       noHost: "No host",
       switchTitle: "Switch host",
@@ -1181,6 +1184,8 @@ export const en = {
         copyPath: "Copy path",
         copyBranchName: "Copy branch name",
         rename: "Rename workspace",
+        pin: "Pin to top",
+        unpin: "Unpin",
         archive: "Archive",
         archiveWorkspace: "Archive workspace",
         hideFromSidebar: "Hide from sidebar",
