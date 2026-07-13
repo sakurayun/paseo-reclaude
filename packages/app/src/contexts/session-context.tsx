@@ -62,6 +62,9 @@ import { useDraftStore } from "@/stores/draft-store";
 import { useWorkspaceSetupStore } from "@/stores/workspace-setup-store";
 import { sendOsNotification } from "@/utils/os-notifications";
 import { getIsAppActivelyVisible } from "@/utils/app-visibility";
+import { handleTerminalReveal } from "@/utils/handle-terminal-reveal";
+import { navigateToPreparedWorkspaceTab } from "@/utils/workspace-navigation";
+import { registerSshTerminal } from "@/stores/ssh-terminal-meta-store";
 import {
   getInitKey,
   getInitDeferred,
@@ -1810,6 +1813,26 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
       setProviderQuota(serverId, message.payload);
     });
 
+    // Fork feature (SSH/terminal MCP): daemon-initiated "open this terminal's
+    // tab" push. Metadata registration runs on every client; only the
+    // shouldFocus recipient navigates.
+    const unsubTerminalReveal = client.on("terminal.reveal", (message) => {
+      if (message.type !== "terminal.reveal") {
+        return;
+      }
+      handleTerminalReveal(message.payload, {
+        serverId,
+        registerSshTerminal,
+        navigateToTerminalTab: ({ workspaceId, terminalId }) => {
+          navigateToPreparedWorkspaceTab({
+            serverId,
+            workspaceId,
+            target: { kind: "terminal", terminalId },
+          });
+        },
+      });
+    });
+
     const unsubTerminalAttention = client.on("terminal_attention_required", (message) => {
       if (message.type !== "terminal_attention_required") {
         return;
@@ -1852,6 +1875,7 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
       unsubAgentDeleted();
       unsubAgentArchived();
       unsubProviderQuota();
+      unsubTerminalReveal();
       unsubTerminalAttention();
       agentStreamReducerQueue.dispose({ flush: true });
     };

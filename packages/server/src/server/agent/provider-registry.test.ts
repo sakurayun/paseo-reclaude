@@ -453,6 +453,21 @@ vi.mock("./providers/cursor-acp-agent.js", () => ({
 }));
 
 vi.mock("./providers/grok-acp-agent.js", () => ({
+  GROK_MODES: [
+    {
+      id: "default",
+      label: "Always Ask",
+      icon: "ShieldCheck",
+      colorTier: "safe",
+    },
+    {
+      id: "bypassPermissions",
+      label: "Bypass",
+      icon: "ShieldAlert",
+      colorTier: "dangerous",
+      isUnattended: true,
+    },
+  ],
   GrokACPAgentClient: class GrokACPAgentClient {
     readonly capabilities = {
       supportsStreaming: true,

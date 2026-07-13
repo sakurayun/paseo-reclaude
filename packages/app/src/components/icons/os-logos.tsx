@@ -1,107 +1,151 @@
-import Svg, { Circle, Path } from "react-native-svg";
+import Svg, { Path } from "react-native-svg";
+import {
+  UbuntuLogo_PATH,
+  DebianLogo_PATH,
+  FedoraLogo_PATH,
+  ArchLogo_PATH,
+  AlpineLogo_PATH,
+  NixLogo_PATH,
+  AppleLogo_PATH,
+  TuxLogo_PATH,
+  OpenSuseLogo_PATH,
+  RedHatLogo_PATH,
+  CentosLogo_PATH,
+  RockyLogo_PATH,
+  AlmaLogo_PATH,
+  PopOsLogo_PATH,
+  ManjaroLogo_PATH,
+  LinuxMintLogo_PATH,
+  KaliLogo_PATH,
+  FreeBsdLogo_PATH,
+  GentooLogo_PATH,
+  VoidLogo_PATH,
+} from "@/components/icons/os-logo-paths";
 
-// Compact, recognizable distro marks rendered in a single foreground color
-// (drawn white over a brand-colored badge). These are simplified glyphs, not
-// pixel-exact brand logos — enough to tell platforms apart at a glance.
+// Re-export path data for consumers that only need the geometry.
+export {
+  UbuntuLogo_PATH,
+  DebianLogo_PATH,
+  FedoraLogo_PATH,
+  ArchLogo_PATH,
+  AlpineLogo_PATH,
+  NixLogo_PATH,
+  AppleLogo_PATH,
+  TuxLogo_PATH,
+  OpenSuseLogo_PATH,
+  RedHatLogo_PATH,
+  CentosLogo_PATH,
+  RockyLogo_PATH,
+  AlmaLogo_PATH,
+  PopOsLogo_PATH,
+  ManjaroLogo_PATH,
+  LinuxMintLogo_PATH,
+  KaliLogo_PATH,
+  FreeBsdLogo_PATH,
+  GentooLogo_PATH,
+  VoidLogo_PATH,
+} from "@/components/icons/os-logo-paths";
+
+// Official brand marks from Simple Icons (https://simpleicons.org),
+// rendered as monochrome glyphs on a brand-colored badge.
+// Paths are the published Simple Icons SVG path data (not hand-drawn).
+// Source: simple-icons@11.14.0 / cdn.simpleicons.org (CC0-1.0 for path data).
 
 export interface OsLogoProps {
   size?: number;
   color?: string;
 }
 
-export function UbuntuLogo({ size = 16, color = "#fff" }: OsLogoProps) {
-  // Circle of friends: a ring with three nodes.
+// Shared monochrome Simple Icons renderer — used by built-in logos and by
+// on-demand remote glyphs (same 24×24 path data).
+export function SimpleIconLogo({
+  path,
+  size = 16,
+  color = "#fff",
+}: OsLogoProps & { path: string }) {
   return (
-    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-      <Circle cx="12" cy="12" r="7" stroke={color} strokeWidth="2" />
-      <Circle cx="12" cy="4.5" r="2.2" fill={color} />
-      <Circle cx="5.5" cy="16" r="2.2" fill={color} />
-      <Circle cx="18.5" cy="16" r="2.2" fill={color} />
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill={color}>
+      <Path d={path} />
     </Svg>
   );
+}
+
+export function UbuntuLogo({ size = 16, color = "#fff" }: OsLogoProps) {
+  return <SimpleIconLogo path={UbuntuLogo_PATH} size={size} color={color} />;
 }
 
 export function DebianLogo({ size = 16, color = "#fff" }: OsLogoProps) {
-  // Simplified swirl: an open spiral.
-  return (
-    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-      <Path
-        d="M15.5 6.5A6.5 6.5 0 1 0 18 12a5 5 0 1 0-8.5-3.5"
-        stroke={color}
-        strokeWidth="1.8"
-        strokeLinecap="round"
-      />
-    </Svg>
-  );
+  return <SimpleIconLogo path={DebianLogo_PATH} size={size} color={color} />;
 }
 
 export function FedoraLogo({ size = 16, color = "#fff" }: OsLogoProps) {
-  // Infinity/f mark inside a circle.
-  return (
-    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-      <Circle cx="12" cy="12" r="8.5" stroke={color} strokeWidth="1.6" />
-      <Path
-        d="M14 8.5a2.2 2.2 0 0 0-3.7 1.6V16m-1.5-4h3.6"
-        stroke={color}
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </Svg>
-  );
+  return <SimpleIconLogo path={FedoraLogo_PATH} size={size} color={color} />;
 }
 
 export function ArchLogo({ size = 16, color = "#fff" }: OsLogoProps) {
-  // Mountain peak.
-  return (
-    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-      <Path d="M12 4 4 19h16L12 4Z" fill={color} opacity={0.9} />
-    </Svg>
-  );
+  return <SimpleIconLogo path={ArchLogo_PATH} size={size} color={color} />;
 }
 
 export function AlpineLogo({ size = 16, color = "#fff" }: OsLogoProps) {
-  // Twin mountain peaks.
-  return (
-    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-      <Path
-        d="M7 17 10 12l2 3.2M13.5 9 20 17H4"
-        stroke={color}
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </Svg>
-  );
+  return <SimpleIconLogo path={AlpineLogo_PATH} size={size} color={color} />;
 }
 
 export function NixLogo({ size = 16, color = "#fff" }: OsLogoProps) {
-  // Six-armed snowflake (Nix lambda-flake motif, simplified).
-  return (
-    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-      <Path
-        d="M12 4v16M5 8l14 8M19 8 5 16"
-        stroke={color}
-        strokeWidth="1.8"
-        strokeLinecap="round"
-      />
-    </Svg>
-  );
+  return <SimpleIconLogo path={NixLogo_PATH} size={size} color={color} />;
 }
 
 export function AppleLogo({ size = 16, color = "#fff" }: OsLogoProps) {
-  return (
-    <Svg width={size} height={size} viewBox="0 0 24 24" fill={color}>
-      <Path d="M16.5 12.6c0-2 1.6-3 1.7-3-.9-1.4-2.4-1.6-2.9-1.6-1.2-.1-2.4.7-3 .7s-1.6-.7-2.6-.7c-1.3 0-2.6.8-3.3 2-1.4 2.4-.4 6 1 8 .7 1 1.4 2 2.4 2 1 0 1.3-.6 2.5-.6s1.5.6 2.5.6 1.7-.9 2.3-1.9c.7-1.1 1-2.2 1-2.3-.1 0-2-.8-2-2.9ZM14.6 6.2c.5-.7.9-1.6.8-2.5-.8 0-1.7.5-2.3 1.2-.5.6-1 1.5-.8 2.4.9.1 1.8-.4 2.3-1.1Z" />
-    </Svg>
-  );
+  return <SimpleIconLogo path={AppleLogo_PATH} size={size} color={color} />;
 }
 
 export function TuxLogo({ size = 16, color = "#fff" }: OsLogoProps) {
-  // Generic Linux: a penguin silhouette (simplified).
-  return (
-    <Svg width={size} height={size} viewBox="0 0 24 24" fill={color}>
-      <Path d="M12 3c-2.2 0-3.5 1.7-3.5 4v3.2c0 1-.6 1.8-1.3 2.7C6 14.4 5 15.7 5 17c0 1.6 1.4 2.4 3 2.8V20h8v-.2c1.6-.4 3-1.2 3-2.8 0-1.3-1-2.6-2.2-4.1-.7-.9-1.3-1.7-1.3-2.7V7c0-2.3-1.3-4-3.5-4Zm-1.4 4.2a.9.9 0 1 1 0 1.8.9.9 0 0 1 0-1.8Zm2.8 0a.9.9 0 1 1 0 1.8.9.9 0 0 1 0-1.8ZM12 9.6c.7 0 1.4.4 1.4.9s-.7 1-1.4 1-1.4-.5-1.4-1 .7-.9 1.4-.9Z" />
-    </Svg>
-  );
+  return <SimpleIconLogo path={TuxLogo_PATH} size={size} color={color} />;
+}
+
+export function OpenSuseLogo({ size = 16, color = "#fff" }: OsLogoProps) {
+  return <SimpleIconLogo path={OpenSuseLogo_PATH} size={size} color={color} />;
+}
+
+export function RedHatLogo({ size = 16, color = "#fff" }: OsLogoProps) {
+  return <SimpleIconLogo path={RedHatLogo_PATH} size={size} color={color} />;
+}
+
+export function CentosLogo({ size = 16, color = "#fff" }: OsLogoProps) {
+  return <SimpleIconLogo path={CentosLogo_PATH} size={size} color={color} />;
+}
+
+export function RockyLogo({ size = 16, color = "#fff" }: OsLogoProps) {
+  return <SimpleIconLogo path={RockyLogo_PATH} size={size} color={color} />;
+}
+
+export function AlmaLogo({ size = 16, color = "#fff" }: OsLogoProps) {
+  return <SimpleIconLogo path={AlmaLogo_PATH} size={size} color={color} />;
+}
+
+export function PopOsLogo({ size = 16, color = "#fff" }: OsLogoProps) {
+  return <SimpleIconLogo path={PopOsLogo_PATH} size={size} color={color} />;
+}
+
+export function ManjaroLogo({ size = 16, color = "#fff" }: OsLogoProps) {
+  return <SimpleIconLogo path={ManjaroLogo_PATH} size={size} color={color} />;
+}
+
+export function LinuxMintLogo({ size = 16, color = "#fff" }: OsLogoProps) {
+  return <SimpleIconLogo path={LinuxMintLogo_PATH} size={size} color={color} />;
+}
+
+export function KaliLogo({ size = 16, color = "#fff" }: OsLogoProps) {
+  return <SimpleIconLogo path={KaliLogo_PATH} size={size} color={color} />;
+}
+
+export function FreeBsdLogo({ size = 16, color = "#fff" }: OsLogoProps) {
+  return <SimpleIconLogo path={FreeBsdLogo_PATH} size={size} color={color} />;
+}
+
+export function GentooLogo({ size = 16, color = "#fff" }: OsLogoProps) {
+  return <SimpleIconLogo path={GentooLogo_PATH} size={size} color={color} />;
+}
+
+export function VoidLogo({ size = 16, color = "#fff" }: OsLogoProps) {
+  return <SimpleIconLogo path={VoidLogo_PATH} size={size} color={color} />;
 }

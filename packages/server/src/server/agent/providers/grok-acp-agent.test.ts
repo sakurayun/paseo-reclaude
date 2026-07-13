@@ -1,6 +1,16 @@
 import { describe, expect, it, vi } from "vitest";
 import type { AgentModelDefinition } from "../agent-sdk-types.js";
-import { transformGrokModels, writeGrokThinkingOption } from "./grok-acp-agent.js";
+import {
+  GROK_BYPASS_MODE_ID,
+  GROK_DEFAULT_MODE_ID,
+  injectGrokAlwaysApproveArgs,
+  transformGrokLaunchArgs,
+  transformGrokModeId,
+  transformGrokModels,
+  transformGrokSessionResponse,
+  writeGrokProviderMode,
+  writeGrokThinkingOption,
+} from "./grok-acp-agent.js";
 import { deriveModelDefinitionsFromACP, mapACPUsage, mapACPUsageFromUnknown } from "./acp-agent.js";
 
 describe("transformGrokModels", () => {
@@ -83,6 +93,74 @@ describe("writeGrokThinkingOption", () => {
       sessionId: "session-1",
       modeId: "medium",
     });
+  });
+});
+
+describe("Grok permission / bypass mode", () => {
+  it("injects --always-approve before stdio", () => {
+    expect(injectGrokAlwaysApproveArgs(["agent", "stdio"])).toEqual([
+      "agent",
+      "--always-approve",
+      "stdio",
+    ]);
+    expect(injectGrokAlwaysApproveArgs(["agent", "--always-approve", "stdio"])).toEqual([
+      "agent",
+      "--always-approve",
+      "stdio",
+    ]);
+  });
+
+  it("only rewrites launch args for bypass mode", () => {
+    expect(transformGrokLaunchArgs(["agent", "stdio"], GROK_DEFAULT_MODE_ID)).toEqual([
+      "agent",
+      "stdio",
+    ]);
+    expect(transformGrokLaunchArgs(["agent", "stdio"], GROK_BYPASS_MODE_ID)).toEqual([
+      "agent",
+      "--always-approve",
+      "stdio",
+    ]);
+  });
+
+  it("keeps permission modes in session response (ignores effort as mode)", () => {
+    const transformed = transformGrokSessionResponse({
+      sessionId: "s1",
+      modes: {
+        currentModeId: "high",
+        availableModes: [
+          { id: "high", name: "High" },
+          { id: "low", name: "Low" },
+        ],
+      },
+    });
+    expect(transformed.modes?.currentModeId).toBe(GROK_DEFAULT_MODE_ID);
+    expect(transformed.modes?.availableModes?.map((mode) => mode.id)).toEqual([
+      GROK_DEFAULT_MODE_ID,
+      GROK_BYPASS_MODE_ID,
+    ]);
+  });
+
+  it("handles permission mode switches locally without setSessionMode", async () => {
+    const setSessionMode = vi.fn();
+    const result = await writeGrokProviderMode({
+      connection: { setSessionMode } as never,
+      sessionId: "s1",
+      requestedModeId: GROK_BYPASS_MODE_ID,
+      currentModeId: GROK_DEFAULT_MODE_ID,
+      selection: {
+        hasAvailableModes: true,
+        availableMode: { id: GROK_BYPASS_MODE_ID, label: "Bypass" },
+        configOption: null,
+        configChoice: null,
+      },
+    });
+    expect(result).toEqual({ handled: true, currentModeId: GROK_BYPASS_MODE_ID });
+    expect(setSessionMode).not.toHaveBeenCalled();
+  });
+
+  it("ignores effort mode ids in modeId transformer", () => {
+    expect(transformGrokModeId("high")).toBeNull();
+    expect(transformGrokModeId(GROK_BYPASS_MODE_ID)).toBe(GROK_BYPASS_MODE_ID);
   });
 });
 

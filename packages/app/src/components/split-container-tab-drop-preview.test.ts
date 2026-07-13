@@ -29,6 +29,7 @@ describe("computeTabDropPreview", () => {
         overRect: { left: 200, width: 100 },
       }),
     ).toEqual({
+      kind: "reorder",
       paneId: "target",
       insertionIndex: 2,
       indicatorIndex: 2,
@@ -47,6 +48,7 @@ describe("computeTabDropPreview", () => {
         overRect: { left: 200, width: 100 },
       }),
     ).toEqual({
+      kind: "reorder",
       paneId: "target",
       insertionIndex: 3,
       indicatorIndex: 3,
@@ -65,9 +67,43 @@ describe("computeTabDropPreview", () => {
         overRect: { left: 400, width: 100 },
       }),
     ).toEqual({
+      kind: "reorder",
       paneId: "pane",
       insertionIndex: 3,
       indicatorIndex: 4,
     });
+  });
+
+  it("groups when dropping onto the center of another tab in the same pane", () => {
+    // Active center at 250, over tab [200, 300] → relativeX 50 / 100 = center.
+    expect(
+      computeTabDropPreview({
+        activePaneId: "pane",
+        activeTabId: "a",
+        overPaneId: "pane",
+        overTabId: "c",
+        targetTabs,
+        activeRect: { left: 230, width: 40 },
+        overRect: { left: 200, width: 100 },
+      }),
+    ).toEqual({
+      kind: "group",
+      paneId: "pane",
+      targetTabId: "c",
+    });
+  });
+
+  it("does not group across panes", () => {
+    expect(
+      computeTabDropPreview({
+        activePaneId: "source",
+        activeTabId: "x",
+        overPaneId: "target",
+        overTabId: "c",
+        targetTabs,
+        activeRect: { left: 230, width: 40 },
+        overRect: { left: 200, width: 100 },
+      })?.kind,
+    ).toBe("reorder");
   });
 });

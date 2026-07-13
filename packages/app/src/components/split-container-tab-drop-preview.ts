@@ -1,10 +1,18 @@
 import type { WorkspaceTabDescriptor } from "@/screens/workspace/workspace-tabs-types";
+import { resolveTabDropKind } from "@/workspace-tabs/tab-groups";
 
-export interface TabDropPreview {
-  paneId: string;
-  insertionIndex: number;
-  indicatorIndex: number;
-}
+export type TabDropPreview =
+  | {
+      kind: "reorder";
+      paneId: string;
+      insertionIndex: number;
+      indicatorIndex: number;
+    }
+  | {
+      kind: "group";
+      paneId: string;
+      targetTabId: string;
+    };
 
 interface ComputeTabDropPreviewInput {
   activePaneId: string;
@@ -29,6 +37,25 @@ export function computeTabDropPreview(input: ComputeTabDropPreviewInput): TabDro
   }
 
   const activeCenterX = input.activeRect.left + input.activeRect.width / 2;
+  const relativeX = activeCenterX - input.overRect.left;
+
+  // Grouping only within the same pane (Edge-style band of tabs).
+  if (
+    input.activePaneId === input.overPaneId &&
+    input.activeTabId !== input.overTabId &&
+    resolveTabDropKind({
+      relativeX,
+      overWidth: input.overRect.width,
+      isSameTab: false,
+    }) === "group"
+  ) {
+    return {
+      kind: "group",
+      paneId: input.overPaneId,
+      targetTabId: input.overTabId,
+    };
+  }
+
   const overCenterX = input.overRect.left + input.overRect.width / 2;
   const insertAfterTarget = activeCenterX >= overCenterX;
 
@@ -46,6 +73,7 @@ export function computeTabDropPreview(input: ComputeTabDropPreviewInput): TabDro
   }
 
   return {
+    kind: "reorder",
     paneId: input.overPaneId,
     insertionIndex,
     indicatorIndex,

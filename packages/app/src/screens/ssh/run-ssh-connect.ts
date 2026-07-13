@@ -16,6 +16,7 @@ import {
   type ListTerminalsPayload,
 } from "@/screens/workspace/terminals/state";
 import { upsertTerminalListEntry } from "@/utils/terminal-list";
+import { openSshTerminalAcrossServerWorkspaces } from "@/screens/ssh/ssh-workspace-tabs";
 
 type ConnectedTerminal = NonNullable<SshHostsConnectResponse["payload"]["terminal"]>;
 import {
@@ -184,21 +185,36 @@ async function finishConnected(
   const client = getClient(state.serverId);
   const terminalId = terminal.id;
 
-  registerSshTerminal(terminalId, { hostId: state.hostId, label: state.label });
+  registerSshTerminal(terminalId, {
+    hostId: state.hostId,
+    label: state.label,
+    serverId: state.serverId,
+    // Persist the known OS at connect time so tab badges survive a hard
+    // refresh without waiting for the hosts query to rehydrate.
+    os: state.os,
+  });
 
-  // Optimistically seed the host-wide terminal list so the workspace's tab
-  // reconcile sees this terminal immediately. Otherwise the retarget below
-  // races the terminals_changed push and the new tab is pruned as "unknown" —
-  // most visibly on an instant pooled reconnect (the tab flashes then vanishes).
-  const hostWideKey = buildTerminalsQueryKey(state.serverId, "", null);
-  queryClient.setQueryData<ListTerminalsPayload>(hostWideKey, (current) => ({
+  // Optimistically seed terminal lists so the workspace's tab reconcile sees
+  // this terminal immediately. Otherwise the retarget below races the
+  // terminals_changed push and the new tab is pruned as "unknown" — most
+  // visibly on an instant pooled reconnect (the tab flashes then vanishes),
+  // or when the user switches to another session before the push lands.
+  const seededTerminals = (current: ListTerminalsPayload | undefined): ListTerminalsPayload => ({
     ...current,
     terminals: upsertTerminalListEntry({
       terminals: current?.terminals ?? [],
       terminal,
     }),
     requestId: current?.requestId ?? `ssh-connect-${terminalId}`,
-  }));
+  });
+  const hostWideKey = buildTerminalsQueryKey(state.serverId, "", null);
+  queryClient.setQueryData<ListTerminalsPayload>(hostWideKey, seededTerminals);
+  // Also seed the workspace-scoped list (hosts without terminalLifecycle never
+  // use the host-wide cache for reconcile).
+  if (state.cwd) {
+    const workspaceKey = buildTerminalsQueryKey(state.serverId, state.cwd, state.workspaceId);
+    queryClient.setQueryData<ListTerminalsPayload>(workspaceKey, seededTerminals);
+  }
 
   // An override password that just succeeded is a candidate to persist — but
   // only after the user confirms.
@@ -218,16 +234,32 @@ async function finishConnected(
     }
   }
 
-  // Retarget the connecting tab in place into a real terminal tab.
+  // Retarget the connecting tab in place into a real terminal tab. If the
+  // connecting tab was wiped (e.g. layout-sync pull dropped the transient
+  // tab before connect finished), open the terminal tab afresh so the user
+  // still lands on a live SSH session.
   const key = buildWorkspaceTabPersistenceKey({
     serverId: state.serverId,
     workspaceId: state.workspaceId,
   });
   if (key) {
-    useWorkspaceLayoutStore
-      .getState()
-      .retargetTab(key, connectingTabId(connectId), { kind: "terminal", terminalId });
+    const layoutStore = useWorkspaceLayoutStore.getState();
+    const retargeted = layoutStore.retargetTab(key, connectingTabId(connectId), {
+      kind: "terminal",
+      terminalId,
+    });
+    if (!retargeted) {
+      layoutStore.openTabFocused(key, { kind: "terminal", terminalId });
+    }
   }
+
+  // SSH tabs are global on the daemon: open (or keep) the terminal tab in
+  // every workspace so switching workspaces never loses the shell.
+  openSshTerminalAcrossServerWorkspaces({
+    serverId: state.serverId,
+    terminalId,
+    focusWorkspaceId: state.workspaceId,
+  });
 
   disposeConnect(connectId);
 }

@@ -109,16 +109,32 @@ export function SshHostForm({ model, state, controlSize }: SshHostFormProps) {
         onValueChange={model.setUseFido2}
       />
       {state.disclosure.showFido2Notice ? <Notice text={t("ssh.form.fido2Notice")} /> : null}
+      {/*
+        SSH agent options (not Paseo AI agents):
+        - useAgent: authenticate with identities from the local ssh-agent
+          ($SSH_AUTH_SOCK / Windows OpenSSH pipe), optionally alongside a
+          selected key file or password.
+        - agentForwarding: OpenSSH ForwardAgent (-A). After login, the remote
+          session can use the *local* agent for further ssh/git without copying
+          private keys. Independent of useAgent; still requires a local agent.
+      */}
       <ToggleRow
         label={t("ssh.form.useAgent")}
+        description={t("ssh.form.useAgentHint")}
         value={state.useAgent}
         onValueChange={model.setUseAgent}
+        testID="ssh-host-use-agent"
       />
       <ToggleRow
         label={t("ssh.form.agentForwarding")}
+        description={t("ssh.form.agentForwardingHint")}
         value={state.agentForwarding}
         onValueChange={model.setAgentForwarding}
+        testID="ssh-host-agent-forwarding"
       />
+      {state.disclosure.showAgentForwardingNotice ? (
+        <Notice text={t("ssh.form.agentForwardingNotice")} />
+      ) : null}
 
       <SectionTitle title={t("ssh.form.connectionSection")} />
       <ChainField model={model} state={state} controlSize={controlSize} />
@@ -163,17 +179,29 @@ function Notice({ text }: { text: string }) {
 
 function ToggleRow({
   label,
+  description,
   value,
   onValueChange,
+  testID,
 }: {
   label: string;
+  description?: string;
   value: boolean;
   onValueChange: (value: boolean) => void;
+  testID?: string;
 }) {
   return (
-    <View style={styles.toggleRow}>
-      <Text style={styles.toggleLabel}>{label}</Text>
-      <Switch value={value} onValueChange={onValueChange} accessibilityLabel={label} />
+    <View style={styles.toggleBlock}>
+      <View style={styles.toggleRow}>
+        <Text style={styles.toggleLabel}>{label}</Text>
+        <Switch
+          value={value}
+          onValueChange={onValueChange}
+          accessibilityLabel={label}
+          testID={testID}
+        />
+      </View>
+      {description ? <Text style={styles.toggleDescription}>{description}</Text> : null}
     </View>
   );
 }
@@ -566,6 +594,9 @@ const styles = StyleSheet.create((theme: Theme) => ({
   multiline: {
     minHeight: 72,
   },
+  toggleBlock: {
+    gap: theme.spacing[1],
+  },
   toggleRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -573,8 +604,16 @@ const styles = StyleSheet.create((theme: Theme) => ({
     paddingVertical: theme.spacing[1],
   },
   toggleLabel: {
+    flex: 1,
+    flexShrink: 1,
+    paddingRight: theme.spacing[2],
     fontSize: theme.fontSize.sm,
     color: theme.colors.foreground,
+  },
+  toggleDescription: {
+    fontSize: theme.fontSize.xs,
+    color: theme.colors.foregroundMuted,
+    lineHeight: theme.fontSize.xs * 1.4,
   },
   chipRow: {
     flexDirection: "row",

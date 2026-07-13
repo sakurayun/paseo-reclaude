@@ -47,6 +47,8 @@ import { createGitMutationService } from "../session/git-mutation/git-mutation-s
 import type { GeneratedWorkspaceName } from "../worktree-branch-name-generator.js";
 import type { GitHubService } from "../../services/github-service.js";
 import type { TerminalManager } from "../../terminal/terminal-manager.js";
+import { createSshTerminalRegistry } from "../../ssh/ssh-terminal-registry.js";
+import type { SshManager } from "../../ssh/ssh-manager.js";
 import { PARENT_AGENT_ID_LABEL } from "@getpaseo/protocol/agent-labels";
 import type { BrowserToolsBroker, BrowserToolsExecuteInput } from "../browser-tools/broker.js";
 import type { BrowserToolsResponsePayload } from "../browser-tools/errors.js";
@@ -246,6 +248,28 @@ function createTestDeps(): TestDeps {
       agentManager: agentManagerSpies,
       agentStorage: agentStorageSpies,
     },
+  };
+}
+
+// Loose TerminalSession stub for the terminal/SSH MCP tool tests. Kept
+// intentionally partial — tests override just what each case exercises.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- test stub
+function createTerminalSessionStub(overrides: Record<string, unknown> = {}): any {
+  return {
+    id: "term-1",
+    name: "zsh",
+    cwd: "/tmp/project",
+    workspaceId: "ws-1",
+    send: vi.fn(),
+    subscribe: vi.fn().mockReturnValue(() => {}),
+    onExit: vi.fn().mockReturnValue(() => {}),
+    onCommandFinished: vi.fn().mockReturnValue(() => {}),
+    getTitle: vi.fn().mockReturnValue(undefined),
+    getActivity: vi.fn().mockReturnValue(null),
+    getExitInfo: vi.fn().mockReturnValue(null),
+    getSize: vi.fn().mockReturnValue({ rows: 24, cols: 80 }),
+    kill: vi.fn(),
+    ...overrides,
   };
 }
 
@@ -1006,6 +1030,7 @@ describe("terminal MCP tools", () => {
         name: "daemon",
         cwd: process.cwd(),
         getState: vi.fn().mockReturnValue({ scrollback: [], grid: [[]] }),
+        getExitInfo: vi.fn().mockReturnValue(null),
       }),
       captureTerminal,
     });
@@ -1036,6 +1061,566 @@ describe("terminal MCP tools", () => {
       lines: ["from worker scrollback"],
       totalLines: 42,
     });
+  });
+
+  it("lists terminals with lifecycle, activity, and SSH identity fields", async () => {
+    const { agentManager, agentStorage } = createTestDeps();
+    const localSession = createTerminalSessionStub({
+      id: "term-local",
+      name: "zsh",
+      cwd: "/tmp/project",
+      workspaceId: "ws-1",
+      getTitle: vi.fn().mockReturnValue("vim"),
+      getActivity: vi.fn().mockReturnValue({ state: "working", changedAt: 1 }),
+    });
+    const sshSession = createTerminalSessionStub({
+      id: "term-ssh",
+      name: "prod-box",
+      cwd: "/tmp/ssh-home",
+      workspaceId: "ssh:host-1",
+      getExitInfo: vi.fn().mockReturnValue({ exitCode: 1, signal: null, lastOutputLines: [] }),
+    });
+    const registry = createSshTerminalRegistry();
+    registry.register("term-ssh", {
+      hostId: "host-1",
+      hostLabel: "Prod Box",
+      via: "ssh2",
+      connectedAt: 1,
+    });
+    const terminalManager = createTerminalManagerStub({
+      listDirectories: vi.fn().mockReturnValue(["/tmp/project"]),
+      getTerminals: vi.fn().mockResolvedValue([localSession, sshSession]),
+    });
+    const server = await createAgentMcpServer({
+      agentManager,
+      agentStorage,
+      providerSnapshotManager: createOpenCodeManager().manager,
+      terminalManager,
+      sshTerminalRegistry: registry,
+      logger,
+    });
+    const tool = registeredTool(server, "list_terminals");
+
+    const response = await tool.handler({ all: true });
+
+    expect(response.structuredContent).toEqual({
+      terminals: [
+        {
+          id: "term-local",
+          name: "zsh",
+          cwd: "/tmp/project",
+          workspaceId: "ws-1",
+          title: "vim",
+          status: "running",
+          exitCode: null,
+          activity: "working",
+          kind: "local",
+        },
+        {
+          id: "term-ssh",
+          name: "prod-box",
+          cwd: "/tmp/ssh-home",
+          workspaceId: "ssh:host-1",
+          status: "exited",
+          exitCode: 1,
+          activity: null,
+          kind: "ssh",
+          sshHostId: "host-1",
+          sshHostLabel: "Prod Box",
+        },
+      ],
+    });
+  });
+
+  it("falls back to exit-captured lines when capturing an exited terminal", async () => {
+    const { agentManager, agentStorage } = createTestDeps();
+    const terminalManager = createTerminalManagerStub({
+      getTerminal: vi.fn().mockReturnValue(
+        createTerminalSessionStub({
+          id: "term-1",
+          getExitInfo: vi.fn().mockReturnValue({
+            exitCode: 0,
+            signal: null,
+            lastOutputLines: ["build ok", "$ exit"],
+          }),
+        }),
+      ),
+      captureTerminal: vi.fn().mockResolvedValue({ lines: [], totalLines: 0 }),
+    });
+    const server = await createAgentMcpServer({
+      agentManager,
+      agentStorage,
+      providerSnapshotManager: createOpenCodeManager().manager,
+      terminalManager,
+      logger,
+    });
+    const tool = registeredTool(server, "capture_terminal");
+
+    const response = await tool.handler({ terminalId: "term-1" });
+
+    expect(response.structuredContent).toEqual({
+      terminalId: "term-1",
+      lines: ["build ok", "$ exit"],
+      totalLines: 2,
+      note: "Terminal has exited and its scrollback was released; showing the last lines captured at exit.",
+    });
+  });
+
+  it("sends a token sequence when send_terminal_keys receives an array", async () => {
+    const { agentManager, agentStorage } = createTestDeps();
+    const send = vi.fn();
+    const terminalManager = createTerminalManagerStub({
+      getTerminal: vi.fn().mockReturnValue(createTerminalSessionStub({ send })),
+    });
+    const server = await createAgentMcpServer({
+      agentManager,
+      agentStorage,
+      providerSnapshotManager: createOpenCodeManager().manager,
+      terminalManager,
+      logger,
+    });
+    const tool = registeredTool(server, "send_terminal_keys");
+
+    await tool.handler({ terminalId: "term-1", keys: ["ls -la", "Enter"] });
+
+    expect(send).toHaveBeenCalledWith({ type: "input", data: "ls -la\r" });
+  });
+
+  it("run_terminal_command resolves with the exact exit code on OSC command-finished", async () => {
+    const { agentManager, agentStorage } = createTestDeps();
+    let commandFinishedListener: ((info: { exitCode: number | null }) => void) | undefined;
+    const session = createTerminalSessionStub({
+      onCommandFinished: vi.fn((listener: (info: { exitCode: number | null }) => void) => {
+        commandFinishedListener = listener;
+        return () => {};
+      }),
+      // Fire synchronously: the tool attaches listeners before sending.
+      send: vi.fn(() => {
+        commandFinishedListener?.({ exitCode: 0 });
+      }),
+    });
+    const captureTerminal = vi
+      .fn()
+      // Baseline: prompt waiting for input, then blank grid rows (trimmed off).
+      .mockResolvedValueOnce({ lines: ["~ %", "", ""], totalLines: 27 })
+      // After: prompt line now carries the echoed command, output follows.
+      .mockResolvedValueOnce({
+        lines: ["~ % echo hello", "hello", "~ %", ""],
+        totalLines: 27,
+      });
+    const terminalManager = createTerminalManagerStub({
+      getTerminal: vi.fn().mockReturnValue(session),
+      captureTerminal,
+    });
+    const server = await createAgentMcpServer({
+      agentManager,
+      agentStorage,
+      providerSnapshotManager: createOpenCodeManager().manager,
+      terminalManager,
+      logger,
+    });
+    const tool = registeredTool(server, "run_terminal_command");
+
+    const response = await tool.handler({ terminalId: "term-1", command: "echo hello" });
+
+    expect(session.send).toHaveBeenCalledWith({ type: "input", data: "echo hello\r" });
+    expect(response.structuredContent).toMatchObject({
+      terminalId: "term-1",
+      completed: true,
+      exitCode: 0,
+      output: ["~ % echo hello", "hello", "~ %"],
+      truncated: false,
+    });
+  });
+
+  it("run_terminal_command falls back to output quiescence without shell integration", async () => {
+    const { agentManager, agentStorage } = createTestDeps();
+    let outputListener: ((msg: { type: string }) => void) | undefined;
+    const session = createTerminalSessionStub({
+      subscribe: vi.fn((listener: (msg: { type: string }) => void) => {
+        outputListener = listener;
+        return () => {};
+      }),
+      // Fire synchronously: the tool attaches listeners before sending.
+      send: vi.fn(() => {
+        outputListener?.({ type: "output" });
+      }),
+    });
+    const captureTerminal = vi
+      .fn()
+      .mockResolvedValueOnce({ lines: ["$", ""], totalLines: 24 })
+      .mockResolvedValueOnce({
+        lines: ["$ echo hi", "remote says hi", "$"],
+        totalLines: 24,
+      });
+    const terminalManager = createTerminalManagerStub({
+      getTerminal: vi.fn().mockReturnValue(session),
+      captureTerminal,
+    });
+    const server = await createAgentMcpServer({
+      agentManager,
+      agentStorage,
+      providerSnapshotManager: createOpenCodeManager().manager,
+      terminalManager,
+      logger,
+    });
+    const tool = registeredTool(server, "run_terminal_command");
+
+    const response = await tool.handler({
+      terminalId: "term-1",
+      command: "echo hi",
+      quietMs: 50,
+      timeoutMs: 5_000,
+    });
+
+    expect(response.structuredContent).toMatchObject({
+      completed: false,
+      exitCode: null,
+      output: ["$ echo hi", "remote says hi", "$"],
+    });
+  });
+
+  it("run_terminal_command returns completed=false on timeout without killing the command", async () => {
+    const { agentManager, agentStorage } = createTestDeps();
+    const session = createTerminalSessionStub();
+    const captureTerminal = vi
+      .fn()
+      .mockResolvedValueOnce({ lines: [], totalLines: 0 })
+      .mockResolvedValueOnce({ lines: [], totalLines: 0 });
+    const terminalManager = createTerminalManagerStub({
+      getTerminal: vi.fn().mockReturnValue(session),
+      captureTerminal,
+    });
+    const server = await createAgentMcpServer({
+      agentManager,
+      agentStorage,
+      providerSnapshotManager: createOpenCodeManager().manager,
+      terminalManager,
+      logger,
+    });
+    const tool = registeredTool(server, "run_terminal_command");
+
+    const response = await tool.handler({
+      terminalId: "term-1",
+      command: "sleep 999",
+      timeoutMs: 100,
+    });
+
+    expect(response.structuredContent).toMatchObject({ completed: false, exitCode: null });
+    expect(session.kill).not.toHaveBeenCalled();
+  });
+
+  it("run_terminal_command rejects an exited terminal", async () => {
+    const { agentManager, agentStorage } = createTestDeps();
+    const terminalManager = createTerminalManagerStub({
+      getTerminal: vi.fn().mockReturnValue(
+        createTerminalSessionStub({
+          getExitInfo: vi.fn().mockReturnValue({ exitCode: 1, signal: null, lastOutputLines: [] }),
+        }),
+      ),
+    });
+    const server = await createAgentMcpServer({
+      agentManager,
+      agentStorage,
+      providerSnapshotManager: createOpenCodeManager().manager,
+      terminalManager,
+      logger,
+    });
+    const tool = registeredTool(server, "run_terminal_command");
+
+    await expect(tool.handler({ terminalId: "term-1", command: "echo hi" })).rejects.toThrow(
+      /has exited/,
+    );
+  });
+
+  it("open_terminal_tab reveals the terminal with placement and SSH metadata", async () => {
+    const { agentManager, agentStorage } = createTestDeps();
+    const registry = createSshTerminalRegistry();
+    registry.register("term-ssh", {
+      hostId: "host-1",
+      hostLabel: "Prod Box",
+      via: "ssh2",
+      connectedAt: 1,
+    });
+    const terminalManager = createTerminalManagerStub({
+      getTerminal: vi.fn().mockReturnValue(
+        createTerminalSessionStub({
+          id: "term-ssh",
+          cwd: "/tmp/ssh-home",
+          workspaceId: "ws-9",
+        }),
+      ),
+    });
+    const revealTerminal = vi.fn().mockReturnValue(true);
+    const server = await createAgentMcpServer({
+      agentManager,
+      agentStorage,
+      providerSnapshotManager: createOpenCodeManager().manager,
+      terminalManager,
+      sshTerminalRegistry: registry,
+      revealTerminal,
+      logger,
+    });
+    const tool = registeredTool(server, "open_terminal_tab");
+
+    const response = await tool.handler({ terminalId: "term-ssh" });
+
+    expect(revealTerminal).toHaveBeenCalledWith({
+      terminalId: "term-ssh",
+      workspaceId: "ws-9",
+      cwd: "/tmp/ssh-home",
+      sshHostId: "host-1",
+      sshHostLabel: "Prod Box",
+    });
+    expect(response.structuredContent).toEqual({ success: true, delivered: true });
+  });
+});
+
+describe("SSH MCP tools", () => {
+  const logger = createTestLogger();
+
+  function createSshManagerStub(overrides: Record<string, unknown> = {}): SshManager {
+    return {
+      hostStore: {
+        list: vi.fn().mockReturnValue({ hosts: [], groups: [] }),
+        getHost: vi.fn().mockReturnValue(undefined),
+      },
+      ...overrides,
+    } as unknown as SshManager;
+  }
+
+  const fullHost = {
+    id: "host-1",
+    label: "Prod Box",
+    address: "10.0.0.5",
+    port: 2222,
+    username: "deploy",
+    groupId: "group-1",
+    tags: ["prod"],
+    hasPassword: true,
+    keyId: "key-1",
+    useAgent: false,
+    useFido2: false,
+    mosh: { enabled: false },
+    platform: { os: "ubuntu" },
+    // Fields that must never cross the MCP boundary:
+    startupSnippet: "export SECRET=1",
+    env: { API_TOKEN: "sensitive" },
+    proxy: { proxyType: "socks5", host: "127.0.0.1", port: 1080 },
+  };
+
+  it("does not register SSH tools without an SSH manager", async () => {
+    const { agentManager, agentStorage } = createTestDeps();
+    const server = await createAgentMcpServer({
+      agentManager,
+      agentStorage,
+      providerSnapshotManager: createOpenCodeManager().manager,
+      logger,
+    });
+
+    expect(lookupTool(server, "list_ssh_hosts")).toBeUndefined();
+    expect(lookupTool(server, "connect_ssh_host")).toBeUndefined();
+  });
+
+  it("lists hosts through an allowlist projection with active terminals", async () => {
+    const { agentManager, agentStorage } = createTestDeps();
+    const sshManager = createSshManagerStub({
+      hostStore: {
+        list: vi.fn().mockReturnValue({
+          hosts: [fullHost],
+          groups: [{ id: "group-1", name: "Production", parentId: null }],
+        }),
+        getHost: vi.fn(),
+      },
+    });
+    const registry = createSshTerminalRegistry();
+    registry.register("term-live", {
+      hostId: "host-1",
+      hostLabel: "Prod Box",
+      via: "ssh2",
+      connectedAt: 1,
+    });
+    registry.register("term-gone", {
+      hostId: "host-1",
+      hostLabel: "Prod Box",
+      via: "ssh2",
+      connectedAt: 2,
+    });
+    const terminalManager = createTerminalManagerStub({
+      getTerminal: vi.fn((id: string) =>
+        id === "term-live" ? createTerminalSessionStub({ id }) : undefined,
+      ),
+    });
+    const server = await createAgentMcpServer({
+      agentManager,
+      agentStorage,
+      providerSnapshotManager: createOpenCodeManager().manager,
+      terminalManager,
+      sshManager,
+      sshTerminalRegistry: registry,
+      logger,
+    });
+    const tool = registeredTool(server, "list_ssh_hosts");
+
+    const response = await tool.handler({});
+
+    expect(response.structuredContent).toEqual({
+      hosts: [
+        {
+          id: "host-1",
+          label: "Prod Box",
+          address: "10.0.0.5",
+          port: 2222,
+          username: "deploy",
+          groupId: "group-1",
+          tags: ["prod"],
+          auth: { password: true, key: true, agent: false, fido2: false },
+          mosh: false,
+          platformOs: "ubuntu",
+          activeTerminalIds: ["term-live"],
+        },
+      ],
+      groups: [{ id: "group-1", name: "Production", parentId: null }],
+    });
+    const serialized = JSON.stringify(response.structuredContent);
+    expect(serialized).not.toContain("SECRET");
+    expect(serialized).not.toContain("sensitive");
+    expect(serialized).not.toContain("socks5");
+  });
+
+  it("connects to a host by unique label and reveals when focus is requested", async () => {
+    const { agentManager, agentStorage } = createTestDeps();
+    const connectHandler = vi.fn().mockResolvedValue({
+      outcome: "connected",
+      terminal: {
+        id: "term-new",
+        name: "Prod Box",
+        cwd: "/tmp/ssh-home",
+        workspaceId: "ssh:host-1",
+      },
+    });
+    const sshManager = createSshManagerStub({
+      hostStore: {
+        list: vi.fn().mockReturnValue({ hosts: [fullHost], groups: [] }),
+        getHost: vi.fn().mockReturnValue(fullHost),
+      },
+      connectHandler,
+    });
+    const registry = createSshTerminalRegistry();
+    registry.register("term-new", {
+      hostId: "host-1",
+      hostLabel: "Prod Box",
+      via: "ssh2",
+      connectedAt: 1,
+    });
+    const terminalManager = createTerminalManagerStub({
+      getTerminal: vi.fn().mockReturnValue(
+        createTerminalSessionStub({
+          id: "term-new",
+          name: "Prod Box",
+          cwd: "/tmp/ssh-home",
+          workspaceId: "ssh:host-1",
+        }),
+      ),
+    });
+    const revealTerminal = vi.fn().mockReturnValue(true);
+    const server = await createAgentMcpServer({
+      agentManager,
+      agentStorage,
+      providerSnapshotManager: createOpenCodeManager().manager,
+      terminalManager,
+      sshManager,
+      sshTerminalRegistry: registry,
+      revealTerminal,
+      logger,
+    });
+    const tool = registeredTool(server, "connect_ssh_host");
+
+    const response = await tool.handler({ hostLabel: "prod box", focus: true });
+
+    expect(connectHandler).toHaveBeenCalledWith(expect.objectContaining({ hostId: "host-1" }));
+    expect(revealTerminal).toHaveBeenCalledWith(
+      expect.objectContaining({ terminalId: "term-new", sshHostId: "host-1" }),
+    );
+    expect(response.structuredContent).toMatchObject({
+      outcome: "connected",
+      terminal: {
+        id: "term-new",
+        kind: "ssh",
+        sshHostId: "host-1",
+        sshHostLabel: "Prod Box",
+      },
+    });
+  });
+
+  it("returns diagnostics without a trust escape hatch on host key mismatch", async () => {
+    const { agentManager, agentStorage } = createTestDeps();
+    const connectHandler = vi.fn().mockResolvedValue({
+      outcome: "host_key_mismatch",
+      error: "Host key mismatch for 10.0.0.5",
+      observedKey: {
+        host: "10.0.0.5",
+        port: 2222,
+        keyType: "ssh-ed25519",
+        fingerprintSha256: "SHA256:abcdef",
+        publicKeyBase64: "AAAA-secret-material",
+      },
+    });
+    const sshManager = createSshManagerStub({
+      hostStore: {
+        list: vi.fn().mockReturnValue({ hosts: [fullHost], groups: [] }),
+        getHost: vi.fn().mockReturnValue(fullHost),
+      },
+      connectHandler,
+    });
+    const server = await createAgentMcpServer({
+      agentManager,
+      agentStorage,
+      providerSnapshotManager: createOpenCodeManager().manager,
+      terminalManager: createTerminalManagerStub(),
+      sshManager,
+      logger,
+    });
+    const tool = registeredTool(server, "connect_ssh_host");
+
+    const response = await tool.handler({ hostId: "host-1" });
+
+    expect(response.isError).toBe(true);
+    expect(response.structuredContent).toMatchObject({
+      outcome: "host_key_mismatch",
+      observedKey: {
+        host: "10.0.0.5",
+        port: 2222,
+        keyType: "ssh-ed25519",
+        fingerprintSha256: "SHA256:abcdef",
+      },
+    });
+    expect(JSON.stringify(response.structuredContent)).not.toContain("AAAA-secret-material");
+  });
+
+  it("rejects an ambiguous host label with candidate ids", async () => {
+    const { agentManager, agentStorage } = createTestDeps();
+    const sshManager = createSshManagerStub({
+      hostStore: {
+        list: vi.fn().mockReturnValue({
+          hosts: [fullHost, { ...fullHost, id: "host-2" }],
+          groups: [],
+        }),
+        getHost: vi.fn(),
+      },
+      connectHandler: vi.fn(),
+    });
+    const server = await createAgentMcpServer({
+      agentManager,
+      agentStorage,
+      providerSnapshotManager: createOpenCodeManager().manager,
+      terminalManager: createTerminalManagerStub(),
+      sshManager,
+      logger,
+    });
+    const tool = registeredTool(server, "connect_ssh_host");
+
+    await expect(tool.handler({ hostLabel: "Prod Box" })).rejects.toThrow(/host-1, host-2/);
   });
 });
 

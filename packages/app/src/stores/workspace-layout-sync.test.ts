@@ -168,4 +168,77 @@ describe("layout sync bridge — pending local opens", () => {
     stop();
     useWorkspaceLayoutStore.getState().purgeWorkspace(key!);
   });
+
+  it("re-opens a post-pull SSH terminal tab wiped by a stale remote layout", async () => {
+    const serverId = "srv-post-pull-ssh";
+    const workspaceId = "ws-post-pull-ssh";
+    await useWorkspaceLayoutStore.persist.rehydrate();
+    useSessionStore.setState({
+      sessions: {
+        [serverId]: { serverInfo: { features: { workspaceLayoutSync: true } } },
+      },
+    } as never);
+
+    type LayoutChangedHandler = (msg: {
+      type: string;
+      payload: {
+        workspaceId: string;
+        revision: number;
+        layout: ReturnType<typeof stripWorkspaceLayoutFocus>;
+      };
+    }) => void;
+    const layoutChangedHandlers: LayoutChangedHandler[] = [];
+    const client = {
+      getWorkspaceLayout: vi.fn(async () => ({
+        revision: 1,
+        layout: stripWorkspaceLayoutFocus(buildAgentLayout(["seed-agent"])),
+      })),
+      pushWorkspaceLayout: vi.fn(async () => ({ accepted: true, revision: 2 })),
+      on: vi.fn((event: string, handler: LayoutChangedHandler) => {
+        if (event === "workspace.layout.changed") {
+          layoutChangedHandlers.push(handler);
+        }
+        return () => {};
+      }),
+    } as unknown as DaemonClient;
+
+    const stop = startWorkspaceLayoutSync({ serverId, client });
+    const key = buildWorkspaceTabPersistenceKey({ serverId, workspaceId });
+    expect(key).toBeTruthy();
+
+    // First pull adopts the seed agent layout.
+    pullWorkspaceLayoutIfNeeded(serverId, workspaceId);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    // User opens an SSH terminal after the workspace has already pulled.
+    useWorkspaceLayoutStore
+      .getState()
+      .openTabFocused(key!, { kind: "terminal", terminalId: "term-ssh-late" });
+
+    // A stale peer layout without the SSH tab arrives (e.g. before our push
+    // lands, or from a race with switching sessions).
+    expect(layoutChangedHandlers.length).toBeGreaterThan(0);
+    for (const handler of layoutChangedHandlers) {
+      handler({
+        type: "workspace.layout.changed",
+        payload: {
+          workspaceId,
+          revision: 5,
+          layout: stripWorkspaceLayoutFocus(buildAgentLayout(["peer-only"])),
+        },
+      });
+    }
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const tabs = useWorkspaceLayoutStore.getState().getWorkspaceTabs(key!);
+    expect(tabs.some((tab) => tab.tabId === "agent_peer-only")).toBe(true);
+    expect(
+      tabs.some(
+        (tab) => tab.target.kind === "terminal" && tab.target.terminalId === "term-ssh-late",
+      ),
+    ).toBe(true);
+
+    stop();
+    useWorkspaceLayoutStore.getState().purgeWorkspace(key!);
+  });
 });

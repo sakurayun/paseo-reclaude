@@ -76,6 +76,8 @@ import { useArchiveAgent } from "@/hooks/use-archive-agent";
 import { useHostTerminals } from "@/hooks/use-host-terminals";
 import { useToast } from "@/contexts/toast-context";
 import { selectIsFileExplorerOpen, usePanelStore } from "@/stores/panel-store";
+import { useSshTerminalMetaStore } from "@/stores/ssh-terminal-meta-store";
+import { dismissSshTab, useSshTabDismissedStore } from "@/stores/ssh-tab-dismissed-store";
 import { type ExplorerCheckoutContext } from "@/stores/explorer-checkout-context";
 import {
   useSessionStore,
@@ -194,6 +196,13 @@ import {
   useWorkspaceTerminals,
   type TerminalProfileInput,
 } from "@/screens/workspace/terminals/use-workspace-terminals";
+import { collectReconcileKnownTerminalIds } from "@/screens/workspace/terminals/state";
+import {
+  closeSshTerminalAcrossServerWorkspaces,
+  collectLiveSshTerminalIds,
+  isSshTerminalId,
+  pruneStaleSshTerminalMeta,
+} from "@/screens/ssh/ssh-workspace-tabs";
 import { useDaemonConfig } from "@/hooks/use-daemon-config";
 import {
   getTerminalProfileIcon,
@@ -1989,6 +1998,9 @@ function WorkspaceScreenContent({
   const paneFocusSuppressedRef = useRef(false);
   const resizeWorkspaceSplit = useWorkspaceLayoutStore((state) => state.resizeSplit);
   const reorderWorkspaceTabsInPane = useWorkspaceLayoutStore((state) => state.reorderTabsInPane);
+  const groupWorkspaceTabs = useWorkspaceLayoutStore((state) => state.groupTabs);
+  const updateWorkspaceTabGroup = useWorkspaceLayoutStore((state) => state.updateTabGroup);
+  const ungroupWorkspaceTabGroup = useWorkspaceLayoutStore((state) => state.ungroupTabGroup);
   const _pinnedAgentIds = useWorkspaceLayoutStore((state) =>
     persistenceKey
       ? (state.pinnedAgentIdsByWorkspace[persistenceKey] ?? EMPTY_PINNED_AGENT_IDS)
@@ -2014,6 +2026,13 @@ function WorkspaceScreenContent({
       if (input.target?.kind === "agent") {
         unpinWorkspaceAgent(persistenceKey, input.target.agentId);
         hideWorkspaceAgent(persistenceKey, input.target.agentId);
+      }
+      if (input.target?.kind === "terminal") {
+        // SSH shells are auto-opened across workspaces; remember a local close
+        // so reconcile does not put the tab back immediately.
+        if (useSshTerminalMetaStore.getState().metaByTerminalId[input.target.terminalId]) {
+          dismissSshTab(persistenceKey, input.target.terminalId);
+        }
       }
       if (input.target?.kind === "browser") {
         const { browserId } = input.target;
@@ -2114,24 +2133,57 @@ function WorkspaceScreenContent({
     ],
   );
 
-  // SSH/remote terminals are hosted in this workspace's tab bar but live
-  // outside its cwd bucket, so the workspace-scoped terminals query alone
-  // would prune their tabs the moment it resolves. A terminal tab stays as
-  // long as its terminal exists anywhere on the host; real deletions still
-  // prune via the host-wide push subscription. Old hosts without the
-  // host-wide list keep the workspace-scoped behavior.
+  // SSH/remote terminals are global on a daemon: every workspace tab bar on
+  // that host should show live SSH shells. Workspace-scoped terminal lists
+  // alone miss them (outside the cwd bucket), so host-wide + SSH meta keep
+  // them known (no prune) and in the standalone auto-open set (always open).
   const { terminals: hostWideTerminals, isReady: hostTerminalsReady } =
     useHostTerminals(normalizedServerId);
-  const reconcileKnownTerminalIds = useMemo(() => {
-    if (hostWideTerminals.length === 0) {
-      return knownTerminalIds;
+  // Stable reference while the meta map is unchanged (zustand identity).
+  const sshTerminalMetaById = useSshTerminalMetaStore((state) => state.metaByTerminalId);
+  const sshAutoOpenTerminalIds = useMemo(
+    () =>
+      collectLiveSshTerminalIds({
+        serverId: normalizedServerId,
+        metaByTerminalId: sshTerminalMetaById,
+        hostWideTerminals,
+      }),
+    [hostWideTerminals, normalizedServerId, sshTerminalMetaById],
+  );
+
+  // After host-wide list is authoritative, drop persisted meta for shells that
+  // were killed or no longer exist so they cannot reappear after a reload.
+  useEffect(() => {
+    if (!hostTerminalsReady || !normalizedServerId) {
+      return;
     }
-    const union = new Set<string>(knownTerminalIds);
-    for (const terminal of hostWideTerminals) {
-      union.add(terminal.id);
-    }
-    return [...union];
-  }, [hostWideTerminals, knownTerminalIds]);
+    pruneStaleSshTerminalMeta({
+      serverId: normalizedServerId,
+      metaByTerminalId: sshTerminalMetaById,
+      hostWideTerminals,
+    });
+  }, [hostTerminalsReady, hostWideTerminals, normalizedServerId, sshTerminalMetaById]);
+  const reconcileKnownTerminalIds = useMemo(
+    () =>
+      collectReconcileKnownTerminalIds({
+        workspaceKnownTerminalIds: knownTerminalIds,
+        hostWideTerminalIds: hostWideTerminals.map((terminal) => terminal.id),
+        sshTerminalIds: sshAutoOpenTerminalIds,
+      }),
+    [hostWideTerminals, knownTerminalIds, sshAutoOpenTerminalIds],
+  );
+  // Fan live SSH terminals into the auto-open set so every workspace opens
+  // them without stealing focus — except tabs the user explicitly closed in
+  // this workspace (otherwise close is undone on the next reconcile).
+  const dismissedSshByWorkspace = useSshTabDismissedStore(
+    (state) => state.dismissedByWorkspace[persistenceKey ?? ""] ?? EMPTY_SET,
+  );
+  const reconcileStandaloneTerminalIds = useMemo(() => {
+    const sshAutoOpen = sshAutoOpenTerminalIds.filter(
+      (terminalId) => !dismissedSshByWorkspace.has(terminalId),
+    );
+    return Array.from(new Set([...standaloneTerminalIds, ...sshAutoOpen]));
+  }, [dismissedSshByWorkspace, standaloneTerminalIds, sshAutoOpenTerminalIds]);
 
   useEffect(() => {
     if (!isRouteFocused) {
@@ -2159,7 +2211,7 @@ function WorkspaceScreenContent({
         agentsHydrated: hasHydratedAgents,
         terminalsHydrated: terminalsQuery.isSuccess && hostTerminalsReady,
         knownTerminalIds: reconcileKnownTerminalIds,
-        standaloneTerminalIds,
+        standaloneTerminalIds: reconcileStandaloneTerminalIds,
         hasActivePendingDraftCreate: hasActivePendingDraftCreateInWorkspace,
       }),
     );
@@ -2174,7 +2226,7 @@ function WorkspaceScreenContent({
     persistenceKey,
     reconcileWorkspaceTabs,
     reconcileKnownTerminalIds,
-    standaloneTerminalIds,
+    reconcileStandaloneTerminalIds,
     terminalsQuery.isSuccess,
     uiTabs,
     workspaceAgentVisibility,
@@ -2680,6 +2732,7 @@ function WorkspaceScreenContent({
 
   // "Close tab": layout-only removal. The agent session stays in the sidebar;
   // a terminal keeps running and stays in the sidebar's workspace list.
+  // SSH dismiss is handled inside closeWorkspaceTabWithCleanup.
   const handleCloseTabOnly = useCallback(
     (prompt: CloseTabChoicePrompt) => {
       setCloseTabPrompt(null);
@@ -2724,7 +2777,14 @@ function WorkspaceScreenContent({
       void closeTab(prompt.tabId, async () => {
         removeTerminalFromCache(prompt.terminalId);
         setHoveredCloseTabKey((current) => (current === prompt.tabId ? null : current));
-        if (persistenceKey) {
+        // SSH tabs were fanned out to every workspace — close them all and drop
+        // persisted meta so a restart cannot resurrect the killed shell.
+        if (isSshTerminalId(prompt.terminalId) && normalizedServerId) {
+          closeSshTerminalAcrossServerWorkspaces({
+            serverId: normalizedServerId,
+            terminalId: prompt.terminalId,
+          });
+        } else if (persistenceKey) {
           closeWorkspaceTabWithCleanup({
             tabId: prompt.tabId,
             target: { kind: "terminal", terminalId: prompt.terminalId },
@@ -2739,6 +2799,7 @@ function WorkspaceScreenContent({
       closeWorkspaceTabWithCleanup,
       invalidateTerminals,
       killTerminalAsync,
+      normalizedServerId,
       persistenceKey,
       removeTerminalFromCache,
     ],
@@ -2947,6 +3008,19 @@ function WorkspaceScreenContent({
         groups,
         closeTab,
         closeWorkspaceTabWithCleanup: (cleanupInput) => {
+          // Bulk terminal close kills the process; SSH shells must leave every
+          // workspace's tab bar and drop persisted meta.
+          if (
+            cleanupInput.target?.kind === "terminal" &&
+            isSshTerminalId(cleanupInput.target.terminalId) &&
+            normalizedServerId
+          ) {
+            closeSshTerminalAcrossServerWorkspaces({
+              serverId: normalizedServerId,
+              terminalId: cleanupInput.target.terminalId,
+            });
+            return;
+          }
           if (!persistenceKey) {
             return;
           }
@@ -2966,6 +3040,7 @@ function WorkspaceScreenContent({
       client,
       closeTab,
       closeWorkspaceTabWithCleanup,
+      normalizedServerId,
       persistenceKey,
       t,
     ],
@@ -3349,10 +3424,13 @@ function WorkspaceScreenContent({
   const desktopTabRowItems = useMemo<WorkspaceDesktopTabRowItem[]>(
     () =>
       tabs.map((tab) => ({
+        kind: "tab" as const,
         tab,
         isActive: tab.tabId === activeTabDescriptor?.tabId,
         isCloseHovered: hoveredCloseTabKey === tab.key,
         isClosingTab: closingTabIds.has(tab.tabId),
+        groupId: null,
+        groupRole: "none" as const,
       })),
     [activeTabDescriptor?.tabId, closingTabIds, hoveredCloseTabKey, tabs],
   );
@@ -3406,6 +3484,46 @@ function WorkspaceScreenContent({
       reorderWorkspaceTabsInPane(persistenceKey, paneId, tabIds);
     },
     [persistenceKey, reorderWorkspaceTabsInPane],
+  );
+
+  const handleGroupTabs = useCallback(
+    function handleGroupTabs(input: { paneId: string; sourceTabId: string; targetTabId: string }) {
+      if (!persistenceKey) {
+        return;
+      }
+      groupWorkspaceTabs(
+        persistenceKey,
+        input.paneId,
+        input.sourceTabId,
+        input.targetTabId,
+        t("workspace.tabs.groups.defaultTitle"),
+      );
+    },
+    [groupWorkspaceTabs, persistenceKey, t],
+  );
+
+  const handleUpdateTabGroup = useCallback(
+    function handleUpdateTabGroup(input: {
+      paneId: string;
+      groupId: string;
+      patch: Partial<{ title: string; color: string; collapsed: boolean }>;
+    }) {
+      if (!persistenceKey) {
+        return;
+      }
+      updateWorkspaceTabGroup(persistenceKey, input.paneId, input.groupId, input.patch as never);
+    },
+    [persistenceKey, updateWorkspaceTabGroup],
+  );
+
+  const handleUngroupTabGroup = useCallback(
+    function handleUngroupTabGroup(input: { paneId: string; groupId: string }) {
+      if (!persistenceKey) {
+        return;
+      }
+      ungroupWorkspaceTabGroup(persistenceKey, input.paneId, input.groupId);
+    },
+    [persistenceKey, ungroupWorkspaceTabGroup],
   );
 
   const handleReorderTabsInFocusedPane = useCallback(
@@ -3658,6 +3776,9 @@ function WorkspaceScreenContent({
         onMoveTabToPane={handleMoveTabToPane}
         onResizeSplit={handleResizePaneSplit}
         onReorderTabsInPane={handleReorderTabsInPane}
+        onGroupTabs={handleGroupTabs}
+        onUpdateTabGroup={handleUpdateTabGroup}
+        onUngroupTabGroup={handleUngroupTabGroup}
         renderPaneEmptyState={renderSplitPaneEmptyState}
       />
     );
@@ -3693,6 +3814,9 @@ function WorkspaceScreenContent({
     handleMoveTabToPane,
     handleResizePaneSplit,
     handleReorderTabsInPane,
+    handleGroupTabs,
+    handleUpdateTabGroup,
+    handleUngroupTabGroup,
     renderSplitPaneEmptyState,
   ]);
   const desktopContent = desktopSplitContent ?? content;

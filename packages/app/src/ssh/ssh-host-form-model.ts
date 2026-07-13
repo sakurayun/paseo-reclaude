@@ -29,6 +29,10 @@ export interface SshHostFormDisclosure {
   // Notices surfaced when a field forces the system-ssh fallback.
   showFido2Notice: boolean;
   showMoshNotice: boolean;
+  // Always-visible short help under the agent toggles (what the switch does).
+  showUseAgentHint: boolean;
+  // Extra security notice only when agent forwarding is on.
+  showAgentForwardingNotice: boolean;
 }
 
 export interface SshHostFormState {
@@ -203,6 +207,8 @@ function buildInitialState(
       showProxyFields: false,
       showFido2Notice: false,
       showMoshNotice: false,
+      showUseAgentHint: true,
+      showAgentForwardingNotice: false,
     },
     canSubmit: false,
     submitError: null,
@@ -215,6 +221,9 @@ function computeDisclosure(state: SshHostFormState): SshHostFormDisclosure {
     showProxyFields: state.proxyType !== null,
     showFido2Notice: state.useFido2,
     showMoshNotice: state.moshEnabled,
+    // Static hints always shown so users understand agent vs stored keys.
+    showUseAgentHint: true,
+    showAgentForwardingNotice: state.agentForwarding,
   };
 }
 

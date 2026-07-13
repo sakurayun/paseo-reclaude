@@ -35,7 +35,7 @@ import { CodexAppServerAgentClient } from "./providers/codex-app-server-agent.js
 import { CopilotACPAgentClient } from "./providers/copilot-acp-agent.js";
 import { CursorACPAgentClient } from "./providers/cursor-acp-agent.js";
 import { GenericACPAgentClient } from "./providers/generic-acp-agent.js";
-import { GrokACPAgentClient } from "./providers/grok-acp-agent.js";
+import { GROK_MODES, GrokACPAgentClient } from "./providers/grok-acp-agent.js";
 import { KiroACPAgentClient } from "./providers/kiro-acp-agent.js";
 import { OpenCodeAgentClient } from "./providers/opencode-agent.js";
 import { PiRpcAgentClient } from "./providers/pi/agent.js";
@@ -502,12 +502,15 @@ function createRegistryEntry(
 
   const decorateModes = (modes: AgentMode[]): AgentMode[] =>
     modes.map((mode) => {
-      if (mode.icon && mode.colorTier) return mode;
       const definitionMode = resolved.definition.modes.find((d) => d.id === mode.id);
       if (!definitionMode) return mode;
+      if (mode.icon && mode.colorTier && mode.isUnattended === definitionMode.isUnattended) {
+        return mode;
+      }
       return Object.assign({}, mode, {
         icon: mode.icon ?? definitionMode.icon,
         colorTier: mode.colorTier ?? definitionMode.colorTier,
+        isUnattended: mode.isUnattended ?? definitionMode.isUnattended,
       });
     });
 
@@ -550,7 +553,11 @@ function createRegistryEntry(
             profileModelsAreAdditive: resolved.profileModelsAreAdditive,
           },
         ),
-        modes: decorateModes(catalog.modes),
+        // Static provider modes (e.g. Grok Always Ask / Bypass) win over runtime
+        // session modes so permission UX is not overwritten by effort-level modes.
+        modes: hasStaticModes
+          ? decorateModes(resolved.definition.modes)
+          : decorateModes(catalog.modes),
       };
     },
   };
@@ -638,19 +645,30 @@ function addDerivedProviders(
       }
       // Capture command in const for closure - TypeScript can't track type refinement inside closures
       const command = override.command;
+      // Grok ships static permission modes (Always Ask / Bypass). Other ACP
+      // agents default to empty modes and discover them at runtime.
+      const acpBaseDefinition =
+        providerId === "grok"
+          ? {
+              id: providerId,
+              label: override.label ?? "Grok",
+              description:
+                override.description ??
+                "xAI Grok Build agentic coding CLI (ACP) with plan mode, MCP, and parallel subagents",
+              defaultModeId: "default",
+              // GROK_MODES always includes icon + colorTier for the composer.
+              modes: GROK_MODES as AgentProviderDefinition["modes"],
+            }
+          : {
+              id: providerId,
+              label: override.label ?? providerId,
+              description: override.description ?? "Custom ACP provider",
+              defaultModeId: null as string | null,
+              modes: [] as AgentProviderDefinition["modes"],
+            };
 
       resolvedProviders.set(providerId, {
-        definition: createDerivedDefinition(
-          providerId,
-          {
-            id: providerId,
-            label: override.label ?? providerId,
-            description: override.description ?? "Custom ACP provider",
-            defaultModeId: null,
-            modes: [],
-          },
-          override,
-        ),
+        definition: createDerivedDefinition(providerId, acpBaseDefinition, override),
         runtimeSettings: toRuntimeSettings(override),
         profileModels: override.models ?? [],
         additionalModels: override.additionalModels ?? [],

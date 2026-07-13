@@ -2407,6 +2407,57 @@ export class VoiceAssistantWebSocketServer {
       this.sendToClient(ws, message);
     }
   }
+
+  // Fork feature (SSH/terminal MCP): ask clients to open/focus a terminal tab.
+  // Every connected client receives the message so it can register SSH
+  // terminal metadata; only the most recently active present client gets
+  // shouldFocus=true so a fleet of devices doesn't all jump at once. Returns
+  // whether any client was picked to focus.
+  public broadcastTerminalReveal(params: {
+    terminalId: string;
+    workspaceId?: string;
+    cwd?: string;
+    sshHostId?: string;
+    sshHostLabel?: string;
+  }): boolean {
+    const clientEntries: Array<{
+      ws: WebSocketLike;
+      state: ClientPresenceState;
+    }> = [];
+
+    for (const [ws, connection] of this.sessions) {
+      clientEntries.push({
+        ws,
+        state: this.getClientActivityState(connection.session),
+      });
+    }
+
+    // focusTarget stays null: a client already viewing the terminal is simply
+    // the natural focus recipient, not a reason to suppress the reveal.
+    const plan = computeNotificationPlan({
+      allStates: clientEntries.map((entry) => entry.state),
+      focusTarget: null,
+      pushEligible: false,
+      nowMs: Date.now(),
+    });
+
+    for (const [clientIndex, { ws }] of clientEntries.entries()) {
+      const message = wrapSessionMessage({
+        type: "terminal.reveal",
+        payload: {
+          terminalId: params.terminalId,
+          ...(params.workspaceId ? { workspaceId: params.workspaceId } : {}),
+          ...(params.cwd ? { cwd: params.cwd } : {}),
+          ...(params.sshHostId ? { sshHostId: params.sshHostId } : {}),
+          ...(params.sshHostLabel ? { sshHostLabel: params.sshHostLabel } : {}),
+          shouldFocus: clientIndex === plan.inAppRecipientIndex,
+        },
+      });
+      this.sendToClient(ws, message);
+    }
+
+    return plan.inAppRecipientIndex !== null;
+  }
 }
 
 interface SocketRequestMetadata {

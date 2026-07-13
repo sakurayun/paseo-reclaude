@@ -8,6 +8,8 @@ import { isSyntheticTerminalWorkspaceId } from "@/utils/terminal-workspace-id";
 import { getLastWorkspaceSelection } from "@/stores/navigation-active-workspace-store";
 import { useSessionStore } from "@/stores/session-store";
 import { startSshConnect } from "@/screens/ssh/run-ssh-connect";
+import { undismissSshTab } from "@/stores/ssh-tab-dismissed-store";
+import { buildWorkspaceTabPersistenceKey } from "@/stores/workspace-tabs-store";
 
 export interface UseConnectSshHostResult {
   // Opens a connecting tab and drives the SSH connect (progress log + inline
@@ -58,7 +60,9 @@ export function useConnectSshHost(serverId: string | null): UseConnectSshHostRes
 
   // A live session already exists for this host: focus its terminal tab
   // instead of opening a second connection. Returns false when there is
-  // nothing to focus (caller falls through to a fresh connect).
+  // nothing to focus (caller falls through to a fresh connect). SSH tabs are
+  // global across workspaces, so we focus in the current/last-active
+  // workspace (and open the tab there if missing).
   const focusExistingHostTerminal = useCallback(
     (hostId: string): boolean => {
       if (!serverId) {
@@ -71,12 +75,19 @@ export function useConnectSshHost(serverId: string | null): UseConnectSshHostRes
       if (!existing) {
         return false;
       }
+      const workspace = resolveTargetWorkspace(serverId);
       const workspaceId =
-        existing.workspaceId && !isSyntheticTerminalWorkspaceId(existing.workspaceId)
+        workspace?.workspaceId ??
+        (existing.workspaceId && !isSyntheticTerminalWorkspaceId(existing.workspaceId)
           ? existing.workspaceId
-          : (resolveTargetWorkspace(serverId)?.workspaceId ?? null);
+          : null);
       if (!workspaceId) {
         return false;
+      }
+      const key = buildWorkspaceTabPersistenceKey({ serverId, workspaceId });
+      if (key) {
+        // User asked to show this shell again — allow auto-open after a prior close.
+        undismissSshTab(key, existing.id);
       }
       navigateToPreparedWorkspaceTab({
         serverId,

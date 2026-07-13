@@ -656,6 +656,25 @@ export const es: TranslationResources = {
           agents: "Esto archivará los agentes{{agents}}.",
         },
       },
+      groups: {
+        defaultTitle: "Group",
+        renameTitle: "Rename group",
+        rename: "Rename group",
+        collapse: "Collapse group",
+        expand: "Expand group",
+        ungroup: "Ungroup",
+        colors: {
+          blue: "Blue",
+          purple: "Purple",
+          pink: "Pink",
+          red: "Red",
+          orange: "Orange",
+          yellow: "Yellow",
+          green: "Green",
+          cyan: "Cyan",
+          gray: "Gray",
+        },
+      },
     },
     portForwards: {
       title: "Reenvío de puertos",
@@ -2811,6 +2830,9 @@ export const es: TranslationResources = {
       savePasswordTitle: "¿Guardar la contraseña?",
       savePasswordMessage: "¿Guardar esta contraseña para {{host}} para futuras conexiones?",
       savePasswordConfirm: "Guardar",
+      handshakeHintTitle: "SSH handshake failed before the protocol started",
+      handshakeHintBody:
+        "TCP connected, but the remote closed the socket before the SSH banner. This is often a local VPN/proxy TUN route (Clash/Surge/Mihomo — check for gateway 198.18.x.x), a firewall, or a non-SSH service on that port. Add a DIRECT rule for the host IP (or turn off TUN for SSH), then retry. If `ssh -vvv user@host` in Terminal fails the same way, fix the network/sshd first.",
     },
     form: {
       addressSection: "Dirección",
@@ -2830,6 +2852,12 @@ export const es: TranslationResources = {
       useAgent: "Usar agente SSH",
       useFido2: "Llave de seguridad FIDO2",
       agentForwarding: "Reenvío del agente",
+      useAgentHint:
+        "Authenticate with keys loaded in your local ssh-agent ($SSH_AUTH_SOCK). Can be combined with a selected key file or password. The daemon must inherit SSH_AUTH_SOCK (restart Paseo after ssh-add).",
+      agentForwardingHint:
+        "OpenSSH ForwardAgent (-A): after login, the remote session can use your local agent for further ssh/git without copying private keys. Requires a running local agent.",
+      agentForwardingNotice:
+        "Security: only enable on trusted hosts. Anyone with access to your remote session may use your forwarded agent while you are connected.",
       startupSnippet: "Script de inicio",
       hostChaining: "Encadenamiento de hosts",
       proxy: "Proxy",

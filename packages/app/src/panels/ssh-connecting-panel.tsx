@@ -173,9 +173,16 @@ function SshConnectingPanel() {
         <View style={styles.actionCard}>
           <View style={styles.actionHeader}>
             <ThemedCircleAlert size={16} uniProps={redColorMapping} />
-            <Text style={styles.actionTitle}>{t("ssh.connect.errorTitle")}</Text>
+            <Text style={styles.actionTitle}>
+              {isHandshakeFailure(state.error, logText)
+                ? t("ssh.connect.handshakeHintTitle")
+                : t("ssh.connect.errorTitle")}
+            </Text>
           </View>
           {state.error ? <Text style={styles.errorText}>{state.error}</Text> : null}
+          {isHandshakeFailure(state.error, logText) ? (
+            <Text style={styles.errorText}>{t("ssh.connect.handshakeHintBody")}</Text>
+          ) : null}
           <View style={styles.buttonRow}>
             <Pressable
               style={styles.primaryButton}
@@ -204,6 +211,13 @@ function resolveStatusLabel(status: string, t: ReturnType<typeof useTranslation>
   if (status === "mismatch") return t("ssh.connect.mismatchTitle");
   if (status === "error") return t("ssh.connect.errorTitle");
   return t("ssh.connect.connecting");
+}
+
+function isHandshakeFailure(error: string | null | undefined, logText: string): boolean {
+  const haystack = `${error ?? ""}\n${logText}`;
+  return /connection lost before handshake|kex_exchange_identification|before the SSH protocol|no server banner/i.test(
+    haystack,
+  );
 }
 
 export const sshConnectingPanelRegistration: PanelRegistration<"ssh-connecting"> = {

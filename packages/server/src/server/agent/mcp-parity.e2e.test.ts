@@ -590,6 +590,37 @@ describe("Suite B: Terminal Tools", () => {
     }
   });
 
+  test("run_terminal_command returns the command's output", async () => {
+    let terminalId: string | null = null;
+    try {
+      const created = await callToolStructured(agentScopedClient, "create_terminal", {
+        name: "Parity run terminal",
+      });
+      terminalId = str(created.id);
+      // Let the shell finish booting so the command isn't swallowed by init.
+      await sleep(500);
+
+      const result = await callToolStructured(agentScopedClient, "run_terminal_command", {
+        terminalId,
+        command: "echo parity-run-ok",
+        timeoutMs: 20_000,
+        quietMs: 1_000,
+      });
+
+      const lines = strArrOptional(result.output) ?? [];
+      expect(lines.some((line) => line.includes("parity-run-ok"))).toBe(true);
+      // Exact exit codes require OSC 633 shell integration (zsh); on other
+      // shells the quiet fallback reports completed=false with null exitCode.
+      if (result.completed === true) {
+        expect(result.exitCode).toBe(0);
+      } else {
+        expect(result.exitCode).toBeNull();
+      }
+    } finally {
+      await killTerminalIfPresent(terminalId);
+    }
+  });
+
   test("kill_terminal removes terminal", async () => {
     let terminalId: string | null = null;
     try {

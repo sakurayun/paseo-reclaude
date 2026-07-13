@@ -142,6 +142,7 @@ import { FileBackedTerminalHistoryStore } from "../terminal/terminal-history-sto
 import { createPortForwardManager } from "../port-forward/port-forward-manager.js";
 import { createSshManager } from "../ssh/ssh-manager.js";
 import { createSshConnectService, sshHomeDirectory } from "../ssh/ssh-connect-service.js";
+import { createSshTerminalRegistry } from "../ssh/ssh-terminal-registry.js";
 import { createSshForwardRuntime } from "../ssh/ssh-forward-runtime.js";
 import { createSshUploadRuntime } from "../ssh/ssh-upload-runtime.js";
 import { createCompositeTerminalManager } from "../terminal/composite-terminal-manager.js";
@@ -566,11 +567,15 @@ export async function createPaseoDaemon(
     terminalManager,
     sshTerminalManager,
   );
+  // terminalId → SSH host mapping so MCP tools and the reveal push can label
+  // SSH terminals (the terminal record itself carries no host identity).
+  const sshTerminalRegistry = createSshTerminalRegistry();
   const sshConnectService = createSshConnectService({
     sshManager,
     sshTerminalManager,
     fallbackTerminalManager: terminalManager,
     sshHome: sshHomeDirectory(config.paseoHome),
+    terminalRegistry: sshTerminalRegistry,
   });
   sshManager.connectHandler = sshConnectService.createConnectHandler();
   const sshForwardRuntime = createSshForwardRuntime({
@@ -1175,7 +1180,13 @@ export async function createPaseoDaemon(
   ): PaseoToolHostDependencies => ({
     agentManager,
     agentStorage,
-    terminalManager,
+    // The composite fronts local worker terminals and in-process SSH terminals,
+    // so MCP terminal tools can list/capture/write/kill both kinds. Creation
+    // still routes to the local manager (SSH terminals are created via
+    // connect_ssh_host → sshManager.connectHandler).
+    terminalManager: compositeTerminalManager,
+    sshManager,
+    sshTerminalRegistry,
     getDaemonTcpPort: () => (boundListenTarget?.type === "tcp" ? boundListenTarget.port : null),
     scheduleService,
     providerSnapshotManager,
@@ -1199,6 +1210,7 @@ export async function createPaseoDaemon(
     voiceOnly: runtime.voiceOnly,
     resolveSpeakHandler: (agentId) => wsServer?.resolveVoiceSpeakHandler(agentId) ?? null,
     resolveCallerContext: (agentId) => wsServer?.resolveVoiceCallerContext(agentId) ?? null,
+    revealTerminal: (input) => wsServer?.broadcastTerminalReveal(input) ?? false,
     logger,
   });
   const createAgentToolCatalog = (runtime: PaseoToolRuntimeContext) =>

@@ -1,16 +1,19 @@
 import type { Logger } from "pino";
 import { z } from "zod";
 
-import type { AgentCapabilityFlags } from "../agent-sdk-types.js";
+import type { AgentCapabilityFlags, AgentMode, AgentModelDefinition } from "../agent-sdk-types.js";
 import { checkProviderLaunchAvailable, resolveProviderLaunch } from "../provider-launch-config.js";
-import type { ClientSideConnection } from "@agentclientprotocol/sdk";
-import type { AgentModelDefinition } from "../agent-sdk-types.js";
+import type { ClientSideConnection, SessionConfigOption } from "@agentclientprotocol/sdk";
 import {
   ACPAgentClient,
+  type ACPBeforeModeWriteResult,
   type ACPClientCapabilityMeta,
   type ACPConfigFeatureOption,
   DEFAULT_ACP_CAPABILITIES,
   type ACPExtensionCommandsParser,
+  type ACPProviderModeWriteResult,
+  type ACPProviderModeWriterContext,
+  type SessionStateResponse,
 } from "./acp-agent.js";
 import {
   buildBinaryDiagnosticRows,
@@ -54,12 +57,25 @@ interface GenericACPAgentClientOptions {
   configFeatureOptions?: ACPConfigFeatureOption[];
   extensionCommandsParser?: ACPExtensionCommandsParser;
   authenticateMethodId?: string;
+  defaultModes?: AgentMode[];
   modelTransformer?: (models: AgentModelDefinition[]) => AgentModelDefinition[];
+  sessionResponseTransformer?: (response: SessionStateResponse) => SessionStateResponse;
+  configOptionsTransformer?: (configOptions: SessionConfigOption[]) => SessionConfigOption[];
+  modeIdTransformer?: (modeId: string) => string | null;
+  providerModeWriter?: (
+    context: ACPProviderModeWriterContext,
+  ) => Promise<ACPProviderModeWriteResult>;
+  beforeModeWriter?: (context: ACPProviderModeWriterContext) => Promise<ACPBeforeModeWriteResult>;
   thinkingOptionWriter?: (
     connection: ClientSideConnection,
     sessionId: string,
     thinkingOptionId: string,
   ) => Promise<void>;
+  /**
+   * Mutate argv after the configured command is resolved (session spawn).
+   * Used e.g. by Grok to inject `--always-approve` for bypass mode.
+   */
+  launchArgsTransformer?: (args: string[], modeId: string | null) => string[];
 }
 
 export class GenericACPAgentClient extends ACPAgentClient {
@@ -85,8 +101,15 @@ export class GenericACPAgentClient extends ACPAgentClient {
       configFeatureOptions: options.configFeatureOptions,
       extensionCommandsParser: options.extensionCommandsParser,
       authenticateMethodId: options.authenticateMethodId,
+      defaultModes: options.defaultModes,
       modelTransformer: options.modelTransformer,
+      sessionResponseTransformer: options.sessionResponseTransformer,
+      configOptionsTransformer: options.configOptionsTransformer,
+      modeIdTransformer: options.modeIdTransformer,
+      providerModeWriter: options.providerModeWriter,
+      beforeModeWriter: options.beforeModeWriter,
       thinkingOptionWriter: options.thinkingOptionWriter,
+      launchArgsTransformer: options.launchArgsTransformer,
     });
 
     this.command = options.command;

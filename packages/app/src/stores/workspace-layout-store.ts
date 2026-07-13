@@ -36,12 +36,17 @@ import {
   removeTabFromTree,
   reorderFocusedPaneTabsInLayout,
   reorderPaneTabsInLayout,
+  groupTabsInLayout,
+  updateTabGroupInLayout,
+  ungroupTabGroupInLayout,
   retargetTabInLayout,
   splitPaneEmptyInLayout,
   splitPaneInLayout,
   type SplitGroup,
   type SplitNode,
   type SplitPane,
+  type TabGroupColorId,
+  type WorkspaceTabGroup,
   type WorkspaceTabReconcileState,
   type WorkspaceTabSnapshot,
   type WorkspaceLayout,
@@ -66,6 +71,8 @@ export type {
   SplitGroup,
   SplitNode,
   SplitPane,
+  TabGroupColorId,
+  WorkspaceTabGroup,
   WorkspaceLayout,
   WorkspaceTabReconcileState,
   WorkspaceTabSnapshot,
@@ -119,6 +126,20 @@ interface WorkspaceLayoutStore {
   restorePaneFocus: (workspaceKey: string, token: string) => void;
   resizeSplit: (workspaceKey: string, groupId: string, sizes: number[]) => void;
   reorderTabsInPane: (workspaceKey: string, paneId: string, tabIds: string[]) => void;
+  groupTabs: (
+    workspaceKey: string,
+    paneId: string,
+    sourceTabId: string,
+    targetTabId: string,
+    defaultTitle: string,
+  ) => void;
+  updateTabGroup: (
+    workspaceKey: string,
+    paneId: string,
+    groupId: string,
+    patch: Partial<Pick<WorkspaceTabGroup, "title" | "color" | "collapsed">>,
+  ) => void;
+  ungroupTabGroup: (workspaceKey: string, paneId: string, groupId: string) => void;
   pinAgent: (workspaceKey: string, agentId: string) => void;
   unpinAgent: (workspaceKey: string, agentId: string) => void;
   hideAgent: (workspaceKey: string, agentId: string) => void;
@@ -790,6 +811,89 @@ export function createWorkspaceLayoutStore(
 
             return {
               ...withoutFocusRestoration(state, normalizedWorkspaceKey),
+              layoutByWorkspace: {
+                ...state.layoutByWorkspace,
+                [normalizedWorkspaceKey]: nextLayout,
+              },
+            };
+          });
+        },
+        groupTabs: (workspaceKey, paneId, sourceTabId, targetTabId, defaultTitle) => {
+          const normalizedWorkspaceKey = trimNonEmpty(workspaceKey);
+          const normalizedPaneId = trimNonEmpty(paneId);
+          const normalizedSource = trimNonEmpty(sourceTabId);
+          const normalizedTarget = trimNonEmpty(targetTabId);
+          if (
+            !normalizedWorkspaceKey ||
+            !normalizedPaneId ||
+            !normalizedSource ||
+            !normalizedTarget
+          ) {
+            return;
+          }
+          set((state) => {
+            const nextLayout = groupTabsInLayout({
+              layout: getWorkspaceLayout(state.layoutByWorkspace, normalizedWorkspaceKey),
+              paneId: normalizedPaneId,
+              sourceTabId: normalizedSource,
+              targetTabId: normalizedTarget,
+              createGroupId: () => ids.createNodeId("group"),
+              defaultTitle: defaultTitle.trim() || "Group",
+            });
+            if (!nextLayout) {
+              return state;
+            }
+            return {
+              ...withoutFocusRestoration(state, normalizedWorkspaceKey),
+              layoutByWorkspace: {
+                ...state.layoutByWorkspace,
+                [normalizedWorkspaceKey]: nextLayout,
+              },
+            };
+          });
+        },
+        updateTabGroup: (workspaceKey, paneId, groupId, patch) => {
+          const normalizedWorkspaceKey = trimNonEmpty(workspaceKey);
+          const normalizedPaneId = trimNonEmpty(paneId);
+          const normalizedGroupId = trimNonEmpty(groupId);
+          if (!normalizedWorkspaceKey || !normalizedPaneId || !normalizedGroupId) {
+            return;
+          }
+          set((state) => {
+            const nextLayout = updateTabGroupInLayout({
+              layout: getWorkspaceLayout(state.layoutByWorkspace, normalizedWorkspaceKey),
+              paneId: normalizedPaneId,
+              groupId: normalizedGroupId,
+              patch,
+            });
+            if (!nextLayout) {
+              return state;
+            }
+            return {
+              layoutByWorkspace: {
+                ...state.layoutByWorkspace,
+                [normalizedWorkspaceKey]: nextLayout,
+              },
+            };
+          });
+        },
+        ungroupTabGroup: (workspaceKey, paneId, groupId) => {
+          const normalizedWorkspaceKey = trimNonEmpty(workspaceKey);
+          const normalizedPaneId = trimNonEmpty(paneId);
+          const normalizedGroupId = trimNonEmpty(groupId);
+          if (!normalizedWorkspaceKey || !normalizedPaneId || !normalizedGroupId) {
+            return;
+          }
+          set((state) => {
+            const nextLayout = ungroupTabGroupInLayout({
+              layout: getWorkspaceLayout(state.layoutByWorkspace, normalizedWorkspaceKey),
+              paneId: normalizedPaneId,
+              groupId: normalizedGroupId,
+            });
+            if (!nextLayout) {
+              return state;
+            }
+            return {
               layoutByWorkspace: {
                 ...state.layoutByWorkspace,
                 [normalizedWorkspaceKey]: nextLayout,

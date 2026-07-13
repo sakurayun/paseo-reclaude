@@ -77,15 +77,23 @@ function applyRemote(bridge: LayoutSyncBridge, key: string, layout: unknown): vo
 
 const MAX_PENDING_LOCAL_OPENS = 8;
 
-// Record entity tabs added locally while the key is still un-pulled. Hydration
-// writes are excluded — only post-hydration changes are genuine user opens.
+// Record entity tabs added locally that a structure-wins remote merge would
+// otherwise wipe. Hydration writes are excluded — only post-hydration changes
+// are genuine user opens.
+//
+// Before the first pull: every non-transient entity tab (SSH connect opens a
+// terminal before navigation can pull). After the first pull: only terminal
+// tabs — SSH shells are opened into an existing workspace and a stale peer
+// layout (or an in-flight push race) must not silently drop them when the
+// user switches sessions. Agent/file tabs already re-surface via reconcile /
+// explicit open, so they don't need post-pull protection.
 function recordPendingLocalOpens(
   bridge: LayoutSyncBridge,
   key: string,
   next: LayoutStoreState,
   prev: LayoutStoreState,
 ): void {
-  if (bridge.pulledKeys.has(key) || bridge.applyingRemoteKeys.has(key)) {
+  if (bridge.applyingRemoteKeys.has(key)) {
     return;
   }
   if (!useWorkspaceLayoutStore.persist.hasHydrated()) {
@@ -99,11 +107,14 @@ function recordPendingLocalOpens(
   const previousTabIds = new Set(
     prevLayout ? collectAllTabs(prevLayout.root).map((tab) => tab.tabId) : [],
   );
-  const addedTabs = collectAllTabs(nextLayout.root).filter(
-    // Transient ssh-connecting tabs are device-local and short-lived; never
-    // re-open them after a pull.
-    (tab) => !previousTabIds.has(tab.tabId) && tab.target.kind !== "ssh-connecting",
-  );
+  const afterPull = bridge.pulledKeys.has(key);
+  const addedTabs = collectAllTabs(nextLayout.root).filter((tab) => {
+    if (previousTabIds.has(tab.tabId) || tab.target.kind === "ssh-connecting") {
+      return false;
+    }
+    // Post-pull: only shield terminal tabs (SSH) from remote structure-wins.
+    return !afterPull || tab.target.kind === "terminal";
+  });
   if (addedTabs.length === 0) {
     return;
   }
@@ -162,6 +173,19 @@ async function pushLayout(
       // A peer wrote a newer revision. Align ours; its changed broadcast (already in
       // flight) overwrites our local layout.
       bridge.revisionByKey.set(key, result.revision);
+    } else {
+      // Our structure is on the daemon; pending re-open protection is no longer
+      // needed for tabs that made it into this push.
+      const pushedTabIds = new Set(collectAllTabs(stripped.root).map((tab) => tab.tabId));
+      const pending = bridge.pendingLocalOpensByKey.get(key);
+      if (pending) {
+        const remaining = pending.filter((tab) => !pushedTabIds.has(tab.tabId));
+        if (remaining.length === 0) {
+          bridge.pendingLocalOpensByKey.delete(key);
+        } else {
+          bridge.pendingLocalOpensByKey.set(key, remaining);
+        }
+      }
     }
   } catch {
     // Transient push failure; the next local change retries.

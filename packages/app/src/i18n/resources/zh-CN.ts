@@ -647,6 +647,25 @@ export const zhCN: TranslationResources = {
           agents: "这会归档 {{agents}} 个 Agent。",
         },
       },
+      groups: {
+        defaultTitle: "编组",
+        renameTitle: "重命名编组",
+        rename: "重命名编组",
+        collapse: "折叠编组",
+        expand: "展开编组",
+        ungroup: "取消编组",
+        colors: {
+          blue: "蓝色",
+          purple: "紫色",
+          pink: "粉色",
+          red: "红色",
+          orange: "橙色",
+          yellow: "黄色",
+          green: "绿色",
+          cyan: "青色",
+          gray: "灰色",
+        },
+      },
     },
     portForwards: {
       title: "端口映射",
@@ -2725,6 +2744,9 @@ export const zhCN: TranslationResources = {
       savePasswordTitle: "保存密码？",
       savePasswordMessage: "将此密码保存到 {{host}} 以便日后连接？",
       savePasswordConfirm: "保存",
+      handshakeHintTitle: "SSH 握手未完成（协议开始前连接已断开）",
+      handshakeHintBody:
+        "TCP 已连通，但对方在发送 SSH 横幅前就关闭了连接。本机常见原因：代理/VPN 的 TUN 模式（Clash / Surge / Mihomo 等，路由网关常为 198.18.x.x）劫持了流量。请给该主机 IP 加 DIRECT 规则，或关闭对 SSH 的 TUN 劫持后再试。也可在系统终端运行 `ssh -vvv user@host` 对照——若同样报 kex_exchange_identification，优先排查网络与远端 sshd，而不是仅 Paseo。",
     },
     form: {
       addressSection: "地址",
@@ -2742,8 +2764,14 @@ export const zhCN: TranslationResources = {
       key: "SSH 密钥",
       keyNone: "无",
       useAgent: "使用 SSH agent",
+      useAgentHint:
+        "用本机 ssh-agent 中已加载的密钥登录（$SSH_AUTH_SOCK）。可与下方选定的密钥文件或密码并用。daemon 必须继承 SSH_AUTH_SOCK（ssh-add 后请重启 Paseo）。",
       useFido2: "FIDO2 安全密钥",
       agentForwarding: "Agent 转发",
+      agentForwardingHint:
+        "即 OpenSSH ForwardAgent（-A）：登录后远端会话可继续使用你本机 agent 做后续 ssh/git，无需把私钥拷到服务器。仍需要本机 agent 在运行。",
+      agentForwardingNotice:
+        "安全提示：仅在可信主机上开启。你在线期间，能访问该远端会话的人可能滥用被转发的 agent。",
       startupSnippet: "启动脚本",
       hostChaining: "主机链",
       proxy: "代理",

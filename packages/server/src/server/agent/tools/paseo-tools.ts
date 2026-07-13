@@ -31,6 +31,9 @@ import type { VoiceCallerContext, VoiceSpeakHandler } from "../../voice-types.js
 import type { FirstAgentContext } from "../../messages.js";
 import { expandUserPath, isSameOrDescendantPath, resolvePathFromBase } from "../../path-utils.js";
 import type { TerminalManager } from "../../../terminal/terminal-manager.js";
+import type { TerminalSession } from "../../../terminal/terminal.js";
+import type { SshManager } from "../../../ssh/ssh-manager.js";
+import type { SshTerminalRegistry } from "../../../ssh/ssh-terminal-registry.js";
 import type { CreatePaseoWorktreeWorkflowFn } from "../../worktree-session.js";
 import type { ScheduleService } from "../../schedule/service.js";
 import {
@@ -76,6 +79,9 @@ import {
 } from "../../worktree/commands.js";
 import { registerBrowserTools } from "../../browser-tools/tools.js";
 import type { BrowserToolsBroker } from "../../browser-tools/broker.js";
+import { registerSshTools } from "./ssh-tools.js";
+import { runTerminalCommand } from "./run-terminal-command.js";
+import { TerminalSummarySchema, type TerminalSummary } from "./terminal-summary.js";
 import type {
   PaseoToolCatalog,
   PaseoToolConfig,
@@ -88,6 +94,11 @@ export interface PaseoToolHostDependencies {
   agentManager: AgentManager;
   agentStorage: AgentStorage;
   terminalManager?: TerminalManager | null;
+  // SSH host manager (fork feature). When present, the SSH tool group
+  // (list_ssh_hosts / connect_ssh_host) is registered.
+  sshManager?: SshManager | null;
+  // terminalId → SSH host mapping so terminal summaries can carry kind/host.
+  sshTerminalRegistry?: SshTerminalRegistry | null;
   getDaemonTcpPort?: () => number | null;
   scheduleService?: ScheduleService | null;
   providerSnapshotManager: ProviderSnapshotManager;
@@ -126,6 +137,16 @@ export interface PaseoToolHostDependencies {
   resolveCallerContext?: (callerAgentId: string) => VoiceCallerContext | null;
   enableVoiceTools?: boolean;
   voiceOnly?: boolean;
+  // Fork feature (SSH/terminal MCP): broadcast a terminal.reveal push asking
+  // clients to open/focus a terminal tab. Returns true when a present client
+  // was chosen to focus.
+  revealTerminal?: (input: {
+    terminalId: string;
+    workspaceId?: string;
+    cwd?: string;
+    sshHostId?: string;
+    sshHostLabel?: string;
+  }) => boolean;
   logger: Logger;
 }
 
@@ -376,12 +397,6 @@ function resolveChildAgentCwd(params: {
   return resolvePathFromBase(params.parentCwd, requestedCwd);
 }
 
-const TerminalSummarySchema = z.object({
-  id: z.string(),
-  name: z.string(),
-  cwd: z.string(),
-});
-
 const WorktreeSummarySchema = z.object({
   path: z.string(),
   createdAt: z.string(),
@@ -427,6 +442,8 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
     agentManager,
     agentStorage,
     terminalManager,
+    sshManager,
+    sshTerminalRegistry,
     scheduleService,
     providerSnapshotManager,
     callerAgentId,
@@ -557,6 +574,43 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
     }
 
     return options.ensureWorkspaceForCreate(resolvedCwd);
+  }
+
+  function toTerminalSummary(terminal: TerminalSession): TerminalSummary {
+    const exitInfo = terminal.getExitInfo();
+    const title = terminal.getTitle();
+    const sshMeta = sshTerminalRegistry?.get(terminal.id);
+    return {
+      id: terminal.id,
+      name: terminal.name,
+      cwd: terminal.cwd,
+      workspaceId: terminal.workspaceId,
+      ...(title !== undefined ? { title } : {}),
+      status: exitInfo ? "exited" : "running",
+      exitCode: exitInfo ? (exitInfo.exitCode ?? null) : null,
+      activity: terminal.getActivity()?.state ?? null,
+      kind: sshMeta ? "ssh" : "local",
+      ...(sshMeta ? { sshHostId: sshMeta.hostId, sshHostLabel: sshMeta.hostLabel } : {}),
+    };
+  }
+
+  // Broadcasts terminal.reveal with the terminal's placement and SSH metadata.
+  // Returns whether a present client was picked to focus the tab.
+  function revealTerminalById(terminalId: string): boolean {
+    if (!options.revealTerminal || !terminalManager) {
+      return false;
+    }
+    const terminal = terminalManager.getTerminal(terminalId);
+    if (!terminal) {
+      return false;
+    }
+    const sshMeta = sshTerminalRegistry?.get(terminalId);
+    return options.revealTerminal({
+      terminalId,
+      workspaceId: terminal.workspaceId,
+      cwd: terminal.cwd,
+      ...(sshMeta ? { sshHostId: sshMeta.hostId, sshHostLabel: sshMeta.hostLabel } : {}),
+    });
   }
 
   function resolveWorkspaceIdForRename(requestedWorkspaceId?: string): string {
@@ -1032,6 +1086,27 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
       broker: options.browserToolsBroker,
       callerAgentId,
       resolveCallerAgent,
+    });
+  }
+
+  if (sshManager) {
+    registerSshTools({
+      registerTool,
+      sshManager,
+      sshTerminalRegistry,
+      terminalManager,
+      resolveDefaultWorkspaceId: () => {
+        // Prefer the caller agent's workspace so reveal/navigation lands on a
+        // real workspace; never mint one — the connect service falls back to
+        // the synthetic ssh:<hostId> bucket.
+        const callerAgent = callerAgentId ? agentManager.getAgent(callerAgentId) : null;
+        return callerAgent?.workspaceId ?? undefined;
+      },
+      summarizeTerminal: (terminalId) => {
+        const terminal = terminalManager?.getTerminal(terminalId);
+        return terminal ? toTerminalSummary(terminal) : undefined;
+      },
+      revealTerminal: revealTerminalById,
     });
   }
 
@@ -1806,21 +1881,15 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
       const terminals = all
         ? (
             await Promise.all(
-              terminalManager.listDirectories().map(async (directory) =>
-                (await terminalManager.getTerminals(directory)).map((terminal) => ({
-                  id: terminal.id,
-                  name: terminal.name,
-                  cwd: terminal.cwd,
-                })),
-              ),
+              terminalManager
+                .listDirectories()
+                .map(async (directory) =>
+                  (await terminalManager.getTerminals(directory)).map(toTerminalSummary),
+                ),
             )
           ).flat()
         : (await terminalManager.getTerminals(resolveScopedCwd(cwd, { required: true }))).map(
-            (terminal) => ({
-              id: terminal.id,
-              name: terminal.name,
-              cwd: terminal.cwd,
-            }),
+            toTerminalSummary,
           );
 
       return {
@@ -1841,10 +1910,14 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
           .optional()
           .describe("Optional working directory. Defaults to your current working directory."),
         name: z.string().optional().describe("Optional terminal name."),
+        focus: z
+          .boolean()
+          .optional()
+          .describe("Ask connected Paseo clients to open this terminal's tab."),
       },
       outputSchema: TerminalSummarySchema.shape,
     },
-    async ({ cwd, name }) => {
+    async ({ cwd, name, focus = false }) => {
       if (!terminalManager) {
         throw new Error("Terminal manager is not configured");
       }
@@ -1858,13 +1931,14 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
         ...(name?.trim() ? { name: name.trim() } : {}),
       });
 
+      if (focus) {
+        // Best-effort: creation already succeeded, an empty client fleet is fine.
+        revealTerminalById(terminal.id);
+      }
+
       return {
         content: [],
-        structuredContent: ensureValidJson({
-          id: terminal.id,
-          name: terminal.name,
-          cwd: terminal.cwd,
-        }),
+        structuredContent: ensureValidJson(toTerminalSummary(terminal)),
       };
     },
   );
@@ -1916,6 +1990,7 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
         terminalId: z.string(),
         lines: z.array(z.string()),
         totalLines: z.number().int().nonnegative(),
+        note: z.string().optional(),
       },
     },
     async ({ terminalId, start, end, scrollback, stripAnsi = true }) => {
@@ -1923,7 +1998,8 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
         throw new Error("Terminal manager is not configured");
       }
 
-      if (!terminalManager.getTerminal(terminalId)) {
+      const terminal = terminalManager.getTerminal(terminalId);
+      if (!terminal) {
         throw new Error(`Terminal ${terminalId} not found`);
       }
 
@@ -1932,6 +2008,22 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
         end,
         stripAnsi,
       });
+
+      // An exited terminal's scrollback is released with its backing session;
+      // the exit info keeps the last few lines captured at exit time, which is
+      // the only faithful output still available.
+      const exitInfo = terminal.getExitInfo();
+      if (exitInfo && capture.lines.length === 0) {
+        return {
+          content: [],
+          structuredContent: ensureValidJson({
+            terminalId,
+            lines: exitInfo.lastOutputLines,
+            totalLines: exitInfo.lastOutputLines.length,
+            note: "Terminal has exited and its scrollback was released; showing the last lines captured at exit.",
+          }),
+        };
+      }
 
       return {
         content: [],
@@ -1948,10 +2040,11 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
     "send_terminal_keys",
     {
       title: "Send terminal keys",
-      description: "Send literal text or special key tokens to a terminal session.",
+      description:
+        'Send literal text or special key tokens to a terminal session. Pass an array to send a sequence in one call, e.g. ["ls -la", "Enter"].',
       inputSchema: {
         terminalId: z.string(),
-        keys: z.string(),
+        keys: z.union([z.string(), z.array(z.string()).min(1)]),
         literal: z.boolean().optional(),
       },
       outputSchema: {
@@ -1968,14 +2061,89 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
         throw new Error(`Terminal ${terminalId} not found`);
       }
 
+      const tokens: string[] = Array.isArray(keys) ? keys : [keys];
       terminal.send({
         type: "input",
-        data: resolveTerminalKeyToken(keys, literal),
+        data: tokens.map((token) => resolveTerminalKeyToken(token, literal)).join(""),
       });
 
       return {
         content: [],
         structuredContent: ensureValidJson({ success: true }),
+      };
+    },
+  );
+
+  registerTool(
+    "run_terminal_command",
+    {
+      title: "Run terminal command",
+      description:
+        "Run a shell command in an existing terminal and wait for it to finish, returning the output it produced. completed=true with an exit code requires shell integration (locally spawned zsh); otherwise the tool falls back to quietMs of output silence and reports completed=false. Timeout does not interrupt the command. Run one command at a time per terminal. On remote shells without integration, append `; echo EXIT:$?` to read the exit code from the output.",
+      inputSchema: {
+        terminalId: z.string(),
+        command: z.string().min(1),
+        timeoutMs: z.number().int().min(100).max(600_000).optional().default(30_000),
+        quietMs: z.number().int().min(50).max(60_000).optional().default(1_500),
+      },
+      outputSchema: {
+        terminalId: z.string(),
+        completed: z.boolean(),
+        exitCode: z.number().nullable(),
+        output: z.array(z.string()),
+        totalLines: z.number().int().nonnegative(),
+        truncated: z.boolean(),
+        durationMs: z.number().nonnegative(),
+      },
+    },
+    async ({ terminalId, command, timeoutMs = 30_000, quietMs = 1_500 }, context) => {
+      if (!terminalManager) {
+        throw new Error("Terminal manager is not configured");
+      }
+
+      const result = await runTerminalCommand(
+        terminalManager,
+        { terminalId, command, timeoutMs, quietMs },
+        context.signal ? { signal: context.signal } : undefined,
+      );
+
+      return {
+        content: [],
+        structuredContent: ensureValidJson(result),
+      };
+    },
+  );
+
+  registerTool(
+    "open_terminal_tab",
+    {
+      title: "Open terminal tab",
+      description:
+        "Ask connected Paseo clients to open/focus the tab of an existing terminal. delivered=false means no client is currently present to focus it.",
+      inputSchema: {
+        terminalId: z.string(),
+      },
+      outputSchema: {
+        success: z.boolean(),
+        delivered: z.boolean(),
+      },
+    },
+    async ({ terminalId }) => {
+      if (!terminalManager) {
+        throw new Error("Terminal manager is not configured");
+      }
+      if (!terminalManager.getTerminal(terminalId)) {
+        throw new Error(`Terminal ${terminalId} not found`);
+      }
+      if (!options.revealTerminal) {
+        throw new Error("Terminal reveal is not configured");
+      }
+
+      const delivered = revealTerminalById(terminalId);
+
+      return {
+        content: [],
+        structuredContent: ensureValidJson({ success: true, delivered }),
       };
     },
   );

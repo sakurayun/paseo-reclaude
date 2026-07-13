@@ -31,13 +31,24 @@ The MCP server itself is controlled by `daemon.mcp.enabled`. Existing agents may
 
 ### Terminals
 
-| Tool                 | Function                                                                     |
-| -------------------- | ---------------------------------------------------------------------------- |
-| `list_terminals`     | List terminal sessions for one working directory or all working directories. |
-| `create_terminal`    | Create a terminal session for a working directory.                           |
-| `kill_terminal`      | Kill a terminal session.                                                     |
-| `capture_terminal`   | Capture plain-text output from a terminal session.                           |
-| `send_terminal_keys` | Send text or special key tokens to a terminal session.                       |
+| Tool                   | Function                                                                                                                                                     |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `list_terminals`       | List terminal sessions (local and SSH) with status, exit code, activity, and SSH host identity, for one working directory or all working directories.        |
+| `create_terminal`      | Create a terminal session for a working directory; `focus: true` asks connected clients to open its tab.                                                     |
+| `kill_terminal`        | Kill a terminal session.                                                                                                                                     |
+| `capture_terminal`     | Capture plain-text output lines (range/negative indexing supported). Exited terminals return the last lines captured at exit with an explanatory `note`.     |
+| `send_terminal_keys`   | Send text or special key tokens to a terminal session. Accepts a single token or a sequence, e.g. `["ls -la", "Enter"]`.                                     |
+| `run_terminal_command` | Run a command in an existing terminal and wait for completion: exact exit code via shell integration (local zsh), or output-quiescence fallback (`quietMs`). |
+| `open_terminal_tab`    | Ask connected Paseo clients to open/focus an existing terminal's tab. `delivered=false` means no client was present to focus it.                             |
+
+### SSH
+
+Registered only when the daemon's SSH host manager is available. Credentials never transit MCP: `connect_ssh_host` takes no password, host secrets are never listed, and a host-key mismatch must be trusted by a human in the Paseo client.
+
+| Tool               | Function                                                                                                                                           |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `list_ssh_hosts`   | List saved SSH hosts and groups (allowlist projection: address, port, username, tags, auth-method summary, remote OS, active terminal ids).        |
+| `connect_ssh_host` | Open an interactive shell on a saved host (by `hostId` or unique `hostLabel`) and expose it as a terminal; `focus: true` opens its tab in the app. |
 
 ### Schedules
 

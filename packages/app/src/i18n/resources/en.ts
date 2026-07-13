@@ -624,6 +624,25 @@ export const en = {
         killTerminalDescription:
           "Stops the terminal and removes it from the workspace list. You can find it again in session history.",
       },
+      groups: {
+        defaultTitle: "Group",
+        renameTitle: "Rename group",
+        rename: "Rename group",
+        collapse: "Collapse group",
+        expand: "Expand group",
+        ungroup: "Ungroup",
+        colors: {
+          blue: "Blue",
+          purple: "Purple",
+          pink: "Pink",
+          red: "Red",
+          orange: "Orange",
+          yellow: "Yellow",
+          green: "Green",
+          cyan: "Cyan",
+          gray: "Gray",
+        },
+      },
       confirmations: {
         close: "Close",
         cancel: "Cancel",
@@ -2768,6 +2787,9 @@ export const en = {
       savePasswordTitle: "Save password?",
       savePasswordMessage: "Save this password to {{host}} for future connections?",
       savePasswordConfirm: "Save",
+      handshakeHintTitle: "SSH handshake failed before the protocol started",
+      handshakeHintBody:
+        "TCP connected, but the remote closed the socket before the SSH banner. This is often a local VPN/proxy TUN route (Clash/Surge/Mihomo — check for gateway 198.18.x.x), a firewall, or a non-SSH service on that port. Add a DIRECT rule for the host IP (or turn off TUN for SSH), then retry. If `ssh -vvv user@host` in Terminal fails the same way, fix the network/sshd first.",
     },
     form: {
       addressSection: "Address",
@@ -2785,8 +2807,14 @@ export const en = {
       key: "SSH key",
       keyNone: "None",
       useAgent: "Use SSH agent",
+      useAgentHint:
+        "Authenticate with keys loaded in your local ssh-agent ($SSH_AUTH_SOCK). Can be combined with a selected key file or password. The daemon must inherit SSH_AUTH_SOCK (restart Paseo after ssh-add).",
       useFido2: "FIDO2 security key",
       agentForwarding: "Agent forwarding",
+      agentForwardingHint:
+        "OpenSSH ForwardAgent (-A): after login, the remote session can use your local agent for further ssh/git without copying private keys. Requires a running local agent.",
+      agentForwardingNotice:
+        "Security: only enable on trusted hosts. Anyone with access to your remote session may use your forwarded agent while you are connected.",
       startupSnippet: "Startup snippet",
       hostChaining: "Host chaining",
       proxy: "Proxy",

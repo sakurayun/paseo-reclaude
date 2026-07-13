@@ -30,6 +30,13 @@ export function sshHostNeedsFallback(host: SshHostInfo): boolean {
 // Builds an argv for the system `ssh`/`mosh` binary. Used when a host requires
 // a path ssh2 can't take: Mosh, or a FIDO2 (sk-*) key. Password/proxy auth is
 // not injected here — the pty surfaces any prompts interactively.
+//
+// Agent options mirror the ssh2 path (see applyCredentials):
+// - useAgent: leave IdentityAgent alone so OpenSSH uses $SSH_AUTH_SOCK
+// - !useAgent && !agentForwarding: IdentityAgent=none so a host-scoped key/password
+//   is not contaminated by unrelated agent identities
+// - agentForwarding: -A (ForwardAgent), which still needs a local agent even when
+//   login uses -i / password
 export function buildFallbackSshArgv(host: SshHostInfo, deps: BuildFallbackDeps): FallbackCommand {
   const port = host.port ?? 22;
   const userHost = host.username ? `${host.username}@${host.address}` : host.address;
@@ -82,6 +89,16 @@ function buildSshOptions(input: {
   }
   if (keyFile) {
     options.push("-i", keyFile);
+    // Prefer the host-selected key for login when agent auth is not requested.
+    // IdentitiesOnly still allows ForwardAgent (-A) to expose the agent on the remote.
+    if (!host.useAgent) {
+      options.push("-o", "IdentitiesOnly=yes");
+    }
+  }
+  // When neither agent auth nor forwarding is wanted, disable the agent entirely
+  // so OpenSSH does not offer unexpected identities from the ambient agent.
+  if (!host.useAgent && !host.agentForwarding) {
+    options.push("-o", "IdentityAgent=none");
   }
   const jump = buildJumpSpec(host, deps.hostStore);
   if (jump) {
@@ -90,6 +107,7 @@ function buildSshOptions(input: {
   for (const [key, value] of Object.entries(host.env ?? {})) {
     options.push("-o", `SetEnv=${key}=${value}`);
   }
+  // OpenSSH -A / ForwardAgent yes — independent of useAgent.
   if (host.agentForwarding) {
     options.push("-A");
   }

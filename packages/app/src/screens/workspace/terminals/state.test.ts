@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   collectKnownTerminalIds,
+  collectReconcileKnownTerminalIds,
   collectScriptTerminalIds,
   collectStandaloneTerminalIds,
   reconcilePendingScriptTerminals,
@@ -95,5 +96,26 @@ describe("workspace terminal state", () => {
       requestId: "existing",
       terminals: [],
     });
+  });
+
+  it("unions workspace, host-wide, and SSH meta terminal ids for reconcile", () => {
+    // Regression: opening an SSH tab then switching to another session must
+    // not prune the SSH tab just because the workspace-scoped list (or an
+    // empty host-wide list on old hosts) does not yet include it.
+    expect(
+      collectReconcileKnownTerminalIds({
+        workspaceKnownTerminalIds: ["local-term"],
+        hostWideTerminalIds: [],
+        sshTerminalIds: ["ssh-term"],
+      }).sort(),
+    ).toEqual(["local-term", "ssh-term"]);
+
+    expect(
+      collectReconcileKnownTerminalIds({
+        workspaceKnownTerminalIds: ["local-term"],
+        hostWideTerminalIds: ["host-term", "ssh-term"],
+        sshTerminalIds: ["ssh-term"],
+      }).sort(),
+    ).toEqual(["host-term", "local-term", "ssh-term"]);
   });
 });

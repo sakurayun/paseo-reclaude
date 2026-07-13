@@ -8,11 +8,25 @@ import {
   normalizeWorkspaceTabTarget,
   workspaceTabTargetsEqual,
 } from "@/workspace-tabs/identity";
+import {
+  assignTabsToGroup,
+  normalizeTabGroupMembership,
+  normalizeTabGroupsRecord,
+  sanitizePaneTabGroups,
+  type TabGroupColorId,
+  type WorkspaceTabGroup,
+} from "@/workspace-tabs/tab-groups";
+
+export type { TabGroupColorId, WorkspaceTabGroup };
 
 export interface SplitPane {
   id: string;
   tabIds: string[];
   focusedTabId: string | null;
+  /** Edge-style tab groups on this pane (id → meta). */
+  tabGroups?: Record<string, WorkspaceTabGroup>;
+  /** tabId → groupId membership. */
+  tabGroupIdByTabId?: Record<string, string>;
 }
 
 export interface SplitGroup {
@@ -246,12 +260,19 @@ function createPaneNode(input: {
   id: string;
   tabs?: WorkspaceTab[];
   focusedTabId?: string | null;
+  tabGroups?: Record<string, WorkspaceTabGroup>;
+  tabGroupIdByTabId?: Record<string, string>;
 }): SplitNodeInternal {
   const normalizedTabs = normalizeWorkspaceTabs(input.tabs ?? []);
   const tabIds = normalizedTabs.map((tab) => tab.tabId);
   const focusedTabId = tabIds.includes(input.focusedTabId ?? "")
     ? (input.focusedTabId ?? null)
     : (tabIds[tabIds.length - 1] ?? null);
+  const sanitized = sanitizePaneTabGroups({
+    tabIds,
+    tabGroups: input.tabGroups,
+    tabGroupIdByTabId: input.tabGroupIdByTabId,
+  });
 
   return {
     kind: "pane",
@@ -260,6 +281,12 @@ function createPaneNode(input: {
       tabs: normalizedTabs,
       tabIds,
       focusedTabId,
+      ...(sanitized.tabGroups
+        ? {
+            tabGroups: sanitized.tabGroups,
+            tabGroupIdByTabId: sanitized.tabGroupIdByTabId,
+          }
+        : {}),
     },
   };
 }
@@ -557,12 +584,23 @@ function normalizePaneAfterTabChange(pane: SplitPaneInternal): SplitPaneInternal
   const focusedTabId = tabIds.includes(pane.focusedTabId ?? "")
     ? pane.focusedTabId
     : (tabIds[tabIds.length - 1] ?? null);
+  const sanitized = sanitizePaneTabGroups({
+    tabIds,
+    tabGroups: pane.tabGroups,
+    tabGroupIdByTabId: pane.tabGroupIdByTabId,
+  });
 
   return {
     id: pane.id,
     tabs,
     tabIds,
     focusedTabId,
+    ...(sanitized.tabGroups
+      ? {
+          tabGroups: sanitized.tabGroups,
+          tabGroupIdByTabId: sanitized.tabGroupIdByTabId,
+        }
+      : {}),
   };
 }
 
@@ -585,6 +623,8 @@ function normalizePaneNode(rawPane: SplitPaneInternal | undefined): SplitNodeInt
     id: paneId,
     tabs: mergedTabs,
     focusedTabId: trimNonEmpty(rawPane?.focusedTabId) ?? null,
+    tabGroups: normalizeTabGroupsRecord(rawPane?.tabGroups),
+    tabGroupIdByTabId: normalizeTabGroupMembership(rawPane?.tabGroupIdByTabId),
   });
 }
 
@@ -1551,6 +1591,124 @@ export function reorderPaneTabsInLayout(
     root: updatePaneInTree(layout.root, {
       paneId: input.paneId,
       updater: (pane) => reorderTabsForPane({ pane, tabIds: input.tabIds }),
+    }),
+    focusedPaneId: layout.focusedPaneId,
+    parentTabIdByTabId: input.layout.parentTabIdByTabId,
+  });
+}
+
+export function groupTabsInLayout(input: {
+  layout: WorkspaceLayout;
+  paneId: string;
+  sourceTabId: string;
+  targetTabId: string;
+  createGroupId: () => string;
+  defaultTitle: string;
+}): WorkspaceLayout | null {
+  const layout = asInternalLayout(input.layout);
+  if (!findPaneById(layout.root, input.paneId)) {
+    return null;
+  }
+
+  return withNormalizedParentTabMap({
+    root: updatePaneInTree(layout.root, {
+      paneId: input.paneId,
+      updater: (pane) => {
+        const assigned = assignTabsToGroup({
+          tabGroups: pane.tabGroups ?? {},
+          tabGroupIdByTabId: pane.tabGroupIdByTabId ?? {},
+          tabIds: pane.tabIds,
+          sourceTabId: input.sourceTabId,
+          targetTabId: input.targetTabId,
+          createGroupId: input.createGroupId,
+          defaultTitle: input.defaultTitle,
+        });
+        const byId = new Map(pane.tabs.map((tab) => [tab.tabId, tab]));
+        const reordered = assigned.tabIds
+          .map((tabId) => byId.get(tabId))
+          .filter((tab): tab is WorkspaceTab => Boolean(tab));
+        return normalizePaneAfterTabChange({
+          ...pane,
+          tabs: reordered,
+          tabGroups: assigned.tabGroups,
+          tabGroupIdByTabId: assigned.tabGroupIdByTabId,
+        });
+      },
+    }),
+    focusedPaneId: layout.focusedPaneId,
+    parentTabIdByTabId: input.layout.parentTabIdByTabId,
+  });
+}
+
+export function updateTabGroupInLayout(input: {
+  layout: WorkspaceLayout;
+  paneId: string;
+  groupId: string;
+  patch: Partial<Pick<WorkspaceTabGroup, "title" | "color" | "collapsed">>;
+}): WorkspaceLayout | null {
+  const layout = asInternalLayout(input.layout);
+  if (!findPaneById(layout.root, input.paneId)) {
+    return null;
+  }
+
+  return withNormalizedParentTabMap({
+    root: updatePaneInTree(layout.root, {
+      paneId: input.paneId,
+      updater: (pane) => {
+        const existing = pane.tabGroups?.[input.groupId];
+        if (!existing) {
+          return pane;
+        }
+        const nextGroup: WorkspaceTabGroup = {
+          ...existing,
+          ...(input.patch.title !== undefined
+            ? { title: input.patch.title.trim() || existing.title }
+            : {}),
+          ...(input.patch.color !== undefined ? { color: input.patch.color } : {}),
+          ...(input.patch.collapsed !== undefined ? { collapsed: input.patch.collapsed } : {}),
+        };
+        return normalizePaneAfterTabChange({
+          ...pane,
+          tabGroups: { ...pane.tabGroups, [input.groupId]: nextGroup },
+        });
+      },
+    }),
+    focusedPaneId: layout.focusedPaneId,
+    parentTabIdByTabId: input.layout.parentTabIdByTabId,
+  });
+}
+
+export function ungroupTabGroupInLayout(input: {
+  layout: WorkspaceLayout;
+  paneId: string;
+  groupId: string;
+}): WorkspaceLayout | null {
+  const layout = asInternalLayout(input.layout);
+  if (!findPaneById(layout.root, input.paneId)) {
+    return null;
+  }
+
+  return withNormalizedParentTabMap({
+    root: updatePaneInTree(layout.root, {
+      paneId: input.paneId,
+      updater: (pane) => {
+        if (!pane.tabGroups?.[input.groupId]) {
+          return pane;
+        }
+        const nextGroups = { ...pane.tabGroups };
+        delete nextGroups[input.groupId];
+        const nextMembership = { ...pane.tabGroupIdByTabId };
+        for (const [tabId, groupId] of Object.entries(nextMembership)) {
+          if (groupId === input.groupId) {
+            delete nextMembership[tabId];
+          }
+        }
+        return normalizePaneAfterTabChange({
+          ...pane,
+          tabGroups: nextGroups,
+          tabGroupIdByTabId: nextMembership,
+        });
+      },
     }),
     focusedPaneId: layout.focusedPaneId,
     parentTabIdByTabId: input.layout.parentTabIdByTabId,

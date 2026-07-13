@@ -24,14 +24,22 @@ describe("buildFallbackSshArgv", () => {
   it("builds a plain ssh argv with user@host", () => {
     const result = buildFallbackSshArgv(host({ username: "root" }), deps());
     expect(result.command).toBe("ssh");
-    expect(result.args).toEqual(["root@10.0.0.1"]);
+    // Default host config does not use the agent — pin IdentityAgent=none so
+    // ambient keys are not offered unexpectedly.
+    expect(result.args).toEqual(["-o", "IdentityAgent=none", "root@10.0.0.1"]);
   });
 
   it("adds -p only for a non-default port", () => {
-    expect(buildFallbackSshArgv(host({ port: 22 }), deps()).args).toEqual(["10.0.0.1"]);
+    expect(buildFallbackSshArgv(host({ port: 22 }), deps()).args).toEqual([
+      "-o",
+      "IdentityAgent=none",
+      "10.0.0.1",
+    ]);
     expect(buildFallbackSshArgv(host({ port: 2222 }), deps()).args).toEqual([
       "-p",
       "2222",
+      "-o",
+      "IdentityAgent=none",
       "10.0.0.1",
     ]);
   });
@@ -44,6 +52,19 @@ describe("buildFallbackSshArgv", () => {
     expect(result.args).toContain("-o");
     expect(result.args).toContain("SetEnv=FOO=bar");
     expect(result.args).toContain("-A");
+    // Forwarding alone must not force IdentityAgent=none (agent is required for -A).
+    expect(result.args).not.toContain("IdentityAgent=none");
+  });
+
+  it("disables the ambient agent when neither useAgent nor forwarding is set", () => {
+    const result = buildFallbackSshArgv(host({ useAgent: false }), deps());
+    expect(result.args).toContain("IdentityAgent=none");
+    expect(result.args).not.toContain("-A");
+  });
+
+  it("keeps the ambient agent when useAgent is set", () => {
+    const result = buildFallbackSshArgv(host({ useAgent: true }), deps());
+    expect(result.args).not.toContain("IdentityAgent=none");
   });
 
   it("builds a ProxyJump spec from chained hosts", () => {
@@ -62,7 +83,7 @@ describe("buildFallbackSshArgv", () => {
       deps(),
     );
     expect(result.command).toBe("mosh");
-    expect(result.args[0]).toBe("--ssh=ssh -p 2222");
+    expect(result.args[0]).toBe("--ssh=ssh -p 2222 -o IdentityAgent=none");
     expect(result.args.at(-1)).toBe("root@10.0.0.1");
   });
 });

@@ -56,6 +56,33 @@ export function collectKnownTerminalIds(input: {
   return Array.from(terminalIds);
 }
 
+/**
+ * Terminal ids that reconcile may keep open in a workspace tab bar.
+ *
+ * Workspace-scoped lists alone miss SSH/remote terminals (they live outside the
+ * cwd bucket). Host-wide lists cover them once loaded, but a just-connected SSH
+ * terminal can still be absent for a frame — and hosts without terminalLifecycle
+ * never expose a host-wide list. The SSH meta map is registered at connect time
+ * and is the local source of truth that those tabs are intentional.
+ */
+export function collectReconcileKnownTerminalIds(input: {
+  workspaceKnownTerminalIds: Iterable<string>;
+  hostWideTerminalIds: Iterable<string>;
+  sshTerminalIds: Iterable<string>;
+}): string[] {
+  const terminalIds = new Set<string>();
+  for (const terminalId of input.workspaceKnownTerminalIds) {
+    terminalIds.add(terminalId);
+  }
+  for (const terminalId of input.hostWideTerminalIds) {
+    terminalIds.add(terminalId);
+  }
+  for (const terminalId of input.sshTerminalIds) {
+    terminalIds.add(terminalId);
+  }
+  return Array.from(terminalIds);
+}
+
 export function collectScriptTerminalIds(input: {
   pendingScriptTerminalIds: Map<string, number>;
   scripts: Array<{ terminalId?: string | null }>;

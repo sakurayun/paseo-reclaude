@@ -1,7 +1,12 @@
 import type { ClientSideConnection } from "@agentclientprotocol/sdk";
 import type { Logger } from "pino";
 
-import type { AgentModelDefinition, AgentSelectOption } from "../agent-sdk-types.js";
+import type { AgentMode, AgentModelDefinition, AgentSelectOption } from "../agent-sdk-types.js";
+import type {
+  ACPProviderModeWriteResult,
+  ACPProviderModeWriterContext,
+  SessionStateResponse,
+} from "./acp-agent.js";
 import { GenericACPAgentClient } from "./generic-acp-agent.js";
 
 interface GrokACPAgentClientOptions {
@@ -13,6 +18,39 @@ interface GrokACPAgentClientOptions {
   providerParams?: unknown;
 }
 
+/** Ask before non-safe tool runs (default Grok permission policy). */
+export const GROK_DEFAULT_MODE_ID = "default";
+/**
+ * Skip permission prompts (Grok always-approve / YOLO).
+ * Matches Claude's bypassPermissions id so unattended flows stay consistent.
+ */
+export const GROK_BYPASS_MODE_ID = "bypassPermissions";
+
+/**
+ * Paseo-facing permission modes for Grok Build.
+ *
+ * Grok ACP also uses `session/set_mode` for reasoning effort (high/medium/low);
+ * those are handled via thinking options, not this list. Permission modes are
+ * enforced by Paseo (auto-approve + launch `--always-approve`).
+ */
+export const GROK_MODES: AgentMode[] = [
+  {
+    id: GROK_DEFAULT_MODE_ID,
+    label: "Always Ask",
+    description: "Prompts for permission before shell commands and file edits",
+    icon: "ShieldCheck",
+    colorTier: "safe",
+  },
+  {
+    id: GROK_BYPASS_MODE_ID,
+    label: "Bypass",
+    description: "Skip all permission prompts (use with caution)",
+    icon: "ShieldAlert",
+    colorTier: "dangerous",
+    isUnattended: true,
+  },
+];
+
 /**
  * Grok Build ACP adapter.
  *
@@ -21,6 +59,7 @@ interface GrokACPAgentClientOptions {
  * - Reasoning effort via `session/set_mode` with ids `high` | `medium` | `low`
  *   (not `session/set_config_option` / thought_level)
  * - Auth via `authenticate` with `cached_token` (or grok.com) before session/new
+ * - Permission bypass via CLI `--always-approve` / Paseo auto-approve (not ACP set_mode)
  *
  * Docs: https://docs.x.ai/build/overview and local `~/.grok/docs/user-guide/15-agent-mode.md`.
  */
@@ -36,8 +75,13 @@ export class GrokACPAgentClient extends GenericACPAgentClient {
       // Grok CLI requires authenticate(cached_token) before session/new when using
       // interactive OIDC login stored in ~/.grok/auth.json.
       authenticateMethodId: "cached_token",
+      defaultModes: GROK_MODES,
       modelTransformer: transformGrokModels,
       thinkingOptionWriter: writeGrokThinkingOption,
+      sessionResponseTransformer: transformGrokSessionResponse,
+      modeIdTransformer: transformGrokModeId,
+      providerModeWriter: writeGrokProviderMode,
+      launchArgsTransformer: transformGrokLaunchArgs,
       providerParams: {
         supportsMcpServers: true,
         clientCapabilities: {
@@ -71,6 +115,86 @@ function asNonEmptyString(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;
+}
+
+export function isGrokBypassModeId(modeId: string | null | undefined): boolean {
+  return modeId === GROK_BYPASS_MODE_ID;
+}
+
+/**
+ * Insert `--always-approve` before the `stdio` subcommand (or after `agent`)
+ * so `grok agent --always-approve stdio` matches official ACP docs.
+ */
+export function injectGrokAlwaysApproveArgs(args: string[]): string[] {
+  if (args.includes("--always-approve") || args.includes("--yolo")) {
+    return args;
+  }
+  const stdioIdx = args.lastIndexOf("stdio");
+  if (stdioIdx >= 0) {
+    return [...args.slice(0, stdioIdx), "--always-approve", ...args.slice(stdioIdx)];
+  }
+  const agentIdx = args.indexOf("agent");
+  if (agentIdx >= 0) {
+    return [...args.slice(0, agentIdx + 1), "--always-approve", ...args.slice(agentIdx + 1)];
+  }
+  return ["--always-approve", ...args];
+}
+
+export function transformGrokLaunchArgs(args: string[], modeId: string | null): string[] {
+  return isGrokBypassModeId(modeId) ? injectGrokAlwaysApproveArgs(args) : args;
+}
+
+/**
+ * Keep Paseo permission modes as the source of truth. Grok ACP may advertise
+ * reasoning-effort ids as session modes; those must not replace Bypass/Ask.
+ */
+export function transformGrokSessionResponse(response: SessionStateResponse): SessionStateResponse {
+  const requestedBypass = isGrokBypassModeId(response.modes?.currentModeId ?? null);
+  // Prefer any previously applied Paseo mode carried only via client config —
+  // session/new from Grok typically has effort as currentModeId, so default to Ask.
+  const currentModeId = requestedBypass ? GROK_BYPASS_MODE_ID : GROK_DEFAULT_MODE_ID;
+
+  return {
+    ...response,
+    modes: {
+      currentModeId,
+      availableModes: GROK_MODES.map((mode) => ({
+        id: mode.id,
+        name: mode.label,
+        description: mode.description ?? null,
+      })),
+    },
+  };
+}
+
+/**
+ * Ignore Grok effort-level ids when they arrive as current_mode_update so they
+ * do not overwrite Always Ask / Bypass in Paseo's mode picker.
+ */
+export function transformGrokModeId(modeId: string): string | null {
+  if (modeId === GROK_DEFAULT_MODE_ID || modeId === GROK_BYPASS_MODE_ID) {
+    return modeId;
+  }
+  return null;
+}
+
+/**
+ * Permission modes are local to Paseo for Grok. Do not call session/set_mode
+ * (reserved for reasoning effort via thinkingOptionWriter).
+ */
+export async function writeGrokProviderMode(
+  context: ACPProviderModeWriterContext,
+): Promise<ACPProviderModeWriteResult> {
+  if (
+    context.requestedModeId === GROK_DEFAULT_MODE_ID ||
+    context.requestedModeId === GROK_BYPASS_MODE_ID
+  ) {
+    return {
+      handled: true,
+      currentModeId: context.requestedModeId,
+    };
+  }
+  return { handled: false };
 }
 
 /**

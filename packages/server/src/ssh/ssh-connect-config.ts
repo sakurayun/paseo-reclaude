@@ -51,6 +51,35 @@ export interface ResolvedConnectConfig {
 
 const DEFAULT_PORT = 22;
 
+/**
+ * Raised when the host config needs a local OpenSSH agent (`useAgent` and/or
+ * `agentForwarding`) but this process cannot reach one (typically
+ * `SSH_AUTH_SOCK` missing because the daemon was not started from a shell that
+ * has an agent). Distinct from auth failure against the remote host.
+ */
+export class SshAgentUnavailableError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "SshAgentUnavailableError";
+  }
+}
+
+/**
+ * Path/name of the local ssh-agent endpoint used by ssh2.
+ * - Unix: `$SSH_AUTH_SOCK` (must be present in the daemon's environment)
+ * - Windows: OpenSSH's well-known named pipe
+ */
+export function resolveLocalSshAgentEndpoint(
+  env: NodeJS.ProcessEnv = process.env,
+  platform: NodeJS.Platform = process.platform,
+): string | null {
+  if (platform === "win32") {
+    return "\\\\.\\pipe\\openssh-ssh-agent";
+  }
+  const sock = env.SSH_AUTH_SOCK?.trim();
+  return sock && sock.length > 0 ? sock : null;
+}
+
 // Builds an ssh2 ConnectConfig from a stored host record. Resolves credentials
 // from the key store / secrets, wires the TOFU host verifier, and lays out the
 // proxy / host-chaining `sock` when present.
@@ -109,22 +138,42 @@ export async function resolveSsh2ConnectConfig(
   };
 }
 
-function applyCredentials(
+/**
+ * Applies authentication material and agent options.
+ *
+ * - `useAgent`: authenticate using identities offered by the local agent
+ *   (ssh-agent / Pageant-compatible). Independent of any selected key file.
+ * - `agentForwarding` (OpenSSH `-A`): after login, expose the *local* agent to
+ *   the remote session so further `ssh`/`git` on the server can use local keys
+ *   without copying them. Requires a reachable local agent even when login
+ *   itself uses a stored private key / password.
+ * - Both may be combined with `keyId` / password; ssh2 tries the configured
+ *   methods in its usual order.
+ */
+export function applyCredentials(
   config: ConnectConfig,
   host: SshHostInfo,
   hostStore: SshHostStore,
   keyStore: SshKeyStore,
   passwordOverride?: string,
 ): void {
-  if (host.useAgent) {
-    const agentSock =
-      process.platform === "win32" ? "\\\\.\\pipe\\openssh-ssh-agent" : process.env.SSH_AUTH_SOCK;
-    if (agentSock) {
-      config.agent = agentSock;
+  // Auth-via-agent and agent-forwarding both need a local agent socket. Forwarding
+  // must NOT be gated on useAgent: users often log in with a key file and only
+  // forward the agent for git push / jump hops on the remote.
+  const needsLocalAgent = Boolean(host.useAgent || host.agentForwarding);
+  if (needsLocalAgent) {
+    const agentSock = resolveLocalSshAgentEndpoint();
+    if (!agentSock) {
+      throw new SshAgentUnavailableError(
+        host.agentForwarding && !host.useAgent
+          ? "Agent forwarding requires a local SSH agent, but SSH_AUTH_SOCK is not set on the daemon. Start ssh-agent (and ssh-add your keys), then restart Paseo/the daemon so it inherits the socket."
+          : "Use SSH agent is enabled, but SSH_AUTH_SOCK is not set on the daemon. Start ssh-agent (and ssh-add your keys), then restart Paseo/the daemon so it inherits the socket.",
+      );
     }
-    if (host.agentForwarding) {
-      config.agentForward = true;
-    }
+    config.agent = agentSock;
+  }
+  if (host.agentForwarding) {
+    config.agentForward = true;
   }
 
   if (host.keyId) {

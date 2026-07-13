@@ -395,6 +395,8 @@ interface ACPAgentClientOptions {
    * session/new until authenticated.
    */
   authenticateMethodId?: string;
+  /** Optional post-process of process argv (e.g. inject --always-approve). */
+  launchArgsTransformer?: (args: string[], modeId: string | null) => string[];
   capabilities?: AgentCapabilityFlags;
   extensionCommandsParser?: ACPExtensionCommandsParser;
   waitForInitialCommands?: boolean;
@@ -426,6 +428,7 @@ interface ACPAgentSessionOptions {
     thinkingOptionId: string,
   ) => Promise<void>;
   authenticateMethodId?: string;
+  launchArgsTransformer?: (args: string[], modeId: string | null) => string[];
   capabilities: AgentCapabilityFlags;
   extensionCommandsParser?: ACPExtensionCommandsParser;
   handle?: AgentPersistenceHandle;
@@ -829,6 +832,7 @@ export class ACPAgentClient implements AgentClient {
     thinkingOptionId: string,
   ) => Promise<void>;
   private readonly authenticateMethodId?: string;
+  private readonly launchArgsTransformer?: (args: string[], modeId: string | null) => string[];
   private readonly waitForInitialCommands: boolean;
   private readonly initialCommandsWaitTimeoutMs: number;
   private readonly extensionCommandsParser?: ACPExtensionCommandsParser;
@@ -857,6 +861,7 @@ export class ACPAgentClient implements AgentClient {
     this.beforeModeWriter = options.beforeModeWriter;
     this.thinkingOptionWriter = options.thinkingOptionWriter;
     this.authenticateMethodId = options.authenticateMethodId;
+    this.launchArgsTransformer = options.launchArgsTransformer;
     this.waitForInitialCommands = options.waitForInitialCommands ?? false;
     this.initialCommandsWaitTimeoutMs = options.initialCommandsWaitTimeoutMs ?? 1500;
     this.extensionCommandsParser = options.extensionCommandsParser;
@@ -887,6 +892,7 @@ export class ACPAgentClient implements AgentClient {
         beforeModeWriter: this.beforeModeWriter,
         thinkingOptionWriter: this.thinkingOptionWriter,
         authenticateMethodId: this.authenticateMethodId,
+        launchArgsTransformer: this.launchArgsTransformer,
         capabilities: this.capabilities,
         agentId: launchContext?.agentId,
         launchEnv: launchContext?.env,
@@ -938,6 +944,7 @@ export class ACPAgentClient implements AgentClient {
       beforeModeWriter: this.beforeModeWriter,
       thinkingOptionWriter: this.thinkingOptionWriter,
       authenticateMethodId: this.authenticateMethodId,
+      launchArgsTransformer: this.launchArgsTransformer,
       capabilities: this.capabilities,
       handle,
       agentId: launchContext?.agentId,
@@ -1425,6 +1432,7 @@ export class ACPAgentSession implements AgentSession, ACPClient {
     thinkingOptionId: string,
   ) => Promise<void>;
   private readonly authenticateMethodId?: string;
+  private readonly launchArgsTransformer?: (args: string[], modeId: string | null) => string[];
   private readonly agentId?: string;
   private readonly launchEnv?: Record<string, string>;
   private readonly subscribers = new Set<(event: AgentStreamEvent) => void>();
@@ -1485,6 +1493,7 @@ export class ACPAgentSession implements AgentSession, ACPClient {
     this.beforeModeWriter = options.beforeModeWriter;
     this.thinkingOptionWriter = options.thinkingOptionWriter;
     this.authenticateMethodId = options.authenticateMethodId;
+    this.launchArgsTransformer = options.launchArgsTransformer;
     this.availableModes = options.defaultModes;
     this.agentId = options.agentId;
     this.launchEnv = options.launchEnv;
@@ -2194,6 +2203,20 @@ export class ACPAgentSession implements AgentSession, ACPClient {
   }
 
   async requestPermission(params: RequestPermissionRequest): Promise<RequestPermissionResponse> {
+    // Unattended modes (e.g. Grok Bypass) auto-select allow without UI prompts.
+    // Prefer allow_always then allow_once so "always approve" style options win when present.
+    if (this.isCurrentModeUnattended()) {
+      const autoSelected = selectPermissionOption(params.options, { behavior: "allow" });
+      if (autoSelected) {
+        return {
+          outcome: {
+            outcome: "selected",
+            optionId: autoSelected.optionId,
+          },
+        };
+      }
+    }
+
     // Match Zed acp.rs:3189-3220: generic ACP permission requests stay pure pass-through.
     const requestId = randomUUID();
     let toolSnapshot =
@@ -2221,6 +2244,14 @@ export class ACPAgentSession implements AgentSession, ACPClient {
       turnId: this.activeForegroundTurnId ?? undefined,
     });
     return promise;
+  }
+
+  private isCurrentModeUnattended(): boolean {
+    if (!this.currentMode) return false;
+    const mode =
+      this.availableModes.find((entry) => entry.id === this.currentMode) ??
+      this.defaultModes.find((entry) => entry.id === this.currentMode);
+    return mode?.isUnattended === true;
   }
 
   async sessionUpdate(params: SessionNotification): Promise<void> {
@@ -2426,7 +2457,9 @@ export class ACPAgentSession implements AgentSession, ACPClient {
     }
 
     const command = prefix.command;
-    const args = [...prefix.args, ...this.defaultCommand.slice(1)];
+    const rawArgs = [...prefix.args, ...this.defaultCommand.slice(1)];
+    const modeId = this.config.modeId ?? this.currentMode;
+    const args = this.launchArgsTransformer ? this.launchArgsTransformer(rawArgs, modeId) : rawArgs;
     const child = spawnProcess(command, args, {
       cwd: this.config.cwd,
       ...createProviderEnvSpec({
@@ -2714,7 +2747,12 @@ export class ACPAgentSession implements AgentSession, ACPClient {
   }
 
   private handleCurrentModeUpdate(update: CurrentModeUpdate): void {
-    this.currentMode = this.transformModeId(update.currentModeId);
+    // Transformers may return null to ignore vendor noise (e.g. Grok effort
+    // levels mis-labeled as session modes). Keep the previous permission mode.
+    const next = this.transformModeId(update.currentModeId);
+    if (next != null) {
+      this.currentMode = next;
+    }
   }
 
   private handleConfigOptionUpdate(update: ConfigOptionUpdate): AgentStreamEvent[] {

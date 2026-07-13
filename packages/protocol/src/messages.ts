@@ -6200,6 +6200,25 @@ export const TerminalAttentionRequiredSchema = z.object({
   }),
 });
 
+// Fork feature (SSH/terminal MCP): one-way daemon → client push asking the app
+// to open/focus a terminal tab (tabs are a pure client concept, so the daemon
+// can only ask). Broadcast to every client so they can all register the SSH
+// terminal metadata; only the client with shouldFocus=true navigates — the
+// same single-recipient semantics as terminal_attention_required.shouldNotify.
+export const TerminalRevealSchema = z.object({
+  type: z.literal("terminal.reveal"),
+  payload: z.object({
+    terminalId: z.string(),
+    workspaceId: z.string().optional(),
+    cwd: z.string().optional(),
+    sshHostId: z.string().optional(),
+    sshHostLabel: z.string().optional(),
+    shouldFocus: z.boolean(),
+  }),
+});
+
+export type TerminalRevealMessage = z.infer<typeof TerminalRevealSchema>;
+
 export const DaemonUpdateResponseSchema = z.object({
   type: z.literal("daemon.update.response"),
   payload: z.object({
@@ -6379,6 +6398,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   TerminalStreamExitSchema,
   ProviderQuotaMessageSchema,
   TerminalAttentionRequiredSchema,
+  TerminalRevealSchema,
   ChatCreateResponseSchema,
   ChatListResponseSchema,
   ChatInspectResponseSchema,

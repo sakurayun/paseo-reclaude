@@ -32,6 +32,20 @@ describe("openSshHostForm", () => {
     expect(model.getState().disclosure.showFido2Notice).toBe(true);
   });
 
+  it("always shows the use-agent hint and surfaces a forwarding security notice when on", () => {
+    const model = openSshHostForm(snapshot());
+    expect(model.getState().disclosure.showUseAgentHint).toBe(true);
+    expect(model.getState().disclosure.showAgentForwardingNotice).toBe(false);
+    model.setAgentForwarding(true);
+    expect(model.getState().disclosure.showAgentForwardingNotice).toBe(true);
+    // Forwarding stays independent of useAgent in the form model.
+    expect(model.getState().useAgent).toBe(false);
+    expect(model.buildSubmitPayload().host).toMatchObject({
+      useAgent: false,
+      agentForwarding: true,
+    });
+  });
+
   it("reveals proxy fields and requires a proxy host once a type is chosen", () => {
     const model = openSshHostForm(snapshot());
     model.setAddress("10.0.0.1");
