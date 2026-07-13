@@ -5,6 +5,7 @@ import type { SshKnownHostStore } from "./ssh-known-host-store.js";
 import { SshConnection } from "./ssh-connection.js";
 import {
   resolveSsh2ConnectConfig,
+  type ConnectAttemptOptions,
   type HostKeyMismatch,
   type ResolveConnectConfigDeps,
 } from "./ssh-connect-config.js";
@@ -44,7 +45,10 @@ interface PooledEntry {
 export function createSshConnectionPool(deps: SshConnectionPoolDeps) {
   const entries = new Map<string, PooledEntry>();
 
-  async function connectHost(hostId: string): Promise<SshConnection> {
+  async function connectHost(
+    hostId: string,
+    options: ConnectAttemptOptions = {},
+  ): Promise<SshConnection> {
     const host = deps.hostStore.getHost(hostId);
     if (!host) {
       throw new Error(`SSH host not found: ${hostId}`);
@@ -55,7 +59,7 @@ export function createSshConnectionPool(deps: SshConnectionPoolDeps) {
       knownHostStore: deps.knownHostStore,
       buildChainSock,
     };
-    const resolved = await resolveSsh2ConnectConfig(host, configDeps);
+    const resolved = await resolveSsh2ConnectConfig(host, configDeps, options);
     const connection = new SshConnection();
     try {
       await connection.connect(resolved.config);
@@ -109,10 +113,20 @@ export function createSshConnectionPool(deps: SshConnectionPoolDeps) {
   }
 
   return {
-    async acquire(hostId: string): Promise<AcquiredConnection> {
+    async acquire(
+      hostId: string,
+      options: ConnectAttemptOptions = {},
+    ): Promise<AcquiredConnection> {
       let entry = entries.get(hostId);
+      // A password override / debug stream implies a fresh authenticated
+      // handshake: drop any pooled connection so the new credential is actually
+      // exercised and the ssh2 debug lines are captured.
+      if (entry && options.passwordOverride !== undefined) {
+        entries.delete(hostId);
+        entry = undefined;
+      }
       if (!entry || entry.connection.isClosed()) {
-        const connection = await connectHost(hostId);
+        const connection = await connectHost(hostId, options);
         entry = { connection, refCount: 0 };
         entries.set(hostId, entry);
         connection.onClose(() => {

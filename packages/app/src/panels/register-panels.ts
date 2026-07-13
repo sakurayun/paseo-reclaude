@@ -7,6 +7,7 @@ import { registerPanel } from "@/panels/panel-registry";
 import { portForwardsPanelRegistration } from "@/panels/port-forwards-panel";
 import { sessionsPanelRegistration } from "@/panels/sessions-panel";
 import { setupPanelRegistration } from "@/panels/setup-panel";
+import { sshConnectingPanelRegistration } from "@/panels/ssh-connecting-panel";
 import { terminalPanelRegistration } from "@/panels/terminal-panel";
 import { providerSubagentPanelRegistration } from "@/panels/provider-subagent-panel";
 
@@ -22,6 +23,7 @@ export function ensurePanelsRegistered(): void {
   registerPanel(setupPanelRegistration);
   registerPanel(sessionsPanelRegistration);
   registerPanel(terminalPanelRegistration);
+  registerPanel(sshConnectingPanelRegistration);
   registerPanel(browserPanelRegistration);
   registerPanel(filePanelRegistration);
   registerPanel(fileDiffPanelRegistration);

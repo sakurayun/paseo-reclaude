@@ -144,6 +144,7 @@ function TerminalPanel() {
       onOpenFileExplorer={remote ? noop : handleOpenFileExplorer}
       onOpenWorkspaceFile={remote ? noop : openFileInWorkspace}
       localFileLinks={!remote}
+      sshHostId={remote?.hostId ?? null}
     />
   );
 }

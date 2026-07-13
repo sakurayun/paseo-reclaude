@@ -143,6 +143,7 @@ import { createPortForwardManager } from "../port-forward/port-forward-manager.j
 import { createSshManager } from "../ssh/ssh-manager.js";
 import { createSshConnectService, sshHomeDirectory } from "../ssh/ssh-connect-service.js";
 import { createSshForwardRuntime } from "../ssh/ssh-forward-runtime.js";
+import { createSshUploadRuntime } from "../ssh/ssh-upload-runtime.js";
 import { createCompositeTerminalManager } from "../terminal/composite-terminal-manager.js";
 import { createTerminalManager } from "../terminal/terminal-manager.js";
 import { applyTerminalAgentHookSetting } from "../terminal/agent-hooks/terminal-agent-hook-setting.js";
@@ -578,6 +579,12 @@ export async function createPaseoDaemon(
   });
   sshManager.forwardStart = (id) => sshForwardRuntime.start(id);
   sshManager.forwardStop = (id) => sshForwardRuntime.stop(id);
+  // Drag-drop SFTP uploads share the pooled ssh2 connections.
+  const sshUploadRuntime = createSshUploadRuntime({
+    pool: sshConnectService.pool,
+    hostStore: sshManager.hostStore,
+  });
+  sshManager.uploadRuntime = sshUploadRuntime;
   applyTerminalAgentHookSetting({ store: daemonConfigStore, logger });
 
   const serviceProxyPublicBaseUrl = config.serviceProxy?.publicBaseUrl
@@ -1537,6 +1544,7 @@ export async function createPaseoDaemon(
     terminalManager.killAll();
     portForwardManager.dispose();
     void sshForwardRuntime.dispose();
+    sshUploadRuntime.dispose();
     sshConnectService.dispose();
     sshTerminalManager.killAll();
     sshManager.dispose();

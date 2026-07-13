@@ -366,7 +366,24 @@ async function pollForRunningDaemon(): Promise<DesktopDaemonStatus> {
   return poll(0);
 }
 
-async function startDaemon(): Promise<DesktopDaemonStatus> {
+// Racing callers (e.g. the renderer's boot flow invoking start twice within
+// the startup window) must not spawn two supervisors: the loser fails the
+// port bind and surfaces a scary "Daemon failed to start: exit code 1".
+// Concurrent starts join the same in-flight attempt instead.
+let startDaemonInFlight: Promise<DesktopDaemonStatus> | null = null;
+
+function startDaemon(): Promise<DesktopDaemonStatus> {
+  if (startDaemonInFlight) {
+    return startDaemonInFlight;
+  }
+  const attempt = startDaemonOnce().finally(() => {
+    startDaemonInFlight = null;
+  });
+  startDaemonInFlight = attempt;
+  return attempt;
+}
+
+async function startDaemonOnce(): Promise<DesktopDaemonStatus> {
   assertBuiltInDaemonManagementEnabled(await getDesktopSettingsStore().get());
 
   const current = await resolveDesktopDaemonStatus();

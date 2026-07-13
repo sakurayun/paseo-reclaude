@@ -60,8 +60,9 @@ import {
   FloatingPanelPortalHostNameProvider,
 } from "@/components/ui/floating-panel-portal";
 import { ExplorerSidebar } from "@/components/explorer-sidebar";
-import { SplitContainer } from "@/components/split-container";
 import { RetainedPanel } from "@/components/retained-panel";
+import { SshUploadSidebarHost } from "@/components/ssh/ssh-upload-sidebar";
+import { SplitContainer } from "@/components/split-container";
 import { SourceControlPanelIcon } from "@/components/icons/source-control-panel-icon";
 import { WorkspaceActions } from "@/git/workspace-actions";
 import { WorkspaceOpenInEditorButton } from "@/screens/workspace/workspace-open-in-editor-button";
@@ -406,6 +407,10 @@ function getFallbackTabOptionDescription(
   }
   if (tab.target.kind === "provider_subagent") {
     return labels.agent;
+  }
+  if (tab.target.kind === "ssh-connecting") {
+    // Coarse fallback; the live label comes from the panel descriptor.
+    return labels.terminal;
   }
   return tab.target.path;
 }
@@ -3841,6 +3846,11 @@ function WorkspaceScreenContent({
                   onOpenDiffFile={handleOpenDiffFileFromExplorer}
                 />
               ) : null}
+
+              {/* SFTP upload panel: independent of the explorer toggle, only on
+                  sshUploads-capable daemons, auto-opened when an upload starts.
+                  Host self-hides when the feature is off or nothing is uploading. */}
+              <SshUploadSidebarHost serverId={normalizedServerId} />
             </View>
             <ImportSessionSheet
               visible={isImportSheetVisible}

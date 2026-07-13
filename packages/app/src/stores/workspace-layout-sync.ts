@@ -4,6 +4,7 @@ import { supportsDesktopPaneSplits } from "@/constants/layout";
 import {
   collectAllTabs,
   normalizeLayout,
+  removeTransientTabsFromLayout,
   stripWorkspaceLayoutFocus,
   type WorkspaceLayout,
 } from "@/stores/workspace-layout-actions";
@@ -98,7 +99,11 @@ function recordPendingLocalOpens(
   const previousTabIds = new Set(
     prevLayout ? collectAllTabs(prevLayout.root).map((tab) => tab.tabId) : [],
   );
-  const addedTabs = collectAllTabs(nextLayout.root).filter((tab) => !previousTabIds.has(tab.tabId));
+  const addedTabs = collectAllTabs(nextLayout.root).filter(
+    // Transient ssh-connecting tabs are device-local and short-lived; never
+    // re-open them after a pull.
+    (tab) => !previousTabIds.has(tab.tabId) && tab.target.kind !== "ssh-connecting",
+  );
   if (addedTabs.length === 0) {
     return;
   }
@@ -187,7 +192,10 @@ function maybePush(
   ) {
     return;
   }
-  const stripped = stripWorkspaceLayoutFocus(normalizeLayout(next.layoutByWorkspace[key]));
+  // Transient ssh-connecting tabs are device-local; never push them to peers.
+  const stripped = stripWorkspaceLayoutFocus(
+    removeTransientTabsFromLayout(normalizeLayout(next.layoutByWorkspace[key])),
+  );
   const strippedJson = JSON.stringify(stripped);
   if (strippedJson === bridge.lastPushedStrippedByKey.get(key)) {
     return; // pure focus (or otherwise no-op) change

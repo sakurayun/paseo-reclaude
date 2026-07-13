@@ -6,6 +6,7 @@ import { createSshKeyStore, type SshKeyStore } from "./ssh-key-store.js";
 import { createSshKnownHostStore, type SshKnownHostStore } from "./ssh-known-host-store.js";
 import { createSshLogStore, type SshLogStore } from "./ssh-log-store.js";
 import type { SshConnectHandler } from "./ssh-session-controller.js";
+import type { SshUploadRuntime } from "./ssh-upload-runtime.js";
 
 // Daemon-global bundle of the SSH manager's persistent stores, created once in
 // bootstrap and shared by every client session (like portForwardManager). The
@@ -23,6 +24,9 @@ export interface SshManager {
   // Port-forward lifecycle, wired in bootstrap alongside connectHandler.
   forwardStart?: (id: string) => Promise<{ ok: boolean; error?: string }>;
   forwardStop?: (id: string) => Promise<{ ok: boolean }>;
+  // SFTP drag-drop upload runtime, wired in bootstrap. Undefined = uploads
+  // unavailable (feature flag stays off).
+  uploadRuntime?: SshUploadRuntime;
   dispose(): void;
 }
 

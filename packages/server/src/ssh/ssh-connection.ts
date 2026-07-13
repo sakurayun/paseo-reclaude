@@ -1,7 +1,12 @@
 // See ssh-key-store.ts: ssh2 is CJS with dynamic named exports, so `Client`
 // must come off the default import to load under native ESM (Electron), not
 // just tsx/vitest. Type-only imports are erased and stay named.
-import ssh2, { type ClientChannel, type ConnectConfig, type PseudoTtyOptions } from "ssh2";
+import ssh2, {
+  type ClientChannel,
+  type ConnectConfig,
+  type PseudoTtyOptions,
+  type SFTPWrapper,
+} from "ssh2";
 
 const { Client } = ssh2;
 
@@ -9,6 +14,15 @@ export interface SshExecResult {
   stdout: string;
   stderr: string;
   code: number | null;
+}
+
+// Raised when ssh2 exhausts authentication (wrong password / rejected key), so
+// callers can offer an inline password retry rather than a generic error.
+export class SshAuthFailedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "SshAuthFailedError";
+  }
 }
 
 // Thin wrapper around a single ssh2 Client. Owns the connection lifecycle and
@@ -27,6 +41,11 @@ export class SshConnection {
       };
       const onError = (error: Error): void => {
         this.client.removeListener("ready", onReady);
+        // ssh2 tags auth exhaustion with level "client-authentication".
+        if ((error as { level?: string }).level === "client-authentication") {
+          reject(new SshAuthFailedError(error.message));
+          return;
+        }
         reject(error);
       };
       this.client.once("ready", onReady);
@@ -58,6 +77,21 @@ export class SshConnection {
           return;
         }
         resolve(channel);
+      });
+    });
+  }
+
+  // Opens an SFTP subsystem channel on this connection — the transport for
+  // drag-drop uploads. Callers own the returned wrapper's lifecycle; closing
+  // it does not close the underlying connection.
+  sftp(): Promise<SFTPWrapper> {
+    return new Promise((resolve, reject) => {
+      this.client.sftp((error, sftp) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+        resolve(sftp);
       });
     });
   }

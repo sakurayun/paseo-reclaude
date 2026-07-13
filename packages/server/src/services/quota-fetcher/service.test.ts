@@ -731,12 +731,53 @@ describe("real provider usage fetchers", () => {
 
     expect(grok).toMatchObject({
       status: "available",
+      displayName: "Grok Build",
       balances: [
         expect.objectContaining({
           id: "monthly_credits",
           used: 0,
           remaining: 0,
           limit: 0,
+        }),
+      ],
+    });
+  });
+
+  it("fetches Grok usage from the live config.used billing shape", async () => {
+    process.env["XAI_API_KEY"] = "xai_test_token";
+    fetchApi = mockFetch(
+      new Map([
+        [
+          "https://cli-chat-proxy.grok.com/v1/billing",
+          () =>
+            jsonResponse({
+              config: {
+                monthlyLimit: { val: 15000 },
+                used: { val: 251 },
+                billingPeriodEnd: "2026-08-01T00:00:00+00:00",
+              },
+            }),
+        ],
+      ]),
+    );
+
+    const grok = findProvider(await service().listUsage(), "grok");
+
+    expect(grok).toMatchObject({
+      status: "available",
+      planLabel: "Grok Build",
+      balances: [
+        expect.objectContaining({
+          id: "monthly_credits",
+          used: 251,
+          remaining: 14749,
+          limit: 15000,
+        }),
+      ],
+      windows: [
+        expect.objectContaining({
+          id: "monthly",
+          resetsAt: "2026-08-01T00:00:00+00:00",
         }),
       ],
     });

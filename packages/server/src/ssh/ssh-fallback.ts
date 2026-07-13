@@ -20,6 +20,13 @@ export interface BuildFallbackDeps {
   sshHome: string;
 }
 
+// Hosts that need the system ssh/mosh binary: ssh2 supports neither Mosh nor
+// FIDO2 (sk-*) keys. Such hosts have no pooled ssh2 connection, so SFTP-based
+// features (drag-drop uploads) are unavailable for them too.
+export function sshHostNeedsFallback(host: SshHostInfo): boolean {
+  return Boolean(host.mosh?.enabled) || Boolean(host.useFido2);
+}
+
 // Builds an argv for the system `ssh`/`mosh` binary. Used when a host requires
 // a path ssh2 can't take: Mosh, or a FIDO2 (sk-*) key. Password/proxy auth is
 // not injected here — the pty surfaces any prompts interactively.

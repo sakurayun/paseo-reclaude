@@ -3,6 +3,7 @@ import type { ProviderUsage } from "../../server/messages.js";
 import type { ReclaudeAccountService } from "../reclaude/reclaude-account-service.js";
 import { createProviderUsageFetchers } from "./manifest.js";
 import type { ProviderApiFetch, ProviderUsageFetcher } from "./provider.js";
+import type { GrokUsageService } from "./providers/grok-usage-service.js";
 import { unavailableUsage } from "./usage.js";
 
 export interface ProviderUsageServiceOptions {
@@ -12,6 +13,7 @@ export interface ProviderUsageServiceOptions {
   cacheTtlMs?: number;
   now?: () => number;
   reclaude?: ReclaudeAccountService;
+  grokUsage?: GrokUsageService;
 }
 
 export interface ProviderUsageListResult {
@@ -37,6 +39,7 @@ export class ProviderUsageService {
         logger: this.logger,
         fetch: options.fetch,
         reclaude: options.reclaude,
+        grokUsage: options.grokUsage,
       });
     this.cacheTtlMs = options.cacheTtlMs ?? DEFAULT_PROVIDER_USAGE_CACHE_TTL_MS;
     this.now = options.now ?? Date.now;

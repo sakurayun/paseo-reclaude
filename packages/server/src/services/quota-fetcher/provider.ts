@@ -1,6 +1,7 @@
 import type { Logger } from "pino";
 import type { ProviderUsage } from "../../server/messages.js";
 import type { ReclaudeAccountService } from "../reclaude/reclaude-account-service.js";
+import type { GrokUsageService } from "./providers/grok-usage-service.js";
 
 export type ProviderApiFetch = typeof fetch;
 
@@ -16,6 +17,9 @@ export interface ProviderUsageFetcherFactoryOptions {
   // When present, the Claude provider sources its usage from reclaude.ai instead
   // of the direct Anthropic OAuth endpoint while reclaude is the active binary.
   reclaude?: ReclaudeAccountService;
+  // When present, the Grok provider list path returns only the last-synced cache;
+  // live billing is driven by provider.grok.sync.
+  grokUsage?: GrokUsageService;
 }
 
 export interface ProviderUsageFetcherManifestEntry {

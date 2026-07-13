@@ -49,6 +49,7 @@ import { TerminalSessionController } from "../terminal/terminal-session-controll
 import { TunnelForwarder } from "./tunnel-forwarder.js";
 import type { TerminalActivity } from "@getpaseo/protocol/terminal-activity";
 import type { BinaryFrame } from "@getpaseo/protocol/binary-frames/index";
+import { isSshUploadFrameId } from "@getpaseo/protocol/ssh-upload";
 import { CursorError } from "./pagination/cursor.js";
 import { SortablePager, type SortSpec } from "./pagination/sortable-pager.js";
 import type { SpeechToTextProvider, TextToSpeechProvider } from "./speech/speech-provider.js";
@@ -222,6 +223,7 @@ import { ScheduleService } from "./schedule/service.js";
 import { createGitHubService, type GitHubService } from "../services/github-service.js";
 import type { ProviderUsageService } from "../services/quota-fetcher/service.js";
 import type { ReclaudeAccountService } from "../services/reclaude/reclaude-account-service.js";
+import type { GrokUsageService } from "../services/quota-fetcher/providers/grok-usage-service.js";
 import {
   summarizeFetchWorkspacesEntries,
   workspaceIdsOnCheckout,
@@ -536,6 +538,7 @@ export interface SessionOptions {
   providerSnapshotManager: ProviderSnapshotManager;
   providerUsageService: ProviderUsageService;
   reclaude: ReclaudeAccountService;
+  grokUsage: GrokUsageService;
   serviceProxy?: ServiceProxySubsystem;
   scriptRuntimeStore?: WorkspaceScriptRuntimeStore;
   workspaceSetupSnapshots?: Map<string, WorkspaceSetupSnapshot>;
@@ -760,6 +763,7 @@ export class Session {
       providerSnapshotManager,
       providerUsageService,
       reclaude,
+      grokUsage,
       serviceProxy,
       scriptRuntimeStore,
       workspaceSetupSnapshots,
@@ -902,6 +906,7 @@ export class Session {
       providerSnapshotManager,
       providerUsageService,
       reclaude,
+      grokUsage,
       logger: this.sessionLogger,
     });
     this.agentConfigSession = new AgentConfigSession({
@@ -970,6 +975,7 @@ export class Session {
             this.sshManager?.forwardStart?.(id) ??
             Promise.resolve({ ok: false, error: "Port forwarding is not available on this host" }),
           forwardStop: (id) => this.sshManager?.forwardStop?.(id) ?? Promise.resolve({ ok: true }),
+          uploadRuntime: () => this.sshManager?.uploadRuntime ?? null,
         })
       : null;
     this.terminalController = new TerminalSessionController({
@@ -1344,6 +1350,17 @@ export class Session {
           this.emit({ type: "ssh.logs.updated", payload: { entry } });
         }),
       );
+      const uploadRuntime = ssh.uploadRuntime;
+      if (uploadRuntime) {
+        this.unsubscribeSshChanged.push(
+          uploadRuntime.subscribeChanged((uploads) => {
+            this.emit({ type: "ssh.uploads.changed", payload: { uploads } });
+          }),
+          uploadRuntime.subscribeProgress((payload) => {
+            this.emit({ type: "ssh.uploads.progress", payload });
+          }),
+        );
+      }
     }
     this.providerCatalogSession.start();
   }
@@ -2173,6 +2190,10 @@ export class Session {
         return this.providerCatalogSession.handleReclaudeLogoutRequest(msg);
       case "provider.reclaude.sync.request":
         return this.providerCatalogSession.handleReclaudeSyncUsageRequest(msg);
+      case "provider.grok.status.request":
+        return this.providerCatalogSession.handleGrokStatusRequest(msg);
+      case "provider.grok.sync.request":
+        return this.providerCatalogSession.handleGrokSyncUsageRequest(msg);
       default:
         return undefined;
     }
@@ -2354,6 +2375,12 @@ export class Session {
 
   public async handleBinaryFrame(binaryFrame: BinaryFrame): Promise<void> {
     if (binaryFrame.kind === "file_transfer") {
+      // SFTP upload frames carry the ssh-upload requestId prefix and belong to
+      // the daemon-global upload runtime, not the workspace file-upload store.
+      if (isSshUploadFrameId(binaryFrame.frame.requestId)) {
+        this.sshManager?.uploadRuntime?.receiveFrame(binaryFrame.frame);
+        return;
+      }
       await this.workspaceFilesSession.handleFileTransferFrame(binaryFrame.frame);
       return;
     }

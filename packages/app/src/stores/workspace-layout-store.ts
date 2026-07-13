@@ -28,6 +28,7 @@ import {
   mergeRemoteLayoutPreservingFocus,
   moveTabToPaneInLayout,
   normalizeLayout,
+  removeTransientTabsFromLayout,
   openTabInLayoutBackground,
   openTabInLayoutFocused,
   reconcileWorkspaceTabs,
@@ -952,7 +953,10 @@ export function createWorkspaceLayoutStore(
         partialize: (state) => {
           const layoutByWorkspace: Record<string, WorkspaceLayout> = {};
           for (const key in state.layoutByWorkspace) {
-            layoutByWorkspace[key] = normalizeLayout(state.layoutByWorkspace[key]);
+            // Transient ssh-connecting tabs must not survive a reload.
+            layoutByWorkspace[key] = removeTransientTabsFromLayout(
+              normalizeLayout(state.layoutByWorkspace[key]),
+            );
           }
           return {
             layoutByWorkspace,

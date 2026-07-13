@@ -1000,6 +1000,24 @@ export function stripWorkspaceLayoutFocus(layout: WorkspaceLayout): WorkspaceLay
   };
 }
 
+// Drops transient `ssh-connecting` tabs from a layout. Their state lives only
+// in the in-memory ssh-connect-store, so persisting them (reload) or syncing
+// them to peer devices would leave a dead tab with no backing state. Applied
+// at the persist boundary and the layout-sync push, not to the live layout.
+export function removeTransientTabsFromLayout(layout: WorkspaceLayout): WorkspaceLayout {
+  const transientTabIds = collectAllTabs(layout.root)
+    .filter((tab) => tab.target.kind === "ssh-connecting")
+    .map((tab) => tab.tabId);
+  if (transientTabIds.length === 0) {
+    return layout;
+  }
+  let next = layout;
+  for (const tabId of transientTabIds) {
+    next = closeTabInLayout({ layout: next, tabId }) ?? next;
+  }
+  return next;
+}
+
 function applyLocalPaneFocus(
   node: SplitNode,
   localFocusByPaneId: Map<string, string | null>,

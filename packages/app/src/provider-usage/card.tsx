@@ -7,6 +7,7 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import type { Theme } from "@/styles/theme";
 import { ProviderUsageBalanceBar } from "./balance-bar";
 import { formatAgo } from "./format";
+import { localizeProviderUsage } from "./localize";
 import type { ProviderUsage } from "./types";
 import { ProviderUsageWindowBar } from "./window-bar";
 
@@ -59,11 +60,16 @@ export function ProviderUsageCard({
   usage: ProviderUsage;
   compact?: boolean;
 }) {
-  const { t } = useTranslation();
-  const status = statusText(usage, t);
-  const footer = footerText(usage, t);
-  const balances = usage.balances ?? [];
-  const details = usage.details ?? [];
+  const { t, i18n } = useTranslation();
+  // Server labels are English protocol strings — localize known ids for the UI.
+  const localized = useMemo(
+    () => localizeProviderUsage(usage, t, i18n.language),
+    [i18n.language, t, usage],
+  );
+  const status = statusText(localized, t);
+  const footer = footerText(localized, t);
+  const balances = localized.balances ?? [];
+  const details = localized.details ?? [];
 
   const containerStyle = useMemo(
     () => [styles.container, compact ? styles.containerCompact : styles.containerPadded],
@@ -72,20 +78,24 @@ export function ProviderUsageCard({
   const dotStyle = useMemo(
     () => [
       styles.statusDot,
-      usage.status === "available" && styles.statusDotAvailable,
-      usage.status === "error" && styles.statusDotError,
+      localized.status === "available" && styles.statusDotAvailable,
+      localized.status === "error" && styles.statusDotError,
     ],
-    [usage.status],
+    [localized.status],
   );
 
   return (
     <View style={containerStyle}>
       <View style={styles.header}>
-        <ThemedProviderUsageIcon iconKey={usage.providerId} size={14} uniProps={mutedIconColor} />
+        <ThemedProviderUsageIcon
+          iconKey={localized.providerId}
+          size={14}
+          uniProps={mutedIconColor}
+        />
         <Text style={styles.name} numberOfLines={1}>
-          {usage.displayName}
+          {localized.displayName}
         </Text>
-        {usage.planLabel ? <StatusBadge label={usage.planLabel} variant="muted" /> : null}
+        {localized.planLabel ? <StatusBadge label={localized.planLabel} variant="muted" /> : null}
         <View style={styles.headerSpacer} />
         {status ? (
           <View style={styles.statusRow}>
@@ -95,15 +105,15 @@ export function ProviderUsageCard({
         ) : null}
       </View>
 
-      {usage.error ? (
+      {localized.error ? (
         <Text style={styles.error} numberOfLines={3}>
-          {usage.error}
+          {localized.error}
         </Text>
       ) : null}
 
-      {usage.windows.length > 0 || balances.length > 0 ? (
+      {localized.windows.length > 0 || balances.length > 0 ? (
         <View style={styles.bars}>
-          {usage.windows.map((window) => (
+          {localized.windows.map((window) => (
             <ProviderUsageWindowBar key={window.id} window={window} />
           ))}
           {balances.map((balance) => (

@@ -5,9 +5,10 @@ import {
   HostKeyMismatchError,
   type SshConnectionPool,
 } from "./ssh-connection-pool.js";
+import { SshAuthFailedError } from "./ssh-connection.js";
 import { createSshTerminalBackend } from "./ssh-terminal-backend.js";
 import { detectRemotePlatform } from "./ssh-platform-detect.js";
-import { buildFallbackSshArgv } from "./ssh-fallback.js";
+import { buildFallbackSshArgv, sshHostNeedsFallback } from "./ssh-fallback.js";
 import type { SshConnectHandler, SshConnectResult } from "./ssh-session-controller.js";
 import type { SshHostInfo } from "@getpaseo/protocol/messages";
 import type { TerminalManager } from "../terminal/terminal-manager.js";
@@ -23,12 +24,6 @@ export interface SshConnectServiceDeps {
   // Base directory (PASEO_HOME/ssh) used as the synthetic cwd for SSH
   // terminals — only affects snapshot cache scoping, never disk access.
   sshHome: string;
-}
-
-// Hosts that need the system ssh/mosh binary: ssh2 supports neither Mosh nor
-// FIDO2 (sk-*) keys.
-function needsFallback(host: SshHostInfo): boolean {
-  return Boolean(host.mosh?.enabled) || Boolean(host.useFido2);
 }
 
 export interface SshConnectService {
@@ -50,6 +45,12 @@ export function createSshConnectService(deps: SshConnectServiceDeps): SshConnect
   interface TerminalPlacement {
     workspaceId: string;
     cwd: string;
+    // Initial pty size. The daemon-side headless terminal MUST match the
+    // remote pty from the first byte: the login banner renders at this size,
+    // and a later resize cannot cleanly reflow output the remote positioned
+    // with absolute coordinates (the "cursor stuck mid-history" artifact).
+    cols?: number;
+    rows?: number;
   }
 
   // Where the terminal record lives: the client-provided workspace, so the SSH
@@ -58,7 +59,7 @@ export function createSshConnectService(deps: SshConnectServiceDeps): SshConnect
   // cwd only scopes the record and its snapshot cache — the remote shell never
   // touches the daemon filesystem — but it must be absolute for createTerminal.
   function resolveTerminalPlacement(
-    input: { workspaceId?: string; cwd?: string },
+    input: { workspaceId?: string; cwd?: string; cols?: number; rows?: number },
     hostId: string,
   ): TerminalPlacement {
     const workspaceId = input.workspaceId?.trim();
@@ -66,6 +67,22 @@ export function createSshConnectService(deps: SshConnectServiceDeps): SshConnect
     return {
       workspaceId: workspaceId || `${WORKSPACE_PREFIX}${hostId}`,
       cwd: cwd && path.isAbsolute(cwd) ? cwd : sshHome,
+      ...(input.cols !== undefined ? { cols: input.cols } : {}),
+      ...(input.rows !== undefined ? { rows: input.rows } : {}),
+    };
+  }
+
+  function placementCreateOptions(placement: TerminalPlacement): {
+    cwd: string;
+    workspaceId: string;
+    cols?: number;
+    rows?: number;
+  } {
+    return {
+      cwd: placement.cwd,
+      workspaceId: placement.workspaceId,
+      ...(placement.cols !== undefined ? { cols: placement.cols } : {}),
+      ...(placement.rows !== undefined ? { rows: placement.rows } : {}),
     };
   }
 
@@ -81,8 +98,7 @@ export function createSshConnectService(deps: SshConnectServiceDeps): SshConnect
     });
     try {
       const terminal = await fallbackTerminalManager.createTerminal({
-        cwd: placement.cwd,
-        workspaceId: placement.workspaceId,
+        ...placementCreateOptions(placement),
         name: host.label,
         command: argv.command,
         args: argv.args,
@@ -116,6 +132,10 @@ export function createSshConnectService(deps: SshConnectServiceDeps): SshConnect
       return { outcome: "error", error: "SSH host not found" };
     }
 
+    // Curated step lines + ssh2 debug output stream to the connecting tab.
+    const progress = (line: string, level: "info" | "error" = "info"): void =>
+      input.onProgress?.(line, level);
+
     const logId = sshManager.logStore.begin({
       hostId: host.id,
       hostLabel: host.label,
@@ -126,19 +146,26 @@ export function createSshConnectService(deps: SshConnectServiceDeps): SshConnect
     });
 
     const placement = resolveTerminalPlacement(input, host.id);
-    if (needsFallback(host)) {
+    if (sshHostNeedsFallback(host)) {
       return connectViaFallback(host, logId, placement);
     }
 
+    const target = `${host.username ? `${host.username}@` : ""}${host.address}:${host.port ?? 22}`;
+    progress(`Connecting to ${target}…`);
+
     let acquired;
     try {
-      acquired = await pool.acquire(host.id);
+      acquired = await pool.acquire(host.id, {
+        ...(input.password !== undefined ? { passwordOverride: input.password } : {}),
+        onDebug: (line) => progress(line),
+      });
     } catch (error) {
       if (error instanceof HostKeyMismatchError) {
         sshManager.logStore.complete(logId, {
           status: "failed",
           error: error.message,
         });
+        progress(error.message, "error");
         return {
           outcome: "host_key_mismatch",
           error: error.message,
@@ -153,9 +180,14 @@ export function createSshConnectService(deps: SshConnectServiceDeps): SshConnect
       }
       const message = error instanceof Error ? error.message : String(error);
       sshManager.logStore.complete(logId, { status: "failed", error: message });
+      progress(message, "error");
+      if (error instanceof SshAuthFailedError) {
+        return { outcome: "auth_failed", error: message };
+      }
       return { outcome: "error", error: message };
     }
 
+    progress("Authenticated. Opening shell…");
     try {
       const channel = await acquired.connection.shell({
         cols: input.cols ?? 80,
@@ -182,13 +214,13 @@ export function createSshConnectService(deps: SshConnectServiceDeps): SshConnect
       });
 
       const terminal = await sshTerminalManager.createTerminal({
-        cwd: placement.cwd,
-        workspaceId: placement.workspaceId,
+        ...placementCreateOptions(placement),
         name: host.label,
         backend,
       });
 
       sshManager.logStore.markConnected(logId);
+      progress("Session ready.");
 
       if (acquired.startupSnippet) {
         channel.write(`${acquired.startupSnippet}\n`);

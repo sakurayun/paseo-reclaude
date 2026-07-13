@@ -450,6 +450,41 @@ describe("daemon-manager commands", () => {
     );
   });
 
+  it("shares one in-flight start between concurrent start requests", async () => {
+    mocks.runExternalCliJsonCommand
+      .mockResolvedValueOnce({
+        localDaemon: "stopped",
+        connectedDaemon: "unreachable",
+        serverId: "",
+      })
+      .mockResolvedValue({
+        localDaemon: "running",
+        connectedDaemon: "reachable",
+        serverId: "server-1",
+        pid: 8888,
+        listen: "127.0.0.1:6767",
+        hostname: "dev-host",
+        daemonVersion: "1.2.3",
+        desktopManaged: true,
+      });
+    mocks.spawnProcess.mockReturnValue(createMockChildProcess());
+    const handlers = createDaemonCommandHandlers();
+
+    // The renderer's boot flow can invoke start twice within the startup
+    // window; the loser of that race used to spawn a second supervisor that
+    // failed the port bind with "Daemon failed to start: exit code 1".
+    const [first, second] = await Promise.all([
+      handlers.start_desktop_daemon(),
+      handlers.start_desktop_daemon(),
+    ]);
+
+    expect(first).toEqual(second);
+    expect(first).toEqual(
+      expect.objectContaining({ status: "running", serverId: "server-1", pid: 8888 }),
+    );
+    expect(mocks.spawnProcess).toHaveBeenCalledTimes(1);
+  });
+
   it("returns the Electron main-process log tail from electron-log", () => {
     writeFileSync(
       mocks.appLogPath,

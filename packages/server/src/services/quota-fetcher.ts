@@ -13,6 +13,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import type { Logger } from "pino";
 import type { ProviderQuotaMessage, ProviderQuotaWindow } from "../server/messages.js";
+import { resolveGrokAccessToken } from "./quota-fetcher/providers/grok.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -575,8 +576,8 @@ export class GrokQuotaProvider implements QuotaProvider {
   constructor(private readonly logger: Logger) {}
 
   async fetch(): Promise<ProviderQuotaMessage["payload"]["grok"]> {
-    const token =
-      process.env["GROK_API_KEY"] || process.env["GROK_TOKEN"] || (await this.readGrokToken());
+    // Shared auth resolution understands Grok Build OIDC auth.json + XAI_API_KEY.
+    const token = await resolveGrokAccessToken();
 
     if (!token) return undefined;
 
@@ -594,25 +595,19 @@ export class GrokQuotaProvider implements QuotaProvider {
     }
 
     const resp = (await res.json()) as unknown as {
-      config?: { monthlyLimit?: { val?: number } };
+      config?: {
+        monthlyLimit?: { val?: number };
+        used?: { val?: number };
+      };
       usage?: { creditUsage?: number };
     };
+    const monthlyLimit = resp.config?.monthlyLimit?.val ?? null;
+    // Live CLI proxy nests usage under config.used; keep legacy usage.creditUsage.
+    const creditUsage = resp.config?.used?.val ?? resp.usage?.creditUsage ?? null;
     return {
-      monthlyLimit: resp.config?.monthlyLimit?.val || null,
-      creditUsage: resp.usage?.creditUsage || null,
+      monthlyLimit: typeof monthlyLimit === "number" ? monthlyLimit : null,
+      creditUsage: typeof creditUsage === "number" ? creditUsage : null,
     };
-  }
-
-  private async readGrokToken(): Promise<string | null> {
-    const p = join(homedir(), ".grok", "auth.json");
-    if (!existsSync(p)) return null;
-    try {
-      const raw = await fs.readFile(p, "utf8");
-      const auth = JSON.parse(raw);
-      return auth.access_token || null;
-    } catch {
-      return null;
-    }
   }
 }
 

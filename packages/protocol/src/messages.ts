@@ -1347,6 +1347,21 @@ export const ReclaudeSyncUsageRequestMessageSchema = z.object({
   force: z.boolean().optional(),
 });
 
+// Grok Build usage RPCs. Auth lives in ~/.grok/auth.json or XAI_API_KEY (CLI
+// login). The unified provider.usage.list only returns the last-synced cache;
+// this sync RPC is the ONLY path that hits the Grok billing API.
+export const GrokStatusRequestMessageSchema = z.object({
+  type: z.literal("provider.grok.status.request"),
+  requestId: z.string(),
+});
+
+export const GrokSyncUsageRequestMessageSchema = z.object({
+  type: z.literal("provider.grok.sync.request"),
+  requestId: z.string(),
+  // Explicit "sync usage" button bypasses the server-side 5-minute throttle.
+  force: z.boolean().optional(),
+});
+
 export const ResumeAgentRequestMessageSchema = z.object({
   type: z.literal("resume_agent_request"),
   handle: AgentPersistenceHandleSchema,
@@ -2799,6 +2814,13 @@ export const SshHostsConnectRequestSchema = z.object({
   // That workspace's directory; scopes the terminal record (and its snapshot
   // cache), the remote shell never touches it.
   cwd: z.string().optional(),
+  // One-time password override for this connect attempt (inline retry after an
+  // auth failure). Not persisted by the daemon — the client saves it via
+  // ssh.hosts.update after a confirmed success.
+  password: z.string().optional(),
+  // Client-generated id correlating this attempt with ssh.hosts.connect.progress
+  // pushes, so the connecting tab can stream live connection logs.
+  connectId: z.string().optional(),
   requestId: z.string(),
 });
 
@@ -3190,6 +3212,164 @@ export const SshLogsUpdatedSchema = z.object({
   }),
 });
 
+// Live connection-progress line for an in-flight ssh.hosts.connect attempt,
+// correlated by the request's connectId. Streams ssh2 handshake debug output
+// and curated step lines into the connecting tab's log view.
+export const SshHostsConnectProgressSchema = z.object({
+  type: z.literal("ssh.hosts.connect.progress"),
+  payload: z.object({
+    connectId: z.string(),
+    line: z.string(),
+    level: z.enum(["info", "error"]),
+    at: z.number(),
+  }),
+});
+
+// --- ssh.uploads.* (fork feature; gated by server_info.features.sshUploads) ---
+// SFTP uploads over the pooled ssh2 connection. The client enqueues an upload
+// (metadata only), then streams each file's bytes as file_transfer binary
+// frames whose requestId carries the ssh-upload prefix (see ssh-upload.ts).
+// State lives in the daemon and is broadcast to every client, so progress and
+// cancellation stay in sync across devices.
+
+export const SshUploadFileStatusSchema = z.enum([
+  "pending",
+  "uploading",
+  "done",
+  "error",
+  "canceled",
+]);
+export type SshUploadFileStatus = z.infer<typeof SshUploadFileStatusSchema>;
+
+export const SshUploadFileSchema = z.object({
+  id: z.string(),
+  // POSIX-style path relative to the upload's destDir ("dir/sub/file.txt").
+  relativePath: z.string(),
+  size: z.number().int().nonnegative(),
+  status: SshUploadFileStatusSchema,
+  bytesWritten: z.number().int().nonnegative(),
+  error: z.string().nullable().optional(),
+});
+export type SshUploadFile = z.infer<typeof SshUploadFileSchema>;
+
+export const SshUploadStatusSchema = z.enum(["active", "done", "error", "canceled"]);
+export type SshUploadStatus = z.infer<typeof SshUploadStatusSchema>;
+
+export const SshUploadSchema = z.object({
+  uploadId: z.string(),
+  hostId: z.string(),
+  hostLabel: z.string().optional(),
+  // Terminal the files were dropped on; jump-to-directory targets it first.
+  terminalId: z.string().optional(),
+  // Remote destination directory as entered ("~", "~/x", or absolute); the
+  // daemon resolves "~" against the SFTP home before writing.
+  destDir: z.string(),
+  status: SshUploadStatusSchema,
+  files: z.array(SshUploadFileSchema),
+  startedAt: z.number(),
+  error: z.string().nullable().optional(),
+});
+export type SshUpload = z.infer<typeof SshUploadSchema>;
+
+export const SshUploadsEnqueueRequestSchema = z.object({
+  type: z.literal("ssh.uploads.enqueue.request"),
+  uploadId: z.string(),
+  hostId: z.string(),
+  terminalId: z.string().optional(),
+  destDir: z.string(),
+  files: z.array(
+    z.object({
+      id: z.string(),
+      relativePath: z.string(),
+      size: z.number().int().nonnegative(),
+    }),
+  ),
+  requestId: z.string(),
+});
+
+export const SshUploadsEnqueueResponseSchema = z.object({
+  type: z.literal("ssh.uploads.enqueue.response"),
+  payload: z.object({
+    upload: SshUploadSchema.nullable(),
+    error: z.string().nullable(),
+    // Machine-readable failure class so clients can localize the message.
+    code: z.enum(["sftp_unavailable", "host_not_found", "host_key_mismatch"]).optional(),
+    requestId: z.string(),
+  }),
+});
+
+export const SshUploadsListRequestSchema = z.object({
+  type: z.literal("ssh.uploads.list.request"),
+  requestId: z.string(),
+});
+
+export const SshUploadsListResponseSchema = z.object({
+  type: z.literal("ssh.uploads.list.response"),
+  payload: z.object({
+    uploads: z.array(SshUploadSchema),
+    requestId: z.string(),
+  }),
+});
+
+export const SshUploadsCancelRequestSchema = z.object({
+  type: z.literal("ssh.uploads.cancel.request"),
+  uploadId: z.string(),
+  // Omitted = cancel every file still pending/uploading in the upload.
+  fileIds: z.array(z.string()).optional(),
+  requestId: z.string(),
+});
+
+export const SshUploadsCancelResponseSchema = z.object({
+  type: z.literal("ssh.uploads.cancel.response"),
+  payload: z.object({
+    uploadId: z.string(),
+    success: z.boolean(),
+    error: z.string().nullable(),
+    requestId: z.string(),
+  }),
+});
+
+// Removes finished (done/error/canceled) uploads from the daemon list.
+export const SshUploadsClearRequestSchema = z.object({
+  type: z.literal("ssh.uploads.clear.request"),
+  // Omitted = clear all finished uploads.
+  uploadIds: z.array(z.string()).optional(),
+  requestId: z.string(),
+});
+
+export const SshUploadsClearResponseSchema = z.object({
+  type: z.literal("ssh.uploads.clear.response"),
+  payload: z.object({
+    success: z.boolean(),
+    error: z.string().nullable(),
+    requestId: z.string(),
+  }),
+});
+
+// Broadcast on structural change: enqueue, file/upload terminal state, clear.
+export const SshUploadsChangedSchema = z.object({
+  type: z.literal("ssh.uploads.changed"),
+  payload: z.object({
+    uploads: z.array(SshUploadSchema),
+  }),
+});
+
+// High-frequency byte counters for in-flight files, throttled daemon-side.
+// bytesReceived doubles as the sender's flow-control ack window.
+export const SshUploadsProgressSchema = z.object({
+  type: z.literal("ssh.uploads.progress"),
+  payload: z.object({
+    uploadId: z.string(),
+    files: z.array(
+      z.object({
+        id: z.string(),
+        bytesReceived: z.number().int().nonnegative(),
+        bytesWritten: z.number().int().nonnegative(),
+      }),
+    ),
+  }),
+});
+
 export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   BrowserAutomationExecuteResponseSchema,
   VoiceAudioChunkMessageSchema,
@@ -3238,6 +3418,8 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   ReclaudeVerifyMfaRequestMessageSchema,
   ReclaudeLogoutRequestMessageSchema,
   ReclaudeSyncUsageRequestMessageSchema,
+  GrokStatusRequestMessageSchema,
+  GrokSyncUsageRequestMessageSchema,
   ResumeAgentRequestMessageSchema,
   ImportAgentRequestMessageSchema,
   RefreshAgentRequestMessageSchema,
@@ -3377,6 +3559,10 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   SshKnownHostsDeleteRequestSchema,
   SshKnownHostsImportRequestSchema,
   SshLogsListRequestSchema,
+  SshUploadsEnqueueRequestSchema,
+  SshUploadsListRequestSchema,
+  SshUploadsCancelRequestSchema,
+  SshUploadsClearRequestSchema,
 ]);
 
 export type SessionInboundMessage = z.infer<typeof SessionInboundMessageSchema>;
@@ -3599,6 +3785,10 @@ export const ServerInfoStatusPayloadSchema = z
         reclaudeUsage: z.boolean().optional(),
         // COMPAT(reclaudeUsageBroadcast): added in v0.1.108, remove gate after 2026-12-23.
         reclaudeUsageBroadcast: z.boolean().optional(),
+        // COMPAT(grokUsageSync): added in v0.1.125, remove gate after 2027-01-13.
+        grokUsageSync: z.boolean().optional(),
+        // COMPAT(grokUsageBroadcast): added in v0.1.125, remove gate after 2027-01-13.
+        grokUsageBroadcast: z.boolean().optional(),
         // COMPAT(agentDetach): added in v0.1.98, remove gate after 2026-12-19 once daemon floor >= v0.1.98.
         agentDetach: z.boolean().optional(),
         // COMPAT(terminalLifecycle): added in v0.1.124, remove gate after 2027-01-07.
@@ -3612,6 +3802,9 @@ export const ServerInfoStatusPayloadSchema = z
         sshHosts: z.boolean().optional(),
         // COMPAT(providerSubagents): added in v0.1.107, remove gate after 2027-01-12.
         providerSubagents: z.boolean().optional(),
+        // COMPAT(sshUploads): fork feature, added in v0.1.125. Old daemons omit it —
+        // clients hide the drag-drop SFTP upload option and panel.
+        sshUploads: z.boolean().optional(),
       })
       .optional(),
   })
@@ -5683,6 +5876,35 @@ export const ReclaudeUsageChangedMessageSchema = z.object({
   }),
 });
 
+// COMPAT(grokUsageSync): added in v0.1.125, remove gate after 2027-01-13.
+export const GrokStatusResponseMessageSchema = z.object({
+  type: z.literal("provider.grok.status.response"),
+  payload: z.object({
+    requestId: z.string(),
+    // Whether the daemon can resolve a Grok access token (auth.json / env).
+    authenticated: z.boolean(),
+  }),
+});
+
+export const GrokSyncUsageResponseMessageSchema = z.object({
+  type: z.literal("provider.grok.sync.response"),
+  payload: z.object({
+    requestId: z.string(),
+    usage: ProviderUsageSchema,
+  }),
+});
+
+// COMPAT(grokUsageBroadcast): added in v0.1.125, remove gate after 2027-01-13.
+// Daemon-pushed Grok usage change after a live sync so every connected client
+// patches its Grok card without re-fetching the full provider list.
+export const GrokUsageChangedMessageSchema = z.object({
+  type: z.literal("provider.grok.changed"),
+  payload: z.object({
+    authenticated: z.boolean(),
+    usage: ProviderUsageSchema.nullable(),
+  }),
+});
+
 const AgentSlashCommandSchema = z.object({
   name: z.string(),
   description: z.string(),
@@ -6142,6 +6364,9 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   ReclaudeLogoutResponseMessageSchema,
   ReclaudeSyncUsageResponseMessageSchema,
   ReclaudeUsageChangedMessageSchema,
+  GrokStatusResponseMessageSchema,
+  GrokSyncUsageResponseMessageSchema,
+  GrokUsageChangedMessageSchema,
   ListCommandsResponseSchema,
   ListTerminalsResponseSchema,
   TerminalHistoryListResponseSchema,
@@ -6209,6 +6434,13 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   SshKnownHostsChangedSchema,
   SshLogsListResponseSchema,
   SshLogsUpdatedSchema,
+  SshHostsConnectProgressSchema,
+  SshUploadsEnqueueResponseSchema,
+  SshUploadsListResponseSchema,
+  SshUploadsCancelResponseSchema,
+  SshUploadsClearResponseSchema,
+  SshUploadsChangedSchema,
+  SshUploadsProgressSchema,
 ]);
 
 export type SessionOutboundMessage = z.infer<typeof SessionOutboundMessageSchema>;
@@ -6349,6 +6581,9 @@ export type ReclaudeSyncUsageResponseMessage = z.infer<
   typeof ReclaudeSyncUsageResponseMessageSchema
 >;
 export type ReclaudeUsageChangedMessage = z.infer<typeof ReclaudeUsageChangedMessageSchema>;
+export type GrokStatusResponseMessage = z.infer<typeof GrokStatusResponseMessageSchema>;
+export type GrokSyncUsageResponseMessage = z.infer<typeof GrokSyncUsageResponseMessageSchema>;
+export type GrokUsageChangedMessage = z.infer<typeof GrokUsageChangedMessageSchema>;
 export type ChatCreateResponse = z.infer<typeof ChatCreateResponseSchema>;
 export type ChatListResponse = z.infer<typeof ChatListResponseSchema>;
 export type ChatInspectResponse = z.infer<typeof ChatInspectResponseSchema>;
@@ -6636,6 +6871,14 @@ export type SshKnownHostsImportResponse = z.infer<typeof SshKnownHostsImportResp
 export type SshKnownHostsChanged = z.infer<typeof SshKnownHostsChangedSchema>;
 export type SshLogsListResponse = z.infer<typeof SshLogsListResponseSchema>;
 export type SshLogsUpdated = z.infer<typeof SshLogsUpdatedSchema>;
+export type SshHostsConnectProgress = z.infer<typeof SshHostsConnectProgressSchema>;
+export type SshUploadsEnqueueRequest = z.infer<typeof SshUploadsEnqueueRequestSchema>;
+export type SshUploadsEnqueueResponse = z.infer<typeof SshUploadsEnqueueResponseSchema>;
+export type SshUploadsListResponse = z.infer<typeof SshUploadsListResponseSchema>;
+export type SshUploadsCancelResponse = z.infer<typeof SshUploadsCancelResponseSchema>;
+export type SshUploadsClearResponse = z.infer<typeof SshUploadsClearResponseSchema>;
+export type SshUploadsChanged = z.infer<typeof SshUploadsChangedSchema>;
+export type SshUploadsProgress = z.infer<typeof SshUploadsProgressSchema>;
 export type SubscribeTerminalsRequest = z.infer<typeof SubscribeTerminalsRequestSchema>;
 export type UnsubscribeTerminalsRequest = z.infer<typeof UnsubscribeTerminalsRequestSchema>;
 export type TerminalsChanged = z.infer<typeof TerminalsChangedSchema>;

@@ -47,6 +47,26 @@ function makeClaudeResponse(
   };
 }
 
+/** Quiet Grok/other background probes so Claude-only tests ignore non-Anthropic traffic. */
+async function quietGrokBillingFetch(url: RequestInfo | URL): Promise<Response> {
+  if (String(url).includes("cli-chat-proxy.grok.com")) {
+    return new Response(null, { status: 401 });
+  }
+  throw new Error(`Unexpected fetch: ${url}`);
+}
+
+function hasClaudePayload(message: ProviderQuotaMessage): boolean {
+  return message.payload.claude !== undefined;
+}
+
+function isAnthropicUrl(url: unknown): boolean {
+  return String(url).includes("api.anthropic.com");
+}
+
+function firstCallArg(call: unknown[]): unknown {
+  return call[0];
+}
+
 function makeCodexResponse(overrides: object = {}) {
   return {
     plan_type: "plus",
@@ -161,13 +181,15 @@ describe("QuotaFetcherService", () => {
     });
 
     it("skips Claude when credentials file is missing", async () => {
-      // no writeCreds — file absent
-      globalThis.fetch = vi.fn() as never; // should not be called
+      // no writeCreds — file absent. Other providers (e.g. Grok via ~/.grok/auth.json)
+      // may still call fetch; only Claude must stay off the wire.
+      const fetchMock = vi.fn(quietGrokBillingFetch);
+      globalThis.fetch = fetchMock as never;
 
       await service.triggerFetch();
 
-      expect(broadcasts).toHaveLength(0);
-      expect(globalThis.fetch).not.toHaveBeenCalled();
+      expect(broadcasts.some(hasClaudePayload)).toBe(false);
+      expect(fetchMock.mock.calls.map(firstCallArg).some(isAnthropicUrl)).toBe(false);
     });
 
     it("refreshes access token on 401 and retries", async () => {

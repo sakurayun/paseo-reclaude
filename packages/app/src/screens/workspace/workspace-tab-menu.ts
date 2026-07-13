@@ -147,6 +147,9 @@ function getCloseButtonTestId(tab: WorkspaceTabDescriptor): string {
   if (tab.target.kind === "provider_subagent") {
     return `workspace-provider-subagent-close-${tab.target.subagentId}`;
   }
+  if (tab.target.kind === "ssh-connecting") {
+    return `workspace-ssh-connecting-close-${tab.target.connectId}`;
+  }
   return `workspace-file-close-${encodeFilePathForPathSegment(tab.target.path)}`;
 }
 

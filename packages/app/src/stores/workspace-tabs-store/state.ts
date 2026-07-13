@@ -21,6 +21,10 @@ export type WorkspaceTabTarget =
   | { kind: "agent"; agentId: string }
   | { kind: "provider_subagent"; parentAgentId: string; subagentId: string }
   | { kind: "terminal"; terminalId: string }
+  // Transient tab hosting an in-flight SSH connect (progress log + inline
+  // password/mismatch retry). Retargets to a terminal tab on success. State
+  // lives in ssh-connect-store keyed by connectId; never persisted or synced.
+  | { kind: "ssh-connecting"; connectId: string }
   | { kind: "browser"; browserId: string }
   | WorkspaceFileTabTarget
   | { kind: "file-diff"; path: string }

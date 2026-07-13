@@ -73,6 +73,19 @@ it("returns existing terminals on subsequent calls", async () => {
   expect(second.length).toBe(1);
 });
 
+it("creates the terminal at the requested initial size", async () => {
+  manager = createTerminalManager();
+  const cwd = realpathSync(tmpdir());
+  const created = await manager.createTerminal({
+    cwd,
+    workspaceId: "ws-size",
+    cols: 136,
+    rows: 57,
+  });
+
+  expect(created.getSize()).toEqual({ rows: 57, cols: 136 });
+});
+
 it("marks user input as working activity", async () => {
   manager = createTerminalManager();
   const cwd = realpathSync(tmpdir());

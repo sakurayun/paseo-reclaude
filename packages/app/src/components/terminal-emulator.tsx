@@ -23,6 +23,7 @@ import type { PendingTerminalModifiers } from "../utils/terminal-keys";
 import {
   TerminalEmulatorRuntime,
   type TerminalFindResultChangeEvent,
+  type TerminalFontZoomDirection,
   type TerminalOutputData,
 } from "../terminal/runtime/terminal-emulator-runtime";
 import type {
@@ -42,6 +43,10 @@ import {
   isTerminalFileDrag,
   prepareDroppedPathsForTerminal,
 } from "../terminal/drop/terminal-file-drop";
+import {
+  collectDroppedItems,
+  type TerminalEmulatorFileDrop,
+} from "../terminal/drop/enumerate-dropped-entries";
 import { getDesktopHost } from "@/desktop/host";
 
 export interface TerminalEmulatorHandle {
@@ -160,6 +165,10 @@ interface TerminalEmulatorProps {
   }) => Promise<void> | void;
   onPendingModifiersConsumed?: () => Promise<void> | void;
   onInputModeChange?: (state: TerminalInputModeState) => Promise<void> | void;
+  onFontZoom?: (input: { direction: TerminalFontZoomDirection }) => Promise<void> | void;
+  // Intercepts file drops (SSH terminals show a paste-or-upload choice).
+  // Returning true consumes the drop; false falls back to paste-paths.
+  onFileDrop?: (drop: TerminalEmulatorFileDrop) => boolean;
   onResolveLocalFileLink?: (
     source: TerminalLocalFileLinkSource,
   ) => Promise<TerminalLocalFileLinkTarget | null> | TerminalLocalFileLinkTarget | null;
@@ -239,6 +248,8 @@ export default function TerminalEmulator({
   onTerminalKey,
   onPendingModifiersConsumed,
   onInputModeChange,
+  onFontZoom,
+  onFileDrop,
   onResolveLocalFileLink,
   onOpenLocalFileLink,
   onRendererReadyChange,
@@ -278,6 +289,8 @@ export default function TerminalEmulator({
     onTerminalKey,
     onPendingModifiersConsumed,
     onInputModeChange,
+    onFontZoom,
+    onFileDrop,
     onResolveLocalFileLink,
     onOpenLocalFileLink,
   });
@@ -287,6 +300,8 @@ export default function TerminalEmulator({
     onTerminalKey,
     onPendingModifiersConsumed,
     onInputModeChange,
+    onFontZoom,
+    onFileDrop,
     onResolveLocalFileLink,
     onOpenLocalFileLink,
   };
@@ -570,12 +585,14 @@ export default function TerminalEmulator({
         onTerminalKey,
         onPendingModifiersConsumed,
         onInputModeChange,
+        onFontZoom,
         onResolveLocalFileLink,
         onOpenLocalFileLink,
         onOpenExternalUrl: openExternalUrl,
       },
     });
   }, [
+    onFontZoom,
     onInput,
     onInputModeChange,
     onOpenLocalFileLink,
@@ -919,6 +936,17 @@ export default function TerminalEmulator({
 
       const bridge = getDesktopHost();
       const paths = extractTerminalDropPaths(event.dataTransfer, bridge);
+      const onDropOverride = mountCallbacksRef.current.onFileDrop;
+      if (onDropOverride) {
+        // SSH terminals intercept the drop with a paste-or-upload choice. The
+        // item handles must be collected synchronously — DataTransferItems are
+        // neutered once this handler returns.
+        const items = collectDroppedItems(event.dataTransfer);
+        const pasteText = paths.length > 0 ? prepareDroppedPathsForTerminal(paths, bridge) : null;
+        if (onDropOverride({ pasteText, items })) {
+          return;
+        }
+      }
       if (paths.length === 0) {
         return;
       }

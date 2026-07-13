@@ -215,6 +215,43 @@ describe("daemon E2E - SSH host manager", () => {
     expect(list.hosts?.map((host) => host.id)).not.toContain(hostId);
   });
 
+  test("classifies a wrong password as auth_failed, then a password override succeeds", async () => {
+    const createResponse = await ctx.client.createSshHost({
+      host: {
+        label: "Auth box",
+        address: "127.0.0.1",
+        port: sshServer.port,
+        username: "tester",
+      },
+      password: "wrong-password",
+    });
+    const hostId = createResponse.host!.id;
+
+    // Stored password is wrong → structured auth_failed (not a generic error).
+    const failed = await ctx.client.connectSshHost({ hostId });
+    expect(failed.terminal).toBeNull();
+    expect(failed.code).toBe("auth_failed");
+
+    // Live progress lines stream to the connecting tab, correlated by connectId.
+    const progressLines: string[] = [];
+    const unsubscribe = ctx.client.on("ssh.hosts.connect.progress", (message) => {
+      if (message.payload.connectId === "connect-e2e") {
+        progressLines.push(message.payload.line);
+      }
+    });
+
+    // A one-time password override authenticates and is not persisted server-side.
+    const retried = await ctx.client.connectSshHost({
+      hostId,
+      password: "pw",
+      connectId: "connect-e2e",
+    });
+    unsubscribe();
+    expect(retried.error).toBeNull();
+    expect(retried.terminal?.id).toBeTruthy();
+    expect(progressLines.length).toBeGreaterThan(0);
+  });
+
   test("returns a structured error when the host is unreachable", async () => {
     const createResponse = await ctx.client.createSshHost({
       host: { label: "Dead", address: "127.0.0.1", port: 1, username: "tester" },

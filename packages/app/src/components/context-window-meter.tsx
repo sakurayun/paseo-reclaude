@@ -5,6 +5,7 @@ import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { ProviderUsageTooltipSection } from "@/provider-usage/tooltip-section";
+import { useGrok } from "@/provider-usage/use-grok";
 import { useProviderUsage } from "@/provider-usage/use-provider-usage";
 import { useReclaude } from "@/provider-usage/use-reclaude";
 import { formatTokenCount } from "./context-window-meter.utils";
@@ -117,11 +118,13 @@ export function ContextWindowMeter({
     loggedIn: reclaudeLoggedIn,
     syncUsage: syncReclaudeUsage,
   } = useReclaude(serverId ?? null);
+  const { supported: grokUsageSupported, syncUsage: syncGrokUsage } = useGrok(serverId ?? null);
   // For a reclaude-backed Claude agent, opening the meter triggers a one-shot
   // ReClaude usage sync (server-throttled to once per 5 min) instead of the
   // generic list refresh, so the tooltip shows fresh ReClaude data without
-  // re-fetching other providers.
+  // re-fetching other providers. Same pattern for Grok Build.
   const isReclaudeClaude = provider === "claude" && reclaudeActive && reclaudeLoggedIn;
+  const isGrok = provider === "grok" && grokUsageSupported;
   const percentage =
     maxTokens !== null && usedTokens !== null ? getUsagePercentage(maxTokens, usedTokens) : null;
   const handleTooltipOpenChange = useCallback(
@@ -132,11 +135,13 @@ export function ContextWindowMeter({
       }
       if (isReclaudeClaude) {
         void syncReclaudeUsage().catch(() => undefined);
+      } else if (isGrok) {
+        void syncGrokUsage().catch(() => undefined);
       } else {
         void refreshProviderUsage().catch(() => {});
       }
     },
-    [isReclaudeClaude, refreshProviderUsage, syncReclaudeUsage],
+    [isGrok, isReclaudeClaude, refreshProviderUsage, syncGrokUsage, syncReclaudeUsage],
   );
 
   const geometry = getMeterGeometry(showPercentage);

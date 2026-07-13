@@ -389,6 +389,12 @@ interface ACPAgentClientOptions {
     sessionId: string,
     thinkingOptionId: string,
   ) => Promise<void>;
+  /**
+   * When set, call ACP `authenticate` after `initialize` with this method id
+   * (e.g. Grok Build's `cached_token`). Required by agents that refuse
+   * session/new until authenticated.
+   */
+  authenticateMethodId?: string;
   capabilities?: AgentCapabilityFlags;
   extensionCommandsParser?: ACPExtensionCommandsParser;
   waitForInitialCommands?: boolean;
@@ -419,6 +425,7 @@ interface ACPAgentSessionOptions {
     sessionId: string,
     thinkingOptionId: string,
   ) => Promise<void>;
+  authenticateMethodId?: string;
   capabilities: AgentCapabilityFlags;
   extensionCommandsParser?: ACPExtensionCommandsParser;
   handle?: AgentPersistenceHandle;
@@ -563,11 +570,88 @@ export function mapACPUsage(usage: Usage | null | undefined): AgentUsage | undef
     return undefined;
   }
 
+  const contextWindowUsedTokens =
+    typeof usage.totalTokens === "number" && Number.isFinite(usage.totalTokens)
+      ? usage.totalTokens
+      : undefined;
+
   return {
     inputTokens: usage.inputTokens ?? undefined,
     outputTokens: usage.outputTokens ?? undefined,
     cachedInputTokens: usage.cachedReadTokens ?? undefined,
+    contextWindowUsedTokens,
   };
+}
+
+/**
+ * Some agents (notably Grok Build) attach usage under PromptResponse._meta
+ * instead of the experimental `usage` field. Accept both shapes.
+ */
+export function mapACPUsageFromUnknown(value: unknown): AgentUsage | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return undefined;
+  }
+  const record = value as Record<string, unknown>;
+  const inputTokens = asFiniteNumber(record.inputTokens);
+  const outputTokens = asFiniteNumber(record.outputTokens);
+  const cachedInputTokens = asFiniteNumber(record.cachedReadTokens ?? record.cachedInputTokens);
+  const totalTokens = asFiniteNumber(record.totalTokens);
+  if (
+    inputTokens === undefined &&
+    outputTokens === undefined &&
+    cachedInputTokens === undefined &&
+    totalTokens === undefined
+  ) {
+    return undefined;
+  }
+  return {
+    inputTokens,
+    outputTokens,
+    cachedInputTokens,
+    contextWindowUsedTokens: totalTokens,
+  };
+}
+
+function asFiniteNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function resolveDefaultAuthMethodId(initialize: InitializeResponse): string | null {
+  const meta =
+    initialize._meta && typeof initialize._meta === "object" && !Array.isArray(initialize._meta)
+      ? (initialize._meta as Record<string, unknown>)
+      : null;
+  const fromMeta = asNonEmptyAuthMethodId(meta?.defaultAuthMethodId);
+  if (fromMeta) {
+    return fromMeta;
+  }
+  const methods = initialize.authMethods;
+  if (!Array.isArray(methods) || methods.length === 0) {
+    return null;
+  }
+  return asNonEmptyAuthMethodId(methods[0]?.id);
+}
+
+function asNonEmptyAuthMethodId(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+/** Grok Build stores the active effort on the selected model under `_meta.reasoningEffort`. */
+function deriveGrokReasoningEffort(
+  availableModels: AvailableACPModel[] | null | undefined,
+  currentModelId: string | null | undefined,
+): string | null {
+  if (!availableModels?.length || !currentModelId) {
+    return null;
+  }
+  const model = availableModels.find((entry) => entry.modelId === currentModelId);
+  const meta =
+    model?._meta && typeof model._meta === "object" && !Array.isArray(model._meta)
+      ? (model._meta as Record<string, unknown>)
+      : null;
+  return asNonEmptyAuthMethodId(meta?.reasoningEffort);
 }
 
 export function resolveACPModeSelection({
@@ -650,15 +734,29 @@ export function deriveModelDefinitionsFromACP(
   const defaultThinkingOptionId = thinkingOptions.find((option) => option.isDefault)?.id ?? null;
 
   if (models?.availableModels?.length) {
-    return models.availableModels.map((model) => ({
-      provider,
-      id: model.modelId,
-      label: model.name,
-      description: model.description ?? undefined,
-      isDefault: model.modelId === models.currentModelId,
-      thinkingOptions: thinkingOptions.length > 0 ? thinkingOptions : undefined,
-      defaultThinkingOptionId: defaultThinkingOptionId ?? undefined,
-    }));
+    return models.availableModels.map((model) => {
+      // Preserve vendor `_meta` (e.g. Grok reasoningEfforts / totalContextTokens)
+      // so provider modelTransformers can map it into thinking options + context.
+      const meta =
+        model._meta && typeof model._meta === "object" && !Array.isArray(model._meta)
+          ? (model._meta as Record<string, unknown>)
+          : undefined;
+      const totalContextTokens =
+        typeof meta?.totalContextTokens === "number" && Number.isFinite(meta.totalContextTokens)
+          ? meta.totalContextTokens
+          : undefined;
+      return {
+        provider,
+        id: model.modelId,
+        label: model.name,
+        description: model.description ?? undefined,
+        isDefault: model.modelId === models.currentModelId,
+        thinkingOptions: thinkingOptions.length > 0 ? thinkingOptions : undefined,
+        defaultThinkingOptionId: defaultThinkingOptionId ?? undefined,
+        contextWindowMaxTokens: totalContextTokens,
+        metadata: meta,
+      };
+    });
   }
 
   const modelOptions = deriveSelectorOptions(configOptions, "model");
@@ -730,6 +828,7 @@ export class ACPAgentClient implements AgentClient {
     sessionId: string,
     thinkingOptionId: string,
   ) => Promise<void>;
+  private readonly authenticateMethodId?: string;
   private readonly waitForInitialCommands: boolean;
   private readonly initialCommandsWaitTimeoutMs: number;
   private readonly extensionCommandsParser?: ACPExtensionCommandsParser;
@@ -757,6 +856,7 @@ export class ACPAgentClient implements AgentClient {
     this.providerModeWriter = options.providerModeWriter;
     this.beforeModeWriter = options.beforeModeWriter;
     this.thinkingOptionWriter = options.thinkingOptionWriter;
+    this.authenticateMethodId = options.authenticateMethodId;
     this.waitForInitialCommands = options.waitForInitialCommands ?? false;
     this.initialCommandsWaitTimeoutMs = options.initialCommandsWaitTimeoutMs ?? 1500;
     this.extensionCommandsParser = options.extensionCommandsParser;
@@ -786,6 +886,7 @@ export class ACPAgentClient implements AgentClient {
         providerModeWriter: this.providerModeWriter,
         beforeModeWriter: this.beforeModeWriter,
         thinkingOptionWriter: this.thinkingOptionWriter,
+        authenticateMethodId: this.authenticateMethodId,
         capabilities: this.capabilities,
         agentId: launchContext?.agentId,
         launchEnv: launchContext?.env,
@@ -836,6 +937,7 @@ export class ACPAgentClient implements AgentClient {
       providerModeWriter: this.providerModeWriter,
       beforeModeWriter: this.beforeModeWriter,
       thinkingOptionWriter: this.thinkingOptionWriter,
+      authenticateMethodId: this.authenticateMethodId,
       capabilities: this.capabilities,
       handle,
       agentId: launchContext?.agentId,
@@ -993,6 +1095,7 @@ export class ACPAgentClient implements AgentClient {
     options?.onSpawned?.(probe);
     try {
       const initialize = await this.initializeTransport(transport, options?.initializeTimeoutMs);
+      await this.maybeAuthenticate(transport.connection, initialize);
       const initializedProbe: SpawnedACPProcess = {
         ...probe,
         initialize,
@@ -1002,6 +1105,29 @@ export class ACPAgentClient implements AgentClient {
     } catch (error) {
       await terminateChildProcess(transport.child, 2_000, this.terminateProcess);
       throw error;
+    }
+  }
+
+  private async maybeAuthenticate(
+    connection: ClientSideConnection,
+    initialize: InitializeResponse,
+  ): Promise<void> {
+    const methodId =
+      this.authenticateMethodId ??
+      resolveDefaultAuthMethodId(initialize) ??
+      (this.provider === "grok" ? "cached_token" : null);
+    if (!methodId) {
+      return;
+    }
+    try {
+      await this.runACPRequest(() => connection.authenticate({ methodId }));
+    } catch (error) {
+      // Auth is best-effort for catalog probes: some environments use XAI_API_KEY
+      // without a cached OIDC session. Session creation will surface a hard error.
+      this.logger.debug(
+        { err: error, methodId },
+        `${this.provider} ACP authenticate failed; continuing without session auth`,
+      );
     }
   }
 
@@ -1298,6 +1424,7 @@ export class ACPAgentSession implements AgentSession, ACPClient {
     sessionId: string,
     thinkingOptionId: string,
   ) => Promise<void>;
+  private readonly authenticateMethodId?: string;
   private readonly agentId?: string;
   private readonly launchEnv?: Record<string, string>;
   private readonly subscribers = new Set<(event: AgentStreamEvent) => void>();
@@ -1357,6 +1484,7 @@ export class ACPAgentSession implements AgentSession, ACPClient {
     this.providerModeWriter = options.providerModeWriter;
     this.beforeModeWriter = options.beforeModeWriter;
     this.thinkingOptionWriter = options.thinkingOptionWriter;
+    this.authenticateMethodId = options.authenticateMethodId;
     this.availableModes = options.defaultModes;
     this.agentId = options.agentId;
     this.launchEnv = options.launchEnv;
@@ -2346,6 +2474,14 @@ export class ACPAgentSession implements AgentSession, ACPClient {
       }),
     );
 
+    const methodId =
+      this.authenticateMethodId ??
+      resolveDefaultAuthMethodId(initialize) ??
+      (this.provider === "grok" ? "cached_token" : null);
+    if (methodId) {
+      await this.runACPRequest(() => connection.authenticate({ methodId }));
+    }
+
     return { child, connection, initialize };
   }
 
@@ -2376,7 +2512,9 @@ export class ACPAgentSession implements AgentSession, ACPClient {
     this.currentModel =
       transformed.models?.currentModelId ?? deriveCurrentConfigValue(this.configOptions, "model");
     this.thinkingOptionId =
-      deriveCurrentConfigValue(this.configOptions, "thought_level") ?? this.thinkingOptionId;
+      deriveCurrentConfigValue(this.configOptions, "thought_level") ??
+      deriveGrokReasoningEffort(this.availableModels, this.currentModel) ??
+      this.thinkingOptionId;
   }
 
   private transformConfigOptions(configOptions: SessionConfigOption[]): SessionConfigOption[] {
@@ -2627,11 +2765,51 @@ export class ACPAgentSession implements AgentSession, ACPClient {
   }
 
   private handleUsageUpdate(update: UsageUpdate): void {
-    void update;
+    const used = asFiniteNumber(update.used);
+    const size = asFiniteNumber(update.size);
+    if (used === undefined && size === undefined) {
+      return;
+    }
+    this.currentTurnUsage = {
+      ...this.currentTurnUsage,
+      ...(used !== undefined ? { contextWindowUsedTokens: used } : {}),
+      ...(size !== undefined ? { contextWindowMaxTokens: size } : {}),
+    };
+    this.pushEvent({
+      type: "usage_updated",
+      provider: this.provider,
+      usage: this.currentTurnUsage,
+      turnId: this.activeForegroundTurnId ?? undefined,
+    });
+  }
+
+  private enrichUsageWithModelContext(usage: AgentUsage | undefined): AgentUsage | undefined {
+    if (!usage) {
+      return usage;
+    }
+    if (usage.contextWindowMaxTokens !== undefined) {
+      return usage;
+    }
+    const current = this.availableModels?.find((model) => model.modelId === this.currentModel);
+    const meta =
+      current?._meta && typeof current._meta === "object" && !Array.isArray(current._meta)
+        ? (current._meta as Record<string, unknown>)
+        : null;
+    const max = asFiniteNumber(meta?.totalContextTokens);
+    if (max === undefined) {
+      return usage;
+    }
+    return { ...usage, contextWindowMaxTokens: max };
   }
 
   private handlePromptResponse(response: PromptResponse, turnId: string): void {
-    this.currentTurnUsage = mapACPUsage(response.usage) ?? this.currentTurnUsage;
+    const meta = response._meta && typeof response._meta === "object" ? response._meta : null;
+    const metaUsage =
+      meta && "usage" in meta
+        ? mapACPUsageFromUnknown((meta as Record<string, unknown>).usage)
+        : mapACPUsageFromUnknown(meta);
+    this.currentTurnUsage = mapACPUsage(response.usage) ?? metaUsage ?? this.currentTurnUsage;
+    this.currentTurnUsage = this.enrichUsageWithModelContext(this.currentTurnUsage);
 
     switch (response.stopReason) {
       case "cancelled":

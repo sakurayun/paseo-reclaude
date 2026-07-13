@@ -6,6 +6,7 @@ import type { SshHostStore } from "./ssh-host-store.js";
 import type { SshKeyStore } from "./ssh-key-store.js";
 import type { SshKnownHostStore } from "./ssh-known-host-store.js";
 import type { SshLogStore } from "./ssh-log-store.js";
+import type { SshUploadRuntime } from "./ssh-upload-runtime.js";
 
 type SshInbound = Extract<SessionInboundMessage, { type: `ssh.${string}` }>;
 type SshInboundOf<TType extends SshInbound["type"]> = Extract<SshInbound, { type: TType }>;
@@ -18,6 +19,9 @@ export type SshConnectResult =
       terminal: { id: string; name: string; cwd: string; workspaceId?: string };
     }
   | { outcome: "error"; error: string }
+  // Authentication exhausted (wrong password / rejected key): the client offers
+  // an inline password retry.
+  | { outcome: "auth_failed"; error: string }
   | {
       outcome: "host_key_mismatch";
       error: string;
@@ -37,6 +41,10 @@ export type SshConnectHandler = (input: {
   // Workspace placement for the terminal record (see SshHostsConnectRequestSchema).
   workspaceId?: string;
   cwd?: string;
+  // One-time password override for an inline retry (not persisted here).
+  password?: string;
+  // Emits live connection-progress lines to the client's connecting tab.
+  onProgress?: (line: string, level: "info" | "error") => void;
 }) => Promise<SshConnectResult>;
 
 export interface SshSessionControllerDeps {
@@ -51,6 +59,9 @@ export interface SshSessionControllerDeps {
   // Injected by P5; when absent, start/stop report unavailable.
   forwardStart?: (id: string) => Promise<{ ok: boolean; error?: string }>;
   forwardStop?: (id: string) => Promise<{ ok: boolean }>;
+  // Read lazily (like connectHandler) so a runtime attached after session
+  // start is still used. Null = uploads unavailable on this daemon.
+  uploadRuntime?: () => SshUploadRuntime | null;
 }
 
 export interface SshSessionController {
@@ -486,6 +497,112 @@ export function createSshSessionController(deps: SshSessionControllerDeps): SshS
     return undefined;
   }
 
+  function handleUploadsMessage(msg: SshInbound): Promise<void> | undefined {
+    switch (msg.type) {
+      case "ssh.uploads.enqueue.request":
+        return handleUploadsEnqueue(msg);
+      case "ssh.uploads.list.request": {
+        const runtime = deps.uploadRuntime?.() ?? null;
+        emit({
+          type: "ssh.uploads.list.response",
+          payload: { uploads: runtime?.list() ?? [], requestId: msg.requestId },
+        });
+        return undefined;
+      }
+      case "ssh.uploads.cancel.request": {
+        const runtime = deps.uploadRuntime?.() ?? null;
+        if (!runtime) {
+          emit({
+            type: "ssh.uploads.cancel.response",
+            payload: {
+              uploadId: msg.uploadId,
+              success: false,
+              error: "SSH uploads are not available on this host",
+              requestId: msg.requestId,
+            },
+          });
+          return undefined;
+        }
+        const result = runtime.cancel({
+          uploadId: msg.uploadId,
+          ...definedProps({ fileIds: msg.fileIds }),
+        });
+        emit({
+          type: "ssh.uploads.cancel.response",
+          payload: {
+            uploadId: msg.uploadId,
+            success: result.ok,
+            error: result.ok ? null : (result.error ?? "Failed to cancel upload"),
+            requestId: msg.requestId,
+          },
+        });
+        return undefined;
+      }
+      case "ssh.uploads.clear.request": {
+        const runtime = deps.uploadRuntime?.() ?? null;
+        runtime?.clear(definedProps({ uploadIds: msg.uploadIds }));
+        emit({
+          type: "ssh.uploads.clear.response",
+          payload: {
+            success: runtime !== null,
+            error: runtime ? null : "SSH uploads are not available on this host",
+            requestId: msg.requestId,
+          },
+        });
+        return undefined;
+      }
+      default:
+        return undefined;
+    }
+  }
+
+  async function handleUploadsEnqueue(
+    msg: SshInboundOf<"ssh.uploads.enqueue.request">,
+  ): Promise<void> {
+    const runtime = deps.uploadRuntime?.() ?? null;
+    if (!runtime) {
+      emit({
+        type: "ssh.uploads.enqueue.response",
+        payload: {
+          upload: null,
+          error: "SSH uploads are not available on this host",
+          requestId: msg.requestId,
+        },
+      });
+      return;
+    }
+    try {
+      const result = await runtime.enqueue({
+        uploadId: msg.uploadId,
+        hostId: msg.hostId,
+        destDir: msg.destDir,
+        files: msg.files,
+        ...definedProps({ terminalId: msg.terminalId }),
+      });
+      if (result.ok) {
+        emit({
+          type: "ssh.uploads.enqueue.response",
+          payload: { upload: result.upload, error: null, requestId: msg.requestId },
+        });
+        return;
+      }
+      emit({
+        type: "ssh.uploads.enqueue.response",
+        payload: {
+          upload: null,
+          error: result.error,
+          ...definedProps({ code: result.code }),
+          requestId: msg.requestId,
+        },
+      });
+    } catch (error) {
+      emit({
+        type: "ssh.uploads.enqueue.response",
+        payload: { upload: null, error: getErrorMessage(error), requestId: msg.requestId },
+      });
+    }
+  }
+
   async function handleConnect(msg: SshInboundOf<"ssh.hosts.connect.request">): Promise<void> {
     if (!deps.connectHandler) {
       emit({
@@ -498,6 +615,16 @@ export function createSshSessionController(deps: SshSessionControllerDeps): SshS
       });
       return;
     }
+    // Stream live connection-progress lines to the client's connecting tab,
+    // correlated by the request's connectId. No-op when the client omits it.
+    const onProgress =
+      msg.connectId !== undefined
+        ? (line: string, level: "info" | "error"): void =>
+            emit({
+              type: "ssh.hosts.connect.progress",
+              payload: { connectId: msg.connectId as string, line, level, at: Date.now() },
+            })
+        : undefined;
     try {
       const result = await deps.connectHandler({
         hostId: msg.hostId,
@@ -506,7 +633,9 @@ export function createSshSessionController(deps: SshSessionControllerDeps): SshS
           rows: msg.rows,
           workspaceId: msg.workspaceId,
           cwd: msg.cwd,
+          password: msg.password,
         }),
+        ...(onProgress ? { onProgress } : {}),
       });
       emitConnectResult(result, msg.requestId);
     } catch (error) {
@@ -538,6 +667,13 @@ export function createSshSessionController(deps: SshSessionControllerDeps): SshS
       });
       return;
     }
+    if (result.outcome === "auth_failed") {
+      emit({
+        type: "ssh.hosts.connect.response",
+        payload: { terminal: null, error: result.error, code: "auth_failed", requestId },
+      });
+      return;
+    }
     emit({
       type: "ssh.hosts.connect.response",
       payload: { terminal: null, error: result.error, requestId },
@@ -560,6 +696,7 @@ export function createSshSessionController(deps: SshSessionControllerDeps): SshS
         handleForwardsMessage(sshMsg) ??
         handleKnownHostsMessage(sshMsg) ??
         handleLogsMessage(sshMsg) ??
+        handleUploadsMessage(sshMsg) ??
         Promise.resolve()
       );
     },

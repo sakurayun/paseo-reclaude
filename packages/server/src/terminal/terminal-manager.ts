@@ -79,11 +79,15 @@ export interface TerminalManager {
     env?: Record<string, string>;
     command?: string;
     args?: string[];
-    rows?: number;
-    cols?: number;
     activityToken?: string;
     activityUrl?: string | null;
     windowsShell?: WindowsShellPreference;
+    // Initial pty/screen size (defaults 80x24). SSH terminals pass the client
+    // pane size so the headless screen matches the remote pty from the first
+    // byte — resizing after early output leaves absolutely positioned content
+    // (and the cursor) stranded mid-history.
+    cols?: number;
+    rows?: number;
     // Alternate byte transport (e.g. ssh2 shell channel). Only supported by
     // the in-process manager; the worker manager ignores it.
     backend?: TerminalBackend;
@@ -357,11 +361,11 @@ export function createTerminalManager(
       env?: Record<string, string>;
       command?: string;
       args?: string[];
-      rows?: number;
-      cols?: number;
       activityToken?: string;
       activityUrl?: string | null;
       windowsShell?: WindowsShellPreference;
+      cols?: number;
+      rows?: number;
       backend?: TerminalBackend;
     }): Promise<TerminalSession> {
       assertAbsolutePath(options.cwd);
@@ -395,8 +399,8 @@ export function createTerminalManager(
             ...(options.command ? { command: options.command } : {}),
             ...(options.args ? { args: options.args } : {}),
             ...(options.windowsShell ? { windowsShell: options.windowsShell } : {}),
-            ...(options.rows !== undefined ? { rows: options.rows } : {}),
             ...(options.cols !== undefined ? { cols: options.cols } : {}),
+            ...(options.rows !== undefined ? { rows: options.rows } : {}),
             ...(mergedEnv ? { env: mergedEnv } : {}),
             ...(options.backend ? { backend: options.backend } : {}),
             activityEnv,

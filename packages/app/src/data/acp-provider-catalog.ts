@@ -210,8 +210,8 @@ const CATALOG_DATA = [
     id: "grok",
     title: "Grok",
     description:
-      "xAI's Grok Build agentic coding CLI with plan mode and parallel subagents. Requires a SuperGrok or X Premium+ subscription.",
-    version: "0.2.11",
+      "xAI's Grok Build agentic coding CLI (ACP) with plan mode, MCP, and parallel subagents. Sign in with `grok login` (SuperGrok / X Premium+) or set XAI_API_KEY from console.x.ai.",
+    version: "0.2.99",
     iconId: "grok",
     installLink: "https://docs.x.ai/build/overview",
     command: ["grok", "agent", "stdio"],

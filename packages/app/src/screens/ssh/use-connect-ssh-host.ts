@@ -1,21 +1,19 @@
-import { useCallback, useRef, useState } from "react";
-import type { SshObservedHostKey } from "@getpaseo/protocol/messages";
+import { useCallback, useState } from "react";
 import { useSshHosts } from "@/screens/ssh/use-ssh-hosts";
-import { useSshKnownHosts } from "@/screens/ssh/use-ssh-known-hosts";
-import { registerSshTerminal, useSshTerminalMetaStore } from "@/stores/ssh-terminal-meta-store";
+import { useSshTerminalMetaStore } from "@/stores/ssh-terminal-meta-store";
 import { resolveWorkspaceMapKeyByIdentity } from "@/utils/workspace-identity";
 import { useHostTerminals } from "@/hooks/use-host-terminals";
 import { navigateToPreparedWorkspaceTab } from "@/utils/workspace-navigation";
 import { isSyntheticTerminalWorkspaceId } from "@/utils/terminal-workspace-id";
 import { getLastWorkspaceSelection } from "@/stores/navigation-active-workspace-store";
 import { useSessionStore } from "@/stores/session-store";
+import { startSshConnect } from "@/screens/ssh/run-ssh-connect";
 
 export interface UseConnectSshHostResult {
-  connectHost: (hostId: string) => Promise<void>;
-  connectingHostId: string | null;
-  mismatch: { hostId: string; key: SshObservedHostKey } | null;
-  trustAndReconnect: () => Promise<void>;
-  closeMismatch: () => void;
+  // Opens a connecting tab and drives the SSH connect (progress log + inline
+  // password/mismatch retry all live in that tab). `force` starts a fresh
+  // attempt even if the host already has a live session/connect.
+  connectHost: (hostId: string, options?: { force?: boolean }) => void;
   // True when the server has no workspace to host the SSH terminal tab.
   noWorkspace: boolean;
 }
@@ -50,18 +48,12 @@ function resolveTargetWorkspace(serverId: string): TargetWorkspace | null {
   };
 }
 
-// Connects to an SSH host and opens its terminal as a tab in the active
-// workspace's tab bar — reusing the workspace terminal panel + draggable tabs.
+// Connects to an SSH host by opening a connecting tab in the active workspace's
+// tab bar; on success that tab becomes the terminal tab.
 export function useConnectSshHost(serverId: string | null): UseConnectSshHostResult {
-  const { hosts, connect } = useSshHosts(serverId);
-  const { trustKnownHost } = useSshKnownHosts(serverId);
+  const { hosts } = useSshHosts(serverId);
   const { terminals } = useHostTerminals(serverId);
   const metaByTerminalId = useSshTerminalMetaStore((state) => state.metaByTerminalId);
-  const connectInFlightRef = useRef(false);
-  const [connectingHostId, setConnectingHostId] = useState<string | null>(null);
-  const [mismatch, setMismatch] = useState<{ hostId: string; key: SshObservedHostKey } | null>(
-    null,
-  );
   const [noWorkspace, setNoWorkspace] = useState(false);
 
   // A live session already exists for this host: focus its terminal tab
@@ -97,20 +89,13 @@ export function useConnectSshHost(serverId: string | null): UseConnectSshHostRes
   );
 
   const connectHost = useCallback(
-    async (hostId: string, options?: { skipExisting?: boolean }) => {
+    (hostId: string, options?: { force?: boolean }) => {
       if (!serverId) {
         return;
       }
       // Tapping an already-connected host means "show me my session", not
-      // "open another one". trustAndReconnect skips this (its point is a
-      // fresh connect after trusting the new key).
-      if (!options?.skipExisting && focusExistingHostTerminal(hostId)) {
-        return;
-      }
-      // A double-click (or tapping another host mid-handshake) must not open a
-      // second SSH session. State lands a tick later, so the same-tick guard
-      // has to be a ref.
-      if (connectInFlightRef.current) {
+      // "open another one" — unless the caller explicitly forces a new tab.
+      if (!options?.force && focusExistingHostTerminal(hostId)) {
         return;
       }
       const workspace = resolveTargetWorkspace(serverId);
@@ -118,65 +103,20 @@ export function useConnectSshHost(serverId: string | null): UseConnectSshHostRes
         setNoWorkspace(true);
         return;
       }
-      const { workspaceId } = workspace;
       setNoWorkspace(false);
       const host = hosts.find((entry) => entry.id === hostId);
-      connectInFlightRef.current = true;
-      setConnectingHostId(hostId);
-      try {
-        // Pass the workspace placement so the daemon records the terminal as
-        // belonging to this workspace (sidebar grouping, terminal list,
-        // archive/history) instead of the synthetic ssh:<hostId> bucket.
-        const payload = await connect({
-          hostId,
-          workspaceId,
-          ...(workspace.directory ? { cwd: workspace.directory } : {}),
-        });
-        if (payload.terminal) {
-          registerSshTerminal(payload.terminal.id, {
-            hostId,
-            label: host?.label || host?.address || payload.terminal.name,
-          });
-          // Same navigate-then-focus path as every other tab open, so the new
-          // terminal's tab is focused and survives the layout-sync pull.
-          navigateToPreparedWorkspaceTab({
-            serverId,
-            workspaceId,
-            target: { kind: "terminal", terminalId: payload.terminal.id },
-          });
-        } else if (payload.code === "host_key_mismatch" && payload.observedKey) {
-          setMismatch({ hostId, key: payload.observedKey });
-        }
-      } finally {
-        connectInFlightRef.current = false;
-        setConnectingHostId(null);
-      }
+      startSshConnect({
+        serverId,
+        hostId,
+        workspaceId: workspace.workspaceId,
+        cwd: workspace.directory,
+        label: host?.label || host?.address || hostId,
+        os: host?.platform?.os ?? null,
+        ...(options?.force ? { force: true } : {}),
+      });
     },
-    [connect, focusExistingHostTerminal, hosts, serverId],
+    [focusExistingHostTerminal, hosts, serverId],
   );
 
-  const closeMismatch = useCallback(() => setMismatch(null), []);
-  const trustAndReconnect = useCallback(async () => {
-    if (!mismatch) {
-      return;
-    }
-    const { hostId, key } = mismatch;
-    await trustKnownHost({
-      host: key.host,
-      ...(key.port !== undefined ? { port: key.port } : {}),
-      keyType: key.keyType,
-      publicKeyBase64: key.publicKeyBase64,
-    });
-    setMismatch(null);
-    await connectHost(hostId, { skipExisting: true });
-  }, [mismatch, trustKnownHost, connectHost]);
-
-  return {
-    connectHost,
-    connectingHostId,
-    mismatch,
-    trustAndReconnect,
-    closeMismatch,
-    noWorkspace,
-  };
+  return { connectHost, noWorkspace };
 }

@@ -81,6 +81,8 @@ import type {
   ReclaudeVerifyMfaResponseMessage,
   ReclaudeLogoutResponseMessage,
   ReclaudeSyncUsageResponseMessage,
+  GrokStatusResponseMessage,
+  GrokSyncUsageResponseMessage,
   DaemonGetStatusResponse,
   DaemonGetPairingOfferResponse,
   DiagnosticsResponse,
@@ -114,6 +116,10 @@ import type {
   SshLogsListResponse,
   SshHostUpsert,
   SshHostPatch,
+  SshUploadsEnqueueResponse,
+  SshUploadsListResponse,
+  SshUploadsCancelResponse,
+  SshUploadsClearResponse,
   CreateTerminalResponse,
   SubscribeTerminalResponse,
   SubscribeTerminalRequest,
@@ -436,6 +442,8 @@ type ReclaudeLoginPayload = ReclaudeLoginResponseMessage["payload"];
 type ReclaudeVerifyMfaPayload = ReclaudeVerifyMfaResponseMessage["payload"];
 type ReclaudeLogoutPayload = ReclaudeLogoutResponseMessage["payload"];
 type ReclaudeSyncUsagePayload = ReclaudeSyncUsageResponseMessage["payload"];
+type GrokStatusPayload = GrokStatusResponseMessage["payload"];
+type GrokSyncUsagePayload = GrokSyncUsageResponseMessage["payload"];
 type DaemonStatusPayload = DaemonGetStatusResponse["payload"];
 type DictationListModelsPayload = SpeechDictationListModelsResponse["payload"];
 type DictationSetModelPayload = SpeechDictationSetModelResponse["payload"];
@@ -503,6 +511,10 @@ type SshKnownHostsTrustPayload = SshKnownHostsTrustResponse["payload"];
 type SshKnownHostsDeletePayload = SshKnownHostsDeleteResponse["payload"];
 type SshKnownHostsImportPayload = SshKnownHostsImportResponse["payload"];
 type SshLogsListPayload = SshLogsListResponse["payload"];
+type SshUploadsEnqueuePayload = SshUploadsEnqueueResponse["payload"];
+type SshUploadsListPayload = SshUploadsListResponse["payload"];
+type SshUploadsCancelPayload = SshUploadsCancelResponse["payload"];
+type SshUploadsClearPayload = SshUploadsClearResponse["payload"];
 type CreateTerminalPayload = CreateTerminalResponse["payload"];
 export type RenameTerminalResult = z.infer<typeof RenameTerminalResponseSchema>["payload"];
 type SubscribeTerminalPayload = SubscribeTerminalResponse["payload"];
@@ -4655,6 +4667,30 @@ export class DaemonClient {
     });
   }
 
+  async grokStatus(options?: { requestId?: string }): Promise<GrokStatusPayload> {
+    return this.sendNamespacedCorrelatedSessionRequest({
+      requestId: options?.requestId,
+      message: {
+        type: "provider.grok.status.request",
+      },
+      timeout: 30000,
+    });
+  }
+
+  async grokSyncUsage(options?: {
+    requestId?: string;
+    force?: boolean;
+  }): Promise<GrokSyncUsagePayload> {
+    return this.sendNamespacedCorrelatedSessionRequest({
+      requestId: options?.requestId,
+      message: {
+        type: "provider.grok.sync.request",
+        ...(options?.force === true ? { force: true } : {}),
+      },
+      timeout: 30000,
+    });
+  }
+
   async listCommands(options: ListCommandsOptions): Promise<ListCommandsPayload>;
   async listCommands(agentId: string, requestId?: string): Promise<ListCommandsPayload>;
   async listCommands(
@@ -5178,6 +5214,8 @@ export class DaemonClient {
       rows?: number;
       workspaceId?: string;
       cwd?: string;
+      password?: string;
+      connectId?: string;
     },
     requestId?: string,
   ): Promise<SshHostsConnectPayload> {
@@ -5191,6 +5229,8 @@ export class DaemonClient {
         ...(input.rows !== undefined ? { rows: input.rows } : {}),
         ...(input.workspaceId !== undefined ? { workspaceId: input.workspaceId } : {}),
         ...(input.cwd !== undefined ? { cwd: input.cwd } : {}),
+        ...(input.password !== undefined ? { password: input.password } : {}),
+        ...(input.connectId !== undefined ? { connectId: input.connectId } : {}),
         requestId: resolvedRequestId,
       }),
       responseType: "ssh.hosts.connect.response",
@@ -5554,6 +5594,126 @@ export class DaemonClient {
       timeout: 10000,
       options: { skipQueue: true },
     });
+  }
+
+  // --- ssh.uploads.* (fork feature; gated by server_info.features.sshUploads) ---
+
+  async enqueueSshUpload(
+    input: {
+      uploadId: string;
+      hostId: string;
+      terminalId?: string;
+      destDir: string;
+      files: Array<{ id: string; relativePath: string; size: number }>;
+    },
+    requestId?: string,
+  ): Promise<SshUploadsEnqueuePayload> {
+    const resolvedRequestId = this.createRequestId(requestId);
+    return this.sendCorrelatedRequest({
+      requestId: resolvedRequestId,
+      message: SessionInboundMessageSchema.parse({
+        type: "ssh.uploads.enqueue.request",
+        uploadId: input.uploadId,
+        hostId: input.hostId,
+        ...(input.terminalId !== undefined ? { terminalId: input.terminalId } : {}),
+        destDir: input.destDir,
+        files: input.files,
+        requestId: resolvedRequestId,
+      }),
+      responseType: "ssh.uploads.enqueue.response",
+      // Enqueue may open a fresh SSH connection plus the SFTP channel.
+      timeout: 30000,
+      options: { skipQueue: true },
+    });
+  }
+
+  async listSshUploads(requestId?: string): Promise<SshUploadsListPayload> {
+    const resolvedRequestId = this.createRequestId(requestId);
+    return this.sendCorrelatedRequest({
+      requestId: resolvedRequestId,
+      message: SessionInboundMessageSchema.parse({
+        type: "ssh.uploads.list.request",
+        requestId: resolvedRequestId,
+      }),
+      responseType: "ssh.uploads.list.response",
+      timeout: 10000,
+      options: { skipQueue: true },
+    });
+  }
+
+  async cancelSshUpload(
+    input: { uploadId: string; fileIds?: string[] },
+    requestId?: string,
+  ): Promise<SshUploadsCancelPayload> {
+    const resolvedRequestId = this.createRequestId(requestId);
+    return this.sendCorrelatedRequest({
+      requestId: resolvedRequestId,
+      message: SessionInboundMessageSchema.parse({
+        type: "ssh.uploads.cancel.request",
+        uploadId: input.uploadId,
+        ...(input.fileIds !== undefined ? { fileIds: input.fileIds } : {}),
+        requestId: resolvedRequestId,
+      }),
+      responseType: "ssh.uploads.cancel.response",
+      timeout: 10000,
+      options: { skipQueue: true },
+    });
+  }
+
+  async clearSshUploads(
+    input: { uploadIds?: string[] } = {},
+    requestId?: string,
+  ): Promise<SshUploadsClearPayload> {
+    const resolvedRequestId = this.createRequestId(requestId);
+    return this.sendCorrelatedRequest({
+      requestId: resolvedRequestId,
+      message: SessionInboundMessageSchema.parse({
+        type: "ssh.uploads.clear.request",
+        ...(input.uploadIds !== undefined ? { uploadIds: input.uploadIds } : {}),
+        requestId: resolvedRequestId,
+      }),
+      responseType: "ssh.uploads.clear.response",
+      timeout: 10000,
+      options: { skipQueue: true },
+    });
+  }
+
+  // Streams one file's bytes for an enqueued SSH upload. The frame requestId
+  // routes the frames to the daemon's upload runtime; flow control is the
+  // caller's job (window on ssh.uploads.progress bytesReceived).
+  sendSshUploadFileBegin(input: { frameId: string; size: number; fileName?: string }): void {
+    this.sendBinaryFrame(
+      encodeFileTransferFrame({
+        opcode: FileTransferOpcode.FileBegin,
+        requestId: input.frameId,
+        metadata: {
+          mime: "application/octet-stream",
+          size: input.size,
+          encoding: "binary",
+          modifiedAt: new Date().toISOString(),
+          ...(input.fileName !== undefined ? { fileName: input.fileName } : {}),
+        },
+      }),
+    );
+  }
+
+  sendSshUploadFileChunk(frameId: string, payload: Uint8Array): void {
+    this.sendBinaryFrame(
+      encodeFileTransferFrame({
+        opcode: FileTransferOpcode.FileChunk,
+        requestId: frameId,
+        payload,
+      }),
+    );
+  }
+
+  sendSshUploadFileEnd(frameId: string): void {
+    this.sendBinaryFrame(
+      encodeFileTransferFrame({
+        opcode: FileTransferOpcode.FileEnd,
+        requestId: frameId,
+      }),
+    );
   }
 
   async closeItems(

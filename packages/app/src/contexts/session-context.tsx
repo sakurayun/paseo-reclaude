@@ -40,6 +40,7 @@ import { startPromptPresetsSync } from "@/stores/prompt-presets-sync";
 import { startAppearanceSettingsSync } from "@/stores/appearance-settings-sync";
 import { startModelPreferencesSync } from "@/stores/model-preferences-sync";
 import { startComposerDraftsSync } from "@/stores/composer-drafts-sync";
+import { startGrokUsageSync } from "@/provider-usage/grok-usage-sync";
 import { startReclaudeUsageSync } from "@/provider-usage/reclaude-usage-sync";
 import type { AgentSessionConfig } from "@getpaseo/protocol/agent-types";
 import type { GitSetupOptions } from "@getpaseo/protocol/messages";
@@ -623,6 +624,12 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
   // (login/logout/sync from any client) so an open usage card updates immediately.
   useEffect(() => {
     return startReclaudeUsageSync({ serverId, client });
+  }, [serverId, client]);
+
+  // Grok Build usage sync: live-apply the daemon's broadcast after any client
+  // presses "sync usage", so open usage cards update without a full list refresh.
+  useEffect(() => {
+    return startGrokUsageSync({ serverId, client });
   }, [serverId, client]);
 
   useEffect(() => {

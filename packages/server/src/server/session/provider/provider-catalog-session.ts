@@ -13,6 +13,7 @@ import type {
 } from "../../agent/agent-sdk-types.js";
 import type { ProviderAvailability } from "../../agent/agent-manager.js";
 import type { ProviderUsageService } from "../../../services/quota-fetcher/service.js";
+import type { GrokUsageService } from "../../../services/quota-fetcher/providers/grok-usage-service.js";
 import type { ReclaudeAccountService } from "../../../services/reclaude/reclaude-account-service.js";
 import { expandTilde } from "../../../utils/path.js";
 
@@ -49,6 +50,7 @@ export interface ProviderCatalogSessionOptions {
   providerSnapshotManager: ProviderSnapshotManager;
   providerUsageService: ProviderUsageService;
   reclaude: ReclaudeAccountService;
+  grokUsage: GrokUsageService;
   logger: pino.Logger;
 }
 
@@ -64,6 +66,7 @@ export class ProviderCatalogSession {
   private readonly providerSnapshotManager: ProviderSnapshotManager;
   private readonly providerUsageService: ProviderUsageService;
   private readonly reclaude: ReclaudeAccountService;
+  private readonly grokUsage: GrokUsageService;
   private readonly logger: pino.Logger;
   private unsubscribeSnapshotEvents: (() => void) | null = null;
 
@@ -72,6 +75,7 @@ export class ProviderCatalogSession {
     this.providerSnapshotManager = options.providerSnapshotManager;
     this.providerUsageService = options.providerUsageService;
     this.reclaude = options.reclaude;
+    this.grokUsage = options.grokUsage;
     this.logger = options.logger;
   }
 
@@ -575,6 +579,45 @@ export class ProviderCatalogSession {
           requestType: msg.type,
           error: err.message,
           code: "provider_reclaude_sync_failed",
+        },
+      });
+    }
+  }
+
+  async handleGrokStatusRequest(
+    msg: Extract<SessionInboundMessage, { type: "provider.grok.status.request" }>,
+  ): Promise<void> {
+    const status = await this.grokUsage.status();
+    this.host.emit({
+      type: "provider.grok.status.response",
+      payload: {
+        requestId: msg.requestId,
+        authenticated: status.authenticated,
+      },
+    });
+  }
+
+  async handleGrokSyncUsageRequest(
+    msg: Extract<SessionInboundMessage, { type: "provider.grok.sync.request" }>,
+  ): Promise<void> {
+    try {
+      // The only path that live-fetches Grok billing. Driven by the dedicated
+      // "sync usage" button (force) or the context-window meter (throttled).
+      const usage = await this.grokUsage.syncUsage({ force: msg.force === true });
+      this.host.emit({
+        type: "provider.grok.sync.response",
+        payload: { requestId: msg.requestId, usage },
+      });
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
+      this.logger.error({ err }, "Grok usage sync failed");
+      this.host.emit({
+        type: "rpc_error",
+        payload: {
+          requestId: msg.requestId,
+          requestType: msg.type,
+          error: err.message,
+          code: "provider_grok_sync_failed",
         },
       });
     }

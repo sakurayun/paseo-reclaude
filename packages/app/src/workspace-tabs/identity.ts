@@ -35,6 +35,10 @@ export function normalizeWorkspaceTabTarget(
       const terminalId = trimNonEmpty(value.terminalId);
       return terminalId ? { kind: "terminal", terminalId } : null;
     }
+    case "ssh-connecting": {
+      const connectId = trimNonEmpty(value.connectId);
+      return connectId ? { kind: "ssh-connecting", connectId } : null;
+    }
     case "browser": {
       const browserId = trimNonEmpty(value.browserId);
       return browserId ? { kind: "browser", browserId } : null;
@@ -116,6 +120,8 @@ export function workspaceTabTargetsEqual(
       );
     case "terminal":
       return right.kind === "terminal" && left.terminalId === right.terminalId;
+    case "ssh-connecting":
+      return right.kind === "ssh-connecting" && left.connectId === right.connectId;
     case "browser":
       return right.kind === "browser" && left.browserId === right.browserId;
     case "file":
@@ -179,6 +185,9 @@ export function buildDeterministicWorkspaceTabId(target: WorkspaceTabTarget): st
   }
   if (target.kind === "terminal") {
     return `terminal_${target.terminalId}`;
+  }
+  if (target.kind === "ssh-connecting") {
+    return `ssh-connecting_${target.connectId}`;
   }
   if (target.kind === "browser") {
     return `browser_${target.browserId}`;

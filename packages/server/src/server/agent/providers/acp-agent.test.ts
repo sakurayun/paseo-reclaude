@@ -692,6 +692,7 @@ describe("mapACPUsage", () => {
       inputTokens: 11,
       outputTokens: 7,
       cachedInputTokens: 5,
+      contextWindowUsedTokens: 18,
     });
   });
 });

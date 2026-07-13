@@ -22,6 +22,7 @@ import {
 } from "@/utils/terminal-keys";
 import { getWorkspaceTerminalSession } from "@/terminal/runtime/workspace-terminal-session";
 import { rememberTerminalViewportSize } from "@/terminal/runtime/terminal-size-cache";
+import { rememberMeasuredTerminalSize } from "@/terminal/runtime/last-terminal-size";
 import {
   TerminalStreamController,
   type TerminalStreamControllerStatus,
@@ -35,6 +36,11 @@ import {
   type TerminalColorSchemeId,
 } from "@/constants/terminal-color-presets";
 import TerminalEmulator, { type TerminalEmulatorHandle } from "./terminal-emulator";
+import {
+  DEFAULT_TERMINAL_FONT_SIZE,
+  type TerminalFontZoomDirection,
+} from "@/terminal/runtime/terminal-emulator-runtime";
+import { applyTerminalFontZoom, useTerminalFontZoomStore } from "@/stores/terminal-font-zoom-store";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import {
   applyTerminalRendererReadyChange,
@@ -55,6 +61,7 @@ import {
 } from "@/workspace/file-open";
 import { FindBar, usePaneFind, type PaneFindMatchState } from "@/panels/pane-find";
 import type { TerminalFindResultChangeEvent } from "@/terminal/runtime/terminal-emulator-runtime";
+import { useSshTerminalFileDrop } from "@/ssh/upload/use-ssh-terminal-file-drop";
 
 interface TerminalPaneProps {
   serverId: string;
@@ -67,6 +74,9 @@ interface TerminalPaneProps {
   // Resolve terminal file paths as daemon-local files (default). SSH terminals
   // set this false: remote paths must not be resolved against the daemon host.
   localFileLinks?: boolean;
+  // The SSH host this terminal is connected to (null for local terminals).
+  // Enables the drop paste-or-upload choice + SFTP uploads.
+  sshHostId?: string | null;
   // Pin a named terminal palette (host terminal theme) instead of the app-wide
   // setting. Null / undefined falls back to the user's terminalColorScheme.
   terminalThemeOverride?: TerminalColorSchemeId | null;
@@ -218,12 +228,29 @@ export function TerminalPane({
   onOpenFileExplorer,
   onOpenWorkspaceFile,
   localFileLinks = true,
+  sshHostId = null,
   terminalThemeOverride = null,
 }: TerminalPaneProps) {
   const { t } = useTranslation();
   const isAppVisible = useAppVisible();
   const { theme } = useUnistyles();
   const { settings } = useAppSettings();
+  // Device-local zoom (Ctrl+± / Ctrl+wheel) layered over the codeFontSize
+  // setting; shared by every terminal pane on this device.
+  const terminalFontZoomDelta = useTerminalFontZoomStore((state) => state.fontSizeDelta);
+  const baseTerminalFontSize = settings.codeFontSize ?? DEFAULT_TERMINAL_FONT_SIZE;
+  const terminalFontSize = applyTerminalFontZoom(baseTerminalFontSize, terminalFontZoomDelta);
+  const handleFontZoom = useCallback(
+    (input: { direction: TerminalFontZoomDirection }) => {
+      const zoomStore = useTerminalFontZoomStore.getState();
+      if (input.direction === "reset") {
+        zoomStore.resetZoom();
+        return;
+      }
+      zoomStore.zoomBy(input.direction === "in" ? 1 : -1, baseTerminalFontSize);
+    },
+    [baseTerminalFontSize],
+  );
   // The terminal palette follows the app theme by default, but the user can pin
   // a named scheme (e.g. High Contrast) to stay legible against oh-my-zsh and
   // other shell prompts. `terminalColorScheme` must be a dep: when only the
@@ -773,6 +800,15 @@ export function TerminalPane({
     ],
   );
 
+  // SSH terminals intercept file drops with a paste-or-upload choice sheet;
+  // local terminals (hostId null) keep the default paste-paths behavior.
+  const sshFileDrop = useSshTerminalFileDrop({
+    serverId,
+    terminalId,
+    hostId: sshHostId,
+    pasteToTerminal: handleTerminalData,
+  });
+
   const handleTerminalResize = useStableEvent(
     (input: { rows: number; cols: number; shouldClaim: boolean }) => {
       const { rows, cols } = input;
@@ -786,6 +822,7 @@ export function TerminalPane({
       // Seed future terminals in this workspace with the current pane size so they are born at
       // the right size instead of the daemon's 80x24 default (see terminal-size-cache).
       rememberTerminalViewportSize({ serverId, cwd, size: nextSize });
+      rememberMeasuredTerminalSize(nextSize);
       // Once this pane has claimed the terminal size, keep pushing follow-up
       // measurements even from unclaimed refits (font loads shift cols), or
       // the daemon/remote pty drifts from what this pane renders.
@@ -948,7 +985,7 @@ export function TerminalPane({
               xtermTheme={xtermTheme}
               scrollbackLines={settings.terminalScrollbackLines}
               fontFamily={terminalFontFamily}
-              fontSize={settings.codeFontSize}
+              fontSize={terminalFontSize}
               letterSpacing={settings.terminalLetterSpacing}
               ligaturesEnabled={settings.terminalLigaturesEnabled}
               swipeGesturesEnabled={swipeGesturesEnabled}
@@ -961,6 +998,8 @@ export function TerminalPane({
               onResize={handleTerminalResize}
               onTerminalKey={handleTerminalKey}
               onInputModeChange={handleInputModeChange}
+              onFontZoom={handleFontZoom}
+              onFileDrop={sshFileDrop.onFileDrop}
               onResolveLocalFileLink={localFileLinks ? handleResolveLocalFileLink : undefined}
               onOpenLocalFileLink={localFileLinks ? handleOpenLocalFileLink : undefined}
               onPendingModifiersConsumed={handlePendingModifiersConsumed}
@@ -987,6 +1026,8 @@ export function TerminalPane({
           </Text>
         </View>
       ) : null}
+
+      {sshFileDrop.sheet}
 
       {isMobile ? (
         <View style={styles.keyboardContainer} testID="terminal-virtual-keyboard">

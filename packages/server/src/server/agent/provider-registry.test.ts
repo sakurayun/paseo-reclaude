@@ -28,6 +28,11 @@ const mockState = vi.hoisted(() => {
         env?: Record<string, string>;
         providerParams?: unknown;
       }>,
+      grok: [] as Array<{
+        command: string[];
+        env?: Record<string, string>;
+        providerParams?: unknown;
+      }>,
       trae: [] as Array<{
         command: string[];
         env?: Record<string, string>;
@@ -51,6 +56,7 @@ const mockState = vi.hoisted(() => {
       this.constructorArgs.codex = [];
       this.constructorArgs.copilot = [];
       this.constructorArgs.cursor = [];
+      this.constructorArgs.grok = [];
       this.constructorArgs.trae = [];
       this.constructorArgs.pi = [];
       this.constructorArgs.genericAcp = [];
@@ -446,6 +452,59 @@ vi.mock("./providers/cursor-acp-agent.js", () => ({
   },
 }));
 
+vi.mock("./providers/grok-acp-agent.js", () => ({
+  GrokACPAgentClient: class GrokACPAgentClient {
+    readonly capabilities = {
+      supportsStreaming: true,
+      supportsSessionPersistence: true,
+      supportsDynamicModes: true,
+      supportsMcpServers: true,
+      supportsReasoningStream: true,
+      supportsToolInvocations: true,
+    };
+    readonly provider = "grok";
+    readonly runtimeSettings?: unknown;
+
+    constructor(options: {
+      command: string[];
+      env?: Record<string, string>;
+      providerParams?: unknown;
+    }) {
+      this.runtimeSettings = {
+        command: {
+          mode: "replace",
+          argv: options.command,
+        },
+        env: options.env,
+      };
+      mockState.constructorArgs.grok.push({
+        command: options.command,
+        env: options.env,
+        providerParams: options.providerParams,
+      });
+    }
+
+    async createSession(): Promise<never> {
+      throw new Error("not implemented");
+    }
+
+    async resumeSession(): Promise<never> {
+      throw new Error("not implemented");
+    }
+
+    async isAvailable(): Promise<boolean> {
+      return true;
+    }
+
+    async fetchCatalog(): Promise<ProviderCatalog> {
+      return {
+        models: mockState.runtimeModels.get(this.provider) ?? [],
+        modes: [],
+      };
+    }
+  },
+}));
+
 vi.mock("./providers/trae-acp-agent.js", () => ({
   TraeACPAgentClient: class TraeACPAgentClient {
     readonly capabilities = {
@@ -787,6 +846,25 @@ test("cursor provider extending acp uses CursorACPAgentClient", () => {
       providerParams: undefined,
     },
   ]);
+  expect(mockState.constructorArgs.genericAcp).toEqual([]);
+});
+
+test("grok provider extending acp uses GrokACPAgentClient", () => {
+  const registry = buildProviderRegistry(logger, {
+    providerOverrides: {
+      grok: {
+        extends: "acp",
+        label: "Grok",
+        command: ["grok", "agent", "stdio"],
+      },
+    },
+  });
+
+  expect(registry.grok.createClient(logger).provider).toBe("grok");
+  expect(mockState.constructorArgs.grok.length).toBeGreaterThan(0);
+  expect(mockState.constructorArgs.grok[0]).toMatchObject({
+    command: ["grok", "agent", "stdio"],
+  });
   expect(mockState.constructorArgs.genericAcp).toEqual([]);
 });
 

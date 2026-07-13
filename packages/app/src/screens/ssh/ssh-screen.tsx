@@ -14,7 +14,6 @@ import { parseServerIdFromPathname } from "@/utils/host-routes";
 import { useSshHosts } from "@/screens/ssh/use-ssh-hosts";
 import { useSshKeys } from "@/screens/ssh/use-ssh-keys";
 import { useConnectSshHost } from "@/screens/ssh/use-connect-ssh-host";
-import { SshFingerprintMismatchDialog } from "@/components/ssh/ssh-fingerprint-mismatch-dialog";
 import { SshHostsSection } from "@/screens/ssh/ssh-hosts-section";
 import { SshKeychainSection } from "@/screens/ssh/ssh-keychain-section";
 import { SshForwardsSection } from "@/screens/ssh/ssh-forwards-section";
@@ -49,16 +48,13 @@ export function SshScreen() {
     isSaving,
   } = useSshHosts(serverId);
   const { keys } = useSshKeys(serverId);
-  const { connectHost, connectingHostId, mismatch, trustAndReconnect, closeMismatch } =
-    useConnectSshHost(serverId);
+  const { connectHost } = useConnectSshHost(serverId);
   const [formRequest, setFormRequest] = useState<SshHostFormRequest | null>(null);
 
   const chainCandidates = useMemo(
     () => sshHosts.map((host) => ({ id: host.id, label: host.label || host.address })),
     [sshHosts],
   );
-
-  const trustAndReconnectPress = useCallback(() => void trustAndReconnect(), [trustAndReconnect]);
 
   const editHost = useCallback(
     (hostId: string) => {
@@ -108,7 +104,7 @@ export function SshScreen() {
           serverId={serverId}
           hosts={sshHosts}
           isLoading={isLoading}
-          connectingHostId={connectingHostId}
+          connectingHostId={null}
           onConnect={connectHost}
           onEdit={editHost}
         />
@@ -121,12 +117,6 @@ export function SshScreen() {
         isSaving={isSaving}
         onSubmit={submitForm}
         onClose={closeForm}
-      />
-      <SshFingerprintMismatchDialog
-        observedKey={mismatch?.key ?? null}
-        isBusy={connectingHostId !== null}
-        onTrust={trustAndReconnectPress}
-        onClose={closeMismatch}
       />
     </View>
   );

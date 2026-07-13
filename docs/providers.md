@@ -103,6 +103,8 @@ Keep the protocol shape provider-agnostic. Do not add provider-specific renderer
 
 Kimi Code usage follows the CLI-managed credential file at `KIMI_CODE_HOME` or `~/.kimi-code/credentials/kimi-code.json`; do not probe the legacy `~/.kimi` path as the primary source for current Kimi Code installs.
 
+Grok Build usage reads credentials from `~/.grok/auth.json` (OIDC session tokens under `issuer::clientId` → `{ key, expires_at, … }`, plus the legacy flat `access_token` shape) and falls back to `XAI_API_KEY` / `GROK_API_KEY` / `GROK_TOKEN`. Billing is `GET https://cli-chat-proxy.grok.com/v1/billing` with `Authorization: Bearer <token>` and `X-XAI-Token-Auth: xai-grok-cli`. Normalize `config.monthlyLimit.val` + `config.used.val` (and the older `usage.creditUsage`) into generic monthly windows/balances — do not add Grok-specific UI branches.
+
 ---
 
 ## ACP Provider Checklist

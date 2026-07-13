@@ -64,6 +64,24 @@ export interface TerminalEmulatorRuntimeCallbacks {
     disposition: "main" | "side",
   ) => Promise<void> | void;
   onInputModeChange?: (state: TerminalInputModeState) => Promise<void> | void;
+  onFontZoom?: (input: { direction: TerminalFontZoomDirection }) => Promise<void> | void;
+}
+
+export type TerminalFontZoomDirection = "in" | "out" | "reset";
+
+// Ctrl+'=' counts as zoom-in ('+' needs Shift on most layouts); Ctrl+Shift+'-'
+// ('_') is deliberately NOT zoom-out — that chord is readline's undo (C-_).
+function resolveFontZoomDirection(event: KeyboardEvent): TerminalFontZoomDirection | null {
+  if (event.code === "NumpadAdd" || event.key === "+" || event.key === "=") {
+    return "in";
+  }
+  if (event.code === "NumpadSubtract" || event.key === "-") {
+    return "out";
+  }
+  if (event.code === "Numpad0" || event.key === "0") {
+    return "reset";
+  }
+  return null;
 }
 
 export type TerminalFindResultChangeEvent = ISearchResultChangeEvent;
@@ -75,6 +93,7 @@ export interface TerminalFindQueryInput {
 interface TerminalEmulatorRuntimeDisposables {
   disposeInput: () => void;
   disconnectResizeObserver: () => void;
+  removeWheelZoomListener: () => void;
   removeWindowResize: () => void;
   removeWindowFocus: () => void;
   removeDocumentVisibilityChange: () => void;
@@ -118,7 +137,7 @@ const isAppleHandheld =
   });
 
 const DEFAULT_TOUCH_SCROLL_LINE_HEIGHT_PX = 18;
-const DEFAULT_TERMINAL_FONT_SIZE = 13;
+export const DEFAULT_TERMINAL_FONT_SIZE = 13;
 const FIT_TIMEOUT_DELAYS_MS = [0, 16, 48, 120, 250, 500, 1_000, 2_000];
 const OUTPUT_OPERATION_TIMEOUT_MS = 5_000;
 const EMPTY_TERMINAL_OUTPUT = new Uint8Array(0);
@@ -457,6 +476,10 @@ export class TerminalEmulatorRuntime {
         return true;
       }
 
+      if (this.handleFontZoomChord(event)) {
+        return false;
+      }
+
       if (!isMac && event.ctrlKey && !event.shiftKey && !event.altKey && !event.metaKey) {
         const key = event.key.toLowerCase();
 
@@ -533,6 +556,29 @@ export class TerminalEmulatorRuntime {
     resizeObserver.observe(input.root);
     resizeObserver.observe(input.host);
 
+    // Ctrl+wheel (macOS pinch also arrives as ctrl+wheel) zooms the font.
+    // Capture phase so xterm's own wheel scrolling never sees the gesture;
+    // the accumulator turns fine-grained trackpad deltas into whole steps.
+    const WHEEL_ZOOM_STEP = 40;
+    let wheelZoomAccumulator = 0;
+    const wheelZoomHandler = (event: WheelEvent): void => {
+      if (!event.ctrlKey || event.altKey || event.metaKey) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      wheelZoomAccumulator += event.deltaY;
+      while (wheelZoomAccumulator <= -WHEEL_ZOOM_STEP) {
+        wheelZoomAccumulator += WHEEL_ZOOM_STEP;
+        void this.callbacks.onFontZoom?.({ direction: "in" });
+      }
+      while (wheelZoomAccumulator >= WHEEL_ZOOM_STEP) {
+        wheelZoomAccumulator -= WHEEL_ZOOM_STEP;
+        void this.callbacks.onFontZoom?.({ direction: "out" });
+      }
+    };
+    input.root.addEventListener("wheel", wheelZoomHandler, { passive: false, capture: true });
+
     const windowResizeHandler = () => fitAndEmitResize({ shouldClaim: true });
     window.addEventListener("resize", windowResizeHandler);
     const windowFocusHandler = () => {
@@ -587,6 +633,9 @@ export class TerminalEmulatorRuntime {
       disconnectResizeObserver: () => {
         resizeObserver.disconnect();
       },
+      removeWheelZoomListener: () => {
+        input.root.removeEventListener("wheel", wheelZoomHandler, { capture: true });
+      },
       removeWindowResize: () => {
         window.removeEventListener("resize", windowResizeHandler);
       },
@@ -630,6 +679,7 @@ export class TerminalEmulatorRuntime {
     this.cleanup = () => {
       disposables.disposeInput();
       disposables.disconnectResizeObserver();
+      disposables.removeWheelZoomListener();
       disposables.removeWindowResize();
       disposables.removeWindowFocus();
       disposables.removeDocumentVisibilityChange();
@@ -858,6 +908,23 @@ export class TerminalEmulatorRuntime {
   // fallback metrics stick and every glyph sits in an oversized cell (reads as huge
   // letter spacing). Nudge fontFamily through a sentinel and back to force a re-measure
   // with the now-loaded font.
+  // Ctrl + +/-/0 zooms the terminal font. Shift stays allowed so layouts where
+  // '+' is Shift+'=' work; the chord is swallowed before xterm would forward
+  // it to the shell. Returns true when the event was consumed.
+  private handleFontZoomChord(event: KeyboardEvent): boolean {
+    if (!event.ctrlKey || event.altKey || event.metaKey) {
+      return false;
+    }
+    const zoomDirection = resolveFontZoomDirection(event);
+    if (!zoomDirection) {
+      return false;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    void this.callbacks.onFontZoom?.({ direction: zoomDirection });
+    return true;
+  }
+
   private remeasureFontMetrics(): void {
     const terminal = this.terminal;
     if (!terminal) {

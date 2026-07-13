@@ -1,5 +1,5 @@
 import { useCallback, useMemo } from "react";
-import { Pressable, ScrollView, Text, View, type PressableStateCallbackType } from "react-native";
+import { ScrollView, Text, View, type PressableStateCallbackType } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { useRouter, usePathname } from "expo-router";
 import {
@@ -13,10 +13,21 @@ import {
 import { useTranslation } from "react-i18next";
 import { SidebarHeaderRow } from "@/components/sidebar/sidebar-header-row";
 import { OsBadge } from "@/components/ssh/os-badge";
-import { SshFingerprintMismatchDialog } from "@/components/ssh/ssh-fingerprint-mismatch-dialog";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
 import { useSshHosts } from "@/screens/ssh/use-ssh-hosts";
 import { useConnectSshHost } from "@/screens/ssh/use-connect-ssh-host";
 import { buildSshRoute, type SshSection } from "@/screens/ssh/ssh-navigation";
+import { useHostTerminals } from "@/hooks/use-host-terminals";
+import { useSshTerminalMetaStore } from "@/stores/ssh-terminal-meta-store";
+import { useSessionStore } from "@/stores/session-store";
+import { useToast } from "@/contexts/toast-context";
+import { confirmDialog } from "@/utils/confirm-dialog";
+import { toErrorMessage } from "@/utils/error-messages";
 import type { Theme } from "@/styles/theme";
 
 interface SidebarSshListProps {
@@ -45,8 +56,10 @@ export function SidebarSshList({ serverId, onNavigate }: SidebarSshListProps) {
   const router = useRouter();
   const pathname = usePathname();
   const { hosts } = useSshHosts(serverId);
-  const { connectHost, mismatch, trustAndReconnect, closeMismatch, connectingHostId } =
-    useConnectSshHost(serverId);
+  const { connectHost } = useConnectSshHost(serverId);
+  const { terminals } = useHostTerminals(serverId);
+  const metaByTerminalId = useSshTerminalMetaStore((state) => state.metaByTerminalId);
+  const toast = useToast();
 
   const activeSection = useMemo<SshSection | null>(() => {
     if (!pathname.startsWith("/ssh")) {
@@ -65,66 +78,96 @@ export function SidebarSshList({ serverId, onNavigate }: SidebarSshListProps) {
     [router, onNavigate],
   );
 
-  // Tapping a host connects and opens its terminal as a workspace tab (which
-  // navigates to that workspace) — no detour through the /ssh page.
+  // Tapping a host opens a connecting tab (which navigates to its workspace) —
+  // no detour through the /ssh page.
   const handleConnect = useCallback(
     (hostId: string) => {
-      void connectHost(hostId);
+      connectHost(hostId);
       onNavigate?.();
     },
     [connectHost, onNavigate],
   );
-  const trustAndReconnectPress = useCallback(() => void trustAndReconnect(), [trustAndReconnect]);
+  // Right-click "new tab & connect": always start a fresh connect/tab.
+  const handleNewTabConnect = useCallback(
+    (hostId: string) => {
+      connectHost(hostId, { force: true });
+      onNavigate?.();
+    },
+    [connectHost, onNavigate],
+  );
+  // Right-click "close all SSH shells": kill every live SSH terminal on this
+  // daemon (across hosts and workspaces), after a destructive confirmation.
+  const handleCloseAllShells = useCallback(async () => {
+    const sshTerminals = terminals.filter(
+      (terminal) => metaByTerminalId[terminal.id] && terminal.status !== "exited",
+    );
+    if (sshTerminals.length === 0) {
+      return;
+    }
+    const confirmed = await confirmDialog({
+      title: t("ssh.hosts.menu.closeAllShellsTitle"),
+      message: t("ssh.hosts.menu.closeAllShellsMessage", { count: sshTerminals.length }),
+      confirmLabel: t("workspace.tabs.confirmations.close"),
+      cancelLabel: t("workspace.tabs.confirmations.cancel"),
+      destructive: true,
+    });
+    if (!confirmed) {
+      return;
+    }
+    const client = serverId
+      ? (useSessionStore.getState().sessions[serverId]?.client ?? null)
+      : null;
+    if (!client) {
+      return;
+    }
+    const results = await Promise.allSettled(
+      sshTerminals.map((terminal) => client.killTerminal(terminal.id)),
+    );
+    const failed = results.filter((result) => result.status === "rejected");
+    if (failed.length > 0) {
+      const reason = (failed[0] as PromiseRejectedResult).reason;
+      toast.error(toErrorMessage(reason));
+    }
+  }, [metaByTerminalId, serverId, t, terminals, toast]);
 
   return (
-    <>
-      <ScrollView
-        style={styles.container}
-        contentContainerStyle={styles.content}
-        showsVerticalScrollIndicator={false}
-      >
-        <View style={styles.sectionGroup}>
-          {SECTION_ENTRIES.map((entry) => (
-            <SshSectionRow
-              key={entry.section}
-              entry={entry}
-              label={t(entry.labelKey)}
-              isActive={entry.section === "hosts" && activeSection === "hosts"}
-              onSelect={openSection}
-            />
-          ))}
-        </View>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={styles.content}
+      showsVerticalScrollIndicator={false}
+    >
+      <View style={styles.sectionGroup}>
+        {SECTION_ENTRIES.map((entry) => (
+          <SshSectionRow
+            key={entry.section}
+            entry={entry}
+            label={t(entry.labelKey)}
+            isActive={entry.section === "hosts" && activeSection === "hosts"}
+            onSelect={openSection}
+          />
+        ))}
+      </View>
 
-        <View style={styles.hostList}>
-          <Text style={styles.hostListHeader}>{t("ssh.sections.hosts")}</Text>
-          {hosts.length === 0 ? (
-            <Text style={styles.emptyLabel}>{t("ssh.hosts.empty")}</Text>
-          ) : (
-            hosts.map((host) => {
-              const isConnecting = connectingHostId === host.id;
-              const subtitle = host.username ? `${host.username}@${host.address}` : host.address;
-              return (
-                <SshHostRow
-                  key={host.id}
-                  hostId={host.id}
-                  label={host.label || host.address}
-                  subtitle={isConnecting ? t("ssh.hosts.connecting") : subtitle}
-                  os={host.platform?.os ?? null}
-                  isConnecting={isConnecting}
-                  onConnect={handleConnect}
-                />
-              );
-            })
-          )}
-        </View>
-      </ScrollView>
-      <SshFingerprintMismatchDialog
-        observedKey={mismatch?.key ?? null}
-        isBusy={connectingHostId !== null}
-        onTrust={trustAndReconnectPress}
-        onClose={closeMismatch}
-      />
-    </>
+      <View style={styles.hostList}>
+        <Text style={styles.hostListHeader}>{t("ssh.sections.hosts")}</Text>
+        {hosts.length === 0 ? (
+          <Text style={styles.emptyLabel}>{t("ssh.hosts.empty")}</Text>
+        ) : (
+          hosts.map((host) => (
+            <SshHostRow
+              key={host.id}
+              hostId={host.id}
+              label={host.label || host.address}
+              subtitle={host.username ? `${host.username}@${host.address}` : host.address}
+              os={host.platform?.os ?? null}
+              onConnect={handleConnect}
+              onNewTabConnect={handleNewTabConnect}
+              onCloseAllShells={handleCloseAllShells}
+            />
+          ))
+        )}
+      </View>
+    </ScrollView>
   );
 }
 
@@ -157,17 +200,21 @@ function SshHostRow({
   label,
   subtitle,
   os,
-  isConnecting,
   onConnect,
+  onNewTabConnect,
+  onCloseAllShells,
 }: {
   hostId: string;
   label: string;
   subtitle: string;
   os: string | null;
-  isConnecting: boolean;
   onConnect: (hostId: string) => void;
+  onNewTabConnect: (hostId: string) => void;
+  onCloseAllShells: () => void;
 }) {
+  const { t } = useTranslation();
   const handlePress = useCallback(() => onConnect(hostId), [onConnect, hostId]);
+  const handleNewTab = useCallback(() => onNewTabConnect(hostId), [onNewTabConnect, hostId]);
   const rowStyle = useCallback(
     ({ hovered, pressed }: PressableStateCallbackType & { hovered?: boolean }) => [
       styles.hostRow,
@@ -177,23 +224,45 @@ function SshHostRow({
   );
 
   return (
-    <Pressable
-      style={rowStyle}
-      onPress={handlePress}
-      disabled={isConnecting}
-      accessibilityRole="button"
-      accessibilityLabel={label}
-    >
-      <OsBadge os={os} size={28} />
-      <View style={styles.hostText}>
-        <Text style={styles.hostLabel} numberOfLines={1}>
-          {label}
-        </Text>
-        <Text style={styles.hostSubtitle} numberOfLines={1}>
-          {subtitle}
-        </Text>
-      </View>
-    </Pressable>
+    <ContextMenu>
+      <ContextMenuTrigger
+        style={rowStyle}
+        onPress={handlePress}
+        accessibilityRole="button"
+        accessibilityLabel={label}
+        testID={`sidebar-ssh-host-${hostId}`}
+      >
+        <OsBadge os={os} size={28} />
+        <View style={styles.hostText}>
+          <Text style={styles.hostLabel} numberOfLines={1}>
+            {label}
+          </Text>
+          <Text style={styles.hostSubtitle} numberOfLines={1}>
+            {subtitle}
+          </Text>
+        </View>
+      </ContextMenuTrigger>
+      <ContextMenuContent
+        align="start"
+        width={220}
+        mobileMode="sheet"
+        testID={`sidebar-ssh-host-context-${hostId}`}
+      >
+        <ContextMenuItem
+          testID={`sidebar-ssh-host-context-${hostId}-new-tab`}
+          onSelect={handleNewTab}
+        >
+          {t("ssh.hosts.menu.newTabConnect")}
+        </ContextMenuItem>
+        <ContextMenuItem
+          testID={`sidebar-ssh-host-context-${hostId}-close-all`}
+          destructive
+          onSelect={onCloseAllShells}
+        >
+          {t("ssh.hosts.menu.closeAllShells")}
+        </ContextMenuItem>
+      </ContextMenuContent>
+    </ContextMenu>
   );
 }
 

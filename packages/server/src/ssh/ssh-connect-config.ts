@@ -21,6 +21,14 @@ export interface ResolveConnectConfigDeps {
   ) => Promise<Duplex>;
 }
 
+export interface ConnectAttemptOptions {
+  // One-time password for this attempt (inline retry), taking precedence over
+  // the stored secret. Never persisted here.
+  passwordOverride?: string;
+  // Receives ssh2 handshake debug lines so the connecting tab can stream them.
+  onDebug?: (line: string) => void;
+}
+
 export interface HostKeyMismatch {
   host: string;
   port: number;
@@ -49,6 +57,7 @@ const DEFAULT_PORT = 22;
 export async function resolveSsh2ConnectConfig(
   host: SshHostInfo,
   deps: ResolveConnectConfigDeps,
+  options: ConnectAttemptOptions = {},
 ): Promise<ResolvedConnectConfig> {
   const port = host.port ?? DEFAULT_PORT;
   let mismatch: HostKeyMismatch | null = null;
@@ -56,6 +65,7 @@ export async function resolveSsh2ConnectConfig(
   const config: ConnectConfig = {
     host: host.address,
     port,
+    ...(options.onDebug ? { debug: options.onDebug } : {}),
     ...(host.username !== undefined ? { username: host.username } : {}),
     // We enforce TOFU ourselves; keep ssh2 from also rejecting.
     hostVerifier: (key: Buffer): boolean => {
@@ -79,7 +89,7 @@ export async function resolveSsh2ConnectConfig(
     },
   };
 
-  applyCredentials(config, host, deps.hostStore, deps.keyStore);
+  applyCredentials(config, host, deps.hostStore, deps.keyStore, options.passwordOverride);
 
   const sock = await buildProxySock(host, deps);
   if (sock) {
@@ -104,6 +114,7 @@ function applyCredentials(
   host: SshHostInfo,
   hostStore: SshHostStore,
   keyStore: SshKeyStore,
+  passwordOverride?: string,
 ): void {
   if (host.useAgent) {
     const agentSock =
@@ -126,6 +137,11 @@ function applyCredentials(
     }
   }
 
+  // Inline-retry password wins over the stored secret for this attempt.
+  if (passwordOverride !== undefined) {
+    config.password = passwordOverride;
+    return;
+  }
   const secrets = hostStore.getSecrets(host.id);
   if (secrets.password !== undefined) {
     config.password = secrets.password;

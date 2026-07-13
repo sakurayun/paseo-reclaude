@@ -3,6 +3,8 @@ import { z } from "zod";
 
 import type { AgentCapabilityFlags } from "../agent-sdk-types.js";
 import { checkProviderLaunchAvailable, resolveProviderLaunch } from "../provider-launch-config.js";
+import type { ClientSideConnection } from "@agentclientprotocol/sdk";
+import type { AgentModelDefinition } from "../agent-sdk-types.js";
 import {
   ACPAgentClient,
   type ACPClientCapabilityMeta,
@@ -51,6 +53,13 @@ interface GenericACPAgentClientOptions {
   clientCapabilityMeta?: ACPClientCapabilityMeta;
   configFeatureOptions?: ACPConfigFeatureOption[];
   extensionCommandsParser?: ACPExtensionCommandsParser;
+  authenticateMethodId?: string;
+  modelTransformer?: (models: AgentModelDefinition[]) => AgentModelDefinition[];
+  thinkingOptionWriter?: (
+    connection: ClientSideConnection,
+    sessionId: string,
+    thinkingOptionId: string,
+  ) => Promise<void>;
 }
 
 export class GenericACPAgentClient extends ACPAgentClient {
@@ -75,6 +84,9 @@ export class GenericACPAgentClient extends ACPAgentClient {
       clientCapabilityMeta: options.clientCapabilityMeta,
       configFeatureOptions: options.configFeatureOptions,
       extensionCommandsParser: options.extensionCommandsParser,
+      authenticateMethodId: options.authenticateMethodId,
+      modelTransformer: options.modelTransformer,
+      thinkingOptionWriter: options.thinkingOptionWriter,
     });
 
     this.command = options.command;

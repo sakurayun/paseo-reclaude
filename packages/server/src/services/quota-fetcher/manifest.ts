@@ -44,7 +44,9 @@ export const PROVIDER_USAGE_FETCHERS: readonly ProviderUsageFetcherManifestEntry
   },
   {
     providerId: "grok",
-    create: (options) => new GrokQuotaProvider({ logger: options.logger, fetch: options.fetch }),
+    create: (options) =>
+      options.grokUsage?.asCachedFetcher() ??
+      new GrokQuotaProvider({ logger: options.logger, fetch: options.fetch }),
   },
   {
     providerId: "kimi",

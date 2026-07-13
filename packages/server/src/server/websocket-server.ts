@@ -25,6 +25,7 @@ import {
   type ReclaudeCredentialsStore,
 } from "./reclaude-credentials-store.js";
 import { ReclaudeAccountService } from "../services/reclaude/reclaude-account-service.js";
+import { GrokUsageService } from "../services/quota-fetcher/providers/grok-usage-service.js";
 import type { ScheduleService } from "./schedule/service.js";
 import type { CheckoutDiffManager, CheckoutDiffMetrics } from "./checkout-diff-manager.js";
 import type { DaemonConfigStore, MutableDaemonConfig } from "./daemon-config-store.js";
@@ -37,6 +38,7 @@ import {
   type ModelPreferencesEnvelope,
   type ComposerDraftsEnvelope,
   type ReclaudeUsageChangedMessage,
+  type GrokUsageChangedMessage,
   type WSHelloMessage,
   type WSInboundMessage,
   WSInboundMessageSchema,
@@ -499,6 +501,7 @@ export class VoiceAssistantWebSocketServer {
   private readonly providerUsageService: ProviderUsageService;
   private readonly reclaudeCredentialsStore: ReclaudeCredentialsStore;
   private readonly reclaudeAccountService: ReclaudeAccountService;
+  private readonly grokUsageService: GrokUsageService;
   private unsubscribeTerminalActivity: (() => void) | null = null;
   private readonly browserToolsBroker: BrowserToolsBroker | null;
   private readonly browserToolsRegistrations = new Map<string, BrowserToolsRegistration>();
@@ -678,9 +681,16 @@ export class VoiceAssistantWebSocketServer {
       logger: this.logger,
     });
 
+    // Grok Build usage: in-memory cache + manual sync. List refresh never hits
+    // the billing API; only provider.grok.sync does (mirrors ReClaude).
+    this.grokUsageService = new GrokUsageService({
+      logger: this.logger,
+    });
+
     this.providerUsageService = new ProviderUsageService({
       logger: this.logger,
       reclaude: this.reclaudeAccountService,
+      grokUsage: this.grokUsageService,
     });
 
     // Fan reclaude auth/usage changes (login/logout/sync from any client) out to
@@ -688,6 +698,10 @@ export class VoiceAssistantWebSocketServer {
     // daemon-shared; this only broadcasts the derived status + usage, never the cookie.
     this.reclaudeAccountService.onChange((payload) => {
       this.broadcastReclaudeChanged(payload);
+    });
+
+    this.grokUsageService.onChange((payload) => {
+      this.broadcastGrokChanged(payload);
     });
 
     this.wss = this.createWebSocketServer(server, wsConfig, auth);
@@ -1211,6 +1225,7 @@ export class VoiceAssistantWebSocketServer {
       providerSnapshotManager: this.providerSnapshotManager,
       providerUsageService: this.providerUsageService,
       reclaude: this.reclaudeAccountService,
+      grokUsage: this.grokUsageService,
       serviceProxy: this.serviceProxy ?? undefined,
       scriptRuntimeStore: this.scriptRuntimeStore ?? undefined,
       workspaceSetupSnapshots: this.workspaceSetupSnapshots,
@@ -1430,6 +1445,8 @@ export class VoiceAssistantWebSocketServer {
         portForward: true,
         // COMPAT(sshHosts): fork feature, added in v0.1.124.
         sshHosts: this.sshManager != null,
+        // COMPAT(sshUploads): fork feature, added in v0.1.125.
+        sshUploads: this.sshManager?.uploadRuntime != null,
         // COMPAT(workspaceLayoutSync): added in v0.1.101, remove gate after 2026-12-17.
         workspaceLayoutSync: true,
         // COMPAT(sessionContentSearch): added in v0.1.102, remove gate after 2026-12-17.
@@ -1456,6 +1473,10 @@ export class VoiceAssistantWebSocketServer {
         reclaudeUsage: true,
         // COMPAT(reclaudeUsageBroadcast): added in v0.1.108, remove gate after 2026-12-23.
         reclaudeUsageBroadcast: true,
+        // COMPAT(grokUsageSync): added in v0.1.125, remove gate after 2027-01-13.
+        grokUsageSync: true,
+        // COMPAT(grokUsageBroadcast): added in v0.1.125, remove gate after 2027-01-13.
+        grokUsageBroadcast: true,
         // COMPAT(agentDetach): added in v0.1.98, remove gate after 2026-12-19 once daemon floor >= v0.1.98.
         agentDetach: true,
         // COMPAT(daemonDiagnostics): added in v0.1.100, remove gate after 2026-12-25 once daemon floor >= v0.1.100.
@@ -2238,6 +2259,13 @@ export class VoiceAssistantWebSocketServer {
   // not a specific connection, and re-applying the same status/usage is idempotent).
   private broadcastReclaudeChanged(payload: ReclaudeUsageChangedMessage["payload"]): void {
     const message = wrapSessionMessage({ type: "provider.reclaude.changed", payload });
+    for (const [ws] of this.sessions) {
+      this.sendToClient(ws, message);
+    }
+  }
+
+  private broadcastGrokChanged(payload: GrokUsageChangedMessage["payload"]): void {
+    const message = wrapSessionMessage({ type: "provider.grok.changed", payload });
     for (const [ws] of this.sessions) {
       this.sendToClient(ws, message);
     }
