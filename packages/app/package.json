@@ -135,6 +135,7 @@
     "@xterm/headless": "^6.1.0-beta.213",
     "dotenv": "^17.2.3",
     "esbuild": "^0.27.3",
+    "@expo/config-plugins": "~54.0.4",
     "eslint": "^9.25.0",
     "eslint-config-expo": "~10.0.0",
     "expo-gradle-jvmargs": "^1.1.2",
