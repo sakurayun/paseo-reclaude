@@ -752,6 +752,9 @@ function GroupColorMenuItem({
 /**
  * Solid color control for a tab group: click toggles collapse; right-click
  * renames / recolors. Owns its own width in the tab row (not nested in a tab).
+ *
+ * Renders a single interactive surface (never a Pressable inside a drag shell
+ * or ContextMenuTrigger) so web does not hydrate nested button elements.
  */
 function GroupColorSquare({
   color,
@@ -763,6 +766,7 @@ function GroupColorSquare({
   onUngroup,
   accessibilityLabel,
   testID,
+  dragHandleProps,
 }: {
   color: string;
   title: string;
@@ -773,6 +777,8 @@ function GroupColorSquare({
   onUngroup?: () => void;
   accessibilityLabel: string;
   testID?: string;
+  /** Optional dnd-kit handle — applied to the same pressable (no outer button shell). */
+  dragHandleProps?: DraggableListDragHandleProps;
 }) {
   const { t } = useTranslation();
   const squareStyle = useMemo(
@@ -788,7 +794,53 @@ function GroupColorSquare({
     [onPress],
   );
 
-  const square = (
+  const label = (
+    <Text style={groupStyles.groupColorSquareLabel} numberOfLines={1} ellipsizeMode="tail">
+      {title}
+    </Text>
+  );
+
+  // One pressable only: collapse/expand + optional drag handle + optional context menu.
+  // ContextMenuTrigger is itself a Pressable — do not nest another Pressable inside it.
+  const hasMenu = Boolean(onRename || onSetColor || onUngroup);
+  if (hasMenu) {
+    return (
+      <ContextMenu>
+        <ContextMenuTrigger
+          enabledOnMobile={false}
+          onPress={handlePress}
+          hitSlop={collapsed ? 0 : 2}
+          accessibilityRole="button"
+          accessibilityLabel={accessibilityLabel}
+          testID={testID}
+          style={squareStyle}
+          {...(dragHandleProps?.attributes as object | undefined)}
+          {...(dragHandleProps?.listeners as object | undefined)}
+          triggerRef={dragHandleProps?.setActivatorNodeRef as unknown as undefined}
+        >
+          {label}
+        </ContextMenuTrigger>
+        <ContextMenuContent align="start" width={200}>
+          {onRename ? (
+            <ContextMenuItem onSelect={onRename}>
+              {t("workspace.tabs.groups.rename")}
+            </ContextMenuItem>
+          ) : null}
+          {onSetColor ? <GroupColorMenuItems onSetColor={onSetColor} /> : null}
+          {onUngroup ? (
+            <>
+              <ContextMenuSeparator />
+              <ContextMenuItem onSelect={onUngroup}>
+                {t("workspace.tabs.groups.ungroup")}
+              </ContextMenuItem>
+            </>
+          ) : null}
+        </ContextMenuContent>
+      </ContextMenu>
+    );
+  }
+
+  return (
     <Pressable
       onPress={handlePress}
       hitSlop={collapsed ? 0 : 2}
@@ -796,42 +848,13 @@ function GroupColorSquare({
       accessibilityLabel={accessibilityLabel}
       testID={testID}
       style={squareStyle}
+      {...(dragHandleProps?.attributes as object | undefined)}
+      {...(dragHandleProps?.listeners as object | undefined)}
+      // Pressable accepts ref via the same path as ContextMenuTrigger on web.
+      ref={dragHandleProps?.setActivatorNodeRef as unknown as undefined}
     >
-      <Text style={groupStyles.groupColorSquareLabel} numberOfLines={1} ellipsizeMode="tail">
-        {title}
-      </Text>
+      {label}
     </Pressable>
-  );
-
-  // Right-click the color chip itself to rename / recolor / ungroup.
-  if (!onRename && !onSetColor && !onUngroup) {
-    return square;
-  }
-
-  return (
-    <ContextMenu>
-      <ContextMenuTrigger
-        enabledOnMobile={false}
-        // Avoid eating the click that toggles collapse.
-        style={groupStyles.groupColorSquareMenuTrigger}
-      >
-        {square}
-      </ContextMenuTrigger>
-      <ContextMenuContent align="start" width={200}>
-        {onRename ? (
-          <ContextMenuItem onSelect={onRename}>{t("workspace.tabs.groups.rename")}</ContextMenuItem>
-        ) : null}
-        {onSetColor ? <GroupColorMenuItems onSetColor={onSetColor} /> : null}
-        {onUngroup ? (
-          <>
-            <ContextMenuSeparator />
-            <ContextMenuItem onSelect={onUngroup}>
-              {t("workspace.tabs.groups.ungroup")}
-            </ContextMenuItem>
-          </>
-        ) : null}
-      </ContextMenuContent>
-    </ContextMenu>
   );
 }
 
@@ -1622,13 +1645,10 @@ function CollapsedGroupChip({
   return (
     <View style={styles.tabSlot}>
       {showDropIndicatorBefore ? <View style={TAB_DROP_INDICATOR_BEFORE_STYLE} /> : null}
-      {/* Drag shell only — rename/color live on the square's own context menu. */}
-      <View
-        {...(dragHandleProps?.attributes as object | undefined)}
-        {...(dragHandleProps?.listeners as object | undefined)}
-        style={shellStyle}
-        testID={`workspace-tab-group-collapsed-${groupId}`}
-      >
+      {/* Layout shell only — drag + expand + context menu live on GroupColorSquare
+          (single button). Spreading dnd attributes onto a View turns it into a
+          second <button> on web and nests the square Pressable inside it. */}
+      <View style={shellStyle} testID={`workspace-tab-group-collapsed-${groupId}`}>
         <GroupColorSquare
           color={color}
           title={label}
@@ -1639,6 +1659,7 @@ function CollapsedGroupChip({
           onUngroup={handleUngroup}
           accessibilityLabel={t("workspace.tabs.groups.expand")}
           testID={`workspace-tab-group-square-collapsed-${groupId}`}
+          dragHandleProps={dragHandleProps}
         />
       </View>
       {showDropIndicatorAfter ? <View style={TAB_DROP_INDICATOR_AFTER_STYLE} /> : null}
@@ -2150,9 +2171,6 @@ const groupStyles = StyleSheet.create((theme) => ({
     borderRadius: theme.shell.floating ? theme.borderRadius.lg : 0,
     paddingHorizontal: theme.spacing[2],
     paddingVertical: 0,
-  },
-  groupColorSquareMenuTrigger: {
-    flexShrink: 0,
   },
   groupColorSquareLabel: {
     color: "#ffffff",
