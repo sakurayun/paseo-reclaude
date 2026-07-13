@@ -100,8 +100,22 @@ export function normalizeTabGroupMembership(value: unknown): Record<string, stri
 }
 
 /**
- * Drop membership for closed tabs, drop empty/orphan groups, and dissolve
- * groups that no longer have at least two members.
+ * Stable id for a non-contiguous split of an existing group. Idempotent across
+ * sanitize passes so collapse/expand/reorder cannot mint infinite group cards.
+ */
+export function splitTabGroupRunId(sourceGroupId: string, firstTabId: string): string {
+  return `${sourceGroupId}::${firstTabId}`;
+}
+
+/**
+ * Drop membership for closed tabs, dissolve groups with fewer than two members,
+ * and enforce contiguity: each contiguous run of a former group is either kept
+ * as that group (first run), promoted to its own group (later runs of length
+ * ≥ 2), or ungrouped (singleton runs).
+ *
+ * Without contiguity, reorder-apart members still share one groupId, so the UI
+ * draws a header (or collapsed chip) per run — collapse/expand then looks like
+ * groups are "multiplying."
  */
 export function sanitizePaneTabGroups(input: {
   tabIds: readonly string[];
@@ -115,27 +129,77 @@ export function sanitizePaneTabGroups(input: {
   const groups = normalizeTabGroupsRecord(input.tabGroups);
   const membership = normalizeTabGroupMembership(input.tabGroupIdByTabId);
 
-  const nextMembership: Record<string, string> = {};
-  const memberCountByGroup = new Map<string, number>();
+  const liveMembership: Record<string, string> = {};
   for (const [tabId, groupId] of Object.entries(membership)) {
     if (!openTabIds.has(tabId) || !groups[groupId]) {
       continue;
     }
-    nextMembership[tabId] = groupId;
-    memberCountByGroup.set(groupId, (memberCountByGroup.get(groupId) ?? 0) + 1);
+    liveMembership[tabId] = groupId;
   }
 
-  const nextGroups: Record<string, WorkspaceTabGroup> = {};
-  for (const [groupId, group] of Object.entries(groups)) {
-    if ((memberCountByGroup.get(groupId) ?? 0) >= 2) {
-      nextGroups[groupId] = group;
+  // Contiguous runs in pane tab order (Edge-style groups are always adjacent).
+  const runs: Array<{ sourceGroupId: string; tabIds: string[] }> = [];
+  let index = 0;
+  while (index < input.tabIds.length) {
+    const tabId = input.tabIds[index]!;
+    const groupId = liveMembership[tabId];
+    if (!groupId) {
+      index += 1;
+      continue;
     }
+    const runTabIds = [tabId];
+    let cursor = index + 1;
+    while (cursor < input.tabIds.length) {
+      const nextTabId = input.tabIds[cursor]!;
+      if (liveMembership[nextTabId] !== groupId) {
+        break;
+      }
+      runTabIds.push(nextTabId);
+      cursor += 1;
+    }
+    runs.push({ sourceGroupId: groupId, tabIds: runTabIds });
+    index = cursor;
   }
 
-  // Drop membership pointing at dissolved groups.
-  for (const tabId of Object.keys(nextMembership)) {
-    if (!nextGroups[nextMembership[tabId]!]) {
-      delete nextMembership[tabId];
+  const nextMembership: Record<string, string> = {};
+  const nextGroups: Record<string, WorkspaceTabGroup> = {};
+  // First contiguous run (≥2) of each source group keeps the original id.
+  const claimedOriginalGroupIds = new Set<string>();
+
+  for (const run of runs) {
+    if (run.tabIds.length < 2) {
+      // Singleton cannot be a group — drop membership.
+      continue;
+    }
+    const source = groups[run.sourceGroupId];
+    if (!source) {
+      continue;
+    }
+
+    let assignedGroupId: string;
+    if (!claimedOriginalGroupIds.has(run.sourceGroupId) && !nextGroups[run.sourceGroupId]) {
+      assignedGroupId = run.sourceGroupId;
+      claimedOriginalGroupIds.add(run.sourceGroupId);
+      nextGroups[assignedGroupId] = { ...source, id: assignedGroupId };
+    } else {
+      const firstTabId = run.tabIds[0]!;
+      assignedGroupId = splitTabGroupRunId(run.sourceGroupId, firstTabId);
+      // If this stable id was already the source id of this run (re-sanitize),
+      // keep its existing record/collapsed state when present.
+      const existing = groups[assignedGroupId] ?? nextGroups[assignedGroupId];
+      nextGroups[assignedGroupId] = existing
+        ? { ...existing, id: assignedGroupId }
+        : {
+            id: assignedGroupId,
+            title: source.title,
+            color: source.color,
+            // Fresh splits start expanded so both bands stay visible.
+            collapsed: false,
+          };
+    }
+
+    for (const tabId of run.tabIds) {
+      nextMembership[tabId] = assignedGroupId;
     }
   }
 
@@ -170,6 +234,118 @@ export function resolveTabDropKind(input: {
     return "group";
   }
   return "reorder";
+}
+
+/**
+ * Detect a single arrayMove-style relocation: exactly one id changed index and
+ * the relative order of all other ids is unchanged. Returns null when the
+ * permutation is empty, multi-move, or lengths differ.
+ */
+export function findSingleMovedTabId(
+  previousTabIds: readonly string[],
+  nextTabIds: readonly string[],
+): string | null {
+  if (previousTabIds.length !== nextTabIds.length || previousTabIds.length === 0) {
+    return null;
+  }
+  if (previousTabIds.every((id, index) => id === nextTabIds[index])) {
+    return null;
+  }
+
+  let moved: string | null = null;
+  for (const candidate of previousTabIds) {
+    const prevWithout = previousTabIds.filter((id) => id !== candidate);
+    const nextWithout = nextTabIds.filter((id) => id !== candidate);
+    if (prevWithout.length !== nextWithout.length) {
+      continue;
+    }
+    if (!prevWithout.every((id, index) => id === nextWithout[index])) {
+      continue;
+    }
+    if (previousTabIds.indexOf(candidate) === nextTabIds.indexOf(candidate)) {
+      continue;
+    }
+    if (moved !== null) {
+      return null;
+    }
+    moved = candidate;
+  }
+  return moved;
+}
+
+/**
+ * After a tab is reordered (including drop between two group members — edge
+ * zone, not only center-on-tab), rebind its group membership from neighbors:
+ * - both sides same group → join that group (insert into the band)
+ * - only left/right in a group → expand that group (drop at band edge)
+ * - between two different groups → leave ungrouped
+ * - no adjacent group → leave ungrouped (drag out of a group)
+ */
+export function resolveMovedTabGroupMembership(input: {
+  tabIds: readonly string[];
+  tabGroupIdByTabId: Record<string, string>;
+  movedTabId: string;
+}): Record<string, string> {
+  const next: Record<string, string> = {};
+  for (const [tabId, groupId] of Object.entries(input.tabGroupIdByTabId)) {
+    if (input.tabIds.includes(tabId)) {
+      next[tabId] = groupId;
+    }
+  }
+
+  const index = input.tabIds.indexOf(input.movedTabId);
+  if (index < 0) {
+    return next;
+  }
+
+  const leftId = index > 0 ? input.tabIds[index - 1] : null;
+  const rightId = index < input.tabIds.length - 1 ? input.tabIds[index + 1] : null;
+  const leftGroupId = leftId ? (next[leftId] ?? null) : null;
+  const rightGroupId = rightId ? (next[rightId] ?? null) : null;
+
+  if (leftGroupId && rightGroupId && leftGroupId === rightGroupId) {
+    next[input.movedTabId] = leftGroupId;
+    return next;
+  }
+  if (leftGroupId && rightGroupId && leftGroupId !== rightGroupId) {
+    delete next[input.movedTabId];
+    return next;
+  }
+  if (leftGroupId) {
+    next[input.movedTabId] = leftGroupId;
+    return next;
+  }
+  if (rightGroupId) {
+    next[input.movedTabId] = rightGroupId;
+    return next;
+  }
+  delete next[input.movedTabId];
+  return next;
+}
+
+/**
+ * Any tab sitting between two members of the same group is absorbed into that
+ * group (covers edge drops between members even if move detection is ambiguous).
+ */
+export function absorbSandwichedTabsIntoGroups(
+  tabIds: readonly string[],
+  tabGroupIdByTabId: Record<string, string>,
+): Record<string, string> {
+  const next = { ...tabGroupIdByTabId };
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (let index = 1; index < tabIds.length - 1; index += 1) {
+      const tabId = tabIds[index]!;
+      const leftGroupId = next[tabIds[index - 1]!];
+      const rightGroupId = next[tabIds[index + 1]!];
+      if (leftGroupId && leftGroupId === rightGroupId && next[tabId] !== leftGroupId) {
+        next[tabId] = leftGroupId;
+        changed = true;
+      }
+    }
+  }
+  return next;
 }
 
 /**

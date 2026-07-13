@@ -2197,7 +2197,7 @@ export const fr: TranslationResources = {
       newTheme: {
         title: "Nouveau thème",
         label: "Utiliser le nouveau thème",
-        hint: "Applique le nouveau rendu clair repensé dans toute l'app, indépendamment du thème ci-dessous",
+        hint: "Utilise l'UI repensée (cartes flottantes, sessions plates). Clair/sombre suit le thème ci-dessous",
         accessibilityLabel: "Utiliser le nouveau thème",
       },
       theme: {
@@ -2210,6 +2210,10 @@ export const fr: TranslationResources = {
           midnight: "Minuit",
           claude: "Claude",
           ghostty: "Fantôme",
+          catppuccinLatte: "Catppuccin Latte",
+          catppuccinFrappe: "Catppuccin Frappé",
+          catppuccinMacchiato: "Catppuccin Macchiato",
+          catppuccinMocha: "Catppuccin Mocha",
           auto: "Système",
         },
       },
@@ -2255,6 +2259,10 @@ export const fr: TranslationResources = {
         ligaturesHint:
           "Affiche les ligatures de programmation (p. ex. ->, =>) lorsque la police de code les prend en charge",
         ligaturesAccessibility: "Ligatures de la police du terminal",
+        ligaturesPreviewOn:
+          "Ligatures activées — les séquences comme => et !== se fusionnent si la police le permet",
+        ligaturesPreviewOff: "Ligatures désactivées — les caractères s'affichent séparément",
+        ligaturesPreviewAccessibility: "Aperçu en bloc de code des ligatures de programmation",
         letterSpacing: "Espacement des lettres",
         letterSpacingAccessibility: "Espacement des lettres du terminal",
         paddingTop: "Marge intérieure supérieure",

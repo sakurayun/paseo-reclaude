@@ -84,9 +84,9 @@ interface WorkspaceLayoutStore {
   pinnedAgentIdsByWorkspace: Record<string, Set<string>>;
   hiddenAgentIdsByWorkspace: Record<string, Set<string>>;
   focusRestorationByWorkspace: Record<string, WorkspaceFocusRestorationState>;
-  // Tracks which workspaces have already run the startup restore prune this app
-  // launch. Intentionally NOT persisted: a fresh launch is exactly when the
-  // non-running-session tabs should be pruned again.
+  // Tracks which workspaces have finished the first post-hydrate reconcile this
+  // app launch. Intentionally NOT persisted. Layout sync skips pushing that
+  // first pass so auto-open churn does not clobber peers.
   initialRestoreDoneByWorkspace: Record<string, boolean>;
   openTabFocused: (workspaceKey: string, target: WorkspaceTabTarget) => string | null;
   openChildTabFocused: (
@@ -492,10 +492,9 @@ export function createWorkspaceLayoutStore(
               state.layoutByWorkspace,
               normalizedWorkspaceKey,
             );
-            // The first reconcile after the live agent list hydrates is the
-            // startup restore pass. Flag it so reconcile prunes tabs for
-            // sessions that are not currently running, then remember we did it
-            // so mid-session reconciles never prune hand-opened idle tabs.
+            // First reconcile after agents hydrate: mark for layout-sync (skip
+            // pushing this pass). Persisted tabs are kept — only archived /
+            // unknown entities are collapsed by reconcile.
             const alreadyRestored =
               state.initialRestoreDoneByWorkspace[normalizedWorkspaceKey] ?? false;
             const isInitialRestore = !alreadyRestored && snapshot.agentsHydrated;

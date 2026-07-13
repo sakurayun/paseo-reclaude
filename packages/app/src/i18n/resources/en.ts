@@ -2142,7 +2142,7 @@ export const en = {
       newTheme: {
         title: "New theme",
         label: "Use new theme",
-        hint: "Apply the redesigned light look across the app, independent of the theme below",
+        hint: "Use the redesigned UI (floating cards, flat sessions). Light/dark follows the theme below",
         accessibilityLabel: "Use new theme",
       },
       theme: {
@@ -2155,6 +2155,10 @@ export const en = {
           midnight: "Midnight",
           claude: "Claude",
           ghostty: "Ghostty",
+          catppuccinLatte: "Catppuccin Latte",
+          catppuccinFrappe: "Catppuccin Frappé",
+          catppuccinMacchiato: "Catppuccin Macchiato",
+          catppuccinMocha: "Catppuccin Mocha",
           auto: "System",
         },
       },
@@ -2197,8 +2201,12 @@ export const en = {
         },
         ligatures: "Font ligatures",
         ligaturesHint:
-          "Render programming ligatures (e.g. ->, =>) when the code font supports them",
-        ligaturesAccessibility: "Terminal font ligatures",
+          "Render programming ligatures (e.g. ->, =>) in terminals, SSH, and all code blocks when the code font supports them",
+        ligaturesAccessibility: "Font ligatures for terminals and code blocks",
+        ligaturesPreviewOn:
+          "Ligatures on — sequences like => and !== fuse when the code font supports them",
+        ligaturesPreviewOff: "Ligatures off — characters render separately",
+        ligaturesPreviewAccessibility: "Code block preview of programming font ligatures",
         letterSpacing: "Letter spacing",
         letterSpacingAccessibility: "Terminal letter spacing",
         paddingTop: "Padding top",

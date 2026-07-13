@@ -2179,7 +2179,7 @@ export const ptBR: TranslationResources = {
       newTheme: {
         title: "New theme",
         label: "Use new theme",
-        hint: "Apply the redesigned light look across the app, independent of the theme below",
+        hint: "Usa a UI redesenhada (cards flutuantes, sessões planas). Claro/escuro segue o tema abaixo",
         accessibilityLabel: "Use new theme",
       },
       theme: {
@@ -2192,6 +2192,10 @@ export const ptBR: TranslationResources = {
           midnight: "Midnight",
           claude: "Claude",
           ghostty: "Ghostty",
+          catppuccinLatte: "Catppuccin Latte",
+          catppuccinFrappe: "Catppuccin Frappé",
+          catppuccinMacchiato: "Catppuccin Macchiato",
+          catppuccinMocha: "Catppuccin Mocha",
           auto: "Sistema",
         },
       },
@@ -2236,6 +2240,10 @@ export const ptBR: TranslationResources = {
         ligaturesHint:
           "Render programming ligatures (e.g. ->, =>) when the code font supports them",
         ligaturesAccessibility: "Terminal font ligatures",
+        ligaturesPreviewOn:
+          "Ligaduras ativas — sequências como => e !== se fundem se a fonte suportar",
+        ligaturesPreviewOff: "Ligaduras desativadas — os caracteres aparecem separados",
+        ligaturesPreviewAccessibility: "Prévia em bloco de código das ligaduras de programação",
         letterSpacing: "Letter spacing",
         letterSpacingAccessibility: "Terminal letter spacing",
         paddingTop: "Padding top",

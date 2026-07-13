@@ -67,21 +67,21 @@ so there are no defensive branches scattered through the store or screens.
 3. **Stripped-blob dedupe** — the bridge remembers the last pushed focus-stripped blob; a pure
    focus change produces an identical stripped blob and is not pushed.
 
-## Pull-before-push & the startup-prune interaction
+## Pull-before-push & the first-hydrate pass
 
-The fork prunes non-running-session tabs once per launch (see
-[agent-lifecycle.md](agent-lifecycle.md) "Startup tab restore"). If that prune were pushed, it
-would clobber a peer's intentionally-kept idle tabs.
+Persisted tabs and tab groups are restored on reload (see
+[agent-lifecycle.md](agent-lifecycle.md) "Startup tab restore"). The first
+reconcile after agents hydrate may still auto-open missing running roots; pushing
+that pass early could race a peer with a fuller layout.
 
 Fix: **pull-before-push**. A workspace cannot push until `pullWorkspaceLayoutIfNeeded` has
 fetched the daemon snapshot for it (`workspace-screen` calls this once the layout store has
-hydrated). So a fresh client overwrites its local layout with the remote one _before_ it is
-allowed to push, and the startup prune never propagates. The bridge also explicitly skips the
-store change where `initialRestoreDoneByWorkspace[key]` flips true (the prune pass) as a
-belt-and-suspenders guard.
+hydrated). So a fresh client merges with the remote layout _before_ it is allowed to push.
+The bridge also explicitly skips the store change where `initialRestoreDoneByWorkspace[key]`
+flips true (first hydrate pass) as a belt-and-suspenders guard.
 
-Consequence: **a remote layout takes precedence over the local startup prune.** That's the
-correct multi-device semantics (consistency over single-device startup trimming).
+Consequence: **a remote layout takes precedence over a fresh client's incomplete local
+snapshot.** That's the correct multi-device semantics.
 
 ## Known limitation
 

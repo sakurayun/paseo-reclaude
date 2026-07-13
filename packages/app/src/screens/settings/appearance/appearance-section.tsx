@@ -45,6 +45,7 @@ import {
 } from "@/constants/terminal-color-presets";
 import { settingsStyles } from "@/styles/settings";
 import { AppearancePreview } from "./appearance-preview";
+import { LigaturePreview } from "./ligature-preview";
 
 // ---------------------------------------------------------------------------
 // Theme-reactive leaf icons (withUnistyles + uniProps color mapping — no
@@ -60,9 +61,23 @@ const ThemedChevronDown = withUnistyles(ChevronDown);
 const mutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
 
 function getThemeLabel(t: TFunction, value: AppSettings["theme"]): string {
-  // "Claude Light" is a brand-name theme local to this fork; render it verbatim.
+  // Brand-name themes: keep the product spelling in every locale.
   if (value === "claudeLight") return "Claude Light";
-  const labelKeys: Record<Exclude<AppSettings["theme"], "claudeLight">, string> = {
+  if (value === "catppuccinLatte") return "Catppuccin Latte";
+  if (value === "catppuccinFrappe") return "Catppuccin Frappé";
+  if (value === "catppuccinMacchiato") return "Catppuccin Macchiato";
+  if (value === "catppuccinMocha") return "Catppuccin Mocha";
+  const labelKeys: Record<
+    Exclude<
+      AppSettings["theme"],
+      | "claudeLight"
+      | "catppuccinLatte"
+      | "catppuccinFrappe"
+      | "catppuccinMacchiato"
+      | "catppuccinMocha"
+    >,
+    string
+  > = {
     light: "settings.appearance.theme.options.light",
     dark: "settings.appearance.theme.options.dark",
     zinc: "settings.appearance.theme.options.zinc",
@@ -77,10 +92,14 @@ function getThemeLabel(t: TFunction, value: AppSettings["theme"]): string {
 const PRIMARY_THEMES: readonly AppSettings["theme"][] = ["light", "dark", "auto"];
 const VARIANT_THEMES: readonly AppSettings["theme"][] = [
   "claudeLight",
+  "catppuccinLatte",
   "zinc",
   "midnight",
   "claude",
   "ghostty",
+  "catppuccinFrappe",
+  "catppuccinMacchiato",
+  "catppuccinMocha",
 ];
 
 // Platform default stacks can be the bare native tokens ("normal"/"monospace");
@@ -870,6 +889,10 @@ export function AppearanceSection() {
               accessibilityLabel={t("settings.appearance.terminal.ligaturesAccessibility")}
             />
           </View>
+          <LigaturePreview
+            enabled={settings.terminalLigaturesEnabled}
+            overrides={previewOverrides}
+          />
           <TerminalLetterSpacingRow
             title={t("settings.appearance.terminal.letterSpacing")}
             accessibilityLabel={t("settings.appearance.terminal.letterSpacingAccessibility")}

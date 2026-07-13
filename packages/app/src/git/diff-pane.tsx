@@ -67,6 +67,7 @@ import { useAppSettings } from "@/hooks/use-settings";
 import { DiffScroll } from "@/components/diff-scroll";
 import { syntaxTokenStyleFor } from "@/styles/syntax-token-styles";
 import { CODE_SURFACE_DATASET } from "@/styles/code-surface";
+import { monoLigatureTextStyle } from "@/styles/mono-ligatures";
 import { shouldAnchorHeaderBeforeCollapse } from "@/git/diff-scroll";
 import {
   buildSplitDiffRows,
@@ -3060,6 +3061,7 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.code,
     lineHeight: theme.lineHeight.diff,
     fontFamily: theme.fontFamily.mono,
+    ...monoLigatureTextStyle(theme.monoLigatures),
   },
   lineNumberText: {
     width: "100%",

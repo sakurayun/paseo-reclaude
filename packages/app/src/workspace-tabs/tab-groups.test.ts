@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  absorbSandwichedTabsIntoGroups,
   assignTabsToGroup,
   buildTabRowSegments,
+  findSingleMovedTabId,
   moveTabBeside,
+  resolveMovedTabGroupMembership,
   resolveTabDropKind,
   resolveTabGroupVisualRole,
   sanitizePaneTabGroups,
@@ -44,6 +47,72 @@ describe("moveTabBeside", () => {
         placeBefore: true,
       }),
     ).toEqual(["c", "a", "b"]);
+  });
+});
+
+describe("findSingleMovedTabId", () => {
+  it("detects an arrayMove relocation", () => {
+    expect(findSingleMovedTabId(["a", "b", "c", "d"], ["a", "c", "d", "b"])).toBe("b");
+  });
+
+  it("returns null when nothing moved", () => {
+    expect(findSingleMovedTabId(["a", "b"], ["a", "b"])).toBeNull();
+  });
+});
+
+describe("resolveMovedTabGroupMembership", () => {
+  const groups = { a: "g1", b: "g1", c: "g1" };
+
+  it("joins a tab dropped between two group members", () => {
+    // x was outside; reordered between a and b.
+    expect(
+      resolveMovedTabGroupMembership({
+        tabIds: ["a", "x", "b", "c"],
+        tabGroupIdByTabId: groups,
+        movedTabId: "x",
+      }),
+    ).toEqual({ a: "g1", x: "g1", b: "g1", c: "g1" });
+  });
+
+  it("joins a tab dropped at the leading edge of a group", () => {
+    expect(
+      resolveMovedTabGroupMembership({
+        tabIds: ["x", "a", "b", "c"],
+        tabGroupIdByTabId: groups,
+        movedTabId: "x",
+      }),
+    ).toEqual({ x: "g1", a: "g1", b: "g1", c: "g1" });
+  });
+
+  it("joins a tab dropped at the trailing edge of a group", () => {
+    expect(
+      resolveMovedTabGroupMembership({
+        tabIds: ["a", "b", "c", "x"],
+        tabGroupIdByTabId: groups,
+        movedTabId: "x",
+      }),
+    ).toEqual({ a: "g1", b: "g1", c: "g1", x: "g1" });
+  });
+
+  it("removes membership when dragged fully out of a group", () => {
+    // c was in g1; now sits after an ungrouped tab with no group neighbor.
+    expect(
+      resolveMovedTabGroupMembership({
+        tabIds: ["a", "b", "u", "c"],
+        tabGroupIdByTabId: { a: "g1", b: "g1", c: "g1" },
+        movedTabId: "c",
+      }).c,
+    ).toBeUndefined();
+  });
+});
+
+describe("absorbSandwichedTabsIntoGroups", () => {
+  it("absorbs a tab between two members of the same group", () => {
+    expect(absorbSandwichedTabsIntoGroups(["a", "x", "b"], { a: "g1", b: "g1" })).toEqual({
+      a: "g1",
+      x: "g1",
+      b: "g1",
+    });
   });
 });
 
@@ -108,6 +177,56 @@ describe("sanitizePaneTabGroups", () => {
     });
     expect(result.tabGroups?.g1?.collapsed).toBe(true);
     expect(result.tabGroupIdByTabId).toEqual({ a: "g1", b: "g1" });
+  });
+
+  it("splits non-contiguous runs into separate groups (idempotent)", () => {
+    const first = sanitizePaneTabGroups({
+      tabIds: ["a", "b", "x", "c", "d"],
+      tabGroups: {
+        g1: { id: "g1", title: "Work", color: "green", collapsed: true },
+      },
+      tabGroupIdByTabId: { a: "g1", b: "g1", c: "g1", d: "g1" },
+    });
+    expect(first.tabGroupIdByTabId).toEqual({
+      a: "g1",
+      b: "g1",
+      c: "g1::c",
+      d: "g1::c",
+    });
+    expect(first.tabGroups?.g1).toMatchObject({
+      title: "Work",
+      color: "green",
+      collapsed: true,
+    });
+    expect(first.tabGroups?.["g1::c"]).toMatchObject({
+      title: "Work",
+      color: "green",
+      collapsed: false,
+    });
+
+    // Re-sanitize must not mint more group ids.
+    const second = sanitizePaneTabGroups({
+      tabIds: ["a", "b", "x", "c", "d"],
+      tabGroups: first.tabGroups,
+      tabGroupIdByTabId: first.tabGroupIdByTabId,
+    });
+    expect(second.tabGroupIdByTabId).toEqual(first.tabGroupIdByTabId);
+    expect(Object.keys(second.tabGroups ?? {}).sort()).toEqual(
+      Object.keys(first.tabGroups ?? {}).sort(),
+    );
+  });
+
+  it("ungroups singleton fragments left after a split", () => {
+    const result = sanitizePaneTabGroups({
+      tabIds: ["a", "x", "b", "c"],
+      tabGroups: {
+        g1: { id: "g1", title: "G", color: "blue", collapsed: false },
+      },
+      tabGroupIdByTabId: { a: "g1", b: "g1", c: "g1" },
+    });
+    expect(result.tabGroupIdByTabId).toEqual({ b: "g1", c: "g1" });
+    expect(result.tabGroups?.g1).toBeDefined();
+    expect(result.tabGroupIdByTabId?.a).toBeUndefined();
   });
 });
 

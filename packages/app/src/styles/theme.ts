@@ -110,11 +110,15 @@ export const baseColors = {
 export type ThemeName =
   | "light"
   | "claudeLight"
+  | "catppuccinLatte"
   | "dark"
   | "zinc"
   | "midnight"
   | "claude"
-  | "ghostty";
+  | "ghostty"
+  | "catppuccinFrappe"
+  | "catppuccinMacchiato"
+  | "catppuccinMocha";
 
 // Diff stat colors — light uses muted tones, dark uses the brighter palette values
 const lightDiffColors = {
@@ -335,11 +339,11 @@ const claudeLightSemanticColors = {
   },
 } as const;
 
-// New theme — a standalone light look toggled independently of the theme
-// dropdown (see `settings.newThemeEnabled`). Derived from the default light
-// theme so it inherits every token by default; only the deltas of the new
-// design live here. This is the single place to grow the new theme — add
-// overrides to this object as the redesign expands beyond the sidebar.
+// New theme — standalone redesign toggled via `settings.newThemeEnabled`.
+// Light + dark variants share the same shell layout tokens (floating card,
+// no chrome dividers, borderless controls); only the palette differs.
+// Derived from classic light/zinc-dark so every token inherits by default —
+// grow the redesign by adding overrides here (colors) or on `newThemeShell`.
 const newThemeSemanticColors = {
   ...lightSemanticColors,
   // All non-content sidebar/chrome surfaces sit on a near-white #fafafa, one
@@ -565,6 +569,247 @@ const ghosttyDarkColors = buildDarkSemanticColors({
   destructive: "#c44a55", // red with slight cool lean against the slate-blue surfaces
 });
 
+// ---------------------------------------------------------------------------
+// Catppuccin — official palette (https://github.com/catppuccin/catppuccin)
+// Latte = light; Frappé / Macchiato / Mocha = dark flavors.
+// Accent uses mauve (signature); terminal ANSI maps to flavor reds/greens/etc.
+// ---------------------------------------------------------------------------
+
+interface CatppuccinPalette {
+  base: string;
+  mantle: string;
+  crust: string;
+  surface0: string;
+  surface1: string;
+  surface2: string;
+  overlay0: string;
+  overlay1: string;
+  text: string;
+  subtext0: string;
+  subtext1: string;
+  mauve: string;
+  lavender: string;
+  blue: string;
+  sapphire: string;
+  sky: string;
+  teal: string;
+  green: string;
+  yellow: string;
+  peach: string;
+  red: string;
+  maroon: string;
+  pink: string;
+}
+
+const CATPPUCCIN_LATTE: CatppuccinPalette = {
+  base: "#eff1f5",
+  mantle: "#e6e9ef",
+  crust: "#dce0e8",
+  surface0: "#ccd0da",
+  surface1: "#bcc0cc",
+  surface2: "#acb0be",
+  overlay0: "#9ca0b0",
+  overlay1: "#8c8fa1",
+  text: "#4c4f69",
+  subtext0: "#6c6f85",
+  subtext1: "#5c5f77",
+  mauve: "#8839ef",
+  lavender: "#7287fd",
+  blue: "#1e66f5",
+  sapphire: "#209fb5",
+  sky: "#04a5e5",
+  teal: "#179299",
+  green: "#40a02b",
+  yellow: "#df8e1d",
+  peach: "#fe640b",
+  red: "#d20f39",
+  maroon: "#e64553",
+  pink: "#ea76cb",
+};
+
+const CATPPUCCIN_FRAPPE: CatppuccinPalette = {
+  base: "#303446",
+  mantle: "#292c3c",
+  crust: "#232634",
+  surface0: "#414559",
+  surface1: "#51576d",
+  surface2: "#626880",
+  overlay0: "#737994",
+  overlay1: "#838ba7",
+  text: "#c6d0f5",
+  subtext0: "#a5adce",
+  subtext1: "#b5bfe2",
+  mauve: "#ca9ee6",
+  lavender: "#babbf1",
+  blue: "#8caaee",
+  sapphire: "#85c1dc",
+  sky: "#99d1db",
+  teal: "#81c8be",
+  green: "#a6d189",
+  yellow: "#e5c890",
+  peach: "#ef9f76",
+  red: "#e78284",
+  maroon: "#ea999c",
+  pink: "#f4b8e4",
+};
+
+const CATPPUCCIN_MACCHIATO: CatppuccinPalette = {
+  base: "#24273a",
+  mantle: "#1e2030",
+  crust: "#181926",
+  surface0: "#363a4f",
+  surface1: "#494d64",
+  surface2: "#5b6078",
+  overlay0: "#6e738d",
+  overlay1: "#8087a2",
+  text: "#cad3f5",
+  subtext0: "#a5adcb",
+  subtext1: "#b8c0e0",
+  mauve: "#c6a0f6",
+  lavender: "#b7bdf8",
+  blue: "#8aadf4",
+  sapphire: "#7dc4e4",
+  sky: "#91d7e3",
+  teal: "#8bd5ca",
+  green: "#a6da95",
+  yellow: "#eed49f",
+  peach: "#f5a97f",
+  red: "#ed8796",
+  maroon: "#ee99a0",
+  pink: "#f5bde6",
+};
+
+const CATPPUCCIN_MOCHA: CatppuccinPalette = {
+  base: "#1e1e2e",
+  mantle: "#181825",
+  crust: "#11111b",
+  surface0: "#313244",
+  surface1: "#45475a",
+  surface2: "#585b70",
+  overlay0: "#6c7086",
+  overlay1: "#7f849c",
+  text: "#cdd6f4",
+  subtext0: "#a6adc8",
+  subtext1: "#bac2de",
+  mauve: "#cba6f7",
+  lavender: "#b4befe",
+  blue: "#89b4fa",
+  sapphire: "#74c7ec",
+  sky: "#89dceb",
+  teal: "#94e2d5",
+  green: "#a6e3a1",
+  yellow: "#f9e2af",
+  peach: "#fab387",
+  red: "#f38ba8",
+  maroon: "#eba0ac",
+  pink: "#f5c2e7",
+};
+
+function buildCatppuccinDarkTint(p: CatppuccinPalette): DarkThemeConfig {
+  return {
+    surface0: p.base,
+    surface1: p.surface0,
+    surface2: p.surface1,
+    surface3: p.surface2,
+    surface4: p.overlay0,
+    surfaceDiffEmpty: p.mantle,
+    surfaceSidebar: p.mantle,
+    surfaceSidebarHover: p.surface0,
+    foregroundMuted: p.subtext0,
+    scrollbarHandle: p.overlay0,
+    border: p.surface0,
+    borderAccent: p.surface1,
+    accent: p.mauve,
+    accentBright: p.lavender,
+    destructive: p.red,
+    ultracodeGlow: { border: p.lavender, halo: p.mauve },
+  };
+}
+
+const catppuccinFrappeColors = buildDarkSemanticColors(buildCatppuccinDarkTint(CATPPUCCIN_FRAPPE));
+const catppuccinMacchiatoColors = buildDarkSemanticColors(
+  buildCatppuccinDarkTint(CATPPUCCIN_MACCHIATO),
+);
+const catppuccinMochaColors = buildDarkSemanticColors(buildCatppuccinDarkTint(CATPPUCCIN_MOCHA));
+
+// Latte light — built like other light semantics so buildLightTheme accepts it.
+const catppuccinLatteSemanticColors = {
+  surface0: CATPPUCCIN_LATTE.base,
+  surface1: CATPPUCCIN_LATTE.mantle,
+  surface2: CATPPUCCIN_LATTE.crust,
+  surface3: CATPPUCCIN_LATTE.surface0,
+  surface4: CATPPUCCIN_LATTE.surface1,
+  surfaceDiffEmpty: CATPPUCCIN_LATTE.mantle,
+  surfaceSidebar: CATPPUCCIN_LATTE.mantle,
+  surfaceSidebarHover: CATPPUCCIN_LATTE.crust,
+  surfaceWorkspace: CATPPUCCIN_LATTE.base,
+  surfaceShell: CATPPUCCIN_LATTE.base,
+  surfaceGlass: withAlpha(CATPPUCCIN_LATTE.mantle, 0.62),
+  surfaceGlassStrong: withAlpha(CATPPUCCIN_LATTE.mantle, 0.94),
+  foreground: CATPPUCCIN_LATTE.text,
+  foregroundMuted: CATPPUCCIN_LATTE.subtext0,
+  scrollbarHandle: CATPPUCCIN_LATTE.overlay1,
+  border: CATPPUCCIN_LATTE.surface0,
+  borderAccent: CATPPUCCIN_LATTE.crust,
+  accent: CATPPUCCIN_LATTE.mauve,
+  accentBright: CATPPUCCIN_LATTE.lavender,
+  accentForeground: "#ffffff",
+  ultracodeGlow: {
+    border: CATPPUCCIN_LATTE.lavender,
+    halo: CATPPUCCIN_LATTE.mauve,
+  },
+  destructive: CATPPUCCIN_LATTE.red,
+  destructiveForeground: "#ffffff",
+  success: CATPPUCCIN_LATTE.green,
+  successForeground: "#ffffff",
+  background: CATPPUCCIN_LATTE.base,
+  popover: CATPPUCCIN_LATTE.base,
+  popoverForeground: CATPPUCCIN_LATTE.text,
+  primary: CATPPUCCIN_LATTE.text,
+  primaryForeground: CATPPUCCIN_LATTE.base,
+  secondary: CATPPUCCIN_LATTE.mantle,
+  secondaryForeground: CATPPUCCIN_LATTE.text,
+  muted: CATPPUCCIN_LATTE.mantle,
+  mutedForeground: CATPPUCCIN_LATTE.subtext0,
+  accentBorder: CATPPUCCIN_LATTE.crust,
+  input: CATPPUCCIN_LATTE.crust,
+  ring: CATPPUCCIN_LATTE.mauve,
+  ...lightDiffColors,
+  ...lightStatusColors,
+  // Prefer Catppuccin green/red for diffs on Latte.
+  diffAddition: CATPPUCCIN_LATTE.green,
+  diffDeletion: CATPPUCCIN_LATTE.red,
+  statusSuccess: CATPPUCCIN_LATTE.green,
+  statusDanger: CATPPUCCIN_LATTE.red,
+  statusWarning: CATPPUCCIN_LATTE.yellow,
+  statusMerged: CATPPUCCIN_LATTE.mauve,
+  statusPlanning: CATPPUCCIN_LATTE.sapphire,
+  terminal: {
+    background: CATPPUCCIN_LATTE.base,
+    foreground: CATPPUCCIN_LATTE.text,
+    cursor: CATPPUCCIN_LATTE.text,
+    cursorAccent: CATPPUCCIN_LATTE.base,
+    selectionBackground: "rgba(76, 79, 105, 0.15)",
+    selectionForeground: CATPPUCCIN_LATTE.text,
+    black: CATPPUCCIN_LATTE.subtext1,
+    red: CATPPUCCIN_LATTE.red,
+    green: CATPPUCCIN_LATTE.green,
+    yellow: CATPPUCCIN_LATTE.yellow,
+    blue: CATPPUCCIN_LATTE.blue,
+    magenta: CATPPUCCIN_LATTE.mauve,
+    cyan: CATPPUCCIN_LATTE.teal,
+    white: CATPPUCCIN_LATTE.base,
+    brightBlack: CATPPUCCIN_LATTE.overlay1,
+    brightRed: CATPPUCCIN_LATTE.maroon,
+    brightGreen: CATPPUCCIN_LATTE.green,
+    brightYellow: CATPPUCCIN_LATTE.yellow,
+    brightBlue: CATPPUCCIN_LATTE.lavender,
+    brightMagenta: CATPPUCCIN_LATTE.pink,
+    brightCyan: CATPPUCCIN_LATTE.sky,
+    brightWhite: "#ffffff",
+  },
+} as const;
+
 export const SPACING = {
   0: 0,
   1: 4,
@@ -675,6 +920,10 @@ interface CommonTheme {
     controlBorder: number; // resting outline width for inputs / dropdown triggers (0 = borderless in the new theme)
     floating: boolean; // true in the new theme — lets stylesheets branch the floating look
   };
+  // Programming ligatures for mono code + terminal. Patched at runtime by
+  // applyAppearance from settings.terminalLigaturesEnabled so StyleSheet factories
+  // and AppearanceStyleBoundary remount with the right font features.
+  monoLigatures: boolean;
 }
 
 const commonTheme: CommonTheme = {
@@ -696,6 +945,7 @@ const commonTheme: CommonTheme = {
     controlBorder: BORDER_WIDTH[1],
     floating: false,
   },
+  monoLigatures: true,
 };
 
 const darkShadow = {
@@ -737,6 +987,9 @@ export const darkZincTheme = buildDarkTheme(zincDarkColors);
 export const darkMidnightTheme = buildDarkTheme(midnightDarkColors);
 export const darkClaudeTheme = buildDarkTheme(claudeDarkColors);
 export const darkGhosttyTheme = buildDarkTheme(ghosttyDarkColors);
+export const darkCatppuccinFrappeTheme = buildDarkTheme(catppuccinFrappeColors);
+export const darkCatppuccinMacchiatoTheme = buildDarkTheme(catppuccinMacchiatoColors);
+export const darkCatppuccinMochaTheme = buildDarkTheme(catppuccinMochaColors);
 
 const lightShadow = {
   sm: {
@@ -782,10 +1035,9 @@ function buildLightTheme(semanticColors: LightSemanticColors) {
 
 export const lightTheme = buildLightTheme(lightSemanticColors);
 export const lightClaudeTheme = buildLightTheme(claudeLightSemanticColors);
-// Independent "new theme" — registered as its own Unistyles key (not a dropdown
-// ThemeName); applied when `settings.newThemeEnabled` is on, overriding whatever
-// the theme dropdown selected. Floats the content (tabs + panes) as an inset
-// rounded card on the #fafafa shell underlay, and drops the sidebar dividers.
+export const lightCatppuccinLatteTheme = buildLightTheme(catppuccinLatteSemanticColors);
+// Shared layout for both new-theme palettes — floating inset card, no chrome
+// dividers, borderless controls. Classic themes keep commonTheme.shell defaults.
 const newThemeShell = {
   contentMargin: SPACING[2], // 8 — gap around the floating card
   contentRadius: BORDER_RADIUS.xl, // 12
@@ -797,28 +1049,308 @@ const newThemeShell = {
 
 export const newTheme = { ...buildLightTheme(newThemeSemanticColors), shell: newThemeShell };
 
+// Claude light + new-theme shell: warm ivory floating cards on cream chrome,
+// terracotta accent preserved from classic Claude Light.
+const NEW_THEME_CLAUDE_CHROME = "#f0eee6"; // cream underlay (warm #fafafa)
+const newThemeClaudeSemanticColors = {
+  ...claudeLightSemanticColors,
+  // Continuous cream chrome (sidebars + shell margins).
+  surfaceSidebar: NEW_THEME_CLAUDE_CHROME,
+  surfaceShell: NEW_THEME_CLAUDE_CHROME,
+  scrollbarHandle: NEW_THEME_CLAUDE_CHROME,
+  // Floating content stays ivory — one step lighter than the cream underlay.
+  surface0: "#faf9f5",
+  surfaceWorkspace: "#faf9f5",
+};
+
+export const newThemeClaude = {
+  ...buildLightTheme(newThemeClaudeSemanticColors),
+  shell: newThemeShell,
+};
+
+// Shared dark floating layering for every dark tint under the new-theme toggle:
+//   chrome / sidebars: pure black
+//   floating page panel (workspace + settings outer): tinted elevated panel
+//   nested settings rows (surface1): pure black
+const NEW_THEME_DARK_CHROME = "#000000";
+const NEW_THEME_DARK_SETTINGS_CARD = "#000000";
+
+function buildNewThemeDarkFloatingSemantic(
+  panel: string,
+  tint: Omit<DarkThemeConfig, "surface0" | "surface1" | "surfaceSidebar" | "scrollbarHandle"> &
+    Partial<Pick<DarkThemeConfig, "accentForeground" | "ultracodeGlow">>,
+) {
+  return {
+    ...buildDarkSemanticColors({
+      surface0: panel,
+      surface1: NEW_THEME_DARK_SETTINGS_CARD,
+      surface2: tint.surface2,
+      surface3: tint.surface3,
+      surface4: tint.surface4,
+      surfaceDiffEmpty: tint.surfaceDiffEmpty,
+      surfaceSidebar: NEW_THEME_DARK_CHROME,
+      surfaceSidebarHover: tint.surfaceSidebarHover,
+      foregroundMuted: tint.foregroundMuted,
+      scrollbarHandle: NEW_THEME_DARK_CHROME,
+      border: tint.border,
+      borderAccent: tint.borderAccent,
+      accent: tint.accent,
+      accentBright: tint.accentBright,
+      accentForeground: tint.accentForeground,
+      destructive: tint.destructive,
+      ultracodeGlow: tint.ultracodeGlow,
+    }),
+    surfaceShell: NEW_THEME_DARK_CHROME,
+    surfaceSidebar: NEW_THEME_DARK_CHROME,
+    surfaceWorkspace: panel,
+    scrollbarHandle: NEW_THEME_DARK_CHROME,
+  };
+}
+
+// Zinc-neutral floating dark (also the auto/system dark default).
+export const newThemeDark = {
+  ...buildDarkTheme(
+    buildNewThemeDarkFloatingSemantic("#121214", {
+      surface2: "#1a1a1e",
+      surface3: "#26262c",
+      surface4: "#34343c",
+      surfaceDiffEmpty: "#141418",
+      surfaceSidebarHover: "#1a1a1e",
+      foregroundMuted: "#a8a8b3",
+      border: "#26262c",
+      borderAccent: "#34343c",
+      accent: "#e4e4e7",
+      accentBright: "#fafafa",
+      accentForeground: "#18181b",
+      destructive: "#c44a4a",
+    }),
+  ),
+  shell: newThemeShell,
+};
+
+// Paseo (dropdown "Dark") — teal-green accent on the floating shell.
+export const newThemePaseoDark = {
+  ...buildDarkTheme(
+    buildNewThemeDarkFloatingSemantic("#181B1A", {
+      surface2: "#272A29",
+      surface3: "#434645",
+      surface4: "#595B5B",
+      surfaceDiffEmpty: "#252827",
+      surfaceSidebarHover: "#1c1f1e",
+      foregroundMuted: "#A1A5A4",
+      border: "#252B2A",
+      borderAccent: "#2F3534",
+      accent: "#20744A",
+      accentBright: "#7ccba0",
+      destructive: "#c64f43",
+    }),
+  ),
+  shell: newThemeShell,
+};
+
+// Midnight — cool blue tint + blue accent.
+export const newThemeMidnightDark = {
+  ...buildDarkTheme(
+    buildNewThemeDarkFloatingSemantic("#161820", {
+      surface2: "#252731",
+      surface3: "#3c3e4c",
+      surface4: "#535564",
+      surfaceDiffEmpty: "#222430",
+      surfaceSidebarHover: "#1a1c28",
+      foregroundMuted: "#9a9db0",
+      border: "#242636",
+      borderAccent: "#2e3040",
+      accent: "#3b6fcf",
+      accentBright: "#7eaaeb",
+      destructive: "#c44a52",
+    }),
+  ),
+  shell: newThemeShell,
+};
+
+// Ghostty — slate-blue surfaces + light blue accent.
+export const newThemeGhosttyDark = {
+  ...buildDarkTheme(
+    buildNewThemeDarkFloatingSemantic("#282c34", {
+      surface2: "#383c48",
+      surface3: "#4a4f5e",
+      surface4: "#5b6175",
+      surfaceDiffEmpty: "#323643",
+      surfaceSidebarHover: "#292d36",
+      foregroundMuted: "#c8ccd8",
+      border: "#353a47",
+      borderAccent: "#3f4454",
+      accent: "#89b4fa",
+      accentBright: "#b4d0fc",
+      destructive: "#c44a55",
+    }),
+  ),
+  shell: newThemeShell,
+};
+
+// Claude dark — warm charcoal panel + terracotta accent.
+export const newThemeClaudeDark = {
+  ...buildDarkTheme(
+    buildNewThemeDarkFloatingSemantic("#1a1918", {
+      surface2: "#2f2d2b",
+      surface3: "#4a4745",
+      surface4: "#605d5b",
+      surfaceDiffEmpty: "#2a2826",
+      surfaceSidebarHover: "#222120",
+      foregroundMuted: "#ada9a5",
+      border: "#2c2a27",
+      borderAccent: "#36332f",
+      accent: "#d97757",
+      accentBright: "#e89a7f",
+      destructive: "#cf513e",
+      ultracodeGlow: { border: "#c97c5d", halo: "#d97757" },
+    }),
+  ),
+  shell: newThemeShell,
+};
+
+// Catppuccin Latte floating light — mantle chrome, base card, mauve accent.
+const NEW_THEME_CATPPUCCIN_LATTE_CHROME = CATPPUCCIN_LATTE.mantle;
+const newThemeCatppuccinLatteSemanticColors = {
+  ...catppuccinLatteSemanticColors,
+  surfaceSidebar: NEW_THEME_CATPPUCCIN_LATTE_CHROME,
+  surfaceShell: NEW_THEME_CATPPUCCIN_LATTE_CHROME,
+  scrollbarHandle: NEW_THEME_CATPPUCCIN_LATTE_CHROME,
+  surface0: CATPPUCCIN_LATTE.base,
+  surfaceWorkspace: CATPPUCCIN_LATTE.base,
+};
+
+export const newThemeCatppuccinLatte = {
+  ...buildLightTheme(newThemeCatppuccinLatteSemanticColors),
+  shell: newThemeShell,
+};
+
+function newThemeCatppuccinDarkFloating(p: CatppuccinPalette) {
+  const tint = buildCatppuccinDarkTint(p);
+  return {
+    ...buildDarkTheme(
+      buildNewThemeDarkFloatingSemantic(p.base, {
+        surface2: tint.surface2,
+        surface3: tint.surface3,
+        surface4: tint.surface4,
+        surfaceDiffEmpty: tint.surfaceDiffEmpty,
+        surfaceSidebarHover: tint.surfaceSidebarHover,
+        foregroundMuted: tint.foregroundMuted,
+        border: tint.border,
+        borderAccent: tint.borderAccent,
+        accent: tint.accent,
+        accentBright: tint.accentBright,
+        destructive: tint.destructive,
+        ultracodeGlow: tint.ultracodeGlow,
+      }),
+    ),
+    shell: newThemeShell,
+  };
+}
+
+export const newThemeCatppuccinFrappe = newThemeCatppuccinDarkFloating(CATPPUCCIN_FRAPPE);
+export const newThemeCatppuccinMacchiato = newThemeCatppuccinDarkFloating(CATPPUCCIN_MACCHIATO);
+export const newThemeCatppuccinMocha = newThemeCatppuccinDarkFloating(CATPPUCCIN_MOCHA);
+
 // Authoritative Unistyles-theme-key → colorScheme map, derived from the theme
 // objects' own `colorScheme` so it can't drift. Use this anywhere only the theme
 // NAME is available — notably a `StyleSheet.create((theme, rt) => …)` factory on
 // web, where every string leaf on `theme` (including `theme.colorScheme`) is
 // rewritten to a `var(--…)` reference and is unusable as a value (see
 // docs/unistyles.md). A name-prefix heuristic is NOT enough: the fork's
-// `newTheme` is a light theme whose key starts with neither "light" nor "dark".
+// `newTheme*` keys start with neither "light" nor "dark".
 const THEME_NAME_TO_COLOR_SCHEME = {
   light: lightTheme.colorScheme,
   lightClaude: lightClaudeTheme.colorScheme,
+  lightCatppuccinLatte: lightCatppuccinLatteTheme.colorScheme,
   newTheme: newTheme.colorScheme,
+  newThemeClaude: newThemeClaude.colorScheme,
+  newThemeCatppuccinLatte: newThemeCatppuccinLatte.colorScheme,
+  newThemeDark: newThemeDark.colorScheme,
+  newThemePaseoDark: newThemePaseoDark.colorScheme,
+  newThemeMidnightDark: newThemeMidnightDark.colorScheme,
+  newThemeGhosttyDark: newThemeGhosttyDark.colorScheme,
+  newThemeClaudeDark: newThemeClaudeDark.colorScheme,
+  newThemeCatppuccinFrappe: newThemeCatppuccinFrappe.colorScheme,
+  newThemeCatppuccinMacchiato: newThemeCatppuccinMacchiato.colorScheme,
+  newThemeCatppuccinMocha: newThemeCatppuccinMocha.colorScheme,
   dark: darkTheme.colorScheme,
   darkZinc: darkZincTheme.colorScheme,
   darkMidnight: darkMidnightTheme.colorScheme,
   darkClaude: darkClaudeTheme.colorScheme,
   darkGhostty: darkGhosttyTheme.colorScheme,
+  darkCatppuccinFrappe: darkCatppuccinFrappeTheme.colorScheme,
+  darkCatppuccinMacchiato: darkCatppuccinMacchiatoTheme.colorScheme,
+  darkCatppuccinMocha: darkCatppuccinMochaTheme.colorScheme,
 } satisfies Record<string, "light" | "dark">;
 
 // Falls back to "dark" for unknown names (the app's dark-default, and the only
 // names seen before settings load are `light`/`dark`, both mapped above).
 export function colorSchemeForThemeName(themeName: string): "light" | "dark" {
   return THEME_NAME_TO_COLOR_SCHEME[themeName as keyof typeof THEME_NAME_TO_COLOR_SCHEME] ?? "dark";
+}
+
+// When the new-theme toggle is on, shell.floating stays on and the dropdown picks
+// which new-theme *palette* to use (every ThemeName has a dedicated floating key).
+// `auto` follows the system light/dark with the neutral floating pair.
+export type NewThemeUnistylesKey =
+  | "newTheme"
+  | "newThemeClaude"
+  | "newThemeCatppuccinLatte"
+  | "newThemeDark"
+  | "newThemePaseoDark"
+  | "newThemeMidnightDark"
+  | "newThemeGhosttyDark"
+  | "newThemeClaudeDark"
+  | "newThemeCatppuccinFrappe"
+  | "newThemeCatppuccinMacchiato"
+  | "newThemeCatppuccinMocha";
+
+export function isLightThemeSelection(
+  theme: ThemeName | "auto",
+  systemScheme: "light" | "dark",
+): boolean {
+  if (theme === "auto") {
+    return systemScheme === "light";
+  }
+  return theme === "light" || theme === "claudeLight" || theme === "catppuccinLatte";
+}
+
+export function resolveNewThemeUnistylesKey(
+  theme: ThemeName | "auto",
+  systemScheme: "light" | "dark" = "dark",
+): NewThemeUnistylesKey {
+  switch (theme) {
+    case "light":
+      return "newTheme";
+    case "claudeLight":
+      return "newThemeClaude";
+    case "catppuccinLatte":
+      return "newThemeCatppuccinLatte";
+    case "dark":
+      return "newThemePaseoDark";
+    case "zinc":
+      return "newThemeDark";
+    case "midnight":
+      return "newThemeMidnightDark";
+    case "claude":
+      return "newThemeClaudeDark";
+    case "ghostty":
+      return "newThemeGhosttyDark";
+    case "catppuccinFrappe":
+      return "newThemeCatppuccinFrappe";
+    case "catppuccinMacchiato":
+      return "newThemeCatppuccinMacchiato";
+    case "catppuccinMocha":
+      return "newThemeCatppuccinMocha";
+    case "auto":
+      return systemScheme === "light" ? "newTheme" : "newThemeDark";
+    default: {
+      // Exhaustiveness: if ThemeName grows, TypeScript flags a missing case.
+      const _exhaustive: never = theme;
+      return _exhaustive;
+    }
+  }
 }
 
 // Keep compatibility with existing code
@@ -830,28 +1362,40 @@ export type Theme = typeof darkTheme | typeof lightTheme;
 type UnistylesThemeKey =
   | "light"
   | "lightClaude"
+  | "lightCatppuccinLatte"
   | "dark"
   | "darkZinc"
   | "darkMidnight"
   | "darkClaude"
-  | "darkGhostty";
+  | "darkGhostty"
+  | "darkCatppuccinFrappe"
+  | "darkCatppuccinMacchiato"
+  | "darkCatppuccinMocha";
 
 export const THEME_TO_UNISTYLES: Record<ThemeName, UnistylesThemeKey> = {
   light: "light",
   claudeLight: "lightClaude",
+  catppuccinLatte: "lightCatppuccinLatte",
   dark: "dark",
   zinc: "darkZinc",
   midnight: "darkMidnight",
   claude: "darkClaude",
   ghostty: "darkGhostty",
+  catppuccinFrappe: "darkCatppuccinFrappe",
+  catppuccinMacchiato: "darkCatppuccinMacchiato",
+  catppuccinMocha: "darkCatppuccinMocha",
 };
 
 export const THEME_SWATCHES: Record<ThemeName, string> = {
   light: "#ffffff",
   claudeLight: "#f0eee6",
+  catppuccinLatte: CATPPUCCIN_LATTE.mauve,
   dark: "#2D8B62",
   zinc: "#808080",
   midnight: "#4A6BA8",
   claude: "#D97757",
   ghostty: "#8caaee",
+  catppuccinFrappe: CATPPUCCIN_FRAPPE.mauve,
+  catppuccinMacchiato: CATPPUCCIN_MACCHIATO.mauve,
+  catppuccinMocha: CATPPUCCIN_MOCHA.mauve,
 };

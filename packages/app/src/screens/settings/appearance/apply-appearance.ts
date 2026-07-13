@@ -6,6 +6,7 @@ import {
   FONT_SIZE,
   type Theme,
 } from "@/styles/theme";
+import { applyMonoLigatures } from "@/styles/apply-mono-ligatures";
 import { applyRootUiFont } from "./apply-root-font";
 
 // All registered Unistyles keys — pinned literal (greppable, type-checked).
@@ -14,12 +15,26 @@ import { applyRootUiFont } from "./apply-root-font";
 const ALL_THEME_KEYS = [
   "light",
   "lightClaude",
+  "lightCatppuccinLatte",
   "newTheme",
+  "newThemeClaude",
+  "newThemeCatppuccinLatte",
+  "newThemeDark",
+  "newThemePaseoDark",
+  "newThemeMidnightDark",
+  "newThemeGhosttyDark",
+  "newThemeClaudeDark",
+  "newThemeCatppuccinFrappe",
+  "newThemeCatppuccinMacchiato",
+  "newThemeCatppuccinMocha",
   "dark",
   "darkZinc",
   "darkMidnight",
   "darkClaude",
   "darkGhostty",
+  "darkCatppuccinFrappe",
+  "darkCatppuccinMacchiato",
+  "darkCatppuccinMocha",
 ] as const;
 
 // The UI font size at which the FONT_SIZE ramp is authored (1.0 scale factor).
@@ -31,6 +46,8 @@ export interface AppearanceInput {
   uiFontSize: number; // already clamped
   codeFontSize: number; // already clamped
   syntaxTheme: SyntaxThemeId;
+  // Programming ligatures for mono code surfaces + terminals (settings toggle).
+  monoLigaturesEnabled: boolean;
 }
 
 /**
@@ -59,14 +76,16 @@ function scaleFontSize(uiSize: number, codeSize: number): Theme["fontSize"] {
 
 /**
  * Patch every registered Unistyles theme with the user's appearance choices.
- * All six keys are patched because the active theme can change and adaptive mode
- * can flip light/dark — patching all keys keeps the active key always current and
- * makes ordering vs `setTheme`/`setAdaptiveThemes` irrelevant.
+ * All registered keys are patched because the active theme can change and
+ * adaptive mode (or the new-theme light/dark pair) can flip — patching every
+ * key keeps the active one current and makes ordering vs `setTheme` /
+ * `setAdaptiveThemes` irrelevant.
  */
 export function applyAppearance(input: AppearanceInput): void {
   const ui = input.uiFontFamily.trim() || DEFAULT_UI_FONT_STACK;
   const mono = input.monoFontFamily.trim() || DEFAULT_MONO_FONT_STACK;
   const diffLineHeight = Math.round(input.codeFontSize * 1.5); // couple to code size
+  const monoLigatures = input.monoLigaturesEnabled;
 
   for (const key of ALL_THEME_KEYS) {
     // Spread `...t` first — `updateTheme` replaces the stored theme, it does not
@@ -88,6 +107,7 @@ export function applyAppearance(input: AppearanceInput): void {
           fontFamily,
           fontSize,
           lineHeight,
+          monoLigatures,
           colors: { ...t.colors, syntax: resolveSyntaxColors(input.syntaxTheme, t.colorScheme) },
         };
       }
@@ -96,6 +116,7 @@ export function applyAppearance(input: AppearanceInput): void {
         fontFamily,
         fontSize,
         lineHeight,
+        monoLigatures,
         colors: { ...t.colors, syntax: resolveSyntaxColors(input.syntaxTheme, t.colorScheme) },
       };
     });
@@ -104,4 +125,7 @@ export function applyAppearance(input: AppearanceInput): void {
   // Web: apply the UI font app-wide (RN-web stamps a default font on every text
   // element, so it can't be done through the theme alone). No-op on native.
   applyRootUiFont(ui);
+  // Web: CSS font-feature-settings on [data-pmono] + .xterm. Native: StyleSheet
+  // reads theme.monoLigatures. Terminals also load/unload LigaturesAddon separately.
+  applyMonoLigatures(monoLigatures);
 }

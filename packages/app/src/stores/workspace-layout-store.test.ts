@@ -1497,7 +1497,7 @@ describe("workspace-layout-store actions", () => {
     ).toEqual(["agent_parent-agent"]);
   });
 
-  it("reconcileTabs prunes non-running session tabs on the startup restore pass", () => {
+  it("reconcileTabs keeps idle session tabs from the persisted layout on startup", () => {
     const workspaceKey = createWorkspaceKey();
     const store = workspaceLayoutStore.getState();
 
@@ -1520,15 +1520,16 @@ describe("workspace-layout-store actions", () => {
       workspaceLayoutStore
         .getState()
         .getWorkspaceTabs(workspaceKey)
-        .map((tab) => tab.tabId),
-    ).toEqual(["agent_running-agent"]);
+        .map((tab) => tab.tabId)
+        .sort(),
+    ).toEqual(["agent_idle-agent", "agent_running-agent"]);
   });
 
-  it("reconcileTabs does not prune idle session tabs after the startup restore pass", () => {
+  it("reconcileTabs keeps idle session tabs after the first hydrate pass", () => {
     const workspaceKey = createWorkspaceKey();
     const store = workspaceLayoutStore.getState();
 
-    // First reconcile is the startup restore pass; it marks the workspace done.
+    // First reconcile marks the workspace as restored for layout-sync.
     store.reconcileTabs(workspaceKey, {
       agentsHydrated: true,
       terminalsHydrated: true,
@@ -1564,28 +1565,62 @@ describe("workspace-layout-store actions", () => {
     ).toEqual(["agent_idle-agent", "agent_running-agent"]);
   });
 
-  it("reconcileTabs skips the startup prune when runningAgentIds is omitted", () => {
+  it("reconcileTabs preserves tab groups across a startup-style reconcile", () => {
     const workspaceKey = createWorkspaceKey();
     const store = workspaceLayoutStore.getState();
 
-    store.openTabFocused(workspaceKey, { kind: "agent", agentId: "idle-agent" });
+    store.openTabFocused(workspaceKey, { kind: "agent", agentId: "a" });
+    store.openTabFocused(workspaceKey, { kind: "agent", agentId: "b" });
+    const tabs = store.getWorkspaceTabs(workspaceKey);
+    const paneId = workspaceLayoutStore.getState().layoutByWorkspace[workspaceKey]?.focusedPaneId;
+    expect(paneId).toBeTruthy();
+    store.groupTabs(workspaceKey, paneId!, tabs[0]!.tabId, tabs[1]!.tabId, "Work");
 
     store.reconcileTabs(workspaceKey, {
       agentsHydrated: true,
       terminalsHydrated: true,
-      activeAgentIds: ["idle-agent"],
+      activeAgentIds: ["a", "b"],
       autoOpenAgentIds: [],
-      knownAgentIds: ["idle-agent"],
+      knownAgentIds: ["a", "b"],
+      runningAgentIds: [],
       standaloneTerminalIds: [],
       hasActivePendingDraftCreate: false,
     });
 
-    expect(
-      workspaceLayoutStore
-        .getState()
-        .getWorkspaceTabs(workspaceKey)
-        .map((tab) => tab.tabId),
-    ).toEqual(["agent_idle-agent"]);
+    const layout = workspaceLayoutStore.getState().layoutByWorkspace[workspaceKey];
+    const pane = layout?.root.kind === "pane" ? layout.root.pane : null;
+    expect(pane?.tabIds.sort()).toEqual(["agent_a", "agent_b"]);
+    expect(Object.keys(pane?.tabGroups ?? {}).length).toBe(1);
+    expect(pane?.tabGroupIdByTabId?.agent_a).toBeTruthy();
+    expect(pane?.tabGroupIdByTabId?.agent_b).toBe(pane?.tabGroupIdByTabId?.agent_a);
+  });
+
+  it("reorderTabsInPane joins a tab dropped between two group members", () => {
+    const workspaceKey = createWorkspaceKey();
+    const store = workspaceLayoutStore.getState();
+
+    store.openTabFocused(workspaceKey, { kind: "agent", agentId: "a" });
+    store.openTabFocused(workspaceKey, { kind: "agent", agentId: "b" });
+    store.openTabFocused(workspaceKey, { kind: "agent", agentId: "x" });
+    const paneId = workspaceLayoutStore.getState().layoutByWorkspace[workspaceKey]?.focusedPaneId;
+    expect(paneId).toBeTruthy();
+    // groupTabs places source after target → [a, b, x] with a+b grouped.
+    store.groupTabs(workspaceKey, paneId!, "agent_b", "agent_a", "Work");
+    const layoutAfterGroup = workspaceLayoutStore.getState().layoutByWorkspace[workspaceKey];
+    const paneAfterGroup =
+      layoutAfterGroup?.root.kind === "pane" ? layoutAfterGroup.root.pane : null;
+    expect(paneAfterGroup?.tabIds).toEqual(["agent_a", "agent_b", "agent_x"]);
+
+    // Drop x between a and b (edge reorder into the band).
+    store.reorderTabsInPane(workspaceKey, paneId!, ["agent_a", "agent_x", "agent_b"]);
+
+    const layout = workspaceLayoutStore.getState().layoutByWorkspace[workspaceKey];
+    const pane = layout?.root.kind === "pane" ? layout.root.pane : null;
+    expect(pane?.tabIds).toEqual(["agent_a", "agent_x", "agent_b"]);
+    const groupId = pane?.tabGroupIdByTabId?.agent_a;
+    expect(groupId).toBeTruthy();
+    expect(pane?.tabGroupIdByTabId?.agent_b).toBe(groupId);
+    expect(pane?.tabGroupIdByTabId?.agent_x).toBe(groupId);
   });
 
   it("openTabFocused reopens hidden subagent tabs and clears hidden intent", () => {

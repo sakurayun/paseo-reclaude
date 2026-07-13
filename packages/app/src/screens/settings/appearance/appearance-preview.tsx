@@ -5,6 +5,7 @@ import { StyleSheet } from "react-native-unistyles";
 import type { HighlightToken } from "@getpaseo/highlight";
 import { isWeb } from "@/constants/platform";
 import { CODE_SURFACE_DATASET } from "@/styles/code-surface";
+import { monoLigatureTextStyle } from "@/styles/mono-ligatures";
 import { syntaxTokenStyleFor } from "@/styles/syntax-token-styles";
 import { DEFAULT_MONO_FONT_STACK } from "@/styles/theme";
 import { inlineUnistylesStyle } from "@/styles/unistyles-inline-style";
@@ -199,6 +200,7 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.code,
     lineHeight: theme.lineHeight.diff,
     color: theme.colors.foreground,
+    ...monoLigatureTextStyle(theme.monoLigatures),
     ...(isWeb ? { whiteSpace: "pre", overflowWrap: "normal" } : null),
   },
   markerContext: {

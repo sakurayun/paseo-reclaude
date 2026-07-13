@@ -12,12 +12,26 @@ vi.mock("react-native-unistyles", () => ({ UnistylesRuntime: { updateTheme } }))
 const ALL_THEME_KEYS = [
   "light",
   "lightClaude",
+  "lightCatppuccinLatte",
   "newTheme",
+  "newThemeClaude",
+  "newThemeCatppuccinLatte",
+  "newThemeDark",
+  "newThemePaseoDark",
+  "newThemeMidnightDark",
+  "newThemeGhosttyDark",
+  "newThemeClaudeDark",
+  "newThemeCatppuccinFrappe",
+  "newThemeCatppuccinMacchiato",
+  "newThemeCatppuccinMocha",
   "dark",
   "darkZinc",
   "darkMidnight",
   "darkClaude",
   "darkGhostty",
+  "darkCatppuccinFrappe",
+  "darkCatppuccinMacchiato",
+  "darkCatppuccinMocha",
 ] as const;
 
 // The signature of the updater passed to UnistylesRuntime.updateTheme.
@@ -41,6 +55,7 @@ interface FakeTheme {
     "4xl": number;
   };
   lineHeight: { diff: number };
+  monoLigatures: boolean;
   colors: { foreground: string; syntax: Record<string, string> };
 }
 
@@ -60,6 +75,7 @@ function makeFakeTheme(): FakeTheme {
       "4xl": 34,
     },
     lineHeight: { diff: 22 },
+    monoLigatures: true,
     colors: { foreground: "#fff", syntax: {} },
   };
 }
@@ -71,6 +87,7 @@ function makeInput(overrides: Partial<AppearanceInput> = {}): AppearanceInput {
     uiFontSize: 16,
     codeFontSize: 12,
     syntaxTheme: "one",
+    monoLigaturesEnabled: true,
     ...overrides,
   };
 }

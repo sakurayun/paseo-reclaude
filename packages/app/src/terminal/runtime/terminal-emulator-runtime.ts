@@ -6,8 +6,12 @@ import type { ISearchOptions, ISearchResultChangeEvent } from "@xterm/addon-sear
 import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { WebglAddon } from "@xterm/addon-webgl";
-import { LigaturesAddon } from "@xterm/addon-ligatures/lib/addon-ligatures.mjs";
 import { Terminal, type IDisposable, type ITheme } from "@xterm/xterm";
+import {
+  MONO_FALLBACK_LIGATURES,
+  MONO_LIGATURE_FONT_FEATURE_SETTINGS_ON,
+} from "@/styles/mono-ligatures";
+import { findTerminalLigatureRanges } from "./terminal-ligature-ranges";
 import type { TerminalState } from "@getpaseo/protocol/messages";
 import {
   type TerminalInputModeState,
@@ -224,7 +228,15 @@ export class TerminalEmulatorRuntime {
   };
   private terminal: Terminal | null = null;
   private fitAddon: FitAddon | null = null;
-  private ligaturesAddon: LigaturesAddon | null = null;
+  // registerCharacterJoiner id when programming ligatures are active.
+  private ligatureJoinerId: number | undefined;
+  private ligaturesDesired = true;
+  // Longest-first sequences for the character joiner (stable for the process).
+  private readonly ligatureSequences: readonly string[] = [...MONO_FALLBACK_LIGATURES].sort(
+    (a, b) => b.length - a.length,
+  );
+  // Reload WebGL after enabling ligatures so the texture atlas picks up font-feature-settings.
+  private reinitWebglRenderer: (() => void) | null = null;
   private searchAddon: SearchAddon | null = null;
   private fitAndEmitResize: ((input?: { force?: boolean; shouldClaim?: boolean }) => void) | null =
     null;
@@ -281,6 +293,12 @@ export class TerminalEmulatorRuntime {
     this.inputModeTracker.reset();
     this.emitInputModeChange();
 
+    this.ligaturesDesired = input.ligaturesEnabled !== false;
+    // Non-zero letter-spacing breaks OpenType ligature joining; prefer correct
+    // ligatures when the setting is on (spacing still applies when ligatures off).
+    const letterSpacing = this.ligaturesDesired
+      ? 0
+      : resolveTerminalLetterSpacing(input.letterSpacing);
     const terminal = new Terminal({
       allowProposedApi: true,
       convertEol: false,
@@ -288,7 +306,7 @@ export class TerminalEmulatorRuntime {
       cursorStyle: "bar",
       fontFamily: resolveTerminalFontFamily(input.fontFamily),
       fontSize: resolveTerminalFontSize(input.fontSize),
-      letterSpacing: resolveTerminalLetterSpacing(input.letterSpacing),
+      letterSpacing,
       lineHeight: 1.0,
       macOptionIsMeta: true,
       minimumContrastRatio: 1,
@@ -326,10 +344,10 @@ export class TerminalEmulatorRuntime {
     terminal.loadAddon(searchAddon);
     terminal.loadAddon(new ClipboardAddon());
     terminal.open(input.host);
-    // LigaturesAddon.activate() throws when terminal.element is missing, so it must load
-    // after open() — loading earlier used to fail silently and ligatures never rendered.
-    if (input.ligaturesEnabled !== false) {
-      this.loadLigaturesAddon(terminal);
+    // Character joiner + font-feature-settings must be applied after open() (needs
+    // terminal.element) and BEFORE WebGL so the texture atlas inherits calt/liga.
+    if (this.ligaturesDesired) {
+      this.enableLigatures(terminal);
     }
     this.themeBackgroundElements = this.collectThemeBackgroundElements(input);
     this.applyThemeBackground(input.theme);
@@ -385,8 +403,7 @@ export class TerminalEmulatorRuntime {
     };
     registerProtocolQuerySuppression();
 
-    let webglAddonRaf: number | null = requestAnimationFrame(() => {
-      webglAddonRaf = null;
+    const mountWebglRenderer = (): void => {
       try {
         disposeWebglRenderer();
         webglAddon = new WebglAddon();
@@ -401,6 +418,13 @@ export class TerminalEmulatorRuntime {
       } catch {
         disposeWebglRenderer();
       }
+    };
+    // Exposed so setLigatures can re-activate WebGL after the ligatures addon
+    // (required for font-feature-settings to apply to the texture atlas).
+    this.reinitWebglRenderer = mountWebglRenderer;
+    let webglAddonRaf: number | null = requestAnimationFrame(() => {
+      webglAddonRaf = null;
+      mountWebglRenderer();
     });
 
     const restoreDocumentStyles = this.applyDocumentBoundsStyles({
@@ -677,6 +701,8 @@ export class TerminalEmulatorRuntime {
     };
 
     this.cleanup = () => {
+      this.reinitWebglRenderer = null;
+      this.disableLigatures(terminal);
       disposables.disposeInput();
       disposables.disconnectResizeObserver();
       disposables.removeWheelZoomListener();
@@ -804,6 +830,13 @@ export class TerminalEmulatorRuntime {
       return;
     }
 
+    // Font metrics / face change — re-apply font-feature-settings and refresh so
+    // WebGL re-rasterizes glyphs with calt/liga for the new face.
+    if (this.ligaturesDesired) {
+      this.applyLigatureFontFeatures(terminal);
+      this.reinitWebglRenderer?.();
+    }
+
     this.fitAndEmitResize?.({ force: true });
     this.refreshVisibleRows();
   }
@@ -815,7 +848,10 @@ export class TerminalEmulatorRuntime {
     }
 
     try {
-      terminal.options.letterSpacing = resolveTerminalLetterSpacing(input.letterSpacing);
+      // Ligatures require zero letter-spacing for correct join metrics.
+      terminal.options.letterSpacing = this.ligaturesDesired
+        ? 0
+        : resolveTerminalLetterSpacing(input.letterSpacing);
     } catch {
       // ignore
       return;
@@ -831,37 +867,64 @@ export class TerminalEmulatorRuntime {
     if (!terminal) {
       return;
     }
+    this.ligaturesDesired = input.enabled;
     if (input.enabled) {
-      this.loadLigaturesAddon(terminal);
+      try {
+        terminal.options.letterSpacing = 0;
+      } catch {
+        // ignore
+      }
+      this.enableLigatures(terminal);
+      // WebGL atlas inherits font-feature-settings from terminal.element — reload
+      // after features/joiner are in place (same requirement as LigaturesAddon docs).
+      this.reinitWebglRenderer?.();
     } else {
-      this.disposeLigaturesAddon();
+      this.disableLigatures(terminal);
     }
+    this.fitAndEmitResize?.({ force: true });
     this.refreshVisibleRows();
   }
 
-  private loadLigaturesAddon(terminal: Terminal): void {
-    if (this.ligaturesAddon) {
+  private enableLigatures(terminal: Terminal): void {
+    this.applyLigatureFontFeatures(terminal);
+    if (this.ligatureJoinerId !== undefined) {
       return;
     }
+    // allowProposedApi must be true (set at construction) for registerCharacterJoiner.
     try {
-      const addon = new LigaturesAddon();
-      terminal.loadAddon(addon);
-      this.ligaturesAddon = addon;
+      this.ligatureJoinerId = terminal.registerCharacterJoiner((text) =>
+        findTerminalLigatureRanges(text, this.ligatureSequences),
+      );
     } catch {
-      // Ligatures require Font Access API or compatible environment
+      // Proposed API unavailable or terminal not open — leave features CSS only.
+      this.ligatureJoinerId = undefined;
     }
   }
 
-  private disposeLigaturesAddon(): void {
-    if (!this.ligaturesAddon) {
-      return;
+  private disableLigatures(terminal: Terminal): void {
+    if (this.ligatureJoinerId !== undefined) {
+      try {
+        terminal.deregisterCharacterJoiner(this.ligatureJoinerId);
+      } catch {
+        // ignore
+      }
+      this.ligatureJoinerId = undefined;
     }
-    try {
-      this.ligaturesAddon.dispose();
-    } catch {
-      // ignore
+    this.clearLigatureFontFeatures(terminal);
+  }
+
+  private applyLigatureFontFeatures(terminal: Terminal): void {
+    // WebGL TextureAtlas attaches its canvas under this element to inherit
+    // font-feature-settings so joined multi-cell glyphs paint with calt/liga.
+    if (terminal.element) {
+      terminal.element.style.fontFeatureSettings = MONO_LIGATURE_FONT_FEATURE_SETTINGS_ON;
     }
-    this.ligaturesAddon = null;
+  }
+
+  private clearLigatureFontFeatures(terminal: Terminal): void {
+    if (terminal.element) {
+      terminal.element.style.fontFeatureSettings = "";
+    }
   }
 
   focus(input?: { forceRefocus?: boolean }): void {
@@ -938,6 +1001,15 @@ export class TerminalEmulatorRuntime {
     } catch {
       // ignore
     }
+
+    // Bundled Maple Mono finishes after open — re-stamp calt/liga and rebuild the
+    // WebGL atlas so joined sequences rasterize with ligature glyphs, not the
+    // fallback mono face measured at first open.
+    if (this.ligaturesDesired) {
+      this.applyLigatureFontFeatures(terminal);
+      this.reinitWebglRenderer?.();
+      this.refreshVisibleRows();
+    }
   }
 
   private refreshVisibleRows(): void {
@@ -996,8 +1068,8 @@ export class TerminalEmulatorRuntime {
     }
     this.terminal = null;
     this.fitAddon = null;
-    // The terminal dispose (via cleanup) tears down loaded addons; just drop the refs.
-    this.ligaturesAddon = null;
+    // Joiner is deregistered in cleanup via disableLigatures; drop the id ref.
+    this.ligatureJoinerId = undefined;
     this.searchAddon = null;
     this.fitAndEmitResize = null;
     this.lastSize = null;

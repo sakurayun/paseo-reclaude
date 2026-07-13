@@ -397,6 +397,9 @@ function tabKeyExtractor(item: WorkspaceDesktopTabRowItem) {
   if (item.kind === "collapsed-group") {
     return `group:${item.group.id}`;
   }
+  if (item.kind === "group-header") {
+    return `group-header:${item.group.id}`;
+  }
   return `${item.tab.key}:${item.tab.kind}`;
 }
 
@@ -412,12 +415,56 @@ export type WorkspaceDesktopTabRowItem =
       group?: WorkspaceTabGroup;
     }
   | {
+      /** Expanded-group color chip: own flex width in the tab row (not nested in a tab). */
+      kind: "group-header";
+      group: WorkspaceTabGroup;
+    }
+  | {
       kind: "collapsed-group";
       group: WorkspaceTabGroup;
       memberTabs: WorkspaceTabDescriptor[];
       isActive: boolean;
       activeMember: WorkspaceTabDescriptor;
     };
+
+function groupLineEdgeStyle(role: Exclude<TabGroupVisualRole | "header", "none">) {
+  switch (role) {
+    case "header":
+      return groupStyles.groupBottomLineHeader;
+    case "start":
+      return groupStyles.groupBottomLineStart;
+    case "middle":
+      return groupStyles.groupBottomLineMiddle;
+    case "end":
+      return groupStyles.groupBottomLineEnd;
+    case "only":
+      return groupStyles.groupBottomLineOnly;
+  }
+}
+
+/**
+ * Continuous group underline segment. Adjacent members extend into the tab-row
+ * gap so separate chips still read as one connected bar (not per-tab dashes).
+ */
+function GroupMembershipLine({
+  color,
+  role,
+}: {
+  color: string;
+  role: TabGroupVisualRole | "header";
+}) {
+  const lineStyle = useMemo(() => {
+    if (role === "none") {
+      return null;
+    }
+    return [groupStyles.groupBottomLine, groupLineEdgeStyle(role), { backgroundColor: color }];
+  }, [color, role]);
+
+  if (!lineStyle) {
+    return null;
+  }
+  return <View pointerEvents="none" style={lineStyle} />;
+}
 
 interface SplitActionButtonProps {
   onPress: () => void;
@@ -702,7 +749,91 @@ function GroupColorMenuItem({
   );
 }
 
-const CHEVRON_UP_STYLE = { transform: [{ rotate: "180deg" as const }] };
+/**
+ * Solid color control for a tab group: click toggles collapse; right-click
+ * renames / recolors. Owns its own width in the tab row (not nested in a tab).
+ */
+function GroupColorSquare({
+  color,
+  title,
+  collapsed,
+  onPress,
+  onRename,
+  onSetColor,
+  onUngroup,
+  accessibilityLabel,
+  testID,
+}: {
+  color: string;
+  title: string;
+  collapsed: boolean;
+  onPress: () => void;
+  onRename?: () => void;
+  onSetColor?: (color: TabGroupColorId) => void;
+  onUngroup?: () => void;
+  accessibilityLabel: string;
+  testID?: string;
+}) {
+  const { t } = useTranslation();
+  const squareStyle = useMemo(
+    () => [groupStyles.groupColorSquare, { backgroundColor: color }],
+    [color],
+  );
+
+  const handlePress = useCallback(
+    (event: { stopPropagation?: () => void }) => {
+      event.stopPropagation?.();
+      onPress();
+    },
+    [onPress],
+  );
+
+  const square = (
+    <Pressable
+      onPress={handlePress}
+      hitSlop={collapsed ? 0 : 2}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+      testID={testID}
+      style={squareStyle}
+    >
+      <Text style={groupStyles.groupColorSquareLabel} numberOfLines={1} ellipsizeMode="tail">
+        {title}
+      </Text>
+    </Pressable>
+  );
+
+  // Right-click the color chip itself to rename / recolor / ungroup.
+  if (!onRename && !onSetColor && !onUngroup) {
+    return square;
+  }
+
+  return (
+    <ContextMenu>
+      <ContextMenuTrigger
+        enabledOnMobile={false}
+        // Avoid eating the click that toggles collapse.
+        style={groupStyles.groupColorSquareMenuTrigger}
+      >
+        {square}
+      </ContextMenuTrigger>
+      <ContextMenuContent align="start" width={200}>
+        {onRename ? (
+          <ContextMenuItem onSelect={onRename}>{t("workspace.tabs.groups.rename")}</ContextMenuItem>
+        ) : null}
+        {onSetColor ? <GroupColorMenuItems onSetColor={onSetColor} /> : null}
+        {onUngroup ? (
+          <>
+            <ContextMenuSeparator />
+            <ContextMenuItem onSelect={onUngroup}>
+              {t("workspace.tabs.groups.ungroup")}
+            </ContextMenuItem>
+          </>
+        ) : null}
+      </ContextMenuContent>
+    </ContextMenu>
+  );
+}
 
 /** Tab chips accumulate many props and handlers by design. */
 // eslint-disable-next-line complexity -- tab chrome + group chrome share one component
@@ -725,7 +856,6 @@ function TabChip({
   onCloseTab,
   dragHandleProps,
   groupRole = "none",
-  groupColor = null,
   isGroupDropTarget = false,
   onCollapseGroup,
   onRenameGroup,
@@ -750,7 +880,6 @@ function TabChip({
   onCloseTab: (tabId: string) => Promise<void> | void;
   dragHandleProps: DraggableListDragHandleProps | undefined;
   groupRole?: TabGroupVisualRole;
-  groupColor?: string | null;
   isGroupDropTarget?: boolean;
   onCollapseGroup?: () => void;
   onRenameGroup?: () => void;
@@ -775,24 +904,13 @@ function TabChip({
       } as const)
     : undefined;
 
+  // Grouped tabs keep the default chip chrome — no fill/border override.
+  // Membership underline is drawn on the outer tabSlot (continuous across gaps).
   const tabChipStyle = useCallback(
     () => [
       styles.tab,
       isActive && styles.tabActiveChip,
       isWeb && isDragging && ({ cursor: "grabbing" } as object),
-      groupRole !== "none" &&
-        groupColor && {
-          backgroundColor: `${groupColor}1f`,
-          borderColor: `${groupColor}55`,
-          borderTopWidth: 1,
-          borderBottomWidth: 1,
-          borderLeftWidth: groupRole === "start" || groupRole === "only" ? 1 : 0,
-          borderRightWidth: groupRole === "end" || groupRole === "only" ? 1 : 0,
-          borderTopLeftRadius: groupRole === "start" || groupRole === "only" ? 10 : 0,
-          borderBottomLeftRadius: groupRole === "start" || groupRole === "only" ? 10 : 0,
-          borderTopRightRadius: groupRole === "end" || groupRole === "only" ? 10 : 0,
-          borderBottomRightRadius: groupRole === "end" || groupRole === "only" ? 10 : 0,
-        },
       isGroupDropTarget && styles.tabGroupDropTarget,
       {
         minWidth: resolvedTabWidth,
@@ -800,7 +918,7 @@ function TabChip({
         maxWidth: resolvedTabWidth,
       },
     ],
-    [groupColor, groupRole, isActive, isDragging, isGroupDropTarget, resolvedTabWidth],
+    [isActive, isDragging, isGroupDropTarget, resolvedTabWidth],
   );
 
   const handleTabHoverIn = useCallback(() => {
@@ -844,19 +962,6 @@ function TabChip({
     [],
   );
 
-  const handleCollapseGroupPress = useCallback(
-    (event: { stopPropagation?: () => void }) => {
-      event.stopPropagation?.();
-      onCollapseGroup?.();
-    },
-    [onCollapseGroup],
-  );
-
-  const groupColorBarStyle = useMemo(
-    () => (groupColor ? [styles.groupColorBar, { backgroundColor: groupColor }] : null),
-    [groupColor],
-  );
-
   const tabAccessibilityState = useMemo(() => ({ selected: isActive }), [isActive]);
   const tabFocusIndicatorStyle = useMemo(
     () => [styles.tabFocusIndicator, !isFocused && styles.tabFocusIndicatorUnfocused],
@@ -897,23 +1002,6 @@ function TabChip({
               aria-selected={isActive}
             >
               {isActive && <View style={tabFocusIndicatorStyle} />}
-              {groupColorBarStyle && (groupRole === "start" || groupRole === "only") ? (
-                <View style={groupColorBarStyle} />
-              ) : null}
-              {(groupRole === "start" || groupRole === "only") && onCollapseGroup ? (
-                <Pressable
-                  onPress={handleCollapseGroupPress}
-                  hitSlop={4}
-                  accessibilityLabel={t("workspace.tabs.groups.collapse")}
-                  style={styles.groupCollapseButton}
-                >
-                  <ThemedChevronDown
-                    size={12}
-                    uniProps={mutedColorMapping}
-                    style={CHEVRON_UP_STYLE}
-                  />
-                </Pressable>
-              ) : null}
               <TabHandleContent
                 presentation={presentation}
                 isHighlighted={isHighlighted}
@@ -1143,7 +1231,7 @@ export function WorkspaceDesktopTabsRow({
   const tabLabelLengths = useMemo(
     () =>
       tabs.map((item) => {
-        if (item.kind === "collapsed-group") {
+        if (item.kind === "collapsed-group" || item.kind === "group-header") {
           return item.group.title.length || 8;
         }
         const label = getFallbackTabLabel(item.tab, fallbackTabLabels);
@@ -1163,9 +1251,13 @@ export function WorkspaceDesktopTabsRow({
   const handleDragEnd = useCallback(
     (nextItems: WorkspaceDesktopTabRowItem[]) => {
       // Expand collapsed groups back into their member order for the flat
-      // pane.tabIds list the layout store expects.
+      // pane.tabIds list the layout store expects. Group headers are chrome
+      // only — they do not contribute tab ids.
       const nextTabs: WorkspaceTabDescriptor[] = [];
       for (const item of nextItems) {
+        if (item.kind === "group-header") {
+          continue;
+        }
         if (item.kind === "collapsed-group") {
           nextTabs.push(...item.memberTabs);
         } else {
@@ -1186,6 +1278,14 @@ export function WorkspaceDesktopTabsRow({
           paneId,
           // Drag the active (or first) member so drop/group logic still works.
           tabId: item.activeMember.tabId,
+        };
+      }
+      if (item.kind === "group-header") {
+        // Header is not a drag source (no handle); keep a stable shape for DnD.
+        return {
+          kind: "workspace-tab" as const,
+          paneId,
+          tabId: item.group.id,
         };
       }
       return {
@@ -1261,12 +1361,26 @@ export function WorkspaceDesktopTabsRow({
             item={item}
             isFocused={isFocused}
             isDragging={isActive}
-            resolvedTabWidth={Math.max(resolvedTabWidth, 96)}
+            resolvedTabWidth={resolvedTabWidth}
             showDropIndicatorBefore={showDropIndicatorBefore}
             showDropIndicatorAfter={showDropIndicatorAfter}
             dragHandleProps={dragHandleProps}
             onToggleGroupCollapsed={onToggleGroupCollapsed}
             onNavigateTab={onNavigateTab}
+            onRequestRenameGroup={setRenameGroupState}
+            onSetGroupColor={onSetGroupColor}
+            onUngroup={onUngroup}
+          />
+        );
+      }
+
+      if (item.kind === "group-header") {
+        return (
+          <ExpandedGroupHeaderChip
+            item={item}
+            showDropIndicatorBefore={showDropIndicatorBefore}
+            showDropIndicatorAfter={showDropIndicatorAfter}
+            onToggleGroupCollapsed={onToggleGroupCollapsed}
             onRequestRenameGroup={setRenameGroupState}
             onSetGroupColor={onSetGroupColor}
             onUngroup={onUngroup}
@@ -1455,7 +1569,6 @@ function CollapsedGroupChip({
   item,
   isFocused,
   isDragging,
-  resolvedTabWidth,
   showDropIndicatorBefore,
   showDropIndicatorAfter,
   dragHandleProps,
@@ -1485,10 +1598,9 @@ function CollapsedGroupChip({
 
   const handleExpand = useCallback(() => {
     onToggleGroupCollapsed?.(groupId, false);
-  }, [groupId, onToggleGroupCollapsed]);
-  const handleNavigateActive = useCallback(() => {
+    // Surface the active member once the group opens.
     onNavigateTab(item.activeMember.tabId);
-  }, [item.activeMember.tabId, onNavigateTab]);
+  }, [groupId, item.activeMember.tabId, onNavigateTab, onToggleGroupCollapsed]);
   const handleRename = useCallback(() => {
     onRequestRenameGroup({ groupId, title: item.group.title });
   }, [groupId, item.group.title, onRequestRenameGroup]);
@@ -1501,74 +1613,103 @@ function CollapsedGroupChip({
   const handleUngroup = useCallback(() => {
     onUngroup?.(groupId);
   }, [groupId, onUngroup]);
-  const handleExpandButtonPress = useCallback(
-    (event: { stopPropagation?: () => void }) => {
-      event.stopPropagation?.();
-      handleExpand();
-    },
-    [handleExpand],
-  );
 
-  const chipStyle = useCallback(
-    () => [
-      styles.collapsedGroupChip,
-      {
-        minWidth: resolvedTabWidth,
-        width: resolvedTabWidth,
-        maxWidth: resolvedTabWidth,
-        borderColor: color,
-        backgroundColor: `${color}22`,
-      },
-      isWeb && isDragging && ({ cursor: "grabbing" } as object),
-    ],
-    [color, isDragging, resolvedTabWidth],
+  const shellStyle = useMemo(
+    () => [groupStyles.groupHeaderShell, isWeb && isDragging && ({ cursor: "grabbing" } as object)],
+    [isDragging],
   );
-  const colorDotStyle = useMemo(() => [styles.groupColorDot, { backgroundColor: color }], [color]);
 
   return (
     <View style={styles.tabSlot}>
       {showDropIndicatorBefore ? <View style={TAB_DROP_INDICATOR_BEFORE_STYLE} /> : null}
-      <ContextMenu>
-        <ContextMenuTrigger
-          {...(dragHandleProps?.attributes as object | undefined)}
-          {...(dragHandleProps?.listeners as object | undefined)}
-          onPress={handleNavigateActive}
-          style={chipStyle}
-          accessibilityRole="button"
-          accessibilityLabel={label}
-          testID={`workspace-tab-group-collapsed-${groupId}`}
-        >
-          <View style={colorDotStyle} />
-          <Text style={styles.collapsedGroupLabel} numberOfLines={1}>
-            {label}
-          </Text>
-          <Text style={styles.collapsedGroupCount}>{item.memberTabs.length}</Text>
-          <Pressable
-            onPress={handleExpandButtonPress}
-            hitSlop={6}
-            accessibilityLabel={t("workspace.tabs.groups.expand")}
-            style={styles.groupCollapseButton}
-          >
-            <ThemedChevronDown size={12} uniProps={mutedColorMapping} />
-          </Pressable>
-        </ContextMenuTrigger>
-        <ContextMenuContent align="start" width={200}>
-          <ContextMenuItem onSelect={handleExpand}>
-            {t("workspace.tabs.groups.expand")}
-          </ContextMenuItem>
-          <ContextMenuItem onSelect={handleRename}>
-            {t("workspace.tabs.groups.rename")}
-          </ContextMenuItem>
-          <ContextMenuSeparator />
-          <GroupColorMenuItems onSetColor={handleSetColor} />
-          <ContextMenuSeparator />
-          <ContextMenuItem onSelect={handleUngroup}>
-            {t("workspace.tabs.groups.ungroup")}
-          </ContextMenuItem>
-        </ContextMenuContent>
-      </ContextMenu>
+      {/* Drag shell only — rename/color live on the square's own context menu. */}
+      <View
+        {...(dragHandleProps?.attributes as object | undefined)}
+        {...(dragHandleProps?.listeners as object | undefined)}
+        style={shellStyle}
+        testID={`workspace-tab-group-collapsed-${groupId}`}
+      >
+        <GroupColorSquare
+          color={color}
+          title={label}
+          collapsed
+          onPress={handleExpand}
+          onRename={handleRename}
+          onSetColor={handleSetColor}
+          onUngroup={handleUngroup}
+          accessibilityLabel={t("workspace.tabs.groups.expand")}
+          testID={`workspace-tab-group-square-collapsed-${groupId}`}
+        />
+      </View>
       {showDropIndicatorAfter ? <View style={TAB_DROP_INDICATOR_AFTER_STYLE} /> : null}
       {isFocused && item.isActive ? <View style={styles.tabFocusIndicator} /> : null}
+    </View>
+  );
+}
+
+/**
+ * Expanded-group color chip as its own tab-row item (independent width).
+ * Not draggable — collapse/rename/color only. Continuous underline starts here.
+ */
+function ExpandedGroupHeaderChip({
+  item,
+  showDropIndicatorBefore,
+  showDropIndicatorAfter,
+  onToggleGroupCollapsed,
+  onRequestRenameGroup,
+  onSetGroupColor,
+  onUngroup,
+}: {
+  item: Extract<WorkspaceDesktopTabRowItem, { kind: "group-header" }>;
+  showDropIndicatorBefore: boolean;
+  showDropIndicatorAfter: boolean;
+  onToggleGroupCollapsed?: (groupId: string, collapsed: boolean) => void;
+  onRequestRenameGroup: (state: { groupId: string; title: string }) => void;
+  onSetGroupColor?: (groupId: string, color: string) => void;
+  onUngroup?: (groupId: string) => void;
+}) {
+  const { t } = useTranslation();
+  const color = TAB_GROUP_COLOR_HEX[item.group.color] ?? TAB_GROUP_COLOR_HEX.blue;
+  const label = item.group.title || t("workspace.tabs.groups.defaultTitle");
+  const groupId = item.group.id;
+
+  const handleCollapse = useCallback(() => {
+    onToggleGroupCollapsed?.(groupId, true);
+  }, [groupId, onToggleGroupCollapsed]);
+  const handleRename = useCallback(() => {
+    onRequestRenameGroup({ groupId, title: item.group.title });
+  }, [groupId, item.group.title, onRequestRenameGroup]);
+  const handleSetColor = useCallback(
+    (colorId: TabGroupColorId) => {
+      onSetGroupColor?.(groupId, colorId);
+    },
+    [groupId, onSetGroupColor],
+  );
+  const handleUngroup = useCallback(() => {
+    onUngroup?.(groupId);
+  }, [groupId, onUngroup]);
+
+  return (
+    <View style={styles.tabSlot}>
+      {showDropIndicatorBefore ? <View style={TAB_DROP_INDICATOR_BEFORE_STYLE} /> : null}
+      <View style={groupStyles.groupHeaderColumn} testID={`workspace-tab-group-header-${groupId}`}>
+        <View style={groupStyles.groupHeaderShell}>
+          <GroupColorSquare
+            color={color}
+            title={label}
+            collapsed={false}
+            onPress={handleCollapse}
+            onRename={handleRename}
+            onSetColor={handleSetColor}
+            onUngroup={handleUngroup}
+            accessibilityLabel={t("workspace.tabs.groups.collapse")}
+            testID={`workspace-tab-group-square-${groupId}`}
+          />
+        </View>
+        {/* Absolute — does not consume row height; hangs below the chip with a gap. */}
+        <GroupMembershipLine color={color} role="header" />
+      </View>
+      {showDropIndicatorAfter ? <View style={TAB_DROP_INDICATOR_AFTER_STYLE} /> : null}
     </View>
   );
 }
@@ -1713,35 +1854,42 @@ function ResolvedDesktopTabChip({
             ? t("workspace.tabs.loadingAgentTitle")
             : presentation.label;
 
+        const groupRole = item.groupRole ?? "none";
+        const groupColor = item.group ? TAB_GROUP_COLOR_HEX[item.group.color] : null;
+
         return (
           <View style={styles.tabSlot}>
             {showDropIndicatorBefore ? <View style={TAB_DROP_INDICATOR_BEFORE_STYLE} /> : null}
-            <TabChip
-              tab={item.tab}
-              serverId={normalizedServerId}
-              isActive={item.isActive}
-              isDragging={isDragging}
-              isFocused={isFocused}
-              resolvedTabWidth={resolvedTabWidth}
-              showLabel={showLabel}
-              showCloseButton={showCloseButton}
-              isCloseHovered={item.isCloseHovered}
-              isClosingTab={item.isClosingTab}
-              presentation={presentation}
-              tooltipLabel={tooltipLabel}
-              resolvedTab={resolvedTab}
-              setHoveredCloseTabKey={setHoveredCloseTabKey}
-              onNavigateTab={onNavigateTab}
-              onCloseTab={onCloseTab}
-              dragHandleProps={dragHandleProps}
-              groupRole={item.groupRole ?? "none"}
-              groupColor={item.group ? TAB_GROUP_COLOR_HEX[item.group.color] : null}
-              isGroupDropTarget={isGroupDropTarget}
-              onCollapseGroup={groupId ? handleCollapseGroup : undefined}
-              onRenameGroup={groupId ? handleRenameGroup : undefined}
-              onSetGroupColor={groupId ? handleSetGroupColor : undefined}
-              onUngroup={groupId ? handleUngroup : undefined}
-            />
+            <View style={groupRole !== "none" ? groupStyles.groupMemberColumn : undefined}>
+              <TabChip
+                tab={item.tab}
+                serverId={normalizedServerId}
+                isActive={item.isActive}
+                isDragging={isDragging}
+                isFocused={isFocused}
+                resolvedTabWidth={resolvedTabWidth}
+                showLabel={showLabel}
+                showCloseButton={showCloseButton}
+                isCloseHovered={item.isCloseHovered}
+                isClosingTab={item.isClosingTab}
+                presentation={presentation}
+                tooltipLabel={tooltipLabel}
+                resolvedTab={resolvedTab}
+                setHoveredCloseTabKey={setHoveredCloseTabKey}
+                onNavigateTab={onNavigateTab}
+                onCloseTab={onCloseTab}
+                dragHandleProps={dragHandleProps}
+                groupRole={groupRole}
+                isGroupDropTarget={isGroupDropTarget}
+                onCollapseGroup={groupId ? handleCollapseGroup : undefined}
+                onRenameGroup={groupId ? handleRenameGroup : undefined}
+                onSetGroupColor={groupId ? handleSetGroupColor : undefined}
+                onUngroup={groupId ? handleUngroup : undefined}
+              />
+              {groupColor && groupRole !== "none" ? (
+                <GroupMembershipLine color={groupColor} role={groupRole} />
+              ) : null}
+            </View>
             {showDropIndicatorAfter ? <View style={TAB_DROP_INDICATOR_AFTER_STYLE} /> : null}
           </View>
         );
@@ -1807,6 +1955,9 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     gap: theme.spacing[1],
     userSelect: "none",
+    // Anchor for absolute group bottom line / active indicator.
+    position: "relative",
+    overflow: "hidden",
   },
   // New theme: active chip gets a slightly stronger fill (the top accent bar is
   // hidden). No-op in classic, where the accent bar marks the active tab.
@@ -1822,43 +1973,6 @@ const styles = StyleSheet.create((theme) => ({
     outlineColor: theme.colors.accent,
     outlineStyle: "solid",
     zIndex: 2,
-  },
-  groupColorBar: {
-    width: 3,
-    alignSelf: "stretch",
-    borderRadius: theme.borderRadius.full,
-    marginRight: 2,
-  },
-  groupCollapseButton: {
-    width: 16,
-    height: 16,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: theme.borderRadius.sm,
-  },
-  collapsedGroupChip: {
-    height: theme.shell.floating ? 28 : WORKSPACE_SECONDARY_HEADER_HEIGHT,
-    paddingHorizontal: theme.spacing[2],
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing[1],
-    borderWidth: 1,
-    borderRadius: theme.borderRadius.lg,
-    userSelect: "none",
-  },
-  collapsedGroupLabel: {
-    flexShrink: 1,
-    minWidth: 0,
-    color: theme.colors.foreground,
-    fontSize: theme.fontSize.sm,
-    fontWeight: theme.fontWeight.medium,
-  },
-  collapsedGroupCount: {
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
-    fontWeight: theme.fontWeight.medium,
-    minWidth: 14,
-    textAlign: "center",
   },
   groupColorDot: {
     width: 10,
@@ -2019,6 +2133,85 @@ const styles = StyleSheet.create((theme) => ({
   terminalProfileIconWrapper: {
     width: 14,
     height: 14,
+  },
+}));
+
+/** Group chrome styles (separate sheet so main tab styles stay under complexity cap). */
+const groupStyles = StyleSheet.create((theme) => ({
+  // Match tab chip height + radius (floating 28 / lg; classic full header / square).
+  groupColorSquare: {
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+    flexShrink: 0,
+    minWidth: theme.shell.floating ? 28 : 22,
+    maxWidth: 140,
+    height: theme.shell.floating ? 28 : WORKSPACE_SECONDARY_HEADER_HEIGHT,
+    borderRadius: theme.shell.floating ? theme.borderRadius.lg : 0,
+    paddingHorizontal: theme.spacing[2],
+    paddingVertical: 0,
+  },
+  groupColorSquareMenuTrigger: {
+    flexShrink: 0,
+  },
+  groupColorSquareLabel: {
+    color: "#ffffff",
+    fontSize: theme.fontSize.xs,
+    fontWeight: theme.fontWeight.semibold,
+    textAlign: "center",
+    lineHeight: theme.fontSize.xs + 2,
+    includeFontPadding: false,
+  },
+  // Absolute bar: does not flex-grow the chip. Lives in the column's reserved
+  // paddingBottom so ScrollView cannot clip it (top:100% painted outside the
+  // box and disappeared). Gap from the chip face = paddingBottom - height.
+  groupBottomLine: {
+    position: "absolute",
+    bottom: theme.shell.floating ? 0 : 2,
+    height: 2,
+    borderRadius: theme.borderRadius.full,
+    pointerEvents: "none",
+    zIndex: 1,
+  },
+  groupBottomLineHeader: {
+    left: 0,
+    right: theme.shell.floating ? -theme.spacing[1] / 2 : 0,
+  },
+  groupBottomLineStart: {
+    left: theme.shell.floating ? -theme.spacing[1] / 2 : 0,
+    right: theme.shell.floating ? -theme.spacing[1] / 2 : 0,
+  },
+  groupBottomLineMiddle: {
+    left: theme.shell.floating ? -theme.spacing[1] / 2 : 0,
+    right: theme.shell.floating ? -theme.spacing[1] / 2 : 0,
+  },
+  groupBottomLineEnd: {
+    left: theme.shell.floating ? -theme.spacing[1] / 2 : 0,
+    right: 0,
+  },
+  groupBottomLineOnly: {
+    left: theme.shell.floating ? -theme.spacing[1] / 2 : 0,
+    right: 0,
+  },
+  // paddingBottom reserves 3px gap + 2px bar under the 28px chip (still fits in
+  // the 44px floating row when centered). Classic: no extra pad — bar is inset.
+  groupHeaderColumn: {
+    position: "relative",
+    overflow: "visible",
+    paddingBottom: theme.shell.floating ? 5 : 0,
+  },
+  groupMemberColumn: {
+    position: "relative",
+    overflow: "visible",
+    paddingBottom: theme.shell.floating ? 5 : 0,
+  },
+  // Same outer height as a tab chip so the color card lines up in the row.
+  groupHeaderShell: {
+    height: theme.shell.floating ? 28 : WORKSPACE_SECONDARY_HEADER_HEIGHT,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    userSelect: "none",
   },
 }));
 

@@ -9,9 +9,12 @@ import {
   workspaceTabTargetsEqual,
 } from "@/workspace-tabs/identity";
 import {
+  absorbSandwichedTabsIntoGroups,
   assignTabsToGroup,
+  findSingleMovedTabId,
   normalizeTabGroupMembership,
   normalizeTabGroupsRecord,
+  resolveMovedTabGroupMembership,
   sanitizePaneTabGroups,
   type TabGroupColorId,
   type WorkspaceTabGroup,
@@ -217,15 +220,14 @@ export interface WorkspaceTabSnapshot {
   activeAgentIds: Iterable<string>;
   autoOpenAgentIds: Iterable<string>;
   knownAgentIds: Iterable<string>;
-  // Unarchived sessions that are currently running. When `isInitialRestore` is
-  // set, agent tabs whose session is not in this set are pruned (idle/ended
-  // sessions stay out of the tab bar after a restart). Omit to skip the prune.
+  // Unarchived sessions that are currently running. Used for auto-open of new
+  // root sessions — not for stripping persisted tabs on reload.
   runningAgentIds?: Iterable<string>;
   knownTerminalIds?: Iterable<string>;
   standaloneTerminalIds: Iterable<string>;
   hasActivePendingDraftCreate?: boolean;
-  // True only for the startup restore reconcile (first pass after the live
-  // agent list hydrates). Drives the non-running-tab prune.
+  // True only for the first reconcile after the live agent list hydrates for a
+  // workspace this app launch (layout-sync uses it to avoid pushing that pass).
   isInitialRestore?: boolean;
 }
 
@@ -697,9 +699,30 @@ function reorderTabsForPane(input: ReorderTabsForPaneInput): SplitPaneInternal {
     reordered.push(tab);
   }
 
+  const orderedTabIds = reordered.map((tab) => tab.tabId);
+  // Dropping between group members (edge zone) is a reorder, not center-group —
+  // rebind membership so the tab joins the band instead of splitting it.
+  let tabGroupIdByTabId = input.pane.tabGroupIdByTabId;
+  if (input.pane.tabGroups && Object.keys(input.pane.tabGroups).length > 0) {
+    let membership: Record<string, string> = input.pane.tabGroupIdByTabId
+      ? { ...input.pane.tabGroupIdByTabId }
+      : {};
+    const movedTabId = findSingleMovedTabId(input.pane.tabIds, orderedTabIds);
+    if (movedTabId) {
+      membership = resolveMovedTabGroupMembership({
+        tabIds: orderedTabIds,
+        tabGroupIdByTabId: membership,
+        movedTabId,
+      });
+    }
+    membership = absorbSandwichedTabsIntoGroups(orderedTabIds, membership);
+    tabGroupIdByTabId = membership;
+  }
+
   return normalizePaneAfterTabChange({
     ...input.pane,
     tabs: reordered,
+    tabGroupIdByTabId,
   });
 }
 
@@ -1930,33 +1953,6 @@ function collapseStaleEntityTabs(input: {
   return nextLayout;
 }
 
-// Startup restore prune: remove agent tabs whose session is not currently
-// running. Runs once per workspace per app launch (gated by `isInitialRestore`),
-// so sessions opened by hand mid-session are never yanked away. A missing
-// `runningAgentIds` means the caller has no authoritative running status, so the
-// prune is skipped.
-function pruneNonRunningAgentTabsOnRestore(input: {
-  layout: WorkspaceLayout;
-  snapshot: WorkspaceTabSnapshot;
-}): WorkspaceLayout {
-  const { snapshot } = input;
-  if (!snapshot.isInitialRestore || !snapshot.agentsHydrated || !snapshot.runningAgentIds) {
-    return input.layout;
-  }
-  const runningAgentIds = normalizeStringSet(snapshot.runningAgentIds);
-  let nextLayout = input.layout;
-  for (const tab of collectAllTabs(nextLayout.root)) {
-    if (isAgentTab(tab) && !runningAgentIds.has(tab.target.agentId)) {
-      nextLayout =
-        closeTabInLayout({
-          layout: nextLayout,
-          tabId: tab.tabId,
-        }) ?? nextLayout;
-    }
-  }
-  return nextLayout;
-}
-
 function addMissingEntityTabs(input: {
   layout: WorkspaceLayout;
   autoOpenAgentIds: Set<string>;
@@ -2083,8 +2079,9 @@ export function reconcileWorkspaceTabs(
     knownTerminalIds,
   });
 
-  // On the startup restore pass, drop tabs for sessions that are not running.
-  nextLayout = pruneNonRunningAgentTabsOnRestore({ layout: nextLayout, snapshot });
+  // Persisted tabs (including idle agent sessions and tab groups) survive
+  // reload. Archived / unknown agents are already dropped above. Auto-open
+  // below only adds missing running roots — it never strips open tabs.
 
   nextLayout = addMissingEntityTabs({
     layout: nextLayout,

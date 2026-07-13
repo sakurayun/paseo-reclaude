@@ -2174,7 +2174,7 @@ export const ja: TranslationResources = {
       newTheme: {
         title: "新しいテーマ",
         label: "新しいテーマを使用",
-        hint: "下のテーマ選択とは独立して、再設計された明るい外観をアプリ全体に適用します",
+        hint: "再設計された UI（フローティングカード・フラットなセッション一覧）を使います。明暗は下のテーマ選択に従います",
         accessibilityLabel: "新しいテーマを使用",
       },
       theme: {
@@ -2187,6 +2187,10 @@ export const ja: TranslationResources = {
           midnight: "Midnight",
           claude: "Claude",
           ghostty: "Ghostty",
+          catppuccinLatte: "Catppuccin Latte",
+          catppuccinFrappe: "Catppuccin Frappé",
+          catppuccinMacchiato: "Catppuccin Macchiato",
+          catppuccinMocha: "Catppuccin Mocha",
           auto: "システム",
         },
       },
@@ -2232,6 +2236,10 @@ export const ja: TranslationResources = {
         ligaturesHint:
           "コードフォントが対応している場合、プログラミング合字（例: ->、=>）を表示します",
         ligaturesAccessibility: "ターミナルのフォント合字",
+        ligaturesPreviewOn:
+          "合字オン — コードフォントが対応していれば => や !== などが結合表示されます",
+        ligaturesPreviewOff: "合字オフ — 文字は個別に表示されます",
+        ligaturesPreviewAccessibility: "プログラミング用フォント合字のコードブロックプレビュー",
         letterSpacing: "文字間隔",
         letterSpacingAccessibility: "ターミナルの文字間隔",
         paddingTop: "上の余白",

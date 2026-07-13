@@ -62,7 +62,7 @@ export interface AppSettings {
   uiFontSize: number; // clamped px, default 16
   codeFontSize: number; // clamped px, default 12
   syntaxTheme: SyntaxThemeId; // default "one"
-  terminalLigaturesEnabled: boolean; // render programming ligatures in the terminal
+  terminalLigaturesEnabled: boolean; // programming ligatures in terminals + mono code surfaces
   terminalColorScheme: TerminalColorSchemeId; // "auto" follows the app theme, else a named preset
   terminalPaddingTop: number; // clamped px, default 0
   terminalPaddingBottom: number;

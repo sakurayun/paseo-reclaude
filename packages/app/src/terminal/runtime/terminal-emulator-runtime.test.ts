@@ -18,12 +18,6 @@ vi.mock("@xterm/addon-image", () => ({
   },
 }));
 
-vi.mock("@xterm/addon-ligatures/lib/addon-ligatures.mjs", () => ({
-  LigaturesAddon: class LigaturesAddon {
-    dispose(): void {}
-  },
-}));
-
 vi.mock("@xterm/addon-search", () => ({
   SearchAddon: class SearchAddon {
     findNext(): boolean {
@@ -71,6 +65,7 @@ vi.mock("@xterm/xterm", () => ({
     parser = {
       registerCsiHandler: () => undefined,
     };
+    element = { style: { fontFeatureSettings: "" } };
     constructor(options: unknown) {
       terminalConstructorOptions.values.push(options);
     }
@@ -78,6 +73,10 @@ vi.mock("@xterm/xterm", () => ({
     registerLinkProvider(): { dispose: () => void } {
       return { dispose: () => undefined };
     }
+    registerCharacterJoiner(): number {
+      return 1;
+    }
+    deregisterCharacterJoiner(): void {}
     open(): void {}
     onData(): { dispose: () => void } {
       return { dispose: () => undefined };

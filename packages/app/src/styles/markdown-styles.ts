@@ -1,5 +1,6 @@
 import type { Theme } from "./theme";
 import { isWeb } from "@/constants/platform";
+import { monoLigatureTextStyle } from "@/styles/mono-ligatures";
 
 const webSelectableTextStyle = isWeb ? { userSelect: "text" as const } : {};
 
@@ -180,6 +181,7 @@ export function createMarkdownStyles(theme: Theme) {
       fontFamily: theme.fontFamily.mono,
       fontSize: theme.fontSize.code,
       lineHeight: Math.round(theme.fontSize.code * 1.45),
+      ...monoLigatureTextStyle(theme.monoLigatures),
     },
 
     code_block: {
@@ -191,6 +193,7 @@ export function createMarkdownStyles(theme: Theme) {
       fontFamily: theme.fontFamily.mono,
       fontSize: theme.fontSize.code,
       marginVertical: theme.spacing[2],
+      ...monoLigatureTextStyle(theme.monoLigatures),
     },
 
     fence: {
@@ -204,6 +207,7 @@ export function createMarkdownStyles(theme: Theme) {
       fontFamily: theme.fontFamily.mono,
       fontSize: theme.fontSize.code,
       marginVertical: theme.spacing[3],
+      ...monoLigatureTextStyle(theme.monoLigatures),
     },
 
     pre: {

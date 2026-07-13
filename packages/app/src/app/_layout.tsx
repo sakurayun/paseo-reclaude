@@ -19,7 +19,7 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import { View } from "react-native";
+import { Appearance, View } from "react-native";
 import { SystemBars } from "react-native-edge-to-edge";
 import { GestureDetector, GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
@@ -91,7 +91,7 @@ import {
 import { getDaemonStartService } from "@/runtime/daemon-start-service";
 import { applyAppearance } from "@/screens/settings/appearance/apply-appearance";
 import { selectIsAgentListOpen, usePanelStore } from "@/stores/panel-store";
-import { THEME_TO_UNISTYLES, type ThemeName } from "@/styles/theme";
+import { resolveNewThemeUnistylesKey, THEME_TO_UNISTYLES, type ThemeName } from "@/styles/theme";
 import type { HostProfile } from "@/types/host-connection";
 import { toggleDesktopSidebarsWithCheckoutIntent } from "@/utils/desktop-sidebar-toggle";
 import { buildOpenProjectRoute, parseServerIdFromPathname } from "@/utils/host-routes";
@@ -405,8 +405,12 @@ const THEME_CYCLE_ORDER: ThemeName[] = [
   "midnight",
   "claude",
   "ghostty",
+  "catppuccinFrappe",
+  "catppuccinMacchiato",
+  "catppuccinMocha",
   "light",
   "claudeLight",
+  "catppuccinLatte",
 ];
 
 function AppContainer({ children, chromeEnabled: chromeEnabledOverride }: AppContainerProps) {
@@ -556,12 +560,24 @@ function ProvidersWrapper({ children }: { children: ReactNode }) {
   // Apply theme setting on mount and when it changes
   useEffect(() => {
     if (settingsLoading) return;
-    // The standalone new theme overrides the dropdown selection entirely: when
-    // it's on, pin the dedicated `newTheme` key and ignore `settings.theme`.
+    // New theme keeps floating UI (shell.floating); every ThemeName maps to a
+    // dedicated newTheme* palette (Paseo/Zinc/Midnight/Claude/Ghostty + light).
+    // Auto follows system light/dark with the neutral pair. Classic
+    // adaptiveThemes only knows light/dark, so we drive new-theme keys by hand.
     if (settings.newThemeEnabled) {
       UnistylesRuntime.setAdaptiveThemes(false);
-      UnistylesRuntime.setTheme("newTheme");
-      return;
+      const applyNewTheme = (systemScheme: "light" | "dark" | null | undefined) => {
+        const scheme = systemScheme === "light" ? "light" : "dark";
+        UnistylesRuntime.setTheme(resolveNewThemeUnistylesKey(settings.theme, scheme));
+      };
+      applyNewTheme(Appearance.getColorScheme());
+      if (settings.theme !== "auto") {
+        return;
+      }
+      const subscription = Appearance.addChangeListener(({ colorScheme }) => {
+        applyNewTheme(colorScheme);
+      });
+      return () => subscription.remove();
     }
     if (settings.theme === "auto") {
       UnistylesRuntime.setAdaptiveThemes(true);
@@ -582,6 +598,7 @@ function ProvidersWrapper({ children }: { children: ReactNode }) {
       uiFontSize: settings.uiFontSize,
       codeFontSize: settings.codeFontSize,
       syntaxTheme: settings.syntaxTheme,
+      monoLigaturesEnabled: settings.terminalLigaturesEnabled,
     });
   }, [
     settingsLoading,
@@ -590,6 +607,7 @@ function ProvidersWrapper({ children }: { children: ReactNode }) {
     settings.uiFontSize,
     settings.codeFontSize,
     settings.syntaxTheme,
+    settings.terminalLigaturesEnabled,
   ]);
 
   return (

@@ -7,8 +7,8 @@ export interface WorkspaceAgentVisibility {
   activeAgentIds: Set<string>;
   autoOpenAgentIds: Set<string>;
   knownAgentIds: Set<string>;
-  // Unarchived agents whose session is currently running. Used to decide which
-  // tabs survive the startup restore pass (idle/ended/paused sessions do not).
+  // Unarchived agents whose session is currently running. Used for auto-open of
+  // new root sessions (not for stripping idle tabs from a saved layout).
   runningAgentIds: Set<string>;
 }
 
@@ -47,8 +47,8 @@ export function deriveWorkspaceAgentVisibility(input: {
       if (isRunning) {
         runningAgentIds.add(agent.id);
       }
-      // Only auto-open running root sessions. Idle/ended sessions are surfaced
-      // by the sidebar session list, so they are not auto-restored as tabs.
+      // Only auto-open running root sessions that are not already in the
+      // layout. Idle sessions stay out of auto-open but keep persisted tabs.
       if (isRunning && shouldAutoOpenAgentTab(agent)) {
         autoOpenAgentIds.add(agent.id);
       }

@@ -2181,7 +2181,7 @@ export const es: TranslationResources = {
       newTheme: {
         title: "Tema nuevo",
         label: "Usar el tema nuevo",
-        hint: "Aplica el nuevo aspecto claro rediseñado en toda la app, independiente del tema de abajo",
+        hint: "Usa la UI rediseñada (tarjetas flotantes, sesiones planas). Claro/oscuro sigue el tema de abajo",
         accessibilityLabel: "Usar el tema nuevo",
       },
       theme: {
@@ -2194,6 +2194,10 @@ export const es: TranslationResources = {
           midnight: "Medianoche",
           claude: "claudio",
           ghostty: "fantasmal",
+          catppuccinLatte: "Catppuccin Latte",
+          catppuccinFrappe: "Catppuccin Frappé",
+          catppuccinMacchiato: "Catppuccin Macchiato",
+          catppuccinMocha: "Catppuccin Mocha",
           auto: "Sistema",
         },
       },
@@ -2239,6 +2243,11 @@ export const es: TranslationResources = {
         ligaturesHint:
           "Renderiza ligaduras de programación (p. ej. ->, =>) cuando la fuente de código las admite",
         ligaturesAccessibility: "Ligaduras de la fuente del terminal",
+        ligaturesPreviewOn:
+          "Ligaduras activadas — secuencias como => y !== se fusionan si la fuente lo permite",
+        ligaturesPreviewOff: "Ligaduras desactivadas — los caracteres se muestran por separado",
+        ligaturesPreviewAccessibility:
+          "Vista previa en bloque de código de ligaduras de programación",
         letterSpacing: "Espaciado entre letras",
         letterSpacingAccessibility: "Espaciado entre letras del terminal",
         paddingTop: "Relleno superior",

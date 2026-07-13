@@ -981,6 +981,13 @@ function SplitPaneView({
         continue;
       }
       const group = segment.groupId ? pane.tabGroups?.[segment.groupId] : undefined;
+      // Independent color chip before the first expanded-group member (own flex width).
+      if (group && (segment.role === "start" || segment.role === "only")) {
+        items.push({
+          kind: "group-header",
+          group,
+        });
+      }
       items.push({
         kind: "tab",
         tab,

@@ -2234,7 +2234,7 @@ function WorkspaceScreenContent({
 
   // Pull-before-push: on a desktop client, fetch the daemon's current layout for this
   // workspace (overriding local) before this workspace is allowed to push, so a fresh
-  // client's startup prune never propagates. No-ops when unsupported/disabled/pulled.
+  // client's first hydrate pass never clobbers peers. No-ops when unsupported/disabled/pulled.
   useEffect(() => {
     if (!hasHydratedWorkspaceLayoutStore || !persistenceKey) {
       return;

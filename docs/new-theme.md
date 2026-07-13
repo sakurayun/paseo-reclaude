@@ -1,33 +1,53 @@
 # New theme (fork feature)
 
-A standalone, redesigned **light** look, toggled independently of the theme
-dropdown. Fork-only; not present upstream. This is an intentionally incremental
-feature, meant to grow. So far it: (1) paints sidebars/chrome `#fafafa`;
-(2) floats the desktop content (tabs + panes) as an inset rounded white card on
-that `#fafafa` underlay, vertical sidebar dividers removed; (3) exposes the
-workspace header on the `#fafafa` backdrop above the card (shorter, no divider);
-(4) restyles the tab row — each tab a `#fafafa` rounded chip, no inter-tab
-dividers, create/right buttons as `#fafafa` rounded squares; (5) replaces the
-left sidebar's project-grouped list with a flat, recency-sorted **sessions**
-list + a 3-button top toolbar (new conversation / open project / history), with
-the footer divider and the redundant open-project/home footer buttons dropped
-(see "Left sidebar — flat sessions"); and (6) harmonizes the **right panel**
-(ExplorerSidebar) to match — all dividers gone, rounded 12px hovers, PR/Git
-activity cards floating as borderless white cards (see "Right panel — echo the
-left"); and (7) tints the scrollbars `#fafafa` (`scrollbarHandle` override) so
-the native and overlay scrollbars melt into the `#fafafa` chrome instead of
-cutting a darker bar across it.
+A standalone, redesigned UI, toggled independently of classic chrome. Fork-only;
+not present upstream. **Layout/UI logic is shared** across light and dark; only
+the palette changes. This is an intentionally incremental feature, meant to grow.
+So far it: (1) paints sidebars/chrome as a continuous shell underlay
+(`surfaceShell` / `surfaceSidebar` — `#fafafa` light, `#0a0a0c` dark; floating
+content uses elevated `surface0` / `surfaceWorkspace` — white light, `#25252c` dark);
+(2) floats the desktop content (tabs + panes) as an inset rounded card on that
+underlay, vertical sidebar dividers removed; (3) exposes the workspace header on
+the shell backdrop above the card (shorter, no divider); (4) restyles the tab row
+— each tab a rounded chip on `surface1`, no inter-tab dividers, create/right
+buttons as rounded squares; (5) replaces the left sidebar's project-grouped list
+with a flat, recency-sorted **sessions** list + a 3-button top toolbar (new
+conversation / open project / history), with the footer divider and the redundant
+open-project/home footer buttons dropped (see "Left sidebar — flat sessions");
+and (6) harmonizes the **right panel** (ExplorerSidebar) to match — all dividers
+gone, rounded 12px hovers, PR/Git activity cards floating as borderless cards
+(see "Right panel — echo the left"); and (7) tints scrollbars to the shell
+(`scrollbarHandle`) so native and overlay scrollbars melt into the chrome.
 
 ## What the user sees
 
 Settings → Appearance → **New theme** switch (the first section, above the theme
 dropdown). Default **on** — new and existing installs alike boot into the new
-theme until a user turns it off. When on, it overrides the theme dropdown
-entirely: even if the dropdown says "Dark", the app renders the new light theme.
+theme until a user turns it off. When on, the **floating UI stays active** and the theme dropdown picks which
+new-theme **palette** to use:
 
-On desktop: the workspace header sits on the `#fafafa` backdrop; below it the tabs
-and message panes float as one rounded white card, inset on the left/right/bottom
-(flush to the header at the top), the `#fafafa` showing through the gaps and where
+| Theme dropdown       | New-theme Unistyles key       | Notes                            |
+| -------------------- | ----------------------------- | -------------------------------- |
+| Light                | `newTheme`                    | Neutral light floating           |
+| Claude light         | `newThemeClaude`              | Ivory + terracotta               |
+| Catppuccin Latte     | `newThemeCatppuccinLatte`     | Official light flavor (mauve)    |
+| Dark (Paseo)         | `newThemePaseoDark`           | Teal-green accent                |
+| Zinc                 | `newThemeDark`                | Neutral gray / monochrome accent |
+| Midnight             | `newThemeMidnightDark`        | Cool blue accent                 |
+| Claude               | `newThemeClaudeDark`          | Warm charcoal + terracotta       |
+| Ghostty              | `newThemeGhosttyDark`         | Slate-blue + light-blue accent   |
+| Catppuccin Frappé    | `newThemeCatppuccinFrappe`    | Cool dark flavor                 |
+| Catppuccin Macchiato | `newThemeCatppuccinMacchiato` | Mid dark flavor                  |
+| Catppuccin Mocha     | `newThemeCatppuccinMocha`     | Deep dark flavor                 |
+| Auto                 | `newTheme` / `newThemeDark`   | System light/dark (neutral pair) |
+
+Every dropdown option keeps its brand colors under the floating shell. All dark
+floating palettes share pure-black chrome, an elevated tinted panel, and pure-black
+nested settings cards. Turning the toggle off restores classic mapping.
+
+On desktop: the workspace header sits on the shell backdrop; below it the tabs
+and message panes float as one rounded content card, inset on the left/right/bottom
+(flush to the header at the top), the shell showing through the gaps and where
 the sidebars are (their vertical dividers are gone). Compact (phone) is unchanged —
 no pinned sidebars there, so no card.
 
@@ -39,20 +59,23 @@ no pinned sidebars there, so no card.
   **Device-local on purpose**: deliberately _not_ in `extractSyncedAppearance` /
   `pickSyncedAppearance`, so toggling it on one device does not sync to others
   (unlike `theme` / `syntaxTheme` / `terminalColorScheme`).
-- **Theme** — a dedicated Unistyles theme registered under the key `newTheme`
-  (`packages/app/src/styles/unistyles.ts`), built from `newThemeSemanticColors`
-  in `packages/app/src/styles/theme.ts`. That object is derived from
-  `lightSemanticColors` so it inherits every token by default. **This is the
-  single place to grow the new theme** — add overrides to `newThemeSemanticColors`
-  (colors) or `newThemeShell` (layout). `newTheme` is NOT a dropdown `ThemeName`;
-  it is a separate Unistyles key only.
+- **Theme** — seven floating Unistyles keys in
+  `packages/app/src/styles/unistyles.ts`, all sharing `newThemeShell`
+  (`floating: true`, zero chrome/control borders):
+  - Light: `newTheme`, `newThemeClaude`
+  - Dark: `newThemeDark` (zinc), `newThemePaseoDark`, `newThemeMidnightDark`,
+    `newThemeGhosttyDark`, `newThemeClaudeDark`
+    Dark tints share `buildNewThemeDarkFloatingSemantic` (chrome / panel / card
+    layering). **Grow colors on semantic objects; grow layout on `newThemeShell`.**
+    None of these keys is a dropdown `ThemeName`.
 - **Switch** — `_layout.tsx` `ProvidersWrapper` theme effect: when
-  `settings.newThemeEnabled` is true it calls `setAdaptiveThemes(false)` +
-  `setTheme("newTheme")` and returns early, ignoring `settings.theme`. When off,
-  the existing dropdown/auto logic runs.
-- **Font/size/syntax** — `newTheme` is in `ALL_THEME_KEYS`
-  (`apply-appearance.ts`) so `applyAppearance` patches its fonts, sizes, and
-  syntax colors like every other theme.
+  `settings.newThemeEnabled` is true it disables adaptive themes and calls
+  `setTheme(resolveNewThemeUnistylesKey(settings.theme, systemScheme))`. For
+  `settings.theme === "auto"` it also listens to `Appearance` so system flips
+  update the key. When off, the existing dropdown/auto logic runs.
+- **Font/size/syntax** — every `newTheme*` key is in `ALL_THEME_KEYS`
+  (`apply-appearance.ts`) so `applyAppearance` patches fonts, sizes, and syntax
+  colors like every other theme.
 
 ## Floating card, exposed header, tab chips (desktop)
 
@@ -125,9 +148,10 @@ typed ones; the test asserts the literal list):
 
 ## Never classify light/dark by theme-name prefix
 
-`newTheme` is a **light** theme (`buildLightTheme`, `colorScheme: "light"`) whose
-Unistyles key starts with neither `"light"` nor `"dark"`. Any
-`rt.themeName.startsWith("light")` heuristic therefore mis-classifies it as dark.
+`newTheme` / `newThemeDark` use Unistyles keys that start with neither
+`"light"` nor `"dark"`. Any `rt.themeName.startsWith("light")` heuristic
+mis-classifies both. Use `colorSchemeForThemeName` (maps each key to its
+theme object's own `colorScheme`).
 This bit the colored tool-call labels: the badge **glyph** picks its tint via
 `theme.colorScheme` (a `uniProps` mapping → correctly "light"), but the tool
 **name** ran inside a `StyleSheet.create((theme, rt) => …)` factory where

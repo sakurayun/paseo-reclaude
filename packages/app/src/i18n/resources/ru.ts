@@ -2180,7 +2180,7 @@ export const ru: TranslationResources = {
       newTheme: {
         title: "Новая тема",
         label: "Использовать новую тему",
-        hint: "Применяет переработанный светлый вид во всём приложении, независимо от темы ниже",
+        hint: "Включает обновлённый UI (плавающие карточки, плоский список сессий). Светлая/тёмная следует теме ниже",
         accessibilityLabel: "Использовать новую тему",
       },
       theme: {
@@ -2193,6 +2193,10 @@ export const ru: TranslationResources = {
           midnight: "Полночь",
           claude: "Клод",
           ghostty: "Призрачный",
+          catppuccinLatte: "Catppuccin Latte",
+          catppuccinFrappe: "Catppuccin Frappé",
+          catppuccinMacchiato: "Catppuccin Macchiato",
+          catppuccinMocha: "Catppuccin Mocha",
           auto: "Система",
         },
       },
@@ -2239,6 +2243,10 @@ export const ru: TranslationResources = {
         ligaturesHint:
           "Отображать программистские лигатуры (напр. ->, =>), если шрифт кода их поддерживает",
         ligaturesAccessibility: "Лигатуры шрифта терминала",
+        ligaturesPreviewOn:
+          "Лигатуры включены — последовательности вроде => и !== сливаются, если шрифт это поддерживает",
+        ligaturesPreviewOff: "Лигатуры выключены — символы отображаются отдельно",
+        ligaturesPreviewAccessibility: "Предпросмотр программных лигатур в блоке кода",
         letterSpacing: "Межбуквенный интервал",
         letterSpacingAccessibility: "Межбуквенный интервал терминала",
         paddingTop: "Отступ сверху",

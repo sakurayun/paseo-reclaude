@@ -65,27 +65,24 @@ The asymmetry is intentional: a subagent's home is the parent's track, not the t
 
 ## Startup tab restore
 
-Tabs are a persisted per-client layout, but on app launch a workspace only
-restores tabs for sessions that are **currently running**. The first reconcile
-after the live agent list hydrates is the startup restore pass: it prunes agent
-tabs whose session is idle, errored, or closed. Those sessions stay reachable
-from the sidebar session list instead of crowding the tab bar.
+Tabs (and Edge-style **tab groups** on each pane) are a persisted per-client
+layout. On app launch / refresh, the workspace **restores the saved tab bar**:
+agent tabs for unarchived sessions stay open whether the session is running or
+idle, along with terminals, drafts, browser tabs, and group membership.
 
-- **Auto-open** is gated to running **root** sessions — `shouldAutoOpenAgentTab`
-  (root, not a subagent) plus a `status === "running"` check in
-  `deriveWorkspaceAgentVisibility` (`packages/app/src/workspace-tabs/agent-visibility.ts`).
-  Subagents never auto-open.
-- **The prune** runs in `reconcileWorkspaceTabs` only when the snapshot's
-  `isInitialRestore` flag is set. That flag is computed in the layout store's
-  `reconcileTabs` action from the non-persisted `initialRestoreDoneByWorkspace`
-  map, so the prune fires once per workspace per app launch. Sessions opened by
-  hand mid-session are never yanked away, and a fresh launch prunes again.
-- `runningAgentIds` rides along in the snapshot. If it is omitted the prune is
-  skipped (no authoritative running status to act on).
-- **Desktop layout sync takes precedence over the startup prune.** When layout sync
-  is active (see [workspace-layout-sync.md](workspace-layout-sync.md)), a fresh client
-  pulls the daemon's layout before it may push, so its startup prune never propagates
-  to peers — a remote layout wins over local startup trimming.
+- **Auto-open** (adding a tab that was not already in the layout) is gated to
+  running **root** sessions — `shouldAutoOpenAgentTab` (root, not a subagent)
+  plus a `status === "running"` check in `deriveWorkspaceAgentVisibility`
+  (`packages/app/src/workspace-tabs/agent-visibility.ts`). Subagents never
+  auto-open. Idle sessions are not force-opened as new tabs, but they are not
+  stripped from a layout that already had them.
+- **Stale cleanup** still removes tabs whose agent is archived / missing from
+  `activeAgentIds`, or whose terminal is gone once terminals are hydrated
+  (`collapseStaleEntityTabs` in `reconcileWorkspaceTabs`). That is independent
+  of running vs idle.
+- The first reconcile after agents hydrate sets a non-persisted
+  `initialRestoreDoneByWorkspace` flag so layout sync can skip pushing that
+  pass (see [workspace-layout-sync.md](workspace-layout-sync.md)).
 
 ## Workspace activity
 

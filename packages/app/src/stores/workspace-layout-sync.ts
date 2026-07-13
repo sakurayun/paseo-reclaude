@@ -32,7 +32,7 @@ interface LayoutSyncBridge {
   // be echoed back to the daemon.
   applyingRemoteKeys: Set<string>;
   // Keys whose remote snapshot has been pulled. A workspace cannot push before it has
-  // pulled (so a fresh client's startup prune never clobbers a peer's layout).
+  // pulled (so a fresh client's first hydrate pass never clobbers a peer's layout).
   pulledKeys: Set<string>;
   pullingKeys: Set<string>;
   // Tabs opened locally while the key was still un-pulled (e.g. an SSH connect
@@ -208,8 +208,8 @@ function maybePush(
   if (!bridge.pulledKeys.has(key)) {
     return; // pull-before-push: haven't synced this workspace yet
   }
-  // The fork's startup prune (keep only running-session tabs) runs once per launch.
-  // Never push that prune pass — it would clobber a peer's intentionally-kept idle tabs.
+  // Skip the first post-hydrate reconcile pass (auto-open may add tabs). Pushing
+  // it can race with a peer's fuller layout; pull-before-push still applies.
   if (
     next.initialRestoreDoneByWorkspace[key] === true &&
     prev.initialRestoreDoneByWorkspace[key] !== true
@@ -345,7 +345,7 @@ export function startWorkspaceLayoutSync(params: {
 
 // Called when the user opens/switches to a workspace on a desktop client. Pulls the
 // daemon's current layout (overriding the local one) before this workspace is allowed
-// to push, so a fresh client's startup prune never propagates to peers.
+// to push, so a fresh client's incomplete first-hydrate snapshot never clobbers peers.
 export function pullWorkspaceLayoutIfNeeded(serverId: string, workspaceId: string): void {
   const bridge = bridgesByServerId.get(serverId);
   if (bridge) {
