@@ -134,8 +134,10 @@ import {
   type AgentPromptInput,
   type AgentRunOptions,
   type AgentSessionConfig,
+  type AgentTimelineItem,
 } from "./agent/agent-sdk-types.js";
 import type { StoredAgentRecord } from "./agent/agent-storage.js";
+import { searchSessionContent, type SessionSearchAgent } from "./session-content-search.js";
 import type { AgentStorage } from "./agent/agent-storage.js";
 import {
   ImportSessionsRequestError,
@@ -224,6 +226,8 @@ import { createGitHubService, type GitHubService } from "../services/github-serv
 import type { ProviderUsageService } from "../services/quota-fetcher/service.js";
 import type { ReclaudeAccountService } from "../services/reclaude/reclaude-account-service.js";
 import type { GrokUsageService } from "../services/quota-fetcher/providers/grok-usage-service.js";
+import { findExecutable } from "../executable-resolution/executable-resolution.js";
+import { searchWorkspaceFiles } from "./workspace-content-search.js";
 import {
   summarizeFetchWorkspacesEntries,
   workspaceIdsOnCheckout,
@@ -1640,6 +1644,7 @@ export class Session {
       this.dispatchTerminalMessage(msg) ??
       this.dispatchPortForwardMessage(msg) ??
       this.dispatchChatScheduleLoopMessage(msg) ??
+      this.dispatchSearchMessage(msg) ??
       this.dispatchSshOrMiscMessage(msg);
     if (promise) await promise;
   }
@@ -2347,6 +2352,130 @@ export class Session {
         return this.chatScheduleLoopSession.handleScheduleUpdateRequest(msg);
       default:
         return undefined;
+    }
+  }
+
+  private dispatchSearchMessage(msg: SessionInboundMessage): Promise<void> | undefined {
+    switch (msg.type) {
+      case "search.sessions.content.request":
+        return this.handleSearchSessionsContent(msg);
+      case "search.workspace.files.request":
+        return this.handleSearchWorkspaceFiles(msg);
+      default:
+        return undefined;
+    }
+  }
+
+  private async handleSearchSessionsContent(
+    msg: Extract<SessionInboundMessage, { type: "search.sessions.content.request" }>,
+  ): Promise<void> {
+    const { requestId, query, agentIds, limit, maxMatchesPerAgent } = msg;
+    try {
+      const filter = agentIds && agentIds.length > 0 ? new Set(agentIds) : null;
+      const agents: SessionSearchAgent[] = this.agentManager
+        .listAgents()
+        .filter((managed) => !filter || filter.has(managed.id))
+        .map((managed) => ({
+          agentId: managed.id,
+          agentTitle:
+            typeof managed.config.title === "string" && managed.config.title.trim().length > 0
+              ? managed.config.title
+              : null,
+          provider: managed.provider,
+          cwd: managed.cwd || null,
+          timeline: this.readTimelineForSearch(managed.id),
+        }));
+      const results = searchSessionContent({ agents, query, limit, maxMatchesPerAgent });
+      this.emit({
+        type: "search.sessions.content.response",
+        payload: {
+          requestId,
+          results,
+          scope: { searchedAgentCount: agents.length, loadedOnly: true },
+          error: null,
+        },
+      });
+    } catch (error) {
+      this.sessionLogger.error({ err: error }, "session content search failed");
+      this.emit({
+        type: "search.sessions.content.response",
+        payload: {
+          requestId,
+          results: [],
+          scope: { searchedAgentCount: 0, loadedOnly: true },
+          error: error instanceof Error ? error.message : String(error),
+        },
+      });
+    }
+  }
+
+  // Reading a not-yet-hydrated agent's timeline can throw; treat those sessions
+  // as having no searchable content rather than failing the whole request.
+  private readTimelineForSearch(agentId: string): AgentTimelineItem[] {
+    try {
+      return this.agentManager.getTimeline(agentId);
+    } catch {
+      return [];
+    }
+  }
+
+  private async handleSearchWorkspaceFiles(
+    msg: Extract<SessionInboundMessage, { type: "search.workspace.files.request" }>,
+  ): Promise<void> {
+    const { requestId, query, workspaceIds, maxResults, caseSensitive } = msg;
+    try {
+      const records = await this.workspaceRegistry.list();
+      const filter = workspaceIds && workspaceIds.length > 0 ? new Set(workspaceIds) : null;
+      const targets = records
+        .filter((record) => !record.archivedAt && (!filter || filter.has(record.workspaceId)))
+        .map((record) => ({ workspaceId: record.workspaceId, root: record.cwd }));
+      const result = await searchWorkspaceFiles(
+        { targets, query, maxResults, caseSensitive },
+        {
+          resolveRipgrep: () => findExecutable("rg"),
+          runRipgrep: ({ rgPath, args, cwd }) => this.runRipgrepForSearch(rgPath, args, cwd),
+        },
+      );
+      this.emit({
+        type: "search.workspace.files.response",
+        payload: {
+          requestId,
+          results: result.results,
+          truncated: result.truncated,
+          engine: result.engine,
+          error: null,
+        },
+      });
+    } catch (error) {
+      this.sessionLogger.error({ err: error }, "workspace file search failed");
+      this.emit({
+        type: "search.workspace.files.response",
+        payload: {
+          requestId,
+          results: [],
+          truncated: false,
+          engine: "ripgrep",
+          error: error instanceof Error ? error.message : String(error),
+        },
+      });
+    }
+  }
+
+  private async runRipgrepForSearch(rgPath: string, args: string[], cwd: string): Promise<string> {
+    try {
+      const { stdout } = await execCommand(rgPath, args, {
+        cwd,
+        timeout: 15_000,
+        maxBuffer: 16 * 1024 * 1024,
+      });
+      return stdout;
+    } catch (error) {
+      // ripgrep exits with code 1 when there are simply no matches.
+      if (error && typeof error === "object" && (error as { code?: unknown }).code === 1) {
+        const stdout = (error as { stdout?: unknown }).stdout;
+        return typeof stdout === "string" ? stdout : "";
+      }
+      throw error;
     }
   }
 
