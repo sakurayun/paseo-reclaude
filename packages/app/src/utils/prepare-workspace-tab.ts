@@ -27,7 +27,7 @@ export interface PrepareWorkspaceTabDeps {
 }
 
 export interface NavigateToPreparedWorkspaceTabDeps extends PrepareWorkspaceTabDeps {
-  navigateToWorkspace: (serverId: string, workspaceId: string) => void;
+  navigateToWorkspace: (input: { serverId: string; workspaceId: string }) => void | string;
 }
 
 export interface WorkspaceDraftBusyInput {
@@ -174,9 +174,12 @@ export function navigateToPreparedWorkspaceTab(
   input: NavigateToPreparedWorkspaceTabInput,
   deps: NavigateToPreparedWorkspaceTabDeps,
 ): string {
-  // Navigate first: navigateToWorkspace focuses an attention-needing agent tab
-  // as a side effect, and the caller's explicitly requested tab must win that
-  // focus race — so it is opened last.
-  deps.navigateToWorkspace(input.serverId, input.workspaceId);
+  // Navigate first without a target: navigateToWorkspace may focus an
+  // attention-needing agent tab as a side effect. The caller's explicitly
+  // requested tab must win that focus race — so it is opened last.
+  deps.navigateToWorkspace({
+    serverId: input.serverId,
+    workspaceId: input.workspaceId,
+  });
   return prepareWorkspaceTab(input, deps);
 }

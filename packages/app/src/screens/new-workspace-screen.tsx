@@ -47,11 +47,13 @@ import {
 } from "@/runtime/host-runtime";
 import { useHostFeature, useHostFeatureMap } from "@/runtime/host-features";
 import type { HostProfile } from "@/types/host-connection";
-import { navigateToWorkspace } from "@/stores/navigation-active-workspace-store";
-import { useLastWorkspaceSelection } from "@/stores/navigation-active-workspace-store";
+import {
+  navigateToWorkspace,
+  useLastWorkspaceSelection,
+} from "@/stores/navigation-active-workspace-store";
 import { normalizeWorkspaceDescriptor, useSessionStore } from "@/stores/session-store";
 import { useWorkspace } from "@/stores/session-store-hooks";
-import { generateDraftId } from "@/stores/draft-keys";
+import { buildNewWorkspaceDraftKey, generateDraftId } from "@/stores/draft-keys";
 import { useDraftStore } from "@/stores/draft-store";
 import { useProjectPickerStore } from "@/stores/project-picker-store";
 import { isActiveCreateFlowForDraft, useCreateFlowStore } from "@/stores/create-flow-store";
@@ -65,7 +67,6 @@ import { useShortcutKeys } from "@/hooks/use-shortcut-keys";
 import type { CreateAgentInitialValues } from "@/hooks/use-agent-form-state";
 import { generateMessageId } from "@/types/stream";
 import { toErrorMessage } from "@/utils/error-messages";
-import { navigateToPreparedWorkspaceTab } from "@/utils/workspace-navigation";
 import {
   getHostProjectSourceDirectory,
   hostProjectFromRoute,
@@ -97,7 +98,11 @@ import {
   type PickerCheckoutRequest,
   type PickerItem,
 } from "./new-workspace-picker-item";
-import { findCheckoutHintPrAttachment, syncPickerPrAttachment } from "./new-workspace-picker-state";
+import {
+  clearPickerPrAttachmentForTargetChange,
+  findCheckoutHintPrAttachment,
+  syncPickerPrAttachment,
+} from "./new-workspace-picker-state";
 import {
   resolveNewWorkspaceAutomaticServerId,
   resolveNewWorkspaceInitialServerId,
@@ -184,7 +189,6 @@ interface PickerOptionData {
 
 interface PickerSelection {
   item: PickerItem;
-  attachedPrNumber: number | null;
 }
 
 const BRANCH_OPTION_PREFIX = "branch:";
@@ -1025,18 +1029,6 @@ function getContentStyle(input: { isCompact: boolean; insetBottom: number }) {
   return [styles.content, styles.contentCentered];
 }
 
-function buildNewWorkspaceDraftKey(input: {
-  selectedServerId: string;
-  selectedSourceDirectory: string | null;
-  draftId?: string;
-}): string {
-  const explicitDraftId = input.draftId?.trim();
-  if (explicitDraftId) {
-    return `new-workspace:draft:${explicitDraftId}`;
-  }
-  return `new-workspace:${input.selectedServerId}:${input.selectedSourceDirectory ?? "choose-project"}`;
-}
-
 function getSelectedPickerItem(selection: PickerSelection | null): PickerItem | null {
   if (!selection) return null;
   return selection.item;
@@ -1420,7 +1412,7 @@ function submitWorkspaceDraft(input: SubmitDraftInput): void {
     ...(submission.featureValues ? { featureValues: submission.featureValues } : {}),
     allowEmptyText: true,
   });
-  navigateToPreparedWorkspaceTab({
+  navigateToWorkspace({
     serverId,
     workspaceId,
     target: submission.target,
@@ -1937,7 +1929,7 @@ export function NewWorkspaceScreen({
     projectByOptionId,
     selectedProjectOptionId,
     projectTriggerLabel,
-    handleSelectProjectOption,
+    handleSelectProjectOption: selectProjectOption,
   } = useNewWorkspaceProjectPicker({
     selectedServerId,
     projects,
@@ -1984,11 +1976,7 @@ export function NewWorkspaceScreen({
   const projectIconDataByProjectKey = useProjectIconDataByProjectKey({
     projects: projectIconTargets,
   });
-  const draftKey = buildNewWorkspaceDraftKey({
-    selectedServerId,
-    selectedSourceDirectory,
-    draftId,
-  });
+  const draftKey = buildNewWorkspaceDraftKey(draftId);
   const forkDraftSetup = usePendingWorkspaceDraftSetup(draftId);
   const draftContextScopeKey = useDraftWorkspaceAttachmentScopeKey(draftId);
   const visibleDraftContextScopeKeys = useMemo(
@@ -2103,22 +2091,16 @@ export function NewWorkspaceScreen({
   }, [selectedItem]);
   const selectPickerItem = useCallback(
     (item: PickerItem) => {
-      const next = syncPickerPrAttachment({
+      const nextAttachments = syncPickerPrAttachment({
         attachments: chatDraft.attachments,
-        previousPickerPrNumber: manualPickerSelection?.attachedPrNumber ?? null,
         item,
       });
 
-      setManualPickerSelection({
-        item,
-        attachedPrNumber: next.attachedPrNumber,
-      });
-      if (next.attachments !== chatDraft.attachments) {
-        chatDraft.setAttachments(next.attachments);
-      }
+      setManualPickerSelection({ item });
+      chatDraft.setAttachments(nextAttachments);
       setPickerOpen(false);
     },
-    [chatDraft, manualPickerSelection?.attachedPrNumber],
+    [chatDraft],
   );
 
   const handleSelectOption = useCallback(
@@ -2163,6 +2145,40 @@ export function NewWorkspaceScreen({
       );
     },
     [isPending, repoByOptionId, t, theme.colors.foregroundMuted, theme.iconSize.sm],
+  );
+
+  const clearManualPickerSelectionForTargetChange = useCallback(
+    (currentTargetId: string, nextTargetId: string) => {
+      const nextAttachments = clearPickerPrAttachmentForTargetChange({
+        attachments: chatDraft.attachments,
+        currentTargetId,
+        nextTargetId,
+      });
+      if (nextAttachments === chatDraft.attachments) return;
+      chatDraft.setAttachments(nextAttachments);
+      setManualPickerSelection(null);
+    },
+    [chatDraft],
+  );
+
+  const handleSelectProjectOption = useCallback(
+    (id: string) => {
+      // selectProjectOption enforces selectability (worktree-only when
+      // multiplicity is off, any project when it's on); don't re-gate here on
+      // canCreateWorktree or non-git projects become unselectable.
+      selectProjectOption(id);
+      setProjectPickerOpen(false);
+      clearManualPickerSelectionForTargetChange(selectedProjectOptionId, id);
+    },
+    [clearManualPickerSelectionForTargetChange, selectProjectOption, selectedProjectOptionId],
+  );
+
+  const handleSelectWorkspaceHost = useCallback(
+    (id: string) => {
+      handleSelectHost(id);
+      clearManualPickerSelectionForTargetChange(selectedServerId, id);
+    },
+    [clearManualPickerSelectionForTargetChange, handleSelectHost, selectedServerId],
   );
 
   const handleAddProject = useCallback(() => {
@@ -2367,7 +2383,7 @@ export function NewWorkspaceScreen({
             ensureWorkspace,
             serverId: selectedServerId,
             navigate: (targetServerId, workspaceId) =>
-              navigateToWorkspace(targetServerId, workspaceId),
+              navigateToWorkspace({ serverId: targetServerId, workspaceId }),
           });
           return;
         }
@@ -2434,7 +2450,6 @@ export function NewWorkspaceScreen({
   const handleSelectProjectForWorkspace = useCallback(
     (id: string) => {
       handleSelectProjectOption(id);
-      setManualPickerSelection(null);
     },
     [handleSelectProjectOption],
   );
@@ -2489,7 +2504,7 @@ export function NewWorkspaceScreen({
     host: {
       allHosts,
       selectedServerId,
-      onSelect: handleSelectHost,
+      onSelect: handleSelectWorkspaceHost,
       openState: hostPickerOpen,
       onOpenChange: handleHostPickerOpenChange,
       anchorRef: hostPickerAnchorRef,

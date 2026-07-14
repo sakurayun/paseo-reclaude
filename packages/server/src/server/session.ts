@@ -2,7 +2,7 @@ import equal from "fast-deep-equal";
 import { v4 as uuidv4 } from "uuid";
 import { promises as fs } from "node:fs";
 import nodePath from "node:path";
-import { stat } from "node:fs/promises";
+import { lstat, mkdir, mkdtemp, rename, rm, stat } from "node:fs/promises";
 import { basename, normalize, resolve, sep } from "path";
 import { homedir } from "node:os";
 import { CLIENT_CAPS, type ClientCapability } from "@getpaseo/protocol/client-capabilities";
@@ -212,7 +212,10 @@ import {
   planGitOp,
   requirePaths,
 } from "../utils/git-ops.js";
-import { searchDirectoryEntries } from "../utils/directory-suggestions.js";
+import {
+  searchDirectoryEntries,
+  WORKSPACE_SEARCH_HIDDEN_DIRECTORIES,
+} from "../utils/directory-suggestions.js";
 import { toCheckoutError } from "./checkout-git-utils.js";
 import type { CheckoutDiffManager } from "./checkout-diff-manager.js";
 import type { Resolvable } from "./speech/provider-resolver.js";
@@ -258,6 +261,7 @@ import {
   toWorktreeRequestError,
   toWorktreeWireError,
 } from "./worktree-errors.js";
+import { parseGitRemoteLocation } from "@getpaseo/protocol/git-remote";
 import { type WorktreeConfig, createWorktree } from "../utils/worktree.js";
 import { runGitCommand } from "../utils/run-git-command.js";
 import { execCommand } from "../utils/spawn.js";
@@ -268,15 +272,6 @@ import { CreateAgentLifecycleDispatch } from "./agent/create-agent-lifecycle-dis
 // the entire session message if they encounter an unknown provider.
 const LEGACY_PROVIDER_IDS = new Set(["claude", "codex", "opencode"]);
 const MIN_VERSION_ALL_PROVIDERS = "0.1.45";
-const WORKSPACE_SEARCH_HIDDEN_DIRECTORIES = [
-  ".agents",
-  ".claude",
-  ".codex",
-  ".github",
-  ".paseo",
-  ".vscode",
-];
-
 function errorToFriendlyMessage(error: unknown): string {
   if (error instanceof Error) return error.message;
   if (typeof error === "string") return error;
@@ -1634,12 +1629,7 @@ export class Session {
       this.dispatchAgentConfigMessage(msg) ??
       this.dispatchCheckoutMessage(msg) ??
       this.dispatchWorkspaceAndProjectMessage(msg) ??
-      this.dispatchWorkspaceLayoutMessage(msg) ??
-      this.dispatchPromptPresetsMessage(msg) ??
-      this.dispatchAppearanceSettingsMessage(msg) ??
-      this.dispatchModelPreferencesMessage(msg) ??
-      this.dispatchComposerDraftsMessage(msg) ??
-      this.dispatchProjectMessage(msg) ??
+      this.dispatchWorkspacePreferencesAndFilesMessage(msg) ??
       this.dispatchProviderMessage(msg) ??
       this.dispatchTerminalMessage(msg) ??
       this.dispatchPortForwardMessage(msg) ??
@@ -1647,6 +1637,22 @@ export class Session {
       this.dispatchSearchMessage(msg) ??
       this.dispatchSshOrMiscMessage(msg);
     if (promise) await promise;
+  }
+
+  // Groups the local preference/layout/project/file dispatchers so the top-level
+  // inbound chain stays under the cyclomatic-complexity cap.
+  private dispatchWorkspacePreferencesAndFilesMessage(
+    msg: SessionInboundMessage,
+  ): Promise<void> | undefined {
+    return (
+      this.dispatchWorkspaceLayoutMessage(msg) ??
+      this.dispatchPromptPresetsMessage(msg) ??
+      this.dispatchAppearanceSettingsMessage(msg) ??
+      this.dispatchModelPreferencesMessage(msg) ??
+      this.dispatchComposerDraftsMessage(msg) ??
+      this.dispatchProjectMessage(msg) ??
+      this.dispatchWorkspaceFileMessage(msg)
+    );
   }
 
   private dispatchVoiceAndControlMessage(msg: SessionInboundMessage): Promise<void> | undefined {
@@ -2117,6 +2123,8 @@ export class Session {
         return this.handleProjectAddRequest(msg);
       case "project.remove.request":
         return this.handleProjectRemoveRequest(msg);
+      case "workspace.github.clone.request":
+        return this.handleWorkspaceGithubCloneRequest(msg);
       case "project_icon_request":
         return this.workspaceFilesSession.handleProjectIconRequest(msg);
       default:
@@ -2157,6 +2165,13 @@ export class Session {
         return this.handleWorkspaceTitleSetRequest(msg.workspaceId, msg.title, msg.requestId);
       case "workspace.pin.set.request":
         return this.handleWorkspacePinSetRequest(msg.workspaceId, msg.pinned, msg.requestId);
+      default:
+        return undefined;
+    }
+  }
+
+  private dispatchWorkspaceFileMessage(msg: SessionInboundMessage): Promise<void> | undefined {
+    switch (msg.type) {
       case "file_explorer_request":
         return this.workspaceFilesSession.handleFileExplorerRequest(msg);
       case "file_download_token_request":
@@ -5954,6 +5969,99 @@ export class Session {
     }
   }
 
+  private async handleWorkspaceGithubCloneRequest(
+    request: Extract<SessionInboundMessage, { type: "workspace.github.clone.request" }>,
+  ): Promise<void> {
+    let normalizedRepo = request.repo;
+    let checkoutPath: string | null = null;
+    try {
+      const repo = normalizeCloneRepository({
+        repo: request.repo,
+        cloneProtocol: request.cloneProtocol,
+      });
+      normalizedRepo = repo.displayName;
+      const targetParent = resolve(expandTilde(request.targetDirectory.trim()));
+      checkoutPath = resolve(targetParent, repo.name);
+      if (!this.isPathWithinRoot(targetParent, checkoutPath)) {
+        throw new Error("Resolved checkout path must stay inside the target directory");
+      }
+
+      await mkdir(targetParent, { recursive: true });
+      try {
+        await lstat(checkoutPath);
+        throw new Error(`Checkout path already exists: ${checkoutPath}`);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+          throw error;
+        }
+      }
+
+      const cloneStagingPath = await mkdtemp(resolve(targetParent, ".paseo-clone-"));
+      try {
+        await runGitCommand(["clone", repo.cloneUrl, cloneStagingPath], {
+          cwd: targetParent,
+          timeout: 5 * 60 * 1000,
+          maxOutputBytes: 1024 * 1024,
+          logger: this.sessionLogger,
+        });
+        await rename(cloneStagingPath, checkoutPath);
+      } catch (error) {
+        await rm(cloneStagingPath, { recursive: true, force: true }).catch((cleanupError) => {
+          this.sessionLogger.warn(
+            { err: cleanupError, cloneStagingPath },
+            "Failed to clean up partial GitHub clone",
+          );
+        });
+        throw error;
+      }
+
+      const workspace =
+        await this.workspaceProvisioning.findOrCreateWorkspaceForDirectory(checkoutPath);
+      await this.syncWorkspaceGitObserverForWorkspace(workspace);
+      const descriptor = await this.describeWorkspaceRecord(workspace);
+      await this.emitWorkspaceUpdateForWorkspaceId(workspace.workspaceId);
+      void this.workspaceGitService
+        .getSnapshot(workspace.cwd, {
+          force: true,
+          includeGitHub: true,
+          reason: "open_project",
+        })
+        .catch((error) => {
+          this.sessionLogger.warn(
+            { err: error, cwd: workspace.cwd },
+            "Background snapshot refresh failed after workspace.github.clone",
+          );
+        });
+
+      this.emit({
+        type: "workspace.github.clone.response",
+        payload: {
+          requestId: request.requestId,
+          repo: repo.displayName,
+          checkoutPath,
+          workspace: descriptor,
+          error: null,
+        },
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to clone GitHub repo";
+      this.sessionLogger.error(
+        { err: error, repo: request.repo, targetDirectory: request.targetDirectory },
+        "Failed to clone GitHub workspace",
+      );
+      this.emit({
+        type: "workspace.github.clone.response",
+        payload: {
+          requestId: request.requestId,
+          repo: normalizedRepo,
+          checkoutPath,
+          workspace: null,
+          error: message,
+        },
+      });
+    }
+  }
+
   // Named accessor: the workspace descriptor builder and the git-watch test both read a workspace's
   // scripts snapshot through here; the workspace-scripts module owns the payload assembly.
   private buildWorkspaceScriptPayloadSnapshot(
@@ -6919,4 +7027,55 @@ export class Session {
 
     this.workspaceGitObserver.dispose();
   }
+}
+
+interface CloneRepositoryInput {
+  name: string;
+  displayName: string;
+  cloneUrl: string;
+}
+
+function normalizeCloneRepository(input: {
+  repo: string;
+  cloneProtocol?: "https" | "ssh";
+}): CloneRepositoryInput {
+  const trimmed = input.repo.trim();
+  if (!trimmed) {
+    throw new Error("Repository is required");
+  }
+
+  const remote = parseGitRemoteLocation(trimmed);
+  if (remote) {
+    const segments = remote.path.split("/").filter(Boolean);
+    const name = segments.at(-1);
+    if (!name || !isValidGitHubRepoSegment(name)) {
+      throw new Error("Repository name contains invalid characters");
+    }
+    return { name, displayName: remote.path, cloneUrl: trimmed };
+  }
+
+  const [owner, rawName, ...extra] = trimmed.split("/");
+  if (!owner || !rawName || extra.length > 0) {
+    throw new Error("Repository must use owner/repo format or a git remote URL");
+  }
+  const name = rawName.endsWith(".git") ? rawName.slice(0, -4) : rawName;
+  if (!isValidGitHubRepoSegment(owner) || !isValidGitHubRepoSegment(name)) {
+    throw new Error("Repository contains invalid characters");
+  }
+  if (!input.cloneProtocol) {
+    throw new Error("Clone protocol is required for owner/repo repository names");
+  }
+  const cloneUrl =
+    input.cloneProtocol === "ssh"
+      ? `git@github.com:${owner}/${name}.git`
+      : `https://github.com/${owner}/${name}.git`;
+  return {
+    name,
+    displayName: `${owner}/${name}`,
+    cloneUrl,
+  };
+}
+
+function isValidGitHubRepoSegment(value: string): boolean {
+  return /^[A-Za-z0-9._-]+$/u.test(value);
 }

@@ -54,8 +54,8 @@ function createFakeNavigator() {
   const navigations: RecordedNavigation[] = [];
   return {
     navigations,
-    navigateToWorkspace: (serverId: string, workspaceId: string) => {
-      navigations.push({ serverId, workspaceId });
+    navigateToWorkspace: (input: { serverId: string; workspaceId: string }) => {
+      navigations.push({ serverId: input.serverId, workspaceId: input.workspaceId });
     },
   };
 }
@@ -117,7 +117,7 @@ describe("prepareWorkspaceTab", () => {
           calls.push("openTabFocused");
           return layout.openTabFocused(key, target);
         },
-        navigateToWorkspace: () => {
+        navigateToWorkspace: (_input: { serverId: string; workspaceId: string }) => {
           calls.push("navigateToWorkspace");
         },
       },

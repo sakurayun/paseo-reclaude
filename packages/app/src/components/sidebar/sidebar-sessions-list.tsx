@@ -799,7 +799,10 @@ const SidebarSessionsGroupView = memo(function SidebarSessionsGroupView({
       onToggle(group.key);
       return;
     }
-    navigateToWorkspace(newAgentTarget.serverId, newAgentTarget.workspaceId);
+    navigateToWorkspace({
+      serverId: newAgentTarget.serverId,
+      workspaceId: newAgentTarget.workspaceId,
+    });
     usePanelStore.getState().showMobileAgent();
   }, [group.key, newAgentTarget, onToggle]);
 

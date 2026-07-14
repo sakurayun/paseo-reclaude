@@ -11,14 +11,20 @@ import {
   navigateToLastWorkspace as navigateToLastWorkspacePure,
   navigateToWorkspace as navigateToWorkspacePure,
   parseActiveWorkspaceSelection,
+  type NavigateToWorkspaceInput,
   type NavigateToWorkspaceDeps,
 } from "./navigation";
+import { isActiveCreateFlowForDraft, useCreateFlowStore } from "@/stores/create-flow-store";
+import { useDraftStore } from "@/stores/draft-store";
 import { useSessionStore } from "@/stores/session-store";
+import { useWorkspaceDraftSubmissionStore } from "@/stores/workspace-draft-submission-store";
 import { useWorkspaceLayoutStore } from "@/stores/workspace-layout-store";
 import { stripHostWorkspaceRouteEchoSearchFromBrowserUrlAfterCommit } from "@/utils/host-route-browser";
 import { navigateToHostWorkspaceRoute } from "@/navigation/workspace-route-navigation";
+import type { WorkspaceDraftBusyInput } from "@/utils/prepare-workspace-tab";
 
 export type { ActiveWorkspaceSelection } from "@/stores/last-workspace-selection";
+export type { NavigateToWorkspaceInput } from "./navigation";
 
 const lastWorkspaceSelectionStorage: LastWorkspaceSelectionStorage = {
   read: () => AsyncStorage.getItem(LAST_WORKSPACE_SELECTION_STORAGE_KEY),
@@ -29,14 +35,39 @@ const lastWorkspaceSelectionStore = createLastWorkspaceSelectionStore(
   lastWorkspaceSelectionStorage,
 );
 
+function isWorkspaceDraftBusy(input: WorkspaceDraftBusyInput): boolean {
+  const createFlowPending = useCreateFlowStore.getState().pendingByDraftId[input.draftId];
+  if (
+    isActiveCreateFlowForDraft({
+      pending: createFlowPending,
+      serverId: input.serverId,
+      draftId: input.draftId,
+    })
+  ) {
+    return true;
+  }
+
+  const workspaceDraftPending =
+    useWorkspaceDraftSubmissionStore.getState().pendingByDraftId[input.draftId];
+  return Boolean(
+    workspaceDraftPending &&
+    workspaceDraftPending.serverId === input.serverId &&
+    workspaceDraftPending.workspaceId === input.workspaceId,
+  );
+}
+
 function navigateDeps(): NavigateToWorkspaceDeps {
+  const layoutStore = useWorkspaceLayoutStore.getState();
+  const draftStore = useDraftStore.getState();
   return {
     getSessionWorkspaces: (serverId) => useSessionStore.getState().sessions[serverId]?.workspaces,
     getSessionAgents: (serverId) =>
       useSessionStore.getState().sessions[serverId]?.agents.values() ?? [],
-    openWorkspaceAgentTab: (workspaceKey, agentId) => {
-      useWorkspaceLayoutStore.getState().openTabFocused(workspaceKey, { kind: "agent", agentId });
-    },
+    openTabFocused: (workspaceKey, target) => layoutStore.openTabFocused(workspaceKey, target),
+    pinAgent: (workspaceKey, agentId) => layoutStore.pinAgent(workspaceKey, agentId),
+    getWorkspaceTabs: (workspaceKey) => layoutStore.getWorkspaceTabs(workspaceKey),
+    getDraftInput: draftStore.getDraftInput,
+    isDraftBusy: isWorkspaceDraftBusy,
     rememberLastWorkspace: (selection) => lastWorkspaceSelectionStore.remember(selection),
     navigateToRoute: (route) => {
       navigateToHostWorkspaceRoute(route);
@@ -57,8 +88,8 @@ export function getIsLastWorkspaceSelectionHydrated(): boolean {
   return lastWorkspaceSelectionStore.isHydrated();
 }
 
-export function navigateToWorkspace(serverId: string, workspaceId: string) {
-  navigateToWorkspacePure(serverId, workspaceId, navigateDeps());
+export function navigateToWorkspace(input: NavigateToWorkspaceInput): string {
+  return navigateToWorkspacePure(input, navigateDeps());
 }
 
 export function navigateToLastWorkspace(): boolean {
