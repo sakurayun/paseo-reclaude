@@ -191,7 +191,14 @@ export const zhCN: TranslationResources = {
       extraHigh: "超高",
       select: "选择 thinking 选项",
       selectWithValue: "选择 thinking 选项（{{value}}）",
-      levels: { low: "低", medium: "中", high: "高", xhigh: "超高", max: "最高" },
+      levels: {
+        low: "低",
+        medium: "中",
+        high: "高",
+        xhigh: "超高",
+        max: "最高",
+        ultra: "Ultra",
+      },
     },
     model: {
       unknown: "未知 Model",

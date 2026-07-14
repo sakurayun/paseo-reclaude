@@ -197,6 +197,7 @@ export const ja: TranslationResources = {
         high: "高",
         xhigh: "超高",
         max: "最高",
+        ultra: "Ultra",
       },
     },
     model: {

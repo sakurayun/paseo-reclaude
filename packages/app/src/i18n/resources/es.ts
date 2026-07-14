@@ -191,7 +191,14 @@ export const es: TranslationResources = {
       extraHigh: "extra alto",
       select: "Seleccione la opción de pensamiento",
       selectWithValue: "Seleccione la opción de pensamiento ({{value}})",
-      levels: { low: "Bajo", medium: "Medio", high: "Alto", xhigh: "Muy alto", max: "Máximo" },
+      levels: {
+        low: "Bajo",
+        medium: "Medio",
+        high: "Alto",
+        xhigh: "Muy alto",
+        max: "Máximo",
+        ultra: "Ultra",
+      },
     },
     model: {
       unknown: "Modelo desconocido",

@@ -77,6 +77,7 @@ import {
   type CodexThreadRollbackResponse,
   type CodexAppServerTraceContext,
 } from "./codex/app-server-transport.js";
+import { mergeCodexModelPresets } from "./codex/model-presets.js";
 import { type CodexUserMessageTurnIndex, revertCodexConversation } from "./codex/rewind.js";
 import {
   materializeProviderImage,
@@ -4785,7 +4786,7 @@ export class CodexAppServerAgentSession implements AgentSession {
     if (!model || !thinkingOptionId) {
       const modelResponse = toObjectRecord(await this.client.request("model/list", {}));
       const modelData = Array.isArray(modelResponse?.data) ? modelResponse.data : [];
-      const models = modelData
+      const runtimeModels = modelData
         .map((m) => {
           const record = toObjectRecord(m);
           return {
@@ -4798,6 +4799,7 @@ export class CodexAppServerAgentSession implements AgentSession {
           };
         })
         .filter((m) => m.id);
+      const models = mergeCodexModelPresets(runtimeModels);
       const defaultModel = models.find((m) => m.isDefault) ?? models[0];
       if (!defaultModel) {
         throw new Error("No models available from Codex app-server");
@@ -6756,7 +6758,10 @@ export class CodexAppServerAgentClient implements AgentClient {
 
       const rawResponse = await client.request("model/list", {});
       const parsedResponse = CodexModelListResponseSchema.safeParse(rawResponse);
-      const models = parsedResponse.success ? (parsedResponse.data.data ?? []) : [];
+      const runtimeModels = parsedResponse.success ? (parsedResponse.data.data ?? []) : [];
+      // Ensure GPT-5.6 Sol/Terra/Luna (and their effort presets) are available even
+      // when the installed Codex CLI catalog is older or incomplete.
+      const models = mergeCodexModelPresets(runtimeModels);
       const configuredDefaults = await readCodexConfiguredDefaults(client, this.logger);
       const configuredDefaultModelId = configuredDefaults.model;
       const configuredDefaultThinkingOptionId = configuredDefaults.thinkingOptionId;

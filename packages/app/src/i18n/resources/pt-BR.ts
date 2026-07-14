@@ -197,6 +197,7 @@ export const ptBR: TranslationResources = {
         high: "Alto",
         xhigh: "Extra alto",
         max: "Máximo",
+        ultra: "Ultra",
       },
     },
     model: {

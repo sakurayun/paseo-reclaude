@@ -191,7 +191,14 @@ export const ar: TranslationResources = {
       extraHigh: "ارتفاع إضافي",
       select: "حدد خيار التفكير",
       selectWithValue: "حدد خيار التفكير ({{value}})",
-      levels: { low: "منخفض", medium: "متوسط", high: "مرتفع", xhigh: "مرتفع جدًا", max: "أقصى" },
+      levels: {
+        low: "منخفض",
+        medium: "متوسط",
+        high: "مرتفع",
+        xhigh: "مرتفع جدًا",
+        max: "أقصى",
+        ultra: "فائق",
+      },
     },
     model: {
       unknown: "نموذج غير معروف",

@@ -197,6 +197,7 @@ export const ru: TranslationResources = {
         high: "Высокий",
         xhigh: "Очень высокий",
         max: "Максимум",
+        ultra: "Ультра",
       },
     },
     model: {

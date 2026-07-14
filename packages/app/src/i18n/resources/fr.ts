@@ -198,6 +198,7 @@ export const fr: TranslationResources = {
         high: "Élevé",
         xhigh: "Très élevé",
         max: "Maximum",
+        ultra: "Ultra",
       },
     },
     model: {

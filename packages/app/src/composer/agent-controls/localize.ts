@@ -27,7 +27,7 @@ export function localizeAgentFeature(t: TFunction, feature: AgentFeature): Agent
   };
 }
 
-const THINKING_LEVEL_IDS = ["low", "medium", "high", "xhigh", "max"] as const;
+const THINKING_LEVEL_IDS = ["low", "medium", "high", "xhigh", "max", "ultra"] as const;
 type ThinkingLevelId = (typeof THINKING_LEVEL_IDS)[number];
 
 function asThinkingLevelId(value: string): ThinkingLevelId | null {

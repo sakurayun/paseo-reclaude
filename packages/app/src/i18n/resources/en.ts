@@ -189,7 +189,14 @@ export const en = {
       extraHigh: "Extra high",
       select: "Select thinking option",
       selectWithValue: "Select thinking option ({{value}})",
-      levels: { low: "Low", medium: "Medium", high: "High", xhigh: "Extra high", max: "Max" },
+      levels: {
+        low: "Low",
+        medium: "Medium",
+        high: "High",
+        xhigh: "Extra high",
+        max: "Max",
+        ultra: "Ultra",
+      },
     },
     model: {
       unknown: "Unknown model",
