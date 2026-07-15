@@ -2805,14 +2805,22 @@ export class ACPAgentSession implements AgentSession, ACPClient {
   private handleUsageUpdate(update: UsageUpdate): void {
     const used = asFiniteNumber(update.used);
     const size = asFiniteNumber(update.size);
-    if (used === undefined && size === undefined) {
+    const hasUsdCost = update.cost?.currency === "USD";
+    const clearCost = !update.cost;
+    if (used === undefined && size === undefined && !hasUsdCost && !clearCost) {
       return;
     }
     this.currentTurnUsage = {
       ...this.currentTurnUsage,
       ...(used !== undefined ? { contextWindowUsedTokens: used } : {}),
       ...(size !== undefined ? { contextWindowMaxTokens: size } : {}),
+      ...(hasUsdCost ? { totalCostUsd: update.cost!.amount } : {}),
     };
+    // COMPAT(#2094): clear stale USD when usage_update carries no cost.
+    if (clearCost && this.currentTurnUsage?.totalCostUsd !== undefined) {
+      const { totalCostUsd: _cleared, ...rest } = this.currentTurnUsage;
+      this.currentTurnUsage = rest;
+    }
     this.pushEvent({
       type: "usage_updated",
       provider: this.provider,
