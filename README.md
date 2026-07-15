@@ -82,7 +82,7 @@ Paseo 会运行一个名为 daemon 的本地服务，用来管理你的 coding a
 
 从 [paseo.sh/download](https://paseo.sh/download) 或 [GitHub releases 页面](https://github.com/getpaseo/paseo/releases)下载。打开 app 后 daemon 会自动启动，不需要再安装其他东西。
 
-如果要从手机连接，在 Settings 中扫描显示的二维码。
+如果要从手机连接，打开 **Settings → 你的主机 → Connections → Pair a device**。
 
 ### CLI / 无头模式
 

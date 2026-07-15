@@ -28,13 +28,14 @@ import Animated, { runOnJS, useAnimatedStyle, useSharedValue } from "react-nativ
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { TitlebarDragRegion } from "@/components/desktop/titlebar-drag-region";
+import { resolveDesktopSidebarWidth } from "@/components/desktop-sidebar-layout";
 import { HostPicker } from "@/components/hosts/host-picker";
 import { SidebarHeaderRow } from "@/components/sidebar/sidebar-header-row";
 import { SidebarDisplayPreferencesMenu } from "@/components/sidebar/sidebar-display-preferences-menu";
 import { SidebarHelpMenu } from "@/components/sidebar/sidebar-help-menu";
 import { Shortcut } from "@/components/ui/shortcut";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { useIsCompactFormFactor } from "@/constants/layout";
+import { HEADER_INNER_HEIGHT, useIsCompactFormFactor } from "@/constants/layout";
 import { isWeb } from "@/constants/platform";
 import { useToast } from "@/contexts/toast-context";
 import { pickDirectory } from "@/desktop/pick-directory";
@@ -64,13 +65,8 @@ import {
 } from "@/stores/navigation-active-workspace-store";
 import { resolveSshExitWorkspace } from "@/screens/ssh/ssh-sidebar-toggle";
 import { useWorkspace } from "@/stores/session-store-hooks";
-import {
-  MAX_SIDEBAR_WIDTH,
-  MIN_SIDEBAR_WIDTH,
-  selectIsAgentListOpen,
-  usePanelStore,
-} from "@/stores/panel-store";
-import { useWindowControlsPadding } from "@/utils/desktop-window";
+import { selectIsAgentListOpen, usePanelStore } from "@/stores/panel-store";
+import { useOwnsWindowChromeCorner, WindowChromeSafeArea } from "@/utils/desktop-window";
 import { useCloseAgentListGesture } from "@/mobile-panels/gestures";
 import { MobilePanelOverlay } from "@/mobile-panels/presentation";
 import { isElectronRuntime } from "@/desktop/host";
@@ -92,8 +88,6 @@ import { SidebarSshList } from "@/components/sidebar/sidebar-ssh-list";
 import { SidebarAgentListSkeleton } from "./sidebar-agent-list-skeleton";
 import { SidebarCalloutSlot } from "./sidebar-callout-slot";
 import { SidebarWorkspaceList } from "./sidebar-workspace-list";
-
-const MIN_CHAT_WIDTH = 400;
 
 type SidebarTheme = ReturnType<typeof useUnistyles>["theme"];
 
@@ -896,6 +890,7 @@ function MobileSidebar({
       panelStyle={mobileSidebarInsetStyle}
     >
       <View style={styles.sidebarContent} pointerEvents="auto">
+        <WindowChromeSafeArea placement="below" />
         {isNewThemeSidebar ? (
           <>
             <SidebarSessionsToolbar
@@ -950,25 +945,27 @@ function MobileSidebar({
               />
             </View>
             <WorkspacesSectionHeader onNewWorkspacePress={handleNewWorkspace} />
-            <Pressable
-              style={styles.mobileCloseButton}
-              onPress={closeSidebar}
-              testID="sidebar-close"
-              nativeID="sidebar-close"
-              accessible
-              accessibilityRole="button"
-              accessibilityLabel={labels.closeSidebar}
-              hitSlop={8}
-            >
-              {({ hovered, pressed }) => (
-                <X
-                  size={theme.iconSize.md}
-                  color={
-                    hovered || pressed ? theme.colors.foreground : theme.colors.foregroundMuted
-                  }
-                />
-              )}
-            </Pressable>
+            <WindowChromeSafeArea placement="inline" style={styles.mobileCloseButtonRow}>
+              <Pressable
+                style={styles.mobileCloseButton}
+                onPress={closeSidebar}
+                testID="sidebar-close"
+                nativeID="sidebar-close"
+                accessible
+                accessibilityRole="button"
+                accessibilityLabel={labels.closeSidebar}
+                hitSlop={8}
+              >
+                {({ hovered, pressed }) => (
+                  <X
+                    size={theme.iconSize.md}
+                    color={
+                      hovered || pressed ? theme.colors.foreground : theme.colors.foregroundMuted
+                    }
+                  />
+                )}
+              </Pressable>
+            </WindowChromeSafeArea>
 
             {isSshContent ? (
               <SidebarSshList serverId={activeServerId} onNavigate={closeSidebar} />
@@ -1028,6 +1025,7 @@ function DesktopSidebar({
   handleViewMore,
   handleSchedulesNavigate,
 }: DesktopSidebarProps) {
+  const ownsTopLeft = useOwnsWindowChromeCorner("top-left");
   const pathname = usePathname();
   const isSessionsActive = pathname.includes("/sessions");
   const toolbarLabels = useMemo(
@@ -1043,47 +1041,47 @@ function DesktopSidebar({
   );
   const isSchedulesActive = pathname.includes("/schedules");
   const showSchedules = isElectronRuntime();
-  const padding = useWindowControlsPadding("sidebar");
   const sidebarWidth = usePanelStore((state) => state.sidebarWidth);
   const setSidebarWidth = usePanelStore((state) => state.setSidebarWidth);
   const { width: viewportWidth } = useWindowDimensions();
+  const visibleSidebarWidth = resolveDesktopSidebarWidth({
+    requestedWidth: sidebarWidth,
+    viewportWidth,
+  });
 
-  const startWidthRef = useRef(sidebarWidth);
-  const resizeWidth = useSharedValue(sidebarWidth);
+  const startWidthRef = useRef(visibleSidebarWidth);
+  const resizeWidth = useSharedValue(visibleSidebarWidth);
 
   useEffect(() => {
-    resizeWidth.value = sidebarWidth;
-  }, [sidebarWidth, resizeWidth]);
+    resizeWidth.value = visibleSidebarWidth;
+  }, [resizeWidth, visibleSidebarWidth]);
 
   const resizeGesture = useMemo(
     () =>
       Gesture.Pan()
         .hitSlop({ left: 8, right: 8, top: 0, bottom: 0 })
         .onStart(() => {
-          startWidthRef.current = sidebarWidth;
-          resizeWidth.value = sidebarWidth;
+          startWidthRef.current = visibleSidebarWidth;
+          resizeWidth.value = visibleSidebarWidth;
         })
         .onUpdate((event) => {
           // Dragging right (positive translationX) increases width
           const newWidth = startWidthRef.current + event.translationX;
-          const maxWidth = Math.max(
-            MIN_SIDEBAR_WIDTH,
-            Math.min(MAX_SIDEBAR_WIDTH, viewportWidth - MIN_CHAT_WIDTH),
-          );
-          const clampedWidth = Math.max(MIN_SIDEBAR_WIDTH, Math.min(maxWidth, newWidth));
-          resizeWidth.value = clampedWidth;
+          resizeWidth.value = resolveDesktopSidebarWidth({
+            requestedWidth: newWidth,
+            viewportWidth,
+          });
         })
         .onEnd(() => {
           runOnJS(setSidebarWidth)(resizeWidth.value);
         }),
-    [sidebarWidth, resizeWidth, setSidebarWidth, viewportWidth],
+    [resizeWidth, setSidebarWidth, viewportWidth, visibleSidebarWidth],
   );
 
   const resizeAnimatedStyle = useAnimatedStyle(() => ({
     width: resizeWidth.value,
   }));
 
-  const paddingTopSpacerStyle = useMemo(() => ({ height: padding.top }), [padding.top]);
   const desktopSidebarStyle = useMemo(
     () => [staticStyles.desktopSidebar, resizeAnimatedStyle],
     [resizeAnimatedStyle],
@@ -1091,6 +1089,10 @@ function DesktopSidebar({
   const desktopSidebarBorderStyle = useMemo(
     () => [styles.desktopSidebarBorder, { flex: 1, paddingTop: insetsTop }],
     [insetsTop],
+  );
+  const sidebarHeaderGroupStyle = useMemo(
+    () => [styles.sidebarHeaderGroup, ownsTopLeft && styles.sidebarHeaderGroupBelowChrome],
+    [ownsTopLeft],
   );
   const resizeHandleStyle = useMemo(
     // The resize handle is a plain View, so the whole-sidebar drag region below
@@ -1115,12 +1117,19 @@ function DesktopSidebar({
             as a window-drag handle. Pressables render with a tabIndex on web, so
             the global no-drag backstop in public/index.html carves them out
             automatically; the only plain-View control that needs an explicit
-            no-drag is the resize handle below. */}
-        <TitlebarDragRegion />
+            no-drag is the resize handle below. When this sidebar owns the
+            top-left window-chrome corner, wrap the drag region in a fixed-height
+            chrome row so native window controls have stable clearance. */}
+        {ownsTopLeft ? (
+          <View style={styles.desktopChromeRow}>
+            <TitlebarDragRegion />
+          </View>
+        ) : (
+          <TitlebarDragRegion />
+        )}
         {isNewThemeSidebar ? (
           <>
             <View style={styles.sidebarDragArea}>
-              {padding.top > 0 ? <View style={paddingTopSpacerStyle} /> : null}
               <SidebarSessionsToolbar
                 labels={toolbarLabels}
                 onNewConversation={handleNewWorkspaceNavigate}
@@ -1145,8 +1154,7 @@ function DesktopSidebar({
         ) : (
           <>
             <View style={styles.sidebarDragArea}>
-              {padding.top > 0 ? <View style={paddingTopSpacerStyle} /> : null}
-              <View style={styles.sidebarHeaderGroup}>
+              <View style={sidebarHeaderGroupStyle}>
                 <SidebarNewWorkspaceHeaderRow
                   label={labels.newWorkspace}
                   testID="sidebar-global-new-workspace"
@@ -1421,6 +1429,9 @@ const styles = StyleSheet.create((theme) => ({
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.border,
   },
+  sidebarHeaderGroupBelowChrome: {
+    paddingTop: 0,
+  },
   workspacesSectionHeader: {
     flexDirection: "row",
     alignItems: "center",
@@ -1486,11 +1497,17 @@ const styles = StyleSheet.create((theme) => ({
     flex: 1,
     minHeight: 0,
   },
-  mobileCloseButton: {
+  mobileCloseButtonRow: {
     position: "absolute",
     top: theme.spacing[3],
-    right: theme.spacing[4],
+    left: 0,
+    right: 0,
     zIndex: 2,
+    alignItems: "flex-end",
+    pointerEvents: "box-none",
+  },
+  mobileCloseButton: {
+    marginRight: theme.spacing[4],
     width: 32,
     height: 32,
     alignItems: "center",
@@ -1513,6 +1530,14 @@ const styles = StyleSheet.create((theme) => ({
   },
   sidebarDragArea: {
     position: "relative",
+  },
+  desktopChromeRow: {
+    position: "relative",
+    height: HEADER_INNER_HEIGHT,
+    flexDirection: "row",
+    alignItems: "center",
+    borderBottomWidth: theme.borderWidth[1],
+    borderBottomColor: "transparent",
   },
   sidebarFooter: {
     flexDirection: "row",

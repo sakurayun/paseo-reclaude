@@ -91,7 +91,7 @@ import {
   normalizeClientRestartRpcReason,
 } from "./lifecycle-reasons.js";
 
-import { AgentManager } from "./agent/agent-manager.js";
+import { AgentManager, AgentRunCancellationError } from "./agent/agent-manager.js";
 import { ProviderSnapshotManager } from "./agent/provider-snapshot-manager.js";
 import type {
   AgentManagerEvent,
@@ -1275,16 +1275,17 @@ export class Session {
     );
 
     const t0 = Date.now();
-    const cancelled = await this.agentManager.cancelAgentRun(agentId);
+    const cancellation = await this.agentManager.cancelAgentRun(agentId);
     this.sessionLogger.debug(
-      { agentId, cancelled, durationMs: Date.now() - t0 },
+      { agentId, cancellation: cancellation.status, durationMs: Date.now() - t0 },
       "interruptAgentIfRunning: cancelAgentRun completed",
     );
-    if (!cancelled) {
+    if (cancellation.status === "refused") {
       this.sessionLogger.warn(
         { agentId },
         "interruptAgentIfRunning: reported running but no active run was cancelled",
       );
+      throw new AgentRunCancellationError(agentId, "stop");
     }
   }
 
@@ -3762,11 +3763,30 @@ export class Session {
             requestId,
             agentId,
             agent: payload,
+            error: null,
           },
         });
       }
     } catch (error) {
-      this.handleAgentRunError(agentId, error, "Failed to cancel running agent on request");
+      if (requestId) {
+        this.sessionLogger.error(
+          { err: error, agentId },
+          `Failed to cancel running agent on request for agent ${agentId}`,
+        );
+        const agent = this.agentManager.getAgent(agentId);
+        const payload = agent ? await this.buildAgentPayload(agent) : null;
+        this.emit({
+          type: "cancel_agent_response",
+          payload: {
+            requestId,
+            agentId,
+            agent: payload,
+            error: errorToFriendlyMessage(error),
+          },
+        });
+      } else {
+        this.handleAgentRunError(agentId, error, "Failed to cancel running agent on request");
+      }
     }
   }
 

@@ -13,7 +13,6 @@ import {
   type ViewStyle,
 } from "react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
-import { useIsCompactFormFactor } from "@/constants/layout";
 import { WORKSPACE_SECONDARY_HEADER_HEIGHT } from "@/constants/layout";
 import * as Clipboard from "expo-clipboard";
 import { SvgXml } from "react-native-svg";
@@ -50,8 +49,6 @@ import { usePanelStore, type SortOption } from "@/stores/panel-store";
 import { formatTimeAgo } from "@/utils/time";
 import { buildAbsoluteExplorerPath, buildRelativeExplorerPath } from "@/utils/explorer-paths";
 import { filterVisibleExplorerEntries, isHiddenExplorerPath } from "@/file-explorer/visibility";
-import { useWebScrollViewScrollbar } from "@/components/use-web-scrollbar";
-import { isWeb } from "@/constants/platform";
 import { useToast } from "@/contexts/toast-context";
 import { useIsLocalDaemon } from "@/hooks/use-is-local-daemon";
 import { resolvePreferredEditorId, usePreferredEditor } from "@/hooks/use-preferred-editor";
@@ -290,8 +287,6 @@ export function FileExplorerPane({
   onOpenFile,
 }: FileExplorerPaneProps) {
   const { t } = useTranslation();
-  const isMobile = useIsCompactFormFactor();
-  const showDesktopWebScrollbar = isWeb && !isMobile;
 
   const daemons = useHosts();
   const daemonProfile = useMemo(
@@ -390,9 +385,6 @@ export function FileExplorerPane({
   );
 
   const treeListRef = useRef<FlatList<TreeRow>>(null);
-  const scrollbar = useWebScrollViewScrollbar(treeListRef, {
-    enabled: showDesktopWebScrollbar,
-  });
 
   const hasInitializedRef = useRef(false);
 
@@ -647,9 +639,7 @@ export function FileExplorerPane({
         treeRows={treeRows}
         currentSortLabel={currentSortLabel}
         isRefreshFetching={isRefreshFetching}
-        showDesktopWebScrollbar={showDesktopWebScrollbar}
         treeListRef={treeListRef}
-        scrollbar={scrollbar}
         renderTreeRow={renderTreeRow}
         handleSortCycle={handleSortCycle}
         handleToggleHiddenFiles={handleToggleHiddenFiles}
@@ -670,9 +660,7 @@ interface FileExplorerPaneContentProps {
   treeRows: TreeRow[];
   currentSortLabel: string;
   isRefreshFetching: boolean;
-  showDesktopWebScrollbar: boolean;
   treeListRef: RefObject<FlatList<TreeRow> | null>;
-  scrollbar: ReturnType<typeof useWebScrollViewScrollbar>;
   renderTreeRow: (info: ListRenderItemInfo<TreeRow>) => ReactElement;
   handleSortCycle: () => void;
   handleToggleHiddenFiles: () => void;
@@ -693,9 +681,7 @@ function FileExplorerPaneContent(props: FileExplorerPaneContentProps) {
     treeRows,
     currentSortLabel,
     isRefreshFetching,
-    showDesktopWebScrollbar,
     treeListRef,
-    scrollbar,
     renderTreeRow,
     handleSortCycle,
     handleToggleHiddenFiles,
@@ -810,17 +796,12 @@ function FileExplorerPaneContent(props: FileExplorerPaneContentProps) {
           keyExtractor={treeRowKeyExtractor}
           testID="file-explorer-tree-scroll"
           contentContainerStyle={styles.entriesContent}
-          onLayout={scrollbar.onLayout}
-          onScroll={scrollbar.onScroll}
-          onContentSizeChange={scrollbar.onContentSizeChange}
-          scrollEventThrottle={16}
-          showsVerticalScrollIndicator={!showDesktopWebScrollbar}
+          showsVerticalScrollIndicator
           initialNumToRender={24}
           maxToRenderPerBatch={40}
           windowSize={12}
         />
       )}
-      {treeRows.length > 0 ? scrollbar.overlay : null}
     </View>
   );
 }

@@ -34,7 +34,7 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
-import { useWebScrollViewScrollbar } from "@/components/use-web-scrollbar";
+import { useWebScrollbarStyle } from "@/hooks/use-web-scrollbar-style";
 import { useSessionStore } from "@/stores/session-store";
 import {
   hasDesktopOpenTargetsBridge,
@@ -120,9 +120,10 @@ export function ResizableChangesArea({
 
   const areaStyle = useMemo(() => [resizeStaticStyles.area, { height: heightAnim }], [heightAnim]);
 
-  // Themed overlay scrollbar, consistent with the rest of the app's panes.
-  const scrollRef = useRef<ScrollView>(null);
-  const scrollbar = useWebScrollViewScrollbar(scrollRef);
+  // Themed scrollbar, consistent with the rest of the app's panes. Upstream
+  // removed the JS overlay scrollbar hook in favor of native scrollbars; the
+  // fork keeps the "subtle" variant used by file-pane/diff-viewer.
+  const webScrollbarStyle = useWebScrollbarStyle("subtle");
 
   return (
     <View>
@@ -135,17 +136,7 @@ export function ResizableChangesArea({
       </View>
       {header}
       <RNAnimated.View style={areaStyle}>
-        <ScrollView
-          ref={scrollRef}
-          showsVerticalScrollIndicator={false}
-          onScroll={scrollbar.onScroll}
-          onLayout={scrollbar.onLayout}
-          onContentSizeChange={scrollbar.onContentSizeChange}
-          scrollEventThrottle={16}
-        >
-          {children}
-        </ScrollView>
-        {scrollbar.overlay}
+        <ScrollView style={webScrollbarStyle}>{children}</ScrollView>
       </RNAnimated.View>
     </View>
   );

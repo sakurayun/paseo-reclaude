@@ -203,7 +203,6 @@ function NewForwardSheet({
       visible
       onClose={onClose}
       footer={footer}
-      webScrollbar
       testID="ssh-forward-sheet"
     >
       <View style={styles.form}>

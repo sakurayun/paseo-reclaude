@@ -19,7 +19,7 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import { Appearance, View } from "react-native";
+import { Appearance, useWindowDimensions, View } from "react-native";
 import { SystemBars } from "react-native-edge-to-edge";
 import { GestureDetector, GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
@@ -33,6 +33,7 @@ import { QuittingOverlay } from "@/components/quitting-overlay";
 import { KeyboardShortcutsDialog } from "@/components/keyboard-shortcuts-dialog";
 import { AppDiagnosticHost } from "@/components/app-diagnostic-host";
 import { LeftSidebar } from "@/components/left-sidebar";
+import { WindowSidebarMenuToggle } from "@/components/headers/menu-header";
 import { SidebarModelProvider } from "@/components/sidebar/sidebar-model";
 import { CompactExplorerSidebarHost } from "@/components/compact-explorer-sidebar-host";
 import { ProjectPickerModal } from "@/components/project-picker-modal";
@@ -42,7 +43,16 @@ import { WorkspaceSetupDialog } from "@/components/workspace-setup-dialog";
 import { WorkspaceShortcutTargetsSubscriber } from "@/components/workspace-shortcut-targets-subscriber";
 import { FloatingPanelPortalHost } from "@/components/ui/floating-panel-portal";
 import { HostChooserModal, useHostChooser } from "@/hosts/host-chooser";
-import { getIsElectronRuntime, useIsCompactFormFactor } from "@/constants/layout";
+import {
+  getIsElectronRuntime,
+  HEADER_INNER_HEIGHT,
+  useIsCompactFormFactor,
+} from "@/constants/layout";
+import {
+  canDesktopAppSidebarShare,
+  resolveDesktopAppChromeLayout,
+  resolveDesktopAppContentMinimum,
+} from "@/components/desktop-sidebar-layout";
 import { isNative, isWeb } from "@/constants/platform";
 import { HorizontalScrollProvider } from "@/contexts/horizontal-scroll-context";
 import { SessionProvider } from "@/contexts/session-context";
@@ -93,8 +103,15 @@ import { getDaemonStartService } from "@/runtime/daemon-start-service";
 import { applyAppearance } from "@/screens/settings/appearance/apply-appearance";
 import { selectIsAgentListOpen, usePanelStore } from "@/stores/panel-store";
 import { resolveNewThemeUnistylesKey, THEME_TO_UNISTYLES, type ThemeName } from "@/styles/theme";
+import { installWebScrollbarStyles } from "@/styles/install-web-scrollbar-styles";
 import type { HostProfile } from "@/types/host-connection";
 import { toggleDesktopSidebarsWithCheckoutIntent } from "@/utils/desktop-sidebar-toggle";
+import {
+  useHasWindowChromeObstruction,
+  WindowChromeProvider,
+  WindowChromeRegion,
+  WindowChromeSafeArea,
+} from "@/utils/desktop-window";
 import { buildOpenProjectRoute, parseServerIdFromPathname } from "@/utils/host-routes";
 import { buildNotificationRoute, resolveNotificationTarget } from "@/utils/notification-routing";
 import { navigateToAgent } from "@/utils/navigate-to-agent";
@@ -413,6 +430,7 @@ const THEME_CYCLE_ORDER: ThemeName[] = [
   "claudeLight",
   "catppuccinLatte",
 ];
+const WINDOW_SIDEBAR_TOGGLE_HORIZONTAL_PADDING = 12;
 
 function AppContainer({ children, chromeEnabled: chromeEnabledOverride }: AppContainerProps) {
   const daemons = useHosts();
@@ -424,6 +442,11 @@ function AppContainer({ children, chromeEnabled: chromeEnabledOverride }: AppCon
   const closeDesktopFileExplorer = usePanelStore((state) => state.closeDesktopFileExplorer);
   const toggleFocusMode = usePanelStore((state) => state.toggleFocusMode);
   const isFocusModeEnabled = usePanelStore((state) => state.desktop.focusModeEnabled);
+  const isDesktopAgentListOpen = usePanelStore((state) => state.desktop.agentListOpen);
+  const isDesktopFileExplorerOpen = usePanelStore((state) => state.desktop.fileExplorerOpen);
+  const sidebarWidth = usePanelStore((state) => state.sidebarWidth);
+  const explorerWidth = usePanelStore((state) => state.explorerWidth);
+  const { width: viewportWidth } = useWindowDimensions();
 
   const cycleTheme = useCallback(() => {
     const currentIndex = THEME_CYCLE_ORDER.indexOf(settings.theme as ThemeName);
@@ -469,22 +492,51 @@ function AppContainer({ children, chromeEnabled: chromeEnabledOverride }: AppCon
   useActiveWorktreeNewAction();
   useGlobalNewWorkspaceAction();
 
+  const appContentMinimumWidth = resolveDesktopAppContentMinimum({
+    isSettingsRoute: pathname.includes("/settings"),
+    isWorkspaceExplorerOpen: pathname.includes("/workspace/") && isDesktopFileExplorerOpen,
+    requestedExplorerWidth: explorerWidth,
+    viewportWidth,
+  });
+  const desktopSidebarRendered =
+    !isCompactLayout &&
+    chromeEnabled &&
+    !isFocusModeEnabled &&
+    isDesktopAgentListOpen &&
+    canDesktopAppSidebarShare({
+      contentMinimumWidth: appContentMinimumWidth,
+      requestedSidebarWidth: sidebarWidth,
+      viewportWidth,
+    });
+  const hasTopLeftWindowControls = useHasWindowChromeObstruction("top-left");
+  const appChromeLayout = resolveDesktopAppChromeLayout({
+    desktopSidebarRendered,
+    hasTopLeftWindowControls,
+    sidebarControlsEnabled: chromeEnabled && !isFocusModeEnabled,
+  });
   const sidebarChrome = (
     <SidebarChrome
-      showSidebar={chromeEnabled && (isCompactLayout || !isFocusModeEnabled)}
+      showSidebar={isCompactLayout ? chromeEnabled : desktopSidebarRendered}
       keyboardShortcutsEnabled={keyboardShortcutsEnabled}
     />
   );
-
   const workspaceChrome = (
     <View style={rowStyle}>
-      {!isCompactLayout ? sidebarChrome : null}
+      {!isCompactLayout ? (
+        <WindowChromeRegion corners={appChromeLayout.sidebarCorners}>
+          {sidebarChrome}
+        </WindowChromeRegion>
+      ) : null}
       {isCompactLayout && chromeEnabled ? (
         <CompactExplorerSidebarHost enabled={chromeEnabled}>
-          <View style={flexStyle}>{children}</View>
+          <WindowChromeRegion corners="both">
+            <View style={flexStyle}>{children}</View>
+          </WindowChromeRegion>
         </CompactExplorerSidebarHost>
       ) : (
-        <View style={flexStyle}>{children}</View>
+        <WindowChromeRegion corners={appChromeLayout.contentCorners}>
+          <View style={flexStyle}>{children}</View>
+        </WindowChromeRegion>
       )}
     </View>
   );
@@ -492,6 +544,18 @@ function AppContainer({ children, chromeEnabled: chromeEnabledOverride }: AppCon
   const surface = (
     <View style={layoutStyles.surfaceFill}>
       {workspaceChrome}
+      {!isCompactLayout && appChromeLayout.sidebarToggleOwner === "window" ? (
+        <WindowChromeRegion corners="top-left">
+          <WindowChromeSafeArea
+            placement="inline"
+            horizontalPadding={WINDOW_SIDEBAR_TOGGLE_HORIZONTAL_PADDING}
+            pointerEvents="box-none"
+            style={layoutStyles.windowSidebarToggle}
+          >
+            <WindowSidebarMenuToggle />
+          </WindowChromeSafeArea>
+        </WindowChromeRegion>
+      ) : null}
       <FloatingPanelPortalHost />
       {isCompactLayout ? sidebarChrome : null}
       <DownloadToast />
@@ -909,13 +973,15 @@ function RuntimeProviders({ children }: { children: ReactNode }) {
 function RootProviders({ children }: { children: ReactNode }) {
   return (
     <SafeAreaProvider>
-      <KeyboardProvider>
-        <KeyboardShiftProvider>
-          <PortalProvider>
-            <BottomSheetModalProvider>{children}</BottomSheetModalProvider>
-          </PortalProvider>
-        </KeyboardShiftProvider>
-      </KeyboardProvider>
+      <WindowChromeProvider>
+        <KeyboardProvider>
+          <KeyboardShiftProvider>
+            <PortalProvider>
+              <BottomSheetModalProvider>{children}</BottomSheetModalProvider>
+            </PortalProvider>
+          </KeyboardShiftProvider>
+        </KeyboardProvider>
+      </WindowChromeProvider>
     </SafeAreaProvider>
   );
 }
@@ -945,6 +1011,8 @@ function RootAppTree() {
 }
 
 export default function RootLayout() {
+  useEffect(() => installWebScrollbarStyles(), []);
+
   return (
     <QueryProvider>
       <I18nProvider>
@@ -960,5 +1028,16 @@ const layoutStyles = StyleSheet.create((theme) => ({
   surfaceFill: {
     flex: 1,
     backgroundColor: theme.colors.surface0,
+  },
+  windowSidebarToggle: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    zIndex: 20,
+    height: HEADER_INNER_HEIGHT,
+    flexDirection: "row",
+    alignItems: "center",
+    borderBottomWidth: theme.borderWidth[1],
+    borderBottomColor: "transparent",
   },
 }));

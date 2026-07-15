@@ -32,8 +32,14 @@ import { useTranslation } from "react-i18next";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { ResizeHandle } from "@/components/resize-handle";
 import { RetainedPanel } from "@/components/retained-panel";
+import { resolveSplitContainerRoot } from "@/components/split-container-focus";
 import { shouldFocusPaneFromEventTarget } from "@/components/split-container-pane-focus";
-import { useWindowControlsPadding } from "@/utils/desktop-window";
+import {
+  WindowChromeRegion,
+  WindowChromeSafeArea,
+  useWindowChromeCorners,
+  type WindowChromeCorners,
+} from "@/utils/desktop-window";
 import { TitlebarDragRegion } from "@/components/desktop/titlebar-drag-region";
 import {
   computeTabDropPreview,
@@ -170,6 +176,7 @@ interface SplitNodeViewProps extends Omit<SplitContainerProps, "layout" | "onMov
   onGroupTabs?: SplitContainerProps["onGroupTabs"];
   onUpdateTabGroup?: SplitContainerProps["onUpdateTabGroup"];
   onUngroupTabGroup?: SplitContainerProps["onUngroupTabGroup"];
+  windowChromeCorners: WindowChromeCorners;
 }
 
 interface SplitPaneViewProps extends Omit<
@@ -181,6 +188,7 @@ interface SplitPaneViewProps extends Omit<
   | "showDropZones"
   | "dropPreview"
   | "onResizeSplit"
+  | "windowChromeCorners"
 > {
   pane: SplitPane;
   uiTabs: WorkspaceTab[];
@@ -398,6 +406,8 @@ export function SplitContainer({
   renderPaneEmptyState = () => null,
   focusModeEnabled,
 }: SplitContainerProps) {
+  const inheritedWindowChromeCorners = useWindowChromeCorners();
+  const windowChromeCorners = focusModeEnabled ? inheritedWindowChromeCorners : "none";
   const [activeDragTabId, setActiveDragTabId] = useState<string | null>(null);
   const [dropPreview, setDropPreview] = useState<SplitDropZoneHover | null>(null);
   const [tabDropPreview, setTabDropPreview] = useState<TabDropPreview | null>(null);
@@ -414,18 +424,16 @@ export function SplitContainer({
   );
 
   const panesById = useMemo(() => collectPanesById(layout.root), [layout.root]);
-
-  const effectiveRoot = useMemo(() => {
-    if (!focusModeEnabled) {
-      return layout.root;
-    }
-    const focusedPane = layout.focusedPaneId ? panesById.get(layout.focusedPaneId) : null;
-    if (!focusedPane) {
-      return layout.root;
-    }
-    return { kind: "pane" as const, pane: focusedPane };
-  }, [focusModeEnabled, layout.root, layout.focusedPaneId, panesById]);
-  const renderRoot = useMemo(() => wrapRootPaneForStableMount(effectiveRoot), [effectiveRoot]);
+  const splitRoot = useMemo(
+    () =>
+      resolveSplitContainerRoot({
+        root: layout.root,
+        focusedPaneId: layout.focusedPaneId,
+        focusModeEnabled,
+      }),
+    [focusModeEnabled, layout.focusedPaneId, layout.root],
+  );
+  const renderRoot = useMemo(() => wrapRootPaneForStableMount(splitRoot.root), [splitRoot.root]);
 
   const handleDragStart = useCallback((event: DragStartEvent) => {
     const data = asWorkspaceTabDragData(event.active.data.current);
@@ -589,6 +597,7 @@ export function SplitContainer({
         onDragCancel={handleDragCancel}
         onDragEnd={handleDragEnd}
       >
+        {splitRoot.usesFallbackStrip && <WindowChromeSafeArea placement="below" />}
         <SplitNodeView
           node={renderRoot}
           workspaceKey={workspaceKey}
@@ -628,6 +637,7 @@ export function SplitContainer({
           showDropZones={activeDragTabId !== null}
           dropPreview={dropPreview}
           tabDropPreview={tabDropPreview}
+          windowChromeCorners={splitRoot.usesFallbackStrip ? "none" : windowChromeCorners}
         />
         <DragOverlay dropAnimation={null}>
           {activeDragTabId ? (
@@ -761,6 +771,7 @@ function SplitNodeView({
   showDropZones,
   dropPreview,
   tabDropPreview,
+  windowChromeCorners,
 }: SplitNodeViewProps) {
   const groupId = node.kind === "group" ? node.group.id : null;
   const groupDirection = node.kind === "group" ? node.group.direction : null;
@@ -779,44 +790,46 @@ function SplitNodeView({
 
   if (node.kind === "pane") {
     return (
-      <SplitPaneView
-        pane={node.pane}
-        uiTabs={uiTabs}
-        isFocused={node.pane.id === focusedPaneId}
-        normalizedServerId={normalizedServerId}
-        normalizedWorkspaceId={normalizedWorkspaceId}
-        isWorkspaceFocused={isWorkspaceFocused}
-        hoveredCloseTabKey={hoveredCloseTabKey}
-        setHoveredCloseTabKey={setHoveredCloseTabKey}
-        closingTabIds={closingTabIds}
-        onNavigateTab={onNavigateTab}
-        onCloseTab={onCloseTab}
-        onCopyResumeCommand={onCopyResumeCommand}
-        onCopyAgentId={onCopyAgentId}
-        onCopyFilePath={onCopyFilePath}
-        onReloadAgent={onReloadAgent}
-        onRenameTab={onRenameTab}
-        onCloseTabsToLeft={onCloseTabsToLeft}
-        onCloseTabsToRight={onCloseTabsToRight}
-        onCloseOtherTabs={onCloseOtherTabs}
-        onCreateDraftTab={onCreateDraftTab}
-        onCreateTerminalTab={onCreateTerminalTab}
-        onCreateBrowserTab={onCreateBrowserTab}
-        showCreateBrowserTab={showCreateBrowserTab}
-        buildPaneContentModel={buildPaneContentModel}
-        onFocusPane={onFocusPane}
-        onSplitPane={onSplitPane}
-        onSplitPaneEmpty={onSplitPaneEmpty}
-        onReorderTabsInPane={onReorderTabsInPane}
-        onGroupTabs={onGroupTabs}
-        onUpdateTabGroup={onUpdateTabGroup}
-        onUngroupTabGroup={onUngroupTabGroup}
-        renderPaneEmptyState={renderPaneEmptyState}
-        activeDragTabId={activeDragTabId}
-        showDropZones={showDropZones}
-        dropPreview={dropPreview}
-        tabDropPreview={tabDropPreview}
-      />
+      <WindowChromeRegion corners={windowChromeCorners}>
+        <SplitPaneView
+          pane={node.pane}
+          uiTabs={uiTabs}
+          isFocused={node.pane.id === focusedPaneId}
+          normalizedServerId={normalizedServerId}
+          normalizedWorkspaceId={normalizedWorkspaceId}
+          isWorkspaceFocused={isWorkspaceFocused}
+          hoveredCloseTabKey={hoveredCloseTabKey}
+          setHoveredCloseTabKey={setHoveredCloseTabKey}
+          closingTabIds={closingTabIds}
+          onNavigateTab={onNavigateTab}
+          onCloseTab={onCloseTab}
+          onCopyResumeCommand={onCopyResumeCommand}
+          onCopyAgentId={onCopyAgentId}
+          onCopyFilePath={onCopyFilePath}
+          onReloadAgent={onReloadAgent}
+          onRenameTab={onRenameTab}
+          onCloseTabsToLeft={onCloseTabsToLeft}
+          onCloseTabsToRight={onCloseTabsToRight}
+          onCloseOtherTabs={onCloseOtherTabs}
+          onCreateDraftTab={onCreateDraftTab}
+          onCreateTerminalTab={onCreateTerminalTab}
+          onCreateBrowserTab={onCreateBrowserTab}
+          showCreateBrowserTab={showCreateBrowserTab}
+          buildPaneContentModel={buildPaneContentModel}
+          onFocusPane={onFocusPane}
+          onSplitPane={onSplitPane}
+          onSplitPaneEmpty={onSplitPaneEmpty}
+          onReorderTabsInPane={onReorderTabsInPane}
+          onGroupTabs={onGroupTabs}
+          onUpdateTabGroup={onUpdateTabGroup}
+          onUngroupTabGroup={onUngroupTabGroup}
+          renderPaneEmptyState={renderPaneEmptyState}
+          activeDragTabId={activeDragTabId}
+          showDropZones={showDropZones}
+          dropPreview={dropPreview}
+          tabDropPreview={tabDropPreview}
+        />
+      </WindowChromeRegion>
     );
   }
 
@@ -866,6 +879,7 @@ function SplitNodeView({
               showDropZones={showDropZones}
               dropPreview={dropPreview}
               tabDropPreview={tabDropPreview}
+              windowChromeCorners={windowChromeCorners}
             />
           </SplitGroupChild>
           {index < node.group.children.length - 1 ? (
@@ -924,7 +938,6 @@ function SplitPaneView({
   const { theme: _theme } = useUnistyles();
   const paneRef = useRef<View | null>(null);
   const stableOnFocusPane = useStableEvent(onFocusPane);
-  const padding = useWindowControlsPadding("tabRow");
   const paneState = useMemo(
     () =>
       deriveWorkspacePaneState({
@@ -1098,15 +1111,11 @@ function SplitPaneView({
     () => onSplitPaneEmpty({ targetPaneId: paneId, position: "bottom" }),
     [onSplitPaneEmpty, paneId],
   );
-  const paneTabsStyle = useMemo(
-    () => [styles.paneTabs, { paddingLeft: padding.left, paddingRight: padding.right }],
-    [padding.left, padding.right],
-  );
 
   return (
     <RenderProfile id={`SplitPaneView:${pane.id}`}>
       <View ref={paneRef} collapsable={false} style={styles.pane}>
-        <View style={paneTabsStyle}>
+        <WindowChromeSafeArea placement="inline" style={styles.paneTabs}>
           <TitlebarDragRegion />
           <WorkspaceDesktopTabsRow
             paneId={pane.id}
@@ -1149,7 +1158,7 @@ function SplitPaneView({
                 : null
             }
           />
-        </View>
+        </WindowChromeSafeArea>
 
         <View style={styles.paneContent}>
           {mountedPaneTabIds.length > 0

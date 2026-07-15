@@ -18,6 +18,13 @@ export const HEADER_TOP_PADDING_MOBILE = 8;
 export const MAX_CONTENT_WIDTH = 820;
 export const COMPACT_FORM_FACTOR_WIDTH = 500;
 
+// Settings uses the canonical desktop list + detail layout. Its sidebar and
+// detail target must fit together before it can share width with app navigation.
+export const SETTINGS_DESKTOP_SIDEBAR_WIDTH = 320;
+export const SETTINGS_DESKTOP_DETAIL_MIN_WIDTH = 400;
+export const SETTINGS_DESKTOP_SPLIT_MIN_WIDTH =
+  SETTINGS_DESKTOP_SIDEBAR_WIDTH + SETTINGS_DESKTOP_DETAIL_MIN_WIDTH;
+
 // Desktop app constants for macOS traffic light buttons
 // These buttons (close/minimize/maximize) overlay the top-left corner.
 // Height is tuned so the sidebar's header divider (36 + HEADER_INNER_HEIGHT
@@ -31,6 +38,11 @@ export const DESKTOP_TRAFFIC_LIGHT_HEIGHT = 36;
 // Only horizontal clearance matters: the overlay never floats over the
 // left sidebar, so no view reserves vertical space for it.
 export const DESKTOP_WINDOW_CONTROLS_WIDTH = 140;
+// Full height of the Windows/Linux window-controls overlay. Consumed by the
+// upstream WindowChromeSafeArea model, which only applies it for "below"
+// placement — the fork's top-right controls still reserve horizontal clearance
+// only, so this does not reintroduce vertical padding on the sidebar.
+export const DESKTOP_WINDOW_CONTROLS_HEIGHT = 48;
 
 export {
   getIsElectron as getIsElectronRuntime,

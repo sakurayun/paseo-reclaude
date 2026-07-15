@@ -126,7 +126,6 @@ function NewKeySheet({ serverId, onClose }: { serverId: string | null; onClose: 
       visible
       onClose={onClose}
       footer={footer}
-      webScrollbar
       testID="ssh-key-sheet"
     >
       <View style={styles.form}>

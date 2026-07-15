@@ -1,6 +1,6 @@
 import type { Agent } from "@/stores/session-store";
 import type { WorkspaceTabSnapshot } from "@/stores/workspace-layout-actions";
-import { shouldAutoOpenAgentTab } from "@/subagents/policies";
+import { isWorkspaceRootAgent } from "@/subagents/policies";
 import { normalizeWorkspaceOpaqueId } from "@/utils/workspace-identity";
 
 export interface WorkspaceAgentVisibility {
@@ -14,6 +14,19 @@ export interface WorkspaceAgentVisibility {
 
 function agentBelongsToWorkspace(agent: Agent, workspaceId: string): boolean {
   return normalizeWorkspaceOpaqueId(agent.workspaceId) === workspaceId;
+}
+
+// Index every known agent by id so a subagent can resolve its parent even when
+// the parent lives in another workspace. sessionAgents wins on id collision so
+// the live session copy is preferred.
+function buildAgentIndex(
+  sessionAgents: Map<string, Agent> | undefined,
+  agentDetails: Map<string, Agent> | undefined,
+): Map<string, Agent> {
+  return new Map<string, Agent>([
+    ...(agentDetails?.entries() ?? []),
+    ...(sessionAgents?.entries() ?? []),
+  ]);
 }
 
 export function deriveWorkspaceAgentVisibility(input: {
@@ -36,6 +49,7 @@ export function deriveWorkspaceAgentVisibility(input: {
   const autoOpenAgentIds = new Set<string>();
   const knownAgentIds = new Set<string>();
   const runningAgentIds = new Set<string>();
+  const agentsById = buildAgentIndex(sessionAgents, agentDetails);
   for (const agent of sessionAgents?.values() ?? []) {
     if (!agentBelongsToWorkspace(agent, workspaceId)) {
       continue;
@@ -47,9 +61,12 @@ export function deriveWorkspaceAgentVisibility(input: {
       if (isRunning) {
         runningAgentIds.add(agent.id);
       }
+      const parentAgent = agent.parentAgentId ? agentsById.get(agent.parentAgentId) : undefined;
       // Only auto-open running root sessions that are not already in the
       // layout. Idle sessions stay out of auto-open but keep persisted tabs.
-      if (isRunning && shouldAutoOpenAgentTab(agent)) {
+      // A subagent whose parent lives in another workspace counts as a root
+      // here (isWorkspaceRootAgent), so cross-workspace subagents still open.
+      if (isRunning && isWorkspaceRootAgent(agent, parentAgent)) {
         autoOpenAgentIds.add(agent.id);
       }
     }

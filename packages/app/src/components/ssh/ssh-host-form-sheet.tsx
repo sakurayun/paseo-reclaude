@@ -134,7 +134,6 @@ function OpenSshHostFormSheet({
       visible
       onClose={onClose}
       footer={footer}
-      webScrollbar
       testID="ssh-host-form-sheet"
     >
       <SshHostForm model={model} state={state} controlSize={controlSize} />

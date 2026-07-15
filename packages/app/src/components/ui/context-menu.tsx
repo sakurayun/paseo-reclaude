@@ -41,7 +41,6 @@ import {
 import { FloatingScrollView, FloatingSurface } from "@/components/ui/floating";
 import { GlassSurfaceBackdrop } from "@/components/ui/glass-surface";
 import { isWeb, isNative } from "@/constants/platform";
-import { useWebScrollbarStyle } from "@/hooks/use-web-scrollbar-style";
 
 // Keep parity with dropdown-menu action statuses.
 export type ActionStatus = "idle" | "pending" | "success";
@@ -390,7 +389,6 @@ export function ContextMenuContent({
   const { t } = useTranslation();
   const context = useContextMenuContext("ContextMenuContent");
   const { theme } = useUnistyles();
-  const webScrollbarStyle = useWebScrollbarStyle();
   const isMobile = useIsCompactFormFactor();
   const useMobileSheet = isMobile && mobileMode === "sheet";
   const { open, setOpen, triggerRef, anchorRect } = context;
@@ -581,7 +579,6 @@ export function ContextMenuContent({
           <FloatingScrollView
             bounces={false}
             showsVerticalScrollIndicator
-            style={webScrollbarStyle}
             contentContainerStyle={SCROLL_CONTENT_CONTAINER_STYLE}
           >
             {children}

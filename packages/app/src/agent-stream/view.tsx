@@ -61,6 +61,11 @@ import { QuestionFormCard } from "@/components/question-form-card";
 import { ToolCallSheetProvider } from "@/components/tool-call-sheet";
 import { buildRulerMarks, type RulerMark } from "@/agent-stream/ruler-marks";
 import { StreamRuler } from "@/agent-stream/stream-ruler";
+import {
+  prepareToolCallHistory,
+  projectToolCallDetailLevel,
+} from "@/tool-calls/detail-level/projection";
+import { OverviewToolCallGroupView } from "@/tool-calls/detail-level/overview/view";
 import { type AgentStreamRenderModel, buildAgentStreamRenderModel } from "./model";
 import { resolveStreamRenderStrategy } from "./strategy-resolver";
 import { type StreamSegmentRenderers, type StreamViewportHandle } from "./strategy";
@@ -335,6 +340,7 @@ const AGENT_CAPABILITY_FLAG_KEYS: (keyof AgentCapabilityFlags)[] = [
 ];
 
 const EMPTY_STREAM_HEAD: StreamItem[] = [];
+const GROUPED_TOOL_CALL_DETAIL_MAX_HEIGHT = 200;
 
 function buildChatHistoryAttachment(input: {
   draftId: string;
@@ -408,6 +414,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     const { t } = useTranslation();
     const router = useRouter();
     const autoExpandReasoning = useSettings((settings) => settings.autoExpandReasoning);
+    const toolCallDetailLevel = useSettings((settings) => settings.toolCallDetailLevel);
     const viewportRef = useRef<StreamViewportHandle | null>(null);
     const isMobile = useIsCompactFormFactor();
     const streamRenderStrategy = useMemo(
@@ -420,6 +427,9 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     );
     const [isNearBottom, setIsNearBottom] = useState(true);
     const [expandedInlineToolCallIds, setExpandedInlineToolCallIds] = useState<Set<string>>(
+      new Set(),
+    );
+    const [expandedToolCallGroupIds, setExpandedToolCallGroupIds] = useState<Set<string>>(
       new Set(),
     );
     const openFileExplorerForCheckout = usePanelStore((state) => state.openFileExplorerForCheckout);
@@ -470,6 +480,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     useEffect(() => {
       setIsNearBottom(true);
       setExpandedInlineToolCallIds(new Set());
+      setExpandedToolCallGroupIds(new Set());
     }, [agentId]);
 
     const handleInlinePathPress = useStableEvent(
@@ -616,16 +627,38 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     }
     const effectiveStreamItems = isActive ? streamItems : frozenStreamItemsRef.current;
     const effectiveStreamHead = isActive ? streamHead : frozenStreamHeadRef.current;
+    // Keep retained history outside the 48ms live-head flush path.
+    const preparedToolCallHistory = useMemo(
+      () => prepareToolCallHistory(toolCallDetailLevel, effectiveStreamItems),
+      [effectiveStreamItems, toolCallDetailLevel],
+    );
+    const projectedToolCalls = useMemo(
+      () =>
+        projectToolCallDetailLevel({
+          level: toolCallDetailLevel,
+          tail: effectiveStreamItems,
+          head: effectiveStreamHead ?? EMPTY_STREAM_HEAD,
+          preparedHistory: preparedToolCallHistory,
+          isTurnActive: context.status === "running",
+        }),
+      [
+        context.status,
+        effectiveStreamHead,
+        effectiveStreamItems,
+        preparedToolCallHistory,
+        toolCallDetailLevel,
+      ],
+    );
 
     const baseRenderModel = useMemo(() => {
       return buildAgentStreamRenderModel({
         agentStatus: context.status,
-        tail: effectiveStreamItems,
-        head: effectiveStreamHead ?? EMPTY_STREAM_HEAD,
+        tail: projectedToolCalls.tail,
+        head: projectedToolCalls.head,
         platform: isWeb ? "web" : "native",
         isMobileBreakpoint: isMobile,
       });
-    }, [context.status, isMobile, effectiveStreamHead, effectiveStreamItems]);
+    }, [context.status, isMobile, projectedToolCalls.head, projectedToolCalls.tail]);
     const streamLayout = useMemo(
       () =>
         layoutStream({
@@ -871,6 +904,18 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       [streamRenderStrategy],
     );
 
+    const setToolCallGroupExpanded = useCallback((groupId: string, expanded: boolean) => {
+      setExpandedToolCallGroupIds((previous) => {
+        const next = new Set(previous);
+        if (expanded) {
+          next.add(groupId);
+        } else {
+          next.delete(groupId);
+        }
+        return next;
+      });
+    }, []);
+
     const renderUserMessageItem = useCallback(
       (layoutItem: StreamLayoutItem, item: Extract<StreamItem, { kind: "user_message" }>) => {
         return (
@@ -943,8 +988,12 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       [autoExpandReasoning, setInlineDetailsExpanded],
     );
 
-    const renderToolCallItem = useCallback(
-      (layoutItem: StreamLayoutItem, item: Extract<StreamItem, { kind: "tool_call" }>) => {
+    const renderSingleToolCallItem = useCallback(
+      (
+        item: Extract<StreamItem, { kind: "tool_call" }>,
+        isLastInSequence: boolean,
+        maxDetailHeight?: number,
+      ) => {
         const { payload } = item;
 
         if (payload.source === "agent") {
@@ -971,12 +1020,13 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
               detail={data.detail}
               cwd={context.cwd}
               metadata={data.metadata}
-              isLastInSequence={layoutItem.isLastInToolSequence}
+              isLastInSequence={isLastInSequence}
               onOpenFilePath={handleToolCallOpenFile}
               forceExpandToken={
                 autoExpandToolCall?.itemId === item.id ? autoExpandToolCall.token : undefined
               }
               findHighlights={findHighlightsByItemId.get(item.id)}
+              maxDetailHeight={maxDetailHeight}
             />
           );
         }
@@ -990,11 +1040,12 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
             args={data.arguments}
             result={data.result}
             status={data.status}
-            isLastInSequence={layoutItem.isLastInToolSequence}
+            isLastInSequence={isLastInSequence}
             onOpenFilePath={handleToolCallOpenFile}
             forceExpandToken={
               autoExpandToolCall?.itemId === item.id ? autoExpandToolCall.token : undefined
             }
+            maxDetailHeight={maxDetailHeight}
           />
         );
       },
@@ -1004,6 +1055,48 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         handleToolCallOpenFile,
         autoExpandToolCall,
         findHighlightsByItemId,
+      ],
+    );
+
+    const renderToolCallItem = useCallback(
+      (layoutItem: StreamLayoutItem, item: Extract<StreamItem, { kind: "tool_call" }>) => {
+        const group = projectedToolCalls.groupsByHostId.get(item.id);
+        if (!group) {
+          return renderSingleToolCallItem(item, layoutItem.isLastInToolSequence);
+        }
+        const expanded = expandedToolCallGroupIds.has(group.run.id);
+        return (
+          <OverviewToolCallGroupView
+            group={group}
+            expanded={expanded}
+            isCompact={isMobile}
+            isLastInSequence={layoutItem.isLastInToolSequence}
+            onExpandedChange={setToolCallGroupExpanded}
+            cwd={context.cwd}
+            onOpenFilePath={handleToolCallOpenFile}
+          >
+            {expanded
+              ? group.run.calls.map((call, index) => (
+                  <React.Fragment key={call.id}>
+                    {renderSingleToolCallItem(
+                      call,
+                      index === group.run.calls.length - 1,
+                      GROUPED_TOOL_CALL_DETAIL_MAX_HEIGHT,
+                    )}
+                  </React.Fragment>
+                ))
+              : null}
+          </OverviewToolCallGroupView>
+        );
+      },
+      [
+        projectedToolCalls.groupsByHostId,
+        context.cwd,
+        expandedToolCallGroupIds,
+        handleToolCallOpenFile,
+        isMobile,
+        renderSingleToolCallItem,
+        setToolCallGroupExpanded,
       ],
     );
 
@@ -1216,6 +1309,14 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     const streamScrollEnabled =
       !streamRenderStrategy.shouldDisableParentScrollOnInlineDetailsExpansion() ||
       expandedInlineToolCallIds.size === 0;
+    const historyRowRevision = useMemo(
+      () => ({
+        contentById: projectedToolCalls.historyGroupUpdatesByHostId,
+        displayStateById: expandedToolCallGroupIds,
+        globalDisplayState: isMobile,
+      }),
+      [expandedToolCallGroupIds, isMobile, projectedToolCalls.historyGroupUpdatesByHostId],
+    );
 
     return (
       <ToolCallSheetProvider>
@@ -1225,6 +1326,8 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
             {streamRenderStrategy.render({
               agentId,
               segments: renderModel.segments,
+              historyRowRevision,
+              liveHeadRowRevision: expandedToolCallGroupIds,
               boundary,
               renderers,
               listEmptyComponent,

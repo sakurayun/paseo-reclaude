@@ -32,7 +32,6 @@ import { Check, CheckCircle } from "lucide-react-native";
 import { FloatingScrollView, FloatingSurface } from "@/components/ui/floating";
 import { GlassSurfaceBackdrop } from "@/components/ui/glass-surface";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { useWebScrollbarStyle } from "@/hooks/use-web-scrollbar-style";
 import { isWeb } from "@/constants/platform";
 import { useDismissKeyboardOnOpen } from "@/components/ui/keyboard-dismiss";
 
@@ -450,7 +449,6 @@ export function DropdownMenuContent({
     useDropdownMenuContext("DropdownMenuContent");
   const [modalVisible, setModalVisible] = useState(false);
   const surfaceNativeID = useId();
-  const webScrollbarStyle = useWebScrollbarStyle();
   const [closing, setClosing] = useState(false);
   const [triggerRect, setTriggerRect] = useState<Rect | null>(null);
   const [contentSize, setContentSize] = useState<Size | null>(null);
@@ -605,8 +603,8 @@ export function DropdownMenuContent({
     align,
   ]);
   const scrollViewportStyle = useMemo(
-    () => [webScrollbarStyle, visibleContentSize ? { height: visibleContentSize.height } : null],
-    [visibleContentSize, webScrollbarStyle],
+    () => [visibleContentSize ? { height: visibleContentSize.height } : null],
+    [visibleContentSize],
   );
 
   if (!modalVisible) return null;
@@ -677,10 +675,12 @@ export function DropdownMenuSeparator({
 
 export function DropdownMenuHint({
   children,
+  style,
   testID,
-}: PropsWithChildren<{ testID?: string }>): ReactElement {
+}: PropsWithChildren<{ style?: ViewStyle | ViewStyle[]; testID?: string }>): ReactElement {
+  const hintContainerStyle = useMemo(() => [styles.hintContainer, style], [style]);
   return (
-    <View style={styles.hintContainer} testID={testID}>
+    <View style={hintContainerStyle} testID={testID}>
       <Text style={styles.hintText}>{children}</Text>
     </View>
   );
@@ -922,7 +922,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   hintContainer: {
     paddingHorizontal: theme.spacing[3],
-    paddingBottom: theme.spacing[2],
+    paddingVertical: theme.spacing[2],
   },
   hintText: {
     fontSize: theme.fontSize.xs,

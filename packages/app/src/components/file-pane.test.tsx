@@ -197,15 +197,6 @@ vi.mock("@/attachments/use-attachment-preview-url", () => ({
   useAttachmentPreviewUrl: (metadata: unknown) => (metadata ? "blob:preview" : null),
 }));
 
-vi.mock("@/components/use-web-scrollbar", () => ({
-  useWebScrollViewScrollbar: () => ({
-    onContentSizeChange: vi.fn(),
-    onLayout: vi.fn(),
-    onScroll: vi.fn(),
-    overlay: null,
-  }),
-}));
-
 vi.mock("@/hooks/use-web-scrollbar-style", () => ({
   useWebScrollbarStyle: () => ({}),
 }));
