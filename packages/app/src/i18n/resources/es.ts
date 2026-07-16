@@ -81,6 +81,8 @@ export const es: TranslationResources = {
       newAgent: "Nuevo agente",
       addProject: "Agregar proyecto",
       home: "Hogar",
+      modelGroupLabel: "Modelo",
+      modelSearchKeywords: "cambiar modelo modificar modelo establecer modelo seleccionar modelo",
       files: "Archivos",
       messages: "Mensajes",
       workspaceFiles: "Archivos del espacio de trabajo",

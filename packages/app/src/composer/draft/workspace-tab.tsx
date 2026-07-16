@@ -38,6 +38,7 @@ import {
 import { buildWorkspaceDraftAgentConfig } from "@/screens/workspace/workspace-draft-agent-config";
 import { buildDraftStoreKey } from "@/stores/draft-keys";
 import { usePanelStore } from "@/stores/panel-store";
+import { useFocusedDraftControllerStore } from "@/stores/focused-draft-controller-store";
 import { useCreateFlowStore } from "@/stores/create-flow-store";
 import type { Agent } from "@/stores/session-store";
 import { useWorkspaceFields } from "@/stores/session-store-hooks";
@@ -575,6 +576,40 @@ export function WorkspaceDraftAgentTab({
   if (!composerState) {
     throw new Error("Workspace draft composer state is required");
   }
+
+  // Publish this draft's live provider/model selection + setter to a global slot while it is
+  // the focused pane, so the global Command Center can switch the model of a not-yet-started
+  // agent. See @/stores/focused-draft-controller-store.
+  const setProviderAndModelFromUser = composerState.setProviderAndModelFromUser;
+  const draftSelectedProvider = composerState.selectedProvider;
+  const draftEffectiveModelId = composerState.effectiveModelId;
+  const draftWorkingDir = composerState.workingDir;
+  useEffect(() => {
+    if (!isPaneFocused) {
+      return;
+    }
+    useFocusedDraftControllerStore.getState().setController({
+      serverId,
+      workspaceId,
+      tabId,
+      cwd: draftWorkingDir,
+      provider: draftSelectedProvider,
+      selectedModelId: draftEffectiveModelId || null,
+      setProviderAndModel: setProviderAndModelFromUser,
+    });
+    return () => {
+      useFocusedDraftControllerStore.getState().clearController(tabId);
+    };
+  }, [
+    isPaneFocused,
+    serverId,
+    workspaceId,
+    tabId,
+    draftWorkingDir,
+    draftSelectedProvider,
+    draftEffectiveModelId,
+    setProviderAndModelFromUser,
+  ]);
 
   // The working-directory selector reuses the shared project picker on every
   // platform: pick a host project and run the new agent in its directory.

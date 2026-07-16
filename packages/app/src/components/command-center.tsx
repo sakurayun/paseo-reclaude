@@ -9,16 +9,27 @@ import {
 } from "react-native";
 import { memo, useCallback, useEffect, useMemo, useRef, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { FileText, Folder, Home, MessageSquareText, Plus, Settings } from "lucide-react-native";
+import {
+  Check,
+  ChevronRight,
+  FileText,
+  Folder,
+  Home,
+  MessageSquareText,
+  Plus,
+  Settings,
+} from "lucide-react-native";
 import { StyleSheet, useUnistyles, withUnistyles } from "react-native-unistyles";
 import {
   useCommandCenter,
   type CommandCenterActionItem,
   type CommandCenterAgentItem,
   type CommandCenterItem,
+  type CommandCenterModelItem,
   type CommandCenterWorkspaceItem,
 } from "@/hooks/use-command-center";
 import { AgentStatusDot } from "@/components/agent-status-dot";
+import { getProviderIcon } from "@/components/provider-icons";
 import { Shortcut } from "@/components/ui/shortcut";
 import { isNative, isWeb } from "@/constants/platform";
 import { useIsCompactFormFactor } from "@/constants/layout";
@@ -264,6 +275,98 @@ function CommandCenterFileRow({
         </View>
       </View>
     </CommandCenterRowContainer>
+  );
+}
+
+interface CommandCenterModelRowContentProps {
+  item: CommandCenterModelItem;
+}
+
+function CommandCenterModelRowContent({ item }: CommandCenterModelRowContentProps) {
+  const { theme } = useUnistyles();
+  const groupStyle = useMemo(
+    () => [styles.breadcrumbGroup, { color: theme.colors.foregroundMuted }],
+    [theme.colors.foregroundMuted],
+  );
+  const titleStyle = useMemo(
+    () => [styles.title, styles.breadcrumbLeaf, { color: theme.colors.foreground }],
+    [theme.colors.foreground],
+  );
+  const ProviderIcon = useMemo(() => getProviderIcon(item.provider), [item.provider]);
+  return (
+    <View
+      style={styles.rowContent}
+      testID={`command-center-model-${item.serverId}:${item.provider}:${item.modelId}`}
+    >
+      <View style={styles.rowMain}>
+        <View style={styles.iconSlot}>
+          <ProviderIcon size={16} color={theme.colors.foregroundMuted} />
+        </View>
+        <View style={styles.breadcrumb}>
+          <Text style={groupStyle} numberOfLines={1}>
+            {item.groupLabel}
+          </Text>
+          <ChevronRight size={13} strokeWidth={2} color={theme.colors.foregroundMuted} />
+          <Text style={groupStyle} numberOfLines={1}>
+            {item.providerLabel}
+          </Text>
+          <ChevronRight size={13} strokeWidth={2} color={theme.colors.foregroundMuted} />
+          <Text style={titleStyle} numberOfLines={1}>
+            {item.title}
+          </Text>
+        </View>
+      </View>
+      {item.isActive ? (
+        <View style={styles.iconSlot}>
+          <Check size={16} strokeWidth={2.2} color={theme.colors.foreground} />
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+interface ModelItemsSectionProps {
+  modelItems: CommandCenterModelItem[];
+  startIndex: number;
+  activeIndex: number;
+  rowRefs: React.MutableRefObject<Map<number, View>>;
+  onRowLayout: (
+    rowIndex: number,
+  ) => (event: { nativeEvent: { layout: { y: number; height: number } } }) => void;
+  onSelect: (item: CommandCenterItem) => void;
+  sectionDividerStyle: React.ComponentProps<typeof View>["style"];
+}
+
+function ModelItemsSection({
+  modelItems,
+  startIndex,
+  activeIndex,
+  rowRefs,
+  onRowLayout,
+  onSelect,
+  sectionDividerStyle,
+}: ModelItemsSectionProps) {
+  // No text header: the "Model › <name>" breadcrumb makes each row self-describing.
+  return (
+    <>
+      {startIndex > 0 ? <View style={sectionDividerStyle} /> : null}
+      {modelItems.map((item, index) => {
+        const rowIndex = startIndex + index;
+        return (
+          <CommandCenterRowContainer
+            key={`${item.serverId}:${item.agentId}:${item.modelId}`}
+            item={item}
+            rowIndex={rowIndex}
+            active={rowIndex === activeIndex}
+            rowRefs={rowRefs}
+            onSelect={onSelect}
+            onLayout={onRowLayout(rowIndex)}
+          >
+            <CommandCenterModelRowContent item={item} />
+          </CommandCenterRowContainer>
+        );
+      })}
+    </>
   );
 }
 
@@ -808,6 +911,7 @@ export function CommandCenter() {
   );
 
   const actionItems = useMemo(() => items.filter((item) => item.kind === "action"), [items]);
+  const modelItems = useMemo(() => items.filter((item) => item.kind === "model"), [items]);
   const fileItems = useMemo(() => items.filter((item) => item.kind === "file"), [items]);
   const workspaceItems = useMemo(() => items.filter((item) => item.kind === "workspace"), [items]);
   const agentItems = useMemo(() => items.filter((item) => item.kind === "agent"), [items]);
@@ -888,10 +992,22 @@ export function CommandCenter() {
           </>
         ) : null}
 
+        {modelItems.length > 0 ? (
+          <ModelItemsSection
+            modelItems={modelItems}
+            startIndex={actionItems.length}
+            activeIndex={activeIndex}
+            rowRefs={rowRefs}
+            onRowLayout={handleRowLayout}
+            onSelect={handleSelectItem}
+            sectionDividerStyle={sectionDividerStyle}
+          />
+        ) : null}
+
         {fileItems.length > 0 ? (
           <FileItemsSection
             fileItems={fileItems}
-            actionItemsLength={actionItems.length}
+            actionItemsLength={actionItems.length + modelItems.length}
             activeIndex={activeIndex}
             rowRefs={rowRefs}
             onRowLayout={handleRowLayout}
@@ -904,7 +1020,7 @@ export function CommandCenter() {
         {workspaceItems.length > 0 ? (
           <WorkspaceItemsSection
             workspaceItems={workspaceItems}
-            startIndex={actionItems.length + fileItems.length}
+            startIndex={actionItems.length + modelItems.length + fileItems.length}
             activeIndex={activeIndex}
             rowRefs={rowRefs}
             onRowLayout={handleRowLayout}
@@ -917,7 +1033,9 @@ export function CommandCenter() {
         {agentItems.length > 0 ? (
           <AgentItemsSection
             agentItems={agentItems}
-            startIndex={actionItems.length + fileItems.length + workspaceItems.length}
+            startIndex={
+              actionItems.length + modelItems.length + fileItems.length + workspaceItems.length
+            }
             activeIndex={activeIndex}
             rowRefs={rowRefs}
             onRowLayout={handleRowLayout}
@@ -931,7 +1049,11 @@ export function CommandCenter() {
           <MessageItemsSection
             messageItems={messageItems}
             precedingItemsLength={
-              actionItems.length + fileItems.length + workspaceItems.length + agentItems.length
+              actionItems.length +
+              modelItems.length +
+              fileItems.length +
+              workspaceItems.length +
+              agentItems.length
             }
             activeIndex={activeIndex}
             rowRefs={rowRefs}
@@ -947,6 +1069,7 @@ export function CommandCenter() {
             fileContentItems={fileContentItems}
             precedingItemsLength={
               actionItems.length +
+              modelItems.length +
               fileItems.length +
               workspaceItems.length +
               agentItems.length +
@@ -1115,6 +1238,21 @@ const styles = StyleSheet.create((theme) => ({
     flexDirection: "row",
     alignItems: "flex-start",
     gap: theme.spacing[3],
+  },
+  breadcrumb: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[1],
+  },
+  breadcrumbGroup: {
+    fontSize: theme.fontSize.sm,
+    lineHeight: 20,
+    flexShrink: 0,
+  },
+  breadcrumbLeaf: {
+    flexShrink: 1,
   },
   iconSlot: {
     width: 16,

@@ -79,6 +79,8 @@ export const en = {
       newAgent: "New agent",
       addProject: "Add project",
       home: "Home",
+      modelGroupLabel: "Model",
+      modelSearchKeywords: "switch model change model set model select model",
       files: "Files",
       messages: "Messages",
       workspaceFiles: "Workspace files",

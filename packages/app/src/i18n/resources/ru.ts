@@ -81,6 +81,8 @@ export const ru: TranslationResources = {
       newAgent: "Новый агент",
       addProject: "Добавить проект",
       home: "Дом",
+      modelGroupLabel: "Модель",
+      modelSearchKeywords: "сменить модель изменить модель выбрать модель установить модель",
       files: "Файлы",
       messages: "Сообщения",
       workspaceFiles: "Файлы рабочей области",
