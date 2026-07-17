@@ -828,7 +828,7 @@ export async function createPaseoDaemon(
     paseoHome: config.paseoHome,
     worktreesRoot: config.worktreesRoot,
     deps: {
-      github,
+      forgeOverrides: { github },
     },
   });
   const providerSnapshotLogger = logger.child({ module: "provider-snapshot-manager" });
@@ -986,7 +986,6 @@ export async function createPaseoDaemon(
     readDaemonConfig: () => ({ metadataGeneration: daemonConfigStore.get().metadataGeneration }),
     gitMutation: createGitMutationService({
       workspaceGitService,
-      github,
       logger,
     }),
     emitWorkspaceUpdateForCwd: emitWorkspaceUpdateForCwdExternal,

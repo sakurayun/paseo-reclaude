@@ -143,6 +143,7 @@ export interface WorkspaceDescriptor {
   scripts: WorkspaceDescriptorPayload["scripts"];
   gitRuntime?: WorkspaceDescriptorPayload["gitRuntime"];
   githubRuntime?: WorkspaceDescriptorPayload["githubRuntime"];
+  forge?: WorkspaceDescriptorPayload["forge"];
   project?: ProjectPlacementPayload;
 }
 
@@ -176,6 +177,7 @@ export function normalizeWorkspaceDescriptor(
     scripts: (payload.scripts ?? []).map((s) => Object.assign({}, s)),
     gitRuntime: payload.gitRuntime,
     githubRuntime: payload.githubRuntime,
+    forge: payload.forge,
     project: payload.project,
   };
 }

@@ -1,7 +1,7 @@
 import type { SidebarSessionEntry } from "@/hooks/use-sidebar-sessions-list";
 import type { WorkspaceDescriptor } from "@/stores/session-store";
 import { deriveProjectDisplayName } from "@/utils/agent-grouping";
-import { parseGitHubRepoFromRemote } from "@/git/github-url";
+import { parseGitHubRemoteUrl } from "@getpaseo/protocol/git-remote";
 import { projectDisplayNameFromProjectId } from "@/utils/project-display-name";
 
 export type SidebarProjectNameOverrides = ReadonlyMap<string, string>;
@@ -79,7 +79,7 @@ function resolveIconKind(
   const checkout = session.projectPlacement?.checkout;
   if (
     projectKey?.startsWith("remote:github.com/") ||
-    parseGitHubRepoFromRemote(checkout?.remoteUrl)
+    parseGitHubRemoteUrl(checkout?.remoteUrl?.trim() ?? "")
   ) {
     return "github";
   }
@@ -229,7 +229,7 @@ function resolveWorkspaceIconKind(
   const checkout = workspace.project?.checkout;
   if (
     projectKey.startsWith("remote:github.com/") ||
-    parseGitHubRepoFromRemote(checkout?.remoteUrl)
+    parseGitHubRemoteUrl(checkout?.remoteUrl?.trim() ?? "")
   ) {
     return "github";
   }

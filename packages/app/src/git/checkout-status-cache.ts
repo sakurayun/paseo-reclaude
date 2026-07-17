@@ -7,10 +7,11 @@ import {
   invalidatePrPaneTimelineForCheckout,
   invalidateSourceControlDataQueries,
 } from "@/git/query-keys";
+import { type CheckoutPrStatusPayload, normalizeCheckoutPrStatusPayload } from "@/git/pr-status";
 import { expireStaleDiffModeOverrides } from "@/review/store";
 
 export type CheckoutStatusPayload = CheckoutStatusResponse["payload"];
-export type CheckoutPrStatusPayload = NonNullable<CheckoutStatusUpdate["payload"]["prStatus"]>;
+export type { CheckoutPrStatusPayload } from "@/git/pr-status";
 
 export interface CheckoutStatusClient {
   getCheckoutStatus: (cwd: string) => Promise<CheckoutStatusPayload>;
@@ -57,9 +58,13 @@ export function applyCheckoutStatusUpdateFromEvent({
   message: CheckoutStatusUpdate;
 }): void {
   const { payload } = message;
+  const prStatus = payload.prStatus
+    ? normalizeCheckoutPrStatusPayload(payload.prStatus)
+    : undefined;
+  const cachePayload = prStatus ? { ...payload, prStatus } : payload;
   const queryKey = checkoutStatusQueryKey(serverId, payload.cwd);
   const previous = queryClient.getQueryData<CheckoutStatusPayload>(queryKey);
-  queryClient.setQueryData(queryKey, payload);
+  queryClient.setQueryData(queryKey, cachePayload);
   expireStaleDiffModeOverrides({
     serverId,
     cwd: payload.cwd,
@@ -72,11 +77,10 @@ export function applyCheckoutStatusUpdateFromEvent({
   // source-control queries so every client's panel converges. The setQueryData
   // above makes repeat deliveries of the same snapshot compare equal, so
   // multiple subscribed components don't fan out duplicate invalidations.
-  if (previous && !checkoutStatusesEquivalent(previous, payload)) {
+  if (previous && !checkoutStatusesEquivalent(previous, cachePayload)) {
     void invalidateSourceControlDataQueries(queryClient, { serverId, cwd: payload.cwd });
   }
 
-  const prStatus = payload.prStatus;
   if (!prStatus) {
     return;
   }

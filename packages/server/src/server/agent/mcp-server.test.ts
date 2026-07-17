@@ -45,7 +45,7 @@ import { WorkspaceGitServiceImpl } from "../workspace-git-service.js";
 import { WorkspaceAutoName } from "../workspace-auto-name.js";
 import { createGitMutationService } from "../session/git-mutation/git-mutation-service.js";
 import type { GeneratedWorkspaceName } from "../worktree-branch-name-generator.js";
-import type { GitHubService } from "../../services/github-service.js";
+import type { ForgeService } from "../../services/forge-service.js";
 import type { TerminalManager } from "../../terminal/terminal-manager.js";
 import { createSshTerminalRegistry } from "../../ssh/ssh-terminal-registry.js";
 import type { SshManager } from "../../ssh/ssh-manager.js";
@@ -529,11 +529,15 @@ function createManagedAgent(overrides: Partial<ManagedAgent> = {}): ManagedAgent
   } as ManagedAgent;
 }
 
-function createGitHubServiceStub(): GitHubService {
+function createGitHubServiceStub(): ForgeService {
   return {
     listPullRequests: async () => [],
     listIssues: async () => [],
-    searchIssuesAndPrs: async () => ({ items: [], githubFeaturesEnabled: true }),
+    searchIssuesAndPrs: async () => ({
+      items: [],
+      featuresEnabled: true,
+      githubFeaturesEnabled: true,
+    }),
     getPullRequest: async ({ number }) => ({
       number,
       title: `PR ${number}`,
@@ -545,6 +549,15 @@ function createGitHubServiceStub(): GitHubService {
       labels: [],
     }),
     getPullRequestHeadRef: async ({ number }) => `pr-${number}`,
+    getPullRequestCheckoutTarget: async ({ number }) => ({
+      number,
+      baseRefName: "main",
+      headRefName: `pr-${number}`,
+      headOwnerLogin: null,
+      headRepositorySshUrl: null,
+      headRepositoryUrl: null,
+      isCrossRepository: false,
+    }),
     getCurrentPullRequestStatus: async () => null,
     createPullRequest: async () => ({
       number: 1,
@@ -679,7 +692,7 @@ function createPaseoWorktreeForMcpTest(options: {
   const workspaceGitService = new WorkspaceGitServiceImpl({
     logger: createTestLogger(),
     paseoHome: options.paseoHome,
-    deps: { github },
+    deps: { forgeOverrides: { github } },
   });
   const workspaceRegistry = {
     get: async (workspaceId: string) => workspaces.get(workspaceId) ?? null,

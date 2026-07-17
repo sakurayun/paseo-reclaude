@@ -1,5 +1,5 @@
 import type { Query, QueryClient } from "@tanstack/react-query";
-import { prPaneTimelineQueryKind } from "./pull-request-panel/query-keys";
+import { prPanePipelineQueryKind, prPaneTimelineQueryKind } from "./pull-request-panel/query-keys";
 
 interface CheckoutQueryIdentity {
   serverId: string;
@@ -105,6 +105,9 @@ export async function invalidateSourceControlDataQueries(
       predicate: checkoutQueryPredicate(prPaneTimelineQueryKind, identity),
     }),
     queryClient.invalidateQueries({
+      predicate: checkoutQueryPredicate(prPanePipelineQueryKind, identity),
+    }),
+    queryClient.invalidateQueries({
       predicate: checkoutQueryPredicate("gitLog", identity),
     }),
     queryClient.invalidateQueries({
@@ -129,7 +132,12 @@ export async function invalidateCheckoutGitQueriesForServer(
   queryClient: QueryClient,
   serverId: string,
 ) {
-  const kinds = ["checkoutStatus", "checkoutPrStatus", prPaneTimelineQueryKind];
+  const kinds = [
+    "checkoutStatus",
+    "checkoutPrStatus",
+    prPaneTimelineQueryKind,
+    prPanePipelineQueryKind,
+  ];
   await Promise.all(
     kinds.map((kind) =>
       queryClient.invalidateQueries({ predicate: checkoutQueryPredicate(kind, { serverId }) }),
@@ -141,9 +149,14 @@ export async function invalidatePrPaneTimelineForCheckout(
   queryClient: QueryClient,
   identity: CheckoutQueryIdentity,
 ) {
-  await queryClient.invalidateQueries({
-    predicate: checkoutQueryPredicate(prPaneTimelineQueryKind, identity),
-  });
+  await Promise.all([
+    queryClient.invalidateQueries({
+      predicate: checkoutQueryPredicate(prPaneTimelineQueryKind, identity),
+    }),
+    queryClient.invalidateQueries({
+      predicate: checkoutQueryPredicate(prPanePipelineQueryKind, identity),
+    }),
+  ]);
 }
 
 function checkoutQueryPredicate(

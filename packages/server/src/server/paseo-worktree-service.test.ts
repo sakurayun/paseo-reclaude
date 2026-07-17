@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, expect, test, vi } from "vitest";
 
-import type { GitHubService } from "../services/github-service.js";
+import type { ForgeService } from "../services/forge-service.js";
 import type { WorkspaceGitRuntimeSnapshot, WorkspaceGitService } from "./workspace-git-service.js";
 import type {
   PersistedProjectRecord,
@@ -809,11 +809,15 @@ function createPersistedWorkspaceRecordForTest(input: {
   };
 }
 
-function createGitHubServiceStub(): GitHubService {
+function createGitHubServiceStub(): ForgeService {
   return {
     listPullRequests: async () => [],
     listIssues: async () => [],
-    searchIssuesAndPrs: async () => ({ items: [], githubFeaturesEnabled: true }),
+    searchIssuesAndPrs: async () => ({
+      items: [],
+      featuresEnabled: true,
+      githubFeaturesEnabled: true,
+    }),
     getPullRequest: async ({ number }) => ({
       number,
       title: `PR ${number}`,
@@ -825,6 +829,25 @@ function createGitHubServiceStub(): GitHubService {
       labels: [],
     }),
     getPullRequestHeadRef: async ({ number }) => `pr-${number}`,
+    defaultCheckoutRefs: ({ changeRequestNumber }) => [
+      { remoteName: "origin", remoteRef: `refs/pull/${changeRequestNumber}/head` },
+    ],
+    buildPrLocalBranchName: ({ headRef, checkoutTarget }) => {
+      const normalized = checkoutTarget.headOwnerLogin?.trim().toLowerCase() ?? "";
+      const owner =
+        checkoutTarget.isCrossRepository && /^[a-z0-9-]+$/.test(normalized) ? normalized : null;
+      return owner ? `${owner}/${headRef}` : headRef;
+    },
+    supportsCrossRepoCheckoutWithoutRefs: true,
+    getPullRequestCheckoutTarget: async ({ number }) => ({
+      number,
+      baseRefName: "main",
+      headRefName: `pr-${number}`,
+      headOwnerLogin: null,
+      headRepositorySshUrl: null,
+      headRepositoryUrl: null,
+      isCrossRepository: false,
+    }),
     getCurrentPullRequestStatus: async () => null,
     createPullRequest: async () => ({
       number: 1,
@@ -852,6 +875,7 @@ function createWorkspaceGitServiceStub(): WorkspaceGitService {
       mainRepoRoot: null,
     }),
     getSnapshot: async (cwd) => createWorkspaceGitSnapshot(cwd),
+    resolveForge: async () => null,
     resolveRepoRoot: async (cwd) => {
       try {
         return createWorkspaceGitSnapshot(cwd).git.repoRoot ?? cwd;
@@ -867,6 +891,7 @@ function createWorkspaceGitServiceStub(): WorkspaceGitService {
     }),
     scheduleRefreshForCwd: () => {},
     onWorkspaceStateMayHaveChanged: () => {},
+    invalidateForge: () => {},
     dispose: () => {},
   };
 }
@@ -910,7 +935,7 @@ function createWorkspaceGitSnapshot(cwd: string): WorkspaceGitRuntimeSnapshot {
       hasRemote: false,
       diffStat: null,
     },
-    github: {
+    forge: {
       featuresEnabled: false,
       pullRequest: null,
       error: null,
