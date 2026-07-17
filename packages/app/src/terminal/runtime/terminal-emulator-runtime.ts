@@ -29,6 +29,26 @@ import {
 } from "@/utils/terminal-keys";
 import { renderTerminalSnapshotToAnsi } from "./terminal-snapshot";
 import {
+  buildDeleteSelectionSequence,
+  buildMoveCursorToViewportCellSequence,
+  createBufferCellLookup,
+  createBufferLineLookup,
+  isSelectionOnCursorWrappedLine,
+  isViewportCellOnCursorWrappedLine,
+  resolveCharacterBeforeCursor,
+  resolveDeletedSelectionText,
+  resolveTerminalViewportCellFromMouse,
+  shouldMoveCursorOnClick,
+  snapSelectionEndExclusiveToGlyph,
+  snapSelectionStartToGlyph,
+} from "./terminal-click-edit";
+import {
+  buildRedoDeleteSequence,
+  isEditHistoryBreakingInput,
+  resolveEditHistoryChord,
+  TerminalEditHistory,
+} from "./terminal-edit-history";
+import {
   createTerminalLocalFileLinkProvider,
   type TerminalLocalFileLinkSource,
   type TerminalLocalFileLinkTarget,
@@ -96,6 +116,7 @@ export interface TerminalFindQueryInput {
 
 interface TerminalEmulatorRuntimeDisposables {
   disposeInput: () => void;
+  removeClickEditListeners: () => void;
   disconnectResizeObserver: () => void;
   removeWheelZoomListener: () => void;
   removeWindowResize: () => void;
@@ -262,6 +283,10 @@ export class TerminalEmulatorRuntime {
   private readonly inputModeTracker = new TerminalInputModeTracker();
   private lastInputModeState: TerminalInputModeState = this.inputModeTracker.getState();
   private themeBackgroundElements: HTMLElement[] = [];
+  // Selection-delete undo/redo (text-field style). Cleared on unrelated user input.
+  private readonly editHistory = new TerminalEditHistory();
+  // True while we inject synthetic key sequences so onData doesn't wipe history.
+  private isInjectingEditSequence = false;
 
   private handleVisibilityRestore = (): void => {
     if (typeof document !== "undefined" && document.visibilityState !== "visible") {
@@ -301,6 +326,9 @@ export class TerminalEmulatorRuntime {
       : resolveTerminalLetterSpacing(input.letterSpacing);
     const terminal = new Terminal({
       allowProposedApi: true,
+      // Plain click repositions the shell cursor (see setupClickEditHandlers).
+      // Keep alt-click too so Option/Alt+click still works via xterm's path.
+      altClickMovesCursor: true,
       convertEol: false,
       cursorBlink: true,
       cursorStyle: "bar",
@@ -492,82 +520,19 @@ export class TerminalEmulatorRuntime {
       if (this.suppressInput) {
         return;
       }
+      // Drop undo/redo when the user changes the edit generation (type, enter,
+      // arrows, …). Plain Backspace is excluded so consecutive deletes stay undoable.
+      if (!this.isInjectingEditSequence && isEditHistoryBreakingInput(data)) {
+        this.editHistory.clear();
+      }
       this.callbacks.onInput?.(data);
     });
 
-    terminal.attachCustomKeyEventHandler((event) => {
-      if (event.type !== "keydown" || event.isComposing) {
-        return true;
-      }
+    const removeClickEditListeners = this.setupClickEditHandlers(terminal);
 
-      if (this.handleFontZoomChord(event)) {
-        return false;
-      }
-
-      if (!isMac && event.ctrlKey && !event.shiftKey && !event.altKey && !event.metaKey) {
-        const key = event.key.toLowerCase();
-
-        // Ctrl+C: copy selection to clipboard if text is selected, otherwise let xterm send SIGINT
-        if (key === "c" && terminal.hasSelection()) {
-          void navigator.clipboard.writeText(terminal.getSelection());
-          return false;
-        }
-
-        // Ctrl+V: paste from clipboard into terminal
-        if (key === "v") {
-          event.preventDefault();
-          void navigator.clipboard.readText().then((text) => {
-            if (text) {
-              terminal.paste(text);
-            }
-            return;
-          });
-          return false;
-        }
-
-        return true;
-      }
-
-      const normalizedKey = normalizeDomTerminalKey(event.key);
-      if (!normalizedKey || isTerminalModifierDomKey(event.key)) {
-        return true;
-      }
-
-      if (
-        !shouldInterceptDomTerminalKey({
-          key: normalizedKey,
-          ctrlKey: event.ctrlKey,
-          shiftKey: event.shiftKey,
-          altKey: event.altKey,
-          metaKey: event.metaKey,
-          pendingModifiers: this.pendingModifiers,
-          enhancedInputActive: this.inputModeTracker.supportsModifiedEnter(),
-          isAppleHandheld,
-        })
-      ) {
-        return true;
-      }
-
-      const modifiers = mergeTerminalModifiers({
-        pendingModifiers: this.pendingModifiers,
-        ctrlKey: event.ctrlKey,
-        shiftKey: event.shiftKey,
-        altKey: event.altKey,
-        metaKey: event.metaKey,
-      });
-      this.callbacks.onTerminalKey?.({
-        key: normalizeTerminalTransportKey(normalizedKey),
-        ...modifiers,
-      });
-
-      if (this.pendingModifiers.ctrl || this.pendingModifiers.shift || this.pendingModifiers.alt) {
-        this.callbacks.onPendingModifiersConsumed?.();
-      }
-
-      event.preventDefault();
-      event.stopPropagation();
-      return false;
-    });
+    terminal.attachCustomKeyEventHandler((event) =>
+      this.handleCustomTerminalKeyEvent(event, terminal),
+    );
 
     const removeTouchListeners = this.setupTouchScrollHandlers({
       root: input.root,
@@ -654,6 +619,7 @@ export class TerminalEmulatorRuntime {
       disposeInput: () => {
         inputDisposable.dispose();
       },
+      removeClickEditListeners,
       disconnectResizeObserver: () => {
         resizeObserver.disconnect();
       },
@@ -704,6 +670,7 @@ export class TerminalEmulatorRuntime {
       this.reinitWebglRenderer = null;
       this.disableLigatures(terminal);
       disposables.disposeInput();
+      disposables.removeClickEditListeners();
       disposables.disconnectResizeObserver();
       disposables.removeWheelZoomListener();
       disposables.removeWindowResize();
@@ -988,6 +955,476 @@ export class TerminalEmulatorRuntime {
     return true;
   }
 
+  /**
+   * Custom key handler for xterm. Return true to let xterm process the event;
+   * false when we fully handled it.
+   */
+  private handleCustomTerminalKeyEvent(event: KeyboardEvent, terminal: Terminal): boolean {
+    if (event.type !== "keydown" || event.isComposing) {
+      return true;
+    }
+
+    if (this.handleFontZoomChord(event)) {
+      return false;
+    }
+
+    // Cmd/Ctrl+Z undo and Cmd/Ctrl+Shift+Z (or Ctrl+Y) redo for deletes.
+    if (this.handleEditHistoryChord(event, terminal)) {
+      return false;
+    }
+
+    // Backspace / Delete with an active selection: delete the selected span
+    // (text-field style) instead of a single character under the cursor.
+    if (this.handleSelectionDeleteKey(event, terminal)) {
+      return false;
+    }
+
+    // Plain Backspace: remember the character before the cursor for undo, then
+    // let xterm deliver the key to the shell as usual.
+    if (this.handleSingleBackspaceKey(event, terminal)) {
+      return true;
+    }
+
+    if (this.handleNonMacClipboardChords(event, terminal)) {
+      return false;
+    }
+
+    const normalizedKey = normalizeDomTerminalKey(event.key);
+    if (!normalizedKey || isTerminalModifierDomKey(event.key)) {
+      return true;
+    }
+
+    if (
+      !shouldInterceptDomTerminalKey({
+        key: normalizedKey,
+        ctrlKey: event.ctrlKey,
+        shiftKey: event.shiftKey,
+        altKey: event.altKey,
+        metaKey: event.metaKey,
+        pendingModifiers: this.pendingModifiers,
+        enhancedInputActive: this.inputModeTracker.supportsModifiedEnter(),
+        isAppleHandheld,
+      })
+    ) {
+      return true;
+    }
+
+    const modifiers = mergeTerminalModifiers({
+      pendingModifiers: this.pendingModifiers,
+      ctrlKey: event.ctrlKey,
+      shiftKey: event.shiftKey,
+      altKey: event.altKey,
+      metaKey: event.metaKey,
+    });
+    this.callbacks.onTerminalKey?.({
+      key: normalizeTerminalTransportKey(normalizedKey),
+      ...modifiers,
+    });
+
+    if (this.pendingModifiers.ctrl || this.pendingModifiers.shift || this.pendingModifiers.alt) {
+      this.callbacks.onPendingModifiersConsumed?.();
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    return false;
+  }
+
+  /** Ctrl+C / Ctrl+V on non-Mac: copy selection or paste. Returns true when consumed. */
+  private handleNonMacClipboardChords(event: KeyboardEvent, terminal: Terminal): boolean {
+    if (isMac || !event.ctrlKey || event.shiftKey || event.altKey || event.metaKey) {
+      return false;
+    }
+    const key = event.key.toLowerCase();
+
+    // Ctrl+C: copy selection to clipboard if text is selected, otherwise let xterm send SIGINT
+    if (key === "c" && terminal.hasSelection()) {
+      void navigator.clipboard.writeText(terminal.getSelection());
+      return true;
+    }
+
+    // Ctrl+V: paste from clipboard into terminal
+    if (key === "v") {
+      event.preventDefault();
+      void navigator.clipboard.readText().then((text) => {
+        if (text) {
+          // Paste is a new edit — drop selection-delete history.
+          this.editHistory.clear();
+          terminal.paste(text);
+        }
+        return;
+      });
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
+   * Inject a synthetic key sequence into the PTY without clearing edit history
+   * (onData would otherwise treat it as a fresh user edit).
+   */
+  private injectTerminalInput(terminal: Terminal, data: string): void {
+    if (!data) {
+      return;
+    }
+    this.isInjectingEditSequence = true;
+    try {
+      terminal.input(data, true);
+    } finally {
+      this.isInjectingEditSequence = false;
+    }
+  }
+
+  /**
+   * Cmd/Ctrl+Z undo and Cmd/Ctrl+Shift+Z (Ctrl+Y) redo for selection deletes.
+   * When the stack is empty, non-Mac Ctrl+Z is left alone so SIGTSTP still works.
+   */
+  private handleEditHistoryChord(event: KeyboardEvent, terminal: Terminal): boolean {
+    if (this.suppressInput) {
+      return false;
+    }
+    if (terminal.modes.mouseTrackingMode !== "none") {
+      return false;
+    }
+
+    const chord = resolveEditHistoryChord({
+      key: event.key,
+      ctrlKey: event.ctrlKey,
+      metaKey: event.metaKey,
+      shiftKey: event.shiftKey,
+      altKey: event.altKey,
+      isMac,
+    });
+    if (!chord) {
+      return false;
+    }
+
+    if (chord === "undo") {
+      if (!this.editHistory.canUndo) {
+        // Empty stack: on Mac swallow ⌘Z (browser has nothing useful to do);
+        // on other platforms let Ctrl+Z reach the shell (job control).
+        if (isMac) {
+          event.preventDefault();
+          event.stopPropagation();
+          return true;
+        }
+        return false;
+      }
+      const text = this.editHistory.undo();
+      if (!text) {
+        return false;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      terminal.clearSelection();
+      // Cursor sits at the former selection after our delete sequence; re-type.
+      this.injectTerminalInput(terminal, text);
+      return true;
+    }
+
+    // redo
+    if (!this.editHistory.canRedo) {
+      if (isMac) {
+        event.preventDefault();
+        event.stopPropagation();
+        return true;
+      }
+      return false;
+    }
+    const text = this.editHistory.redo();
+    if (!text) {
+      return false;
+    }
+    const erase = buildRedoDeleteSequence(text);
+    if (!erase) {
+      return false;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    terminal.clearSelection();
+    // After undo the cursor is at the end of the restored text; backspace it away.
+    this.injectTerminalInput(terminal, erase);
+    return true;
+  }
+
+  /**
+   * Plain-click cursor positioning and selection-aware Backspace/Delete.
+   * Shared by local and SSH terminals (same emulator runtime).
+   */
+  private setupClickEditHandlers(terminal: Terminal): () => void {
+    let mouseDownTimeStamp = 0;
+    let mouseDownButton = -1;
+
+    const onMouseDown = (event: MouseEvent): void => {
+      mouseDownTimeStamp = event.timeStamp;
+      mouseDownButton = event.button;
+    };
+
+    const onMouseUp = (event: MouseEvent): void => {
+      if (event.button !== mouseDownButton) {
+        return;
+      }
+      // Leave Option/Alt+click to xterm's built-in altClickMovesCursor path so
+      // we never double-send arrow sequences.
+      if (event.altKey) {
+        return;
+      }
+
+      const selectionText = terminal.getSelection();
+      const elapsedMs = event.timeStamp - mouseDownTimeStamp;
+      if (
+        !shouldMoveCursorOnClick({
+          button: event.button,
+          detail: event.detail,
+          elapsedMs,
+          hasMeaningfulSelection: selectionText.length > 1,
+          mouseTrackingMode: terminal.modes.mouseTrackingMode,
+          scrolledToBottom: terminal.buffer.active.baseY === terminal.buffer.active.viewportY,
+          suppressInput: this.suppressInput,
+        })
+      ) {
+        return;
+      }
+
+      this.tryMoveCursorToMouseEvent(terminal, event);
+    };
+
+    // Listen on the screen element once open(); fall back to terminal.element.
+    // Bubble phase: xterm updates selection during mousedown/mousemove already,
+    // so selectionText is accurate by mouseup.
+    const target = terminal.screenElement ?? terminal.element;
+    if (!target) {
+      return () => undefined;
+    }
+
+    target.addEventListener("mousedown", onMouseDown);
+    target.addEventListener("mouseup", onMouseUp);
+    return () => {
+      target.removeEventListener("mousedown", onMouseDown);
+      target.removeEventListener("mouseup", onMouseUp);
+    };
+  }
+
+  private tryMoveCursorToMouseEvent(terminal: Terminal, event: MouseEvent): void {
+    const screen = terminal.screenElement ?? terminal.element;
+    const dimensions = terminal.dimensions;
+    if (!screen || !dimensions) {
+      return;
+    }
+
+    const cell = dimensions.css.cell;
+    const rect = screen.getBoundingClientRect();
+    const style = window.getComputedStyle(screen);
+    const paddingLeft = Number.parseFloat(style.paddingLeft) || 0;
+    const paddingTop = Number.parseFloat(style.paddingTop) || 0;
+    const viewportCell = resolveTerminalViewportCellFromMouse({
+      clientX: event.clientX,
+      clientY: event.clientY,
+      screenLeft: rect.left,
+      screenTop: rect.top,
+      cellWidth: cell.width,
+      cellHeight: cell.height,
+      cols: terminal.cols,
+      rows: terminal.rows,
+      paddingLeft,
+      paddingTop,
+    });
+    if (!viewportCell) {
+      return;
+    }
+
+    const buffer = terminal.buffer.active;
+    const getCell = createBufferCellLookup(buffer);
+    const isLineWrapped = (absoluteY: number): boolean =>
+      buffer.getLine(absoluteY)?.isWrapped === true;
+
+    // Only reposition within the wrapped line group of the current cursor —
+    // that is the editable command line for typical shells.
+    if (
+      !isViewportCellOnCursorWrappedLine({
+        targetRow: viewportCell.row,
+        cursorRow: buffer.cursorY,
+        baseY: buffer.baseY,
+        isLineWrapped,
+      })
+    ) {
+      return;
+    }
+
+    const sequence = buildMoveCursorToViewportCellSequence({
+      targetCol: viewportCell.col,
+      targetRow: viewportCell.row,
+      cursorCol: buffer.cursorX,
+      cursorRow: buffer.cursorY,
+      cols: terminal.cols,
+      applicationCursorKeys: terminal.modes.applicationCursorKeysMode,
+      horizontalOnly: buffer.type === "normal",
+      baseY: buffer.baseY,
+      getCell,
+    });
+    if (!sequence) {
+      return;
+    }
+
+    // Click-to-move is a new edit generation (cursor no longer matches history).
+    this.editHistory.clear();
+    // wasUserInput true clears any residual selection and marks genuine input.
+    this.injectTerminalInput(terminal, sequence);
+  }
+
+  /**
+   * Record the character plain Backspace will remove so Cmd/Ctrl+Z can restore it.
+   * Returns true when this is a plain Backspace we inspected (xterm should still
+   * process the key — return true from the custom key handler).
+   */
+  private handleSingleBackspaceKey(event: KeyboardEvent, terminal: Terminal): boolean {
+    if (event.key !== "Backspace") {
+      return false;
+    }
+    // Only plain Backspace — modifiers keep shell bindings (word erase, etc.).
+    if (event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) {
+      return false;
+    }
+    if (this.suppressInput) {
+      return false;
+    }
+    if (terminal.modes.mouseTrackingMode !== "none") {
+      return false;
+    }
+    // Selection path is handled separately.
+    if (terminal.hasSelection()) {
+      return false;
+    }
+
+    const buffer = terminal.buffer.active;
+    if (buffer.baseY !== buffer.viewportY) {
+      return false;
+    }
+
+    const getCell = createBufferCellLookup(buffer);
+    const isLineWrapped = (absoluteY: number): boolean =>
+      buffer.getLine(absoluteY)?.isWrapped === true;
+
+    const char = resolveCharacterBeforeCursor({
+      cursorCol: buffer.cursorX,
+      cursorRow: buffer.cursorY,
+      baseY: buffer.baseY,
+      cols: terminal.cols,
+      getCell,
+      isLineWrapped,
+    });
+    if (char) {
+      this.editHistory.pushBackspaceDeleted(char);
+    }
+    // Let xterm send Backspace to the shell.
+    return true;
+  }
+
+  private handleSelectionDeleteKey(event: KeyboardEvent, terminal: Terminal): boolean {
+    if (event.key !== "Backspace" && event.key !== "Delete") {
+      return false;
+    }
+    // Only plain Backspace/Delete — modifiers keep their shell bindings
+    // (e.g. Ctrl+Backspace word erase, Alt+Backspace).
+    if (event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) {
+      return false;
+    }
+    if (this.suppressInput) {
+      return false;
+    }
+    if (terminal.modes.mouseTrackingMode !== "none") {
+      // Full-screen apps own the keyboard; don't invent edit sequences.
+      return false;
+    }
+    if (!terminal.hasSelection()) {
+      return false;
+    }
+
+    const selectionPosition = terminal.getSelectionPosition();
+    if (!selectionPosition) {
+      return false;
+    }
+
+    // Selection text may be empty after xterm trimRight (e.g. spaces-only).
+    // Still attempt buffer-based delete using the position range.
+    const selectionText = terminal.getSelection() ?? "";
+
+    const buffer = terminal.buffer.active;
+    // Only edit when the viewport is pinned to the live cursor line. Otherwise
+    // selection y (ydisp-based) and cursor y (ybase-based) can disagree.
+    if (buffer.baseY !== buffer.viewportY) {
+      return false;
+    }
+
+    const getCell = createBufferCellLookup(buffer);
+    const getLine = createBufferLineLookup(buffer);
+    const isLineWrapped = (absoluteY: number): boolean =>
+      buffer.getLine(absoluteY)?.isWrapped === true;
+
+    // getSelectionPosition returns internal 0-based buffer coords (despite the
+    // public d.ts saying 1-based — match runtime behavior, not the comment).
+    let selectionStart = {
+      x: selectionPosition.start.x,
+      y: selectionPosition.start.y,
+    };
+    let selectionEnd = {
+      x: selectionPosition.end.x,
+      y: selectionPosition.end.y,
+    };
+
+    if (
+      !isSelectionOnCursorWrappedLine({
+        selectionStart,
+        selectionEnd,
+        cursorAbsY: buffer.baseY + buffer.cursorY,
+        isLineWrapped,
+      })
+    ) {
+      return false;
+    }
+
+    const sequence = buildDeleteSelectionSequence({
+      selectionStart,
+      selectionEnd,
+      selectionText,
+      cursorCol: buffer.cursorX,
+      cursorRow: buffer.cursorY,
+      baseY: buffer.baseY,
+      cols: terminal.cols,
+      rows: terminal.rows,
+      applicationCursorKeys: terminal.modes.applicationCursorKeysMode,
+      horizontalOnly: buffer.type === "normal",
+      getCell,
+      deleteKey: event.key === "Delete" ? "Delete" : "Backspace",
+    });
+    if (!sequence) {
+      return false;
+    }
+
+    // Snap before capturing undo text so the restored string matches what we erase.
+    selectionStart = snapSelectionStartToGlyph({ position: selectionStart, getCell });
+    selectionEnd = snapSelectionEndExclusiveToGlyph({
+      position: selectionEnd,
+      cols: terminal.cols,
+      getCell,
+    });
+    const deletedText = resolveDeletedSelectionText({
+      selectionText,
+      start: selectionStart,
+      end: selectionEnd,
+      cols: terminal.cols,
+      getLine,
+    });
+
+    event.preventDefault();
+    event.stopPropagation();
+    terminal.clearSelection();
+    this.editHistory.pushDeleted(deletedText);
+    this.injectTerminalInput(terminal, sequence);
+    return true;
+  }
+
   private remeasureFontMetrics(): void {
     const terminal = this.terminal;
     if (!terminal) {
@@ -1046,6 +1483,8 @@ export class TerminalEmulatorRuntime {
   }
 
   unmount(): void {
+    this.editHistory.clear();
+    this.isInjectingEditSequence = false;
     this.clearInFlightOutputTimeout();
     const inFlightOperation = this.inFlightOutputOperation;
     this.inFlightOutputOperation = null;
