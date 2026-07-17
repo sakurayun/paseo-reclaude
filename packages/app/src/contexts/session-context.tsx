@@ -86,7 +86,7 @@ import {
 } from "@/contexts/session-workspace-upserts";
 import { isNative } from "@/constants/platform";
 import { useToast } from "@/contexts/toast-context";
-import { toErrorMessage } from "@/utils/error-messages";
+import { formatErrorForLog, toErrorMessage } from "@/utils/error-messages";
 import { showProviderNoticeToast } from "@/utils/provider-notice-toast";
 import { applyCheckoutStatusUpdateFromEvent } from "@/git/checkout-status-cache";
 import {
@@ -834,7 +834,7 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
       .catch((error) => {
         console.error("[Session] authoritative revalidation failed", {
           serverId,
-          error,
+          error: formatErrorForLog(error),
         });
       })
       .finally(() => {

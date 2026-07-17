@@ -1420,6 +1420,14 @@ const expandableBadgeStylesheet = StyleSheet.create((theme, rt) => ({
   pressablePressed: {
     opacity: 0.9,
   },
+  // Expand/collapse hit target sits beside the open-file control so web never
+  // nests <button> inside <button>.
+  expandPressable: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    minWidth: 0,
+  },
   headerRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -2721,11 +2729,8 @@ interface ExpandableBadgeLabelRowProps {
   onLabelRowLayout: (event: LayoutChangeEvent) => void;
   onLabelLayout: (event: LayoutChangeEvent) => void;
   onSecondaryLayout: (event: LayoutChangeEvent) => void;
+  /** Reserve layout for the open-file control rendered as a sibling Pressable. */
   showOpenFileButton: boolean;
-  isOpenFileHovered: boolean;
-  onOpenFilePress: (event: GestureResponderEvent) => void;
-  onOpenFileHoverIn: () => void;
-  onOpenFileHoverOut: () => void;
 }
 
 function ExpandableBadgeLabelRow({
@@ -2748,12 +2753,7 @@ function ExpandableBadgeLabelRow({
   onLabelLayout,
   onSecondaryLayout,
   showOpenFileButton,
-  isOpenFileHovered,
-  onOpenFilePress,
-  onOpenFileHoverIn,
-  onOpenFileHoverOut,
 }: ExpandableBadgeLabelRowProps) {
-  const { t } = useTranslation();
   return (
     <View
       style={expandableBadgeStylesheet.labelRow}
@@ -2772,23 +2772,6 @@ function ExpandableBadgeLabelRow({
         shouldMeasureWebShimmer={shouldMeasureWebShimmer}
         onSecondaryLayout={onSecondaryLayout}
       />
-      {showOpenFileButton ? (
-        <Pressable
-          onPress={onOpenFilePress}
-          onHoverIn={onOpenFileHoverIn}
-          onHoverOut={onOpenFileHoverOut}
-          accessibilityRole="button"
-          accessibilityLabel={t("message.actions.openFile")}
-          testID="tool-call-open-file"
-          style={expandableBadgeStylesheet.openFileButton}
-          hitSlop={6}
-        >
-          <ThemedFileSymlinkIcon
-            size={14}
-            uniProps={isOpenFileHovered ? foregroundColorMapping : foregroundMutedColorMapping}
-          />
-        </Pressable>
-      ) : null}
       {isWebShimmer ? (
         <ExpandableBadgeWebShimmerOverlay
           label={label}
@@ -2809,6 +2792,68 @@ function ExpandableBadgeLabelRow({
           gradientId={nativeGradientId}
         />
       ) : null}
+    </View>
+  );
+}
+
+interface ExpandableBadgeOpenFileButtonProps {
+  isHovered: boolean;
+  onPress: (event: GestureResponderEvent) => void;
+  onHoverIn: () => void;
+  onHoverOut: () => void;
+}
+
+function ExpandableBadgeOpenFileButton({
+  isHovered,
+  onPress,
+  onHoverIn,
+  onHoverOut,
+}: ExpandableBadgeOpenFileButtonProps) {
+  const { t } = useTranslation();
+  return (
+    <Pressable
+      onPress={onPress}
+      onHoverIn={onHoverIn}
+      onHoverOut={onHoverOut}
+      accessibilityRole="button"
+      accessibilityLabel={t("message.actions.openFile")}
+      testID="tool-call-open-file"
+      style={expandableBadgeStylesheet.openFileButton}
+      hitSlop={6}
+    >
+      <ThemedFileSymlinkIcon
+        size={14}
+        uniProps={isHovered ? foregroundColorMapping : foregroundMutedColorMapping}
+      />
+    </Pressable>
+  );
+}
+
+interface ExpandableBadgeDetailSurfaceProps {
+  detailWrapperRef: React.RefObject<View | null>;
+  style: StyleProp<ViewStyle>;
+  onHoverIn: () => void;
+  onHoverOut: () => void;
+  children: ReactNode;
+}
+
+function ExpandableBadgeDetailSurface({
+  detailWrapperRef,
+  style,
+  onHoverIn,
+  onHoverOut,
+  children,
+}: ExpandableBadgeDetailSurfaceProps) {
+  return (
+    <View
+      ref={detailWrapperRef}
+      style={style}
+      // Hover tracking only — plain View (not Pressable) so detail content
+      // never sits inside a nested button role on web.
+      onPointerEnter={isWeb ? onHoverIn : undefined}
+      onPointerLeave={isWeb ? onHoverOut : undefined}
+    >
+      {children}
     </View>
   );
 }
@@ -3269,6 +3314,11 @@ export const ExpandableBadge = memo(function ExpandableBadge({
       }
     : {};
 
+  const showOpenFileButton = Boolean(onOpenFile && isHovered);
+
+  // Open-file is a *sibling* of the expand Pressable, never a descendant.
+  // On web, nested Pressables both compile to <button>, which is invalid HTML
+  // and trips React's hydration / a11y warnings.
   return (
     <View
       style={containerStyle}
@@ -3276,50 +3326,56 @@ export const ExpandableBadge = memo(function ExpandableBadge({
       onPointerEnter={isWeb ? handleHoverIn : undefined}
       onPointerLeave={isWeb ? handleHoverOut : undefined}
     >
-      <Pressable
-        {...pressHandlers}
-        disabled={!isInteractive}
-        accessibilityState={accessibilityState}
-        style={pressableStyle}
-      >
+      <View style={pressableStyle}>
         <View style={expandableBadgeStylesheet.headerRow}>
-          <View style={expandableBadgeStylesheet.iconBadge}>{iconSlotNode}</View>
-          <ExpandableBadgeLabelRow
-            label={label}
-            labelStyle={labelStyle}
-            secondaryLabel={secondaryLabel}
-            secondaryLabelStyle={secondaryLabelStyle}
-            shouldMeasureWebShimmer={shouldMeasureWebShimmer}
-            shouldMeasureNativeShimmer={shouldMeasureNativeShimmer}
-            isWebShimmer={isWebShimmer}
-            isNativeShimmer={isNativeShimmer}
-            shimmerLabelTextStyle={shimmerLabelTextStyle}
-            shimmerSecondaryTextStyle={shimmerSecondaryTextStyle}
-            labelRowWidth={labelRowWidth}
-            labelRowHeight={labelRowHeight}
-            nativeShimmerPeakWidth={nativeShimmerPeakWidth}
-            shimmerDuration={shimmerDuration}
-            nativeGradientId={nativeGradientIdRef.current}
-            onLabelRowLayout={handleLabelRowLayout}
-            onLabelLayout={handleLabelLayout}
-            onSecondaryLayout={handleSecondaryLayout}
-            showOpenFileButton={Boolean(onOpenFile && isHovered)}
-            isOpenFileHovered={isOpenFileHovered}
-            onOpenFilePress={handleOpenFilePress}
-            onOpenFileHoverIn={handleOpenFileHoverIn}
-            onOpenFileHoverOut={handleOpenFileHoverOut}
-          />
+          <Pressable
+            {...pressHandlers}
+            disabled={!isInteractive}
+            accessibilityState={accessibilityState}
+            style={expandableBadgeStylesheet.expandPressable}
+          >
+            <View style={expandableBadgeStylesheet.iconBadge}>{iconSlotNode}</View>
+            <ExpandableBadgeLabelRow
+              label={label}
+              labelStyle={labelStyle}
+              secondaryLabel={secondaryLabel}
+              secondaryLabelStyle={secondaryLabelStyle}
+              shouldMeasureWebShimmer={shouldMeasureWebShimmer}
+              shouldMeasureNativeShimmer={shouldMeasureNativeShimmer}
+              isWebShimmer={isWebShimmer}
+              isNativeShimmer={isNativeShimmer}
+              shimmerLabelTextStyle={shimmerLabelTextStyle}
+              shimmerSecondaryTextStyle={shimmerSecondaryTextStyle}
+              labelRowWidth={labelRowWidth}
+              labelRowHeight={labelRowHeight}
+              nativeShimmerPeakWidth={nativeShimmerPeakWidth}
+              shimmerDuration={shimmerDuration}
+              nativeGradientId={nativeGradientIdRef.current}
+              onLabelRowLayout={handleLabelRowLayout}
+              onLabelLayout={handleLabelLayout}
+              onSecondaryLayout={handleSecondaryLayout}
+              showOpenFileButton={showOpenFileButton}
+            />
+          </Pressable>
+          {showOpenFileButton ? (
+            <ExpandableBadgeOpenFileButton
+              isHovered={isOpenFileHovered}
+              onPress={handleOpenFilePress}
+              onHoverIn={handleOpenFileHoverIn}
+              onHoverOut={handleOpenFileHoverOut}
+            />
+          ) : null}
         </View>
-      </Pressable>
+      </View>
       {detailContent ? (
-        <Pressable
-          ref={detailWrapperRef}
+        <ExpandableBadgeDetailSurface
+          detailWrapperRef={detailWrapperRef}
           style={detailWrapperStyle}
           onHoverIn={handleDetailHoverIn}
           onHoverOut={handleDetailHoverOut}
         >
           {detailContent}
-        </Pressable>
+        </ExpandableBadgeDetailSurface>
       ) : null}
     </View>
   );

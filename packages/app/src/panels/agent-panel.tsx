@@ -47,6 +47,7 @@ import {
 } from "@/panels/agent-panel-load-state";
 import { usePaneContext, usePaneFocus } from "@/panels/pane-context";
 import type { PanelDescriptor, PanelRegistration } from "@/panels/panel-registry";
+import { formatErrorForLog, toErrorMessage } from "@/utils/error-messages";
 import { RenderProfile } from "@/utils/render-profiler";
 import { buildDraftPanelDescriptor } from "@/panels/draft-panel-descriptor";
 import {
@@ -475,13 +476,6 @@ function findActiveCreateHandoff(input: {
   );
 }
 
-function toErrorMessage(error: unknown): string {
-  if (error instanceof Error) {
-    return error.message;
-  }
-  return String(error);
-}
-
 function isNotFoundErrorMessage(message: string): boolean {
   return /agent not found|not found/i.test(message);
 }
@@ -809,7 +803,7 @@ function ChatAgentContent({
         console.warn("[AgentPanel] history sync failed", {
           origin,
           agentId,
-          error,
+          error: formatErrorForLog(error),
         });
       }
       const message = toErrorMessage(error);
