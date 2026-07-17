@@ -73,12 +73,13 @@ export const zhCN: TranslationResources = {
       close: "关闭菜单",
     },
     commandCenter: {
-      placeholder: "输入命令或搜索 Agent...",
+      placeholder: "搜索命令、工作区和 Agent...",
       noMatches: "没有匹配项",
       actions: "操作",
+      workspaces: "工作区",
       agents: "Agent",
       newAgent: "新建 Agent",
-      openProject: "打开项目",
+      addProject: "添加 project",
       home: "首页",
       files: "文件",
       messages: "消息",
@@ -431,15 +432,24 @@ export const zhCN: TranslationResources = {
   workspace: {
     route: {
       loading: "正在加载 workspace",
-      restoring: "正在恢复 workspace",
-      restoreFailed: "无法恢复此 workspace — 目录可能已被移动或删除",
       connecting: "正在连接",
       hostOffline: "{{hostName}} 已离线",
       cannotReachHost: "无法连接 {{hostName}}",
       hostStatus: "Host 状态：{{status}}",
-      missing: "Workspace 未找到",
       needsHostUpgrade: "更新你的 Host 以恢复此 workspace",
       manageHost: "管理 Host",
+      recovery: {
+        archivedTitle: "Workspace 已归档",
+        restoreDescription:
+          "{{workspaceName}} 已归档，其 worktree 已移除。恢复分支 {{branch}} 以重新打开。",
+        unarchiveDescription: "{{workspaceName}} 已归档。取消归档以重新打开。",
+        restoreAction: "恢复",
+        unarchiveAction: "取消归档",
+        restoringTitle: "正在恢复 workspace",
+        restoringAction: "正在恢复...",
+        unavailableTitle: "Workspace 不可用",
+        checkFailedTitle: "无法检查 workspace",
+      },
     },
     hoverCard: {
       scriptsAccessibility: "工作区脚本",
@@ -592,6 +602,7 @@ export const zhCN: TranslationResources = {
         preparingTerminal: "正在准备 Terminal 标签",
         preparingTerminalTooltip: "正在准备 Terminal...",
         newBrowser: "新建浏览器",
+        exitFocusMode: "退出专注模式",
         splitRight: "向右拆分窗格",
         splitDown: "向下拆分窗格",
         terminalProfilesMenu: "终端配置",
@@ -1033,6 +1044,17 @@ export const zhCN: TranslationResources = {
         base: "base",
         newFile: "新增",
         deletedFile: "已删除",
+        commits: {
+          title: "提交",
+          legendLocal: "本地",
+          legendRemote: "已推送",
+          countLabel: "领先基线 {{count}} 个提交",
+          fileDiffEmpty: "没有可显示的更改",
+          fileDiffError: "加载文件差异失败",
+          loading: "正在加载提交…",
+          loadError: "加载提交失败",
+          empty: "没有领先基线的提交",
+        },
       },
       openInEditor: {
         open: "打开",
@@ -1724,6 +1746,8 @@ export const zhCN: TranslationResources = {
       confirmLabel: "归档",
       cancelLabel: "取消",
     },
+    archiveFinishedAction: "归档已完成的子 Agent",
+    archiveFinishedTooltip: "归档已完成项",
   },
   panels: {
     draft: {
@@ -1737,6 +1761,15 @@ export const zhCN: TranslationResources = {
       binaryPreviewUnavailable: "二进制预览不可用",
       failedToLoad: "加载文件失败",
       failedToLoadPreview: "加载文件预览失败",
+    },
+    diff: {
+      changesLabel: "更改",
+      changesSubtitle: "工作区差异",
+      commitSubtitle: "提交差异",
+      directoryMissing: "未找到 workspace 目录。",
+      empty: "没有更改",
+      loadError: "加载差异失败",
+      capabilityMissing: "请更新主机以查看提交差异。",
     },
   },
   toolCallDetails: {
@@ -1772,7 +1805,6 @@ export const zhCN: TranslationResources = {
       other: "调用了 Paseo {{count}} 次",
     },
     and: "并",
-    failed: "{{count}} 次失败",
   },
   renameModal: {
     rename: "重命名",
@@ -2061,6 +2093,17 @@ export const zhCN: TranslationResources = {
     },
     general: {
       title: "通用",
+      browserData: {
+        title: "浏览器数据",
+        siteData: "Cookie 和网站数据",
+        description: "浏览器标签页在 Paseo 中共享登录状态和网站数据。",
+        clear: "清除浏览器数据",
+        clearing: "正在清除...",
+        confirmTitle: "清除浏览器数据？",
+        confirmMessage: "网站帐号将退出登录，打开的浏览器标签页将重新加载。",
+        success: "浏览器数据已清除。",
+        error: "无法清除浏览器数据。",
+      },
       defaultSend: {
         label: "默认发送",
         descriptions: {
@@ -2544,6 +2587,7 @@ export const zhCN: TranslationResources = {
           dialogFailedMessage: "无法打开重启确认对话框。",
         },
         update: {
+          desktopManagedHint: "此 Daemon 由 Paseo Desktop 管理。请在 Host 上更新 Paseo Desktop。",
           title: "Update daemon",
           hint: "Update the daemon to the latest version and restart it",
           confirm: "Update",
@@ -2600,6 +2644,17 @@ export const zhCN: TranslationResources = {
       loading: "正在加载...",
       addErrorTitle: "无法添加 Provider",
       updateErrorTitle: "无法更新 Provider",
+      actions: {
+        menu: "{{name}} actions",
+        remove: "Remove provider",
+        removing: "Removing...",
+      },
+      remove: {
+        confirmTitle: "Remove {{name}}?",
+        confirmMessage: "This deletes the provider entry from config.json. It cannot be undone.",
+        confirm: "Remove",
+        errorTitle: "Unable to remove provider",
+      },
       statuses: {
         disabled: "已禁用",
         loading: "正在加载",

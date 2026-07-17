@@ -408,10 +408,12 @@ async function startDaemonOnce(): Promise<DesktopDaemonStatus> {
   }
 
   const daemonRunner = resolveDaemonRunnerEntrypoint();
+  const reclaimStalePidLock =
+    current.status === "errored" && current.desktopManaged && current.error === null;
   const invocation = createNodeEntrypointInvocation({
     entrypoint: daemonRunner,
     argvMode: "node-script",
-    args: [],
+    args: reclaimStalePidLock ? ["--reclaim-stale-pid-lock"] : [],
     baseEnv: process.env,
   });
 

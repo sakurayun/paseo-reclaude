@@ -73,12 +73,13 @@ export const ar: TranslationResources = {
       close: "إغلاق القائمة",
     },
     commandCenter: {
-      placeholder: "اكتب أمرًا أو وكلاء بحث...",
+      placeholder: "ابحث في الأوامر ومساحات العمل والوكلاء...",
       noMatches: "لا توجد مباريات",
       actions: "الإجراءات",
+      workspaces: "مساحات العمل",
       agents: "الوكلاء",
       newAgent: "وكيل جديد",
-      openProject: "مشروع مفتوح",
+      addProject: "إضافة مشروع",
       home: "بيت",
       files: "الملفات",
       messages: "الرسائل",
@@ -431,15 +432,24 @@ export const ar: TranslationResources = {
   workspace: {
     route: {
       loading: "جارٍ تحميل مساحة العمل",
-      restoring: "جارٍ استعادة مساحة العمل",
-      restoreFailed: "تعذّر استعادة مساحة العمل هذه — ربما تم نقل المجلد أو حذفه",
       connecting: "الاتصال",
       hostOffline: "{{hostName}}غير متواجد حالياً",
       cannotReachHost: "لا يمكن الوصول إلى{{hostName}}",
       hostStatus: "حالة Host:{{status}}",
-      missing: "لم يتم العثور على Workspace",
       needsHostUpgrade: "قم بتحديث مضيفك لاستعادة مساحة العمل هذه",
       manageHost: "إدارة المضيف",
+      recovery: {
+        archivedTitle: "مساحة العمل مؤرشفة",
+        restoreDescription:
+          "تمت أرشفة {{workspaceName}} وإزالة شجرة العمل الخاصة بها. استعد الفرع {{branch}} لفتحها مجددًا.",
+        unarchiveDescription: "{{workspaceName}} مؤرشفة. ألغِ أرشفتها لفتحها مجددًا.",
+        restoreAction: "استعادة",
+        unarchiveAction: "إلغاء الأرشفة",
+        restoringTitle: "جارٍ استعادة مساحة العمل",
+        restoringAction: "جارٍ الاستعادة...",
+        unavailableTitle: "مساحة العمل غير متاحة",
+        checkFailedTitle: "تعذر التحقق من مساحة العمل",
+      },
     },
     hoverCard: {
       scriptsAccessibility: "البرامج النصية Workspace",
@@ -592,6 +602,7 @@ export const ar: TranslationResources = {
         preparingTerminal: "إعداد علامة التبويب المحطة الطرفية",
         preparingTerminalTooltip: "جارٍ تحضير المحطة...",
         newBrowser: "متصفح جديد",
+        exitFocusMode: "إنهاء وضع التركيز",
         splitRight: "تقسيم الجزء الأيمن",
         splitDown: "تقسيم الجزء لأسفل",
         terminalProfilesMenu: "ملفات تعريف الطرفية",
@@ -1043,6 +1054,17 @@ export const ar: TranslationResources = {
         base: "قاعدة",
         newFile: "جديد",
         deletedFile: "تم الحذف",
+        commits: {
+          title: "الإيداعات",
+          legendLocal: "محلي",
+          legendRemote: "على المستودع البعيد",
+          countLabel: "{{count}} إيداعات قبل الأساس",
+          fileDiffEmpty: "لا توجد تغييرات لعرضها",
+          fileDiffError: "تعذّر تحميل فروق الملف",
+          loading: "جارٍ تحميل الإيداعات…",
+          loadError: "تعذّر تحميل الإيداعات",
+          empty: "لا توجد إيداعات قبل الأساس",
+        },
       },
       openInEditor: {
         open: "يفتح",
@@ -1746,6 +1768,8 @@ export const ar: TranslationResources = {
       confirmLabel: "أرشفة",
       cancelLabel: "إلغاء",
     },
+    archiveFinishedAction: "أرشفة الوكلاء الفرعيين المكتملين",
+    archiveFinishedTooltip: "أرشفة المكتملين",
   },
   panels: {
     draft: {
@@ -1759,6 +1783,15 @@ export const ar: TranslationResources = {
       binaryPreviewUnavailable: "المعاينة الثنائية غير متاحة",
       failedToLoad: "فشل تحميل الملف",
       failedToLoadPreview: "فشل تحميل معاينة الملف",
+    },
+    diff: {
+      changesLabel: "التغييرات",
+      changesSubtitle: "فروقات شجرة العمل",
+      commitSubtitle: "فروقات الالتزام",
+      directoryMissing: "لم يتم العثور على دليل Workspace.",
+      empty: "لا توجد تغييرات",
+      loadError: "فشل تحميل الفروقات",
+      capabilityMissing: "حدّث المضيف لعرض فروقات الالتزامات.",
     },
   },
   toolCallDetails: {
@@ -1794,7 +1827,6 @@ export const ar: TranslationResources = {
       other: "استدعى Paseo {{count}} مرات",
     },
     and: "و",
-    failed: "فشل {{count}}",
   },
   renameModal: {
     rename: "إعادة تسمية",
@@ -2085,6 +2117,17 @@ export const ar: TranslationResources = {
     },
     general: {
       title: "عام",
+      browserData: {
+        title: "بيانات المتصفح",
+        siteData: "ملفات تعريف الارتباط وبيانات المواقع",
+        description: "تتشارك علامات تبويب المتصفح تسجيلات الدخول وبيانات المواقع عبر Paseo.",
+        clear: "مسح بيانات المتصفح",
+        clearing: "جارٍ المسح...",
+        confirmTitle: "هل تريد مسح بيانات المتصفح؟",
+        confirmMessage: "سيتم تسجيل خروجك من المواقع وإعادة تحميل علامات تبويب المتصفح المفتوحة.",
+        success: "تم مسح بيانات المتصفح.",
+        error: "تعذر مسح بيانات المتصفح.",
+      },
       defaultSend: {
         label: "إرسال افتراضي",
         descriptions: {
@@ -2575,6 +2618,8 @@ export const ar: TranslationResources = {
           dialogFailedMessage: "غير قادر على فتح مربع حوار تأكيد إعادة التشغيل.",
         },
         update: {
+          desktopManagedHint:
+            "يدير Paseo Desktop هذا البرنامج الخفي. حدّث Paseo Desktop على المضيف.",
           title: "Update daemon",
           hint: "Update the daemon to the latest version and restart it",
           confirm: "Update",
@@ -2631,6 +2676,17 @@ export const ar: TranslationResources = {
       loading: "تحميل...",
       addErrorTitle: "غير قادر على إضافة الموفر",
       updateErrorTitle: "غير قادر على تحديث الموفر",
+      actions: {
+        menu: "{{name}} actions",
+        remove: "Remove provider",
+        removing: "Removing...",
+      },
+      remove: {
+        confirmTitle: "Remove {{name}}?",
+        confirmMessage: "This deletes the provider entry from config.json. It cannot be undone.",
+        confirm: "Remove",
+        errorTitle: "Unable to remove provider",
+      },
       statuses: {
         disabled: "عاجز",
         loading: "تحميل",

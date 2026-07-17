@@ -382,9 +382,8 @@ export function ChangedFilesList({
         }
         await openDesktopTarget({
           editorId: fileManager.id,
-          path: `${cwd}/${path}`,
-          cwd,
-          mode: "reveal",
+          workspacePath: cwd,
+          filePath: `${cwd}/${path}`,
         });
       })().catch((error: unknown) => {
         toast.error(

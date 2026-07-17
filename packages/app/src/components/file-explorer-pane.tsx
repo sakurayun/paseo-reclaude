@@ -79,9 +79,9 @@ function formatFileSize({ size }: { size: number }): string {
 const AUTO_REFRESH_INTERVAL_MS = 3000;
 
 // Maps a file-explorer entry + the chosen editor target to a desktop open
-// request. Editors open files/folders directly (passing the workspace as cwd
-// for context); file managers open a folder directly but reveal a file inside
-// its containing folder.
+// request. Editors open the workspace with the file path for context; file
+// managers open a folder directly (workspacePath only) but reveal a file
+// inside its containing folder (filePath set).
 function planExplorerEntryOpenInput({
   entry,
   absolutePath,
@@ -94,12 +94,12 @@ function planExplorerEntryOpenInput({
   workspaceDirectory: string;
 }): OpenDesktopTargetInput {
   if (editorTarget.kind === "editor") {
-    return { editorId: editorTarget.id, path: absolutePath, cwd: workspaceDirectory };
+    return { editorId: editorTarget.id, workspacePath: workspaceDirectory, filePath: absolutePath };
   }
   if (entry.kind === "directory") {
-    return { editorId: editorTarget.id, path: absolutePath };
+    return { editorId: editorTarget.id, workspacePath: absolutePath };
   }
-  return { editorId: editorTarget.id, path: absolutePath, mode: "reveal" };
+  return { editorId: editorTarget.id, workspacePath: workspaceDirectory, filePath: absolutePath };
 }
 
 interface TreeRowItemProps {

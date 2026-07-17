@@ -11,8 +11,8 @@ import {
   navigateToLastWorkspace as navigateToLastWorkspacePure,
   navigateToWorkspace as navigateToWorkspacePure,
   parseActiveWorkspaceSelection,
-  type NavigateToWorkspaceInput,
   type NavigateToWorkspaceDeps,
+  type NavigateToWorkspaceInput,
 } from "./navigation";
 import { isActiveCreateFlowForDraft, useCreateFlowStore } from "@/stores/create-flow-store";
 import { useDraftStore } from "@/stores/draft-store";

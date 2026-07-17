@@ -176,12 +176,13 @@ describe("translation resources", () => {
     expect(en.shell.menu.toggleSidebar).toBe("Toggle sidebar");
     expect(en.shell.menu.open).toBe("Open menu");
     expect(en.shell.menu.close).toBe("Close menu");
-    expect(en.shell.commandCenter.placeholder).toBe("Type a command or search agents...");
+    expect(en.shell.commandCenter.placeholder).toBe("Search commands, workspaces, and agents...");
     expect(en.shell.commandCenter.noMatches).toBe("No matches");
     expect(en.shell.commandCenter.actions).toBe("Actions");
+    expect(en.shell.commandCenter.workspaces).toBe("Workspaces");
     expect(en.shell.commandCenter.agents).toBe("Agents");
     expect(en.shell.commandCenter.newAgent).toBe("New agent");
-    expect(en.shell.commandCenter.openProject).toBe("Open project");
+    expect(en.shell.commandCenter.addProject).toBe("Add project");
     expect(en.shell.commandCenter.home).toBe("Home");
   });
 
@@ -488,7 +489,8 @@ describe("translation resources", () => {
     expect(en.workspace.route.hostOffline).toBe("{{hostName}} is offline");
     expect(en.workspace.route.cannotReachHost).toBe("Cannot reach {{hostName}}");
     expect(en.workspace.route.hostStatus).toBe("Host status: {{status}}");
-    expect(en.workspace.route.missing).toBe("Workspace not found");
+    expect(en.workspace.route.recovery.archivedTitle).toBe("Workspace archived");
+    expect(en.workspace.route.recovery.unavailableTitle).toBe("Workspace unavailable");
     expect(en.message.compaction.loading).toBe("Compacting...");
     expect(en.message.compaction.auto).toBe("Context automatically compacted");
     expect(en.message.compaction.manual).toBe("Context manually compacted");

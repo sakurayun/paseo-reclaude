@@ -71,12 +71,13 @@ export const en = {
       close: "Close menu",
     },
     commandCenter: {
-      placeholder: "Type a command or search agents...",
+      placeholder: "Search commands, workspaces, and agents...",
       noMatches: "No matches",
       actions: "Actions",
+      workspaces: "Workspaces",
       agents: "Agents",
       newAgent: "New agent",
-      openProject: "Open project",
+      addProject: "Add project",
       home: "Home",
       files: "Files",
       messages: "Messages",
@@ -430,16 +431,24 @@ export const en = {
   workspace: {
     route: {
       loading: "Loading workspace",
-      restoring: "Restoring workspace",
-      restoreFailed:
-        "Couldn't restore this workspace — the directory may have been moved or deleted",
       connecting: "Connecting",
       hostOffline: "{{hostName}} is offline",
       cannotReachHost: "Cannot reach {{hostName}}",
       hostStatus: "Host status: {{status}}",
-      missing: "Workspace not found",
       needsHostUpgrade: "Update your host to restore this workspace",
       manageHost: "Manage host",
+      recovery: {
+        archivedTitle: "Workspace archived",
+        restoreDescription:
+          "{{workspaceName}} was archived and its worktree was removed. Restore branch {{branch}} to open it again.",
+        unarchiveDescription: "{{workspaceName}} is archived. Unarchive it to open it again.",
+        restoreAction: "Restore",
+        unarchiveAction: "Unarchive",
+        restoringTitle: "Restoring workspace",
+        restoringAction: "Restoring...",
+        unavailableTitle: "Workspace unavailable",
+        checkFailedTitle: "Couldn't check workspace",
+      },
     },
     hoverCard: {
       scriptsAccessibility: "Workspace scripts",
@@ -592,6 +601,7 @@ export const en = {
         preparingTerminal: "Preparing terminal tab",
         preparingTerminalTooltip: "Preparing terminal...",
         newBrowser: "New browser",
+        exitFocusMode: "Exit focus mode",
         splitRight: "Split pane right",
         splitDown: "Split pane down",
         terminalProfilesMenu: "Terminal profiles",
@@ -1050,6 +1060,17 @@ export const en = {
         base: "base",
         newFile: "New",
         deletedFile: "Deleted",
+        commits: {
+          title: "Commits",
+          legendLocal: "local",
+          legendRemote: "on remote",
+          countLabel: "{{count}} commits ahead of base",
+          fileDiffEmpty: "No changes to display",
+          fileDiffError: "Failed to load file diff",
+          loading: "Loading commits…",
+          loadError: "Failed to load commits",
+          empty: "No commits ahead of base",
+        },
       },
       openInEditor: {
         open: "Open",
@@ -1754,6 +1775,8 @@ export const en = {
       confirmLabel: "Archive",
       cancelLabel: "Cancel",
     },
+    archiveFinishedAction: "Archive finished subagents",
+    archiveFinishedTooltip: "Archive finished",
   },
   panels: {
     draft: {
@@ -1767,6 +1790,15 @@ export const en = {
       binaryPreviewUnavailable: "Binary preview unavailable",
       failedToLoad: "Failed to load file",
       failedToLoadPreview: "Failed to load file preview",
+    },
+    diff: {
+      changesLabel: "Changes",
+      changesSubtitle: "Working tree diff",
+      commitSubtitle: "Commit diff",
+      directoryMissing: "Workspace directory not found.",
+      empty: "No changes",
+      loadError: "Failed to load diff",
+      capabilityMissing: "Update the host to view commit diffs.",
     },
   },
   toolCallDetails: {
@@ -1802,7 +1834,6 @@ export const en = {
       other: "called Paseo {{count}} times",
     },
     and: "and",
-    failed: "{{count}} failed",
   },
   renameModal: {
     rename: "Rename",
@@ -2093,6 +2124,17 @@ export const en = {
     },
     general: {
       title: "General",
+      browserData: {
+        title: "Browser data",
+        siteData: "Cookies and site data",
+        description: "Browser tabs share sign-ins and site data across Paseo.",
+        clear: "Clear browser data",
+        clearing: "Clearing...",
+        confirmTitle: "Clear browser data?",
+        confirmMessage: "Sites will be signed out and open browser tabs will reload.",
+        success: "Browser data cleared.",
+        error: "Couldn't clear browser data.",
+      },
       defaultSend: {
         label: "Default send",
         descriptions: {
@@ -2586,6 +2628,8 @@ export const en = {
           dialogFailedMessage: "Unable to open the restart confirmation dialog.",
         },
         update: {
+          desktopManagedHint:
+            "This daemon is managed by Paseo Desktop. Update Paseo Desktop on the host.",
           title: "Update daemon",
           hint: "Update the daemon to the latest version and restart it",
           confirm: "Update",
@@ -2642,6 +2686,17 @@ export const en = {
       loading: "Loading...",
       addErrorTitle: "Unable to add provider",
       updateErrorTitle: "Unable to update provider",
+      actions: {
+        menu: "{{name}} actions",
+        remove: "Remove provider",
+        removing: "Removing...",
+      },
+      remove: {
+        confirmTitle: "Remove {{name}}?",
+        confirmMessage: "This deletes the provider entry from config.json. It cannot be undone.",
+        confirm: "Remove",
+        errorTitle: "Unable to remove provider",
+      },
       statuses: {
         disabled: "Disabled",
         loading: "Loading",

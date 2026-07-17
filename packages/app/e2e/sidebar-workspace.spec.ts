@@ -169,6 +169,47 @@ test.describe("Mobile sidebar panelState transition", () => {
 test.describe("Half-screen desktop layout", () => {
   test.use({ viewport: { width: 751, height: 982 } });
 
+  test("keeps the sidebar scroll position across close and reopen", async ({ page }) => {
+    const workspace = await seedWorkspace({ repoPrefix: "sidebar-retained-scroll-" });
+
+    try {
+      let lastWorkspaceId = workspace.workspaceId;
+      for (let index = 0; index < 24; index += 1) {
+        const created = await workspace.client.createWorkspace({
+          source: {
+            kind: "directory",
+            path: workspace.repoPath,
+            projectId: workspace.projectId,
+          },
+          title: `Retained sidebar ${index + 1}`,
+        });
+        if (!created.workspace) {
+          throw new Error(created.error ?? "Failed to fill the retained sidebar");
+        }
+        lastWorkspaceId = created.workspace.id;
+      }
+
+      await gotoAppShell(page);
+      await waitForSidebarWorkspace(page, lastWorkspaceId);
+
+      const sidebarScroll = page.getByTestId("sidebar-project-workspace-list-scroll");
+      const scrollTop = await sidebarScroll.evaluate((element) => {
+        element.scrollTop = 160;
+        return element.scrollTop;
+      });
+      expect(scrollTop).toBe(160);
+
+      await page.getByTestId("menu-button").click();
+      await expect(page.getByTestId("sidebar-global-new-workspace")).not.toBeVisible();
+
+      await page.getByTestId("menu-button").click();
+      await expect(page.getByTestId("sidebar-global-new-workspace")).toBeVisible();
+      await expect(sidebarScroll).toHaveJSProperty("scrollTop", scrollTop);
+    } finally {
+      await workspace.cleanup();
+    }
+  });
+
   test("keeps the pinned sidebar at half of a 14-inch Mac display", async ({ page }) => {
     await gotoAppShell(page);
     await expect(page.getByTestId("sidebar-global-new-workspace")).toBeVisible();

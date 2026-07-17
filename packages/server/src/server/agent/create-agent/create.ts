@@ -13,16 +13,12 @@ import type {
 } from "../../worktree-session.js";
 import type { AgentAttachment, FirstAgentContext, GitSetupOptions } from "../../messages.js";
 import type { AgentManager, CreateAgentOptions, ManagedAgent } from "../agent-manager.js";
-import type {
-  AgentPromptContentBlock,
-  AgentPromptInput,
-  AgentRunOptions,
-  AgentSessionConfig,
-} from "../agent-sdk-types.js";
+import type { AgentPromptInput, AgentRunOptions, AgentSessionConfig } from "../agent-sdk-types.js";
 import type { AgentStorage } from "../agent-storage.js";
 import type { ProviderSnapshotManager } from "../provider-snapshot-manager.js";
 import { setupFinishNotification, startCreatedAgentInitialPrompt } from "../agent-prompt.js";
 import { resolveCreateAgentTitles } from "../create-agent-title.js";
+import { buildAgentPrompt } from "../prompt-attachments.js";
 import { normalizeClientMessageId, resolveClientMessageId } from "../../client-message-id.js";
 import { resolveRequiredProviderModel, type ResolvedProviderModel } from "../mcp-shared.js";
 import {
@@ -497,30 +493,6 @@ async function sendInitialPrompt(
     dependencies.logger.error({ err: error, agentId: snapshot.id }, "Failed to run initial prompt");
     return { started: false, liveSnapshot: snapshot };
   }
-}
-
-function buildAgentPrompt(
-  text: string,
-  images?: Array<{ data: string; mimeType: string }>,
-  attachments?: AgentAttachment[],
-): AgentPromptInput {
-  const normalized = text.trim();
-  const hasImages = (images?.length ?? 0) > 0;
-  const hasAttachments = (attachments?.length ?? 0) > 0;
-  if (!hasImages && !hasAttachments) {
-    return normalized;
-  }
-  const blocks: AgentPromptContentBlock[] = [];
-  if (normalized.length > 0) {
-    blocks.push({ type: "text", text: normalized });
-  }
-  for (const image of images ?? []) {
-    blocks.push({ type: "image", data: image.data, mimeType: image.mimeType });
-  }
-  for (const attachment of attachments ?? []) {
-    blocks.push(attachment);
-  }
-  return blocks;
 }
 
 function requireParentAgent(agentManager: AgentManager, parentAgentId: string): ManagedAgent {

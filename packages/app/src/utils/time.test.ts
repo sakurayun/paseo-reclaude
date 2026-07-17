@@ -2,6 +2,21 @@ import { afterEach, describe, expect, it } from "vitest";
 import { i18n } from "@/i18n/i18next";
 import { formatDuration, formatMessageTimestamp, formatTimeAgo } from "./time";
 
+describe("formatTimeAgo (relative labels)", () => {
+  const now = new Date("2026-07-16T12:00:00.000Z");
+
+  it.each([
+    ["2026-07-16T11:59:55.000Z", "just now"],
+    ["2026-07-16T11:59:30.000Z", "30s ago"],
+    ["2026-07-16T11:55:00.000Z", "5m ago"],
+    ["2026-07-16T10:00:00.000Z", "2h ago"],
+    ["2026-07-13T12:00:00.000Z", "3d ago"],
+    ["2026-01-15T12:00:00.000Z", "Jan 15"],
+  ])("formats %s as %s", (date, expected) => {
+    expect(formatTimeAgo(new Date(date), now)).toBe(expected);
+  });
+});
+
 describe("formatDuration", () => {
   it("renders sub-minute durations as whole seconds", () => {
     expect(formatDuration(0)).toBe("0s");

@@ -73,7 +73,12 @@ import { ChatSelectionBubble } from "@/agent-stream/selection/chat-selection-bub
 import { openSeededDraftWindow } from "@/agent-stream/selection/open-seeded-draft-window";
 import { useChatTextSelection } from "@/agent-stream/selection/use-chat-text-selection";
 import type { Theme } from "@/styles/theme";
-import { useArchiveSubagent, useDetachSubagent, useSubagentsForParent } from "@/subagents";
+import {
+  useHideFinishedProviderSubagents,
+  useArchiveSubagent,
+  useDetachSubagent,
+  useSubagentsForParent,
+} from "@/subagents";
 import { SubagentsTrack } from "@/subagents/track";
 import { TodoTrack, useLatestAgentTodos } from "@/components/todo-track";
 import { RemoteDraftConflictDrawer } from "@/composer/draft/remote-draft-conflict-drawer";
@@ -1491,6 +1496,10 @@ function ActiveAgentComposer({
   );
   const handleArchiveSubagent = useArchiveSubagent({ serverId });
   const handleDetachSubagent = useDetachSubagent({ serverId });
+  const handleHideFinishedProviderSubagents = useHideFinishedProviderSubagents({
+    serverId,
+    parentAgentId: agentId,
+  });
   const workspaceAttachmentScopeKey = useWorkspaceAttachmentScopeKey({
     serverId,
     cwd,
@@ -1591,6 +1600,7 @@ function ActiveAgentComposer({
         onOpenSubagent={handleOpenSubagent}
         onOpenProviderSubagent={handleOpenProviderSubagent}
         onArchiveSubagent={handleArchiveSubagent}
+        onArchiveFinished={handleHideFinishedProviderSubagents}
         onDetachSubagent={canDetachSubagents ? handleDetachSubagent : undefined}
       />
       <SidechainTrack calls={sidechainCalls} />

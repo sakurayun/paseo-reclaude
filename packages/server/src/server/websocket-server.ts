@@ -103,6 +103,7 @@ import {
   type BrowserAutomationHostCapability,
 } from "@getpaseo/protocol/browser-automation/capabilities";
 import type { BrowserToolsBroker } from "./browser-tools/broker.js";
+import type { DaemonRuntimeConfig } from "./session/daemon/daemon-session.js";
 
 const WS_CLOSE_DAEMON_AUTH_FAILED = 4401;
 
@@ -430,19 +431,7 @@ export class VoiceAssistantWebSocketServer {
   private readonly externalSessionsByKey: Map<string, SessionConnection> = new Map();
   private readonly serverId: string;
   private readonly daemonVersion: string;
-  private readonly daemonRuntimeConfig:
-    | {
-        listen: string | null;
-        appBaseUrl?: string;
-        relay: {
-          enabled: boolean;
-          endpoint: string;
-          publicEndpoint: string;
-          useTls: boolean;
-          publicUseTls: boolean;
-        };
-      }
-    | undefined;
+  private readonly daemonRuntimeConfig: DaemonRuntimeConfig | undefined;
   private readonly agentManager: AgentManager;
   private readonly agentStorage: AgentStorage;
   private readonly projectRegistry: ProjectRegistry;
@@ -548,18 +537,7 @@ export class VoiceAssistantWebSocketServer {
     github?: GitHubService,
     pushNotificationSender?: PushNotificationSender,
     providerSnapshotManager?: ProviderSnapshotManager,
-    daemonRuntimeConfig?: {
-      listen: string | null;
-      worktreesRoot?: string;
-      appBaseUrl?: string;
-      relay: {
-        enabled: boolean;
-        endpoint: string;
-        publicEndpoint: string;
-        useTls: boolean;
-        publicUseTls: boolean;
-      };
-    },
+    daemonRuntimeConfig?: DaemonRuntimeConfig,
     serviceProxyPublicBaseUrl?: string | null,
     portForwardManager?: PortForwardManager | null,
     workspaceLayoutStore?: WorkspaceLayoutStore | null,
@@ -629,9 +607,10 @@ export class VoiceAssistantWebSocketServer {
     }
     this.providerSnapshotManager = providerSnapshotManager;
     this.initializeSpeechServices();
-    this.unsubscribeDaemonConfigChange = this.daemonConfigStore.onChange((config) => {
+    this.unsubscribeDaemonConfigChange = this.daemonConfigStore.onChange((config, details) => {
       const nextAgentManagerState = this.providerSnapshotManager.applyMutableProviderConfig(
         config.providers,
+        { removeProviders: details.removedProviders },
       );
       this.agentManager.updateProviderRegistry(nextAgentManagerState);
       this.broadcastDaemonConfigChanged(config);
@@ -1163,6 +1142,13 @@ export class VoiceAssistantWebSocketServer {
       onLifecycleIntent: (intent) => {
         this.onLifecycleIntent?.(intent);
       },
+      onWorkspaceRecovered: async (workspace) => {
+        await Promise.all(
+          this.listActiveSessions().map((activeSession) =>
+            activeSession.refreshRecoveredWorkspaceForExternalMutation(workspace),
+          ),
+        );
+      },
       logger: connectionLogger.child({ module: "session" }),
       downloadTokenStore: this.downloadTokenStore,
       pushTokenStore: this.pushTokenStore,
@@ -1409,6 +1395,8 @@ export class VoiceAssistantWebSocketServer {
       serverId: this.serverId,
       hostname: getHostname(),
       version: this.daemonVersion,
+      // COMPAT(desktopManaged): added in v0.1.X, remove optional parsing after 2027-01-16.
+      desktopManaged: this.daemonRuntimeConfig?.desktopManaged === true,
       ...(this.serverCapabilities ? { capabilities: this.serverCapabilities } : {}),
       features: {
         // COMPAT(providersSnapshot): keep optional until all clients rely on snapshot flow.
@@ -1438,8 +1426,6 @@ export class VoiceAssistantWebSocketServer {
         workspaceMultiplicity: true,
         // COMPAT(claudeAcpTransport): added in v0.1.99, remove gate after 2026-12-15.
         claudeAcpTransport: true,
-        // COMPAT(daemonSelfUpdate): added in v0.1.93, remove gate after 2026-12-13.
-        daemonSelfUpdate: true,
         // COMPAT(tcpTunnel): added in v0.1.97, remove gate after 2026-12-13.
         tcpTunnel: true,
         // COMPAT(portForward): added in v0.1.100, remove gate after 2026-12-17.
@@ -1466,8 +1452,10 @@ export class VoiceAssistantWebSocketServer {
         projectRemove: true,
         // COMPAT(projectAdd): added in v0.1.97, drop the gate when floor >= v0.1.97.
         projectAdd: true,
-        // COMPAT(worktreeRestore): added in v0.1.97, drop the gate when floor >= v0.1.97
+        // COMPAT(worktreeRestore): keep through 2027-01-11 for clients older than v0.1.105.
         worktreeRestore: true,
+        // COMPAT(workspaceRecovery): added in v0.1.105, remove after 2027-01-11 once daemon floor >= v0.1.105.
+        workspaceRecovery: true,
         // COMPAT(providerUsageList): added in v0.1.98, drop the gate when daemon floor >= v0.1.98.
         providerUsageList: true,
         // COMPAT(reclaudeUsage): added in v0.1.105, remove gate after 2026-12-22.
@@ -1482,16 +1470,30 @@ export class VoiceAssistantWebSocketServer {
         agentDetach: true,
         // COMPAT(daemonDiagnostics): added in v0.1.100, remove gate after 2026-12-25 once daemon floor >= v0.1.100.
         daemonDiagnostics: true,
+        // COMPAT(daemonSelfUpdate): added in v0.1.93, remove gate after 2026-12-13.
+        daemonSelfUpdate: this.daemonRuntimeConfig?.desktopManaged !== true,
         // COMPAT(agentForkContext): added in v0.1.102, remove gate after 2026-12-28.
         agentForkContext: true,
+        // COMPAT(agentForkContextCursor): added in v0.1.108, remove gate after 2027-01-14.
+        agentForkContextCursor: true,
         // COMPAT(terminalLifecycle): added in v0.1.124, remove gate after 2027-01-07.
         terminalLifecycle: true,
         // COMPAT(providerSubagents): added in v0.1.107, remove gate after 2027-01-12.
         providerSubagents: true,
         // COMPAT(workspacePinning): added in v0.1.107, remove gate after 2027-01-12.
         workspacePinning: true,
-        // COMPAT(workspaceGithubClone): added in v0.1.108, remove gate after 2027-01-13.
-        workspaceGithubClone: true,
+        // COMPAT(projectGithubClone): added in v0.1.108, remove gate after 2027-01-15.
+        projectGithubClone: true,
+        // COMPAT(workspaceGithubRepositorySearch): added in v0.1.108, remove gate after 2027-01-15.
+        workspaceGithubRepositorySearch: true,
+        // COMPAT(projectCreateDirectory): added in v0.1.108, remove gate after 2027-01-15.
+        projectCreateDirectory: true,
+        // COMPAT(commitsList): added in v0.1.110, remove gate after 2027-01-16.
+        commitsList: true,
+        // COMPAT(providerRemoval): added in v0.1.105, drop the gate when floor >= v0.1.105.
+        providerRemoval: true,
+        // COMPAT(importSessionWorkspaceTarget): added in v0.1.110, remove gate after 2027-01-16.
+        importSessionWorkspaceTarget: true,
       },
     };
   }

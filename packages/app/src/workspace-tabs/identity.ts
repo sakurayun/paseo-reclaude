@@ -49,6 +49,10 @@ export function normalizeWorkspaceTabTarget(
       const path = trimNonEmpty(value.path);
       return path ? { kind: "file-diff", path } : null;
     }
+    case "commit_diff": {
+      const sha = trimNonEmpty(value.sha);
+      return sha ? { kind: "commit_diff", sha } : null;
+    }
     case "setup":
     case "sessions":
       return normalizeWorkspaceIdTabTarget(value.kind, value.workspaceId);
@@ -128,6 +132,8 @@ export function workspaceTabTargetsEqual(
       return right.kind === "file" && workspaceFileLocationsEqual(left, right);
     case "file-diff":
       return right.kind === "file-diff" && left.path === right.path;
+    case "commit_diff":
+      return right.kind === "commit_diff" && left.sha === right.sha;
     case "setup":
     case "sessions": {
       const other = right as Extract<WorkspaceTabTarget, { kind: "setup" | "sessions" }>;
@@ -203,6 +209,9 @@ export function buildDeterministicWorkspaceTabId(target: WorkspaceTabTarget): st
   }
   if (target.kind === "file-diff") {
     return `filediff_${target.path}`;
+  }
+  if (target.kind === "commit_diff") {
+    return `commit_diff_${target.sha}`;
   }
   return `file_${target.path}`;
 }

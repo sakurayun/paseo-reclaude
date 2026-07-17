@@ -74,12 +74,13 @@ export const fr: TranslationResources = {
       close: "Fermer le menu",
     },
     commandCenter: {
-      placeholder: "Tapez une commande ou recherchez des agents...",
+      placeholder: "Rechercher des commandes, espaces de travail et agents...",
       noMatches: "Aucune correspondance",
       actions: "Actes",
+      workspaces: "Espaces de travail",
       agents: "Agents",
       newAgent: "Nouvel agent",
-      openProject: "Projet ouvert",
+      addProject: "Ajouter un projet",
       home: "Maison",
       files: "Fichiers",
       messages: "Messages",
@@ -435,16 +436,24 @@ export const fr: TranslationResources = {
   workspace: {
     route: {
       loading: "Chargement de l'espace de travail",
-      restoring: "Restauration de l'espace de travail",
-      restoreFailed:
-        "Impossible de restaurer cet espace de travail — le répertoire a peut-être été déplacé ou supprimé",
       connecting: "De liaison",
       hostOffline: "{{hostName}}est hors ligne",
       cannotReachHost: "Impossible d'atteindre{{hostName}}",
       hostStatus: "StatutHost:{{status}}",
-      missing: "Workspaceintrouvable",
       needsHostUpgrade: "Mettez à jour votre hôte pour restaurer cet espace de travail",
       manageHost: "Gérer l'hôte",
+      recovery: {
+        archivedTitle: "Espace de travail archivé",
+        restoreDescription:
+          "{{workspaceName}} a été archivé et son worktree supprimé. Restaurez la branche {{branch}} pour le rouvrir.",
+        unarchiveDescription: "{{workspaceName}} est archivé. Désarchivez-le pour le rouvrir.",
+        restoreAction: "Restaurer",
+        unarchiveAction: "Désarchiver",
+        restoringTitle: "Restauration de l'espace de travail",
+        restoringAction: "Restauration...",
+        unavailableTitle: "Espace de travail indisponible",
+        checkFailedTitle: "Impossible de vérifier l'espace de travail",
+      },
     },
     hoverCard: {
       scriptsAccessibility: "ScriptsWorkspace",
@@ -599,6 +608,7 @@ export const fr: TranslationResources = {
         preparingTerminal: "Préparation de l'onglet du terminal",
         preparingTerminalTooltip: "Préparation du terminal...",
         newBrowser: "Nouveau navigateur",
+        exitFocusMode: "Quitter le mode concentration",
         splitRight: "Volet divisé à droite",
         splitDown: "Diviser le volet vers le bas",
         terminalProfilesMenu: "Profils de terminal",
@@ -1075,6 +1085,17 @@ export const fr: TranslationResources = {
         base: "base",
         newFile: "Nouveau",
         deletedFile: "Supprimé",
+        commits: {
+          title: "Commits",
+          legendLocal: "local",
+          legendRemote: "sur le distant",
+          countLabel: "{{count}} commits en avance sur la base",
+          fileDiffEmpty: "Aucune modification à afficher",
+          fileDiffError: "Échec du chargement du diff du fichier",
+          loading: "Chargement des commits…",
+          loadError: "Échec du chargement des commits",
+          empty: "Aucun commit en avance sur la base",
+        },
       },
       openInEditor: {
         open: "Ouvrir",
@@ -1794,6 +1815,8 @@ export const fr: TranslationResources = {
       confirmLabel: "Archiver",
       cancelLabel: "Annuler",
     },
+    archiveFinishedAction: "Archiver les sous-agents terminés",
+    archiveFinishedTooltip: "Archiver les terminés",
   },
   panels: {
     draft: {
@@ -1807,6 +1830,15 @@ export const fr: TranslationResources = {
       binaryPreviewUnavailable: "Aperçu binaire indisponible",
       failedToLoad: "Échec du chargement du fichier",
       failedToLoadPreview: "Échec du chargement de l'aperçu du fichier",
+    },
+    diff: {
+      changesLabel: "Modifications",
+      changesSubtitle: "Différences de l'arbre de travail",
+      commitSubtitle: "Différences du commit",
+      directoryMissing: "Répertoire Workspace introuvable.",
+      empty: "Aucune modification",
+      loadError: "Échec du chargement des différences",
+      capabilityMissing: "Mettez à jour l'hôte pour voir les différences des commits.",
     },
   },
   toolCallDetails: {
@@ -1842,7 +1874,6 @@ export const fr: TranslationResources = {
       other: "a appelé Paseo {{count}} fois",
     },
     and: "et",
-    failed: "{{count}} en échec",
   },
   renameModal: {
     rename: "Rebaptiser",
@@ -2139,6 +2170,18 @@ export const fr: TranslationResources = {
     },
     general: {
       title: "Général",
+      browserData: {
+        title: "Données du navigateur",
+        siteData: "Cookies et données des sites",
+        description:
+          "Les onglets du navigateur partagent les connexions et les données des sites dans Paseo.",
+        clear: "Effacer les données du navigateur",
+        clearing: "Effacement...",
+        confirmTitle: "Effacer les données du navigateur ?",
+        confirmMessage: "Vous serez déconnecté des sites et les onglets ouverts seront rechargés.",
+        success: "Données du navigateur effacées.",
+        error: "Impossible d'effacer les données du navigateur.",
+      },
       defaultSend: {
         label: "Envoi par défaut",
         descriptions: {
@@ -2639,6 +2682,8 @@ export const fr: TranslationResources = {
             "Impossible d'ouvrir la boîte de dialogue de confirmation de redémarrage.",
         },
         update: {
+          desktopManagedHint:
+            "Ce daemon est géré par Paseo Desktop. Mettez à jour Paseo Desktop sur l’hôte.",
           title: "Update daemon",
           hint: "Update the daemon to the latest version and restart it",
           confirm: "Update",
@@ -2695,6 +2740,17 @@ export const fr: TranslationResources = {
       loading: "Chargement...",
       addErrorTitle: "Impossible d'ajouter le fournisseur",
       updateErrorTitle: "Impossible de mettre à jour le fournisseur",
+      actions: {
+        menu: "{{name}} actions",
+        remove: "Remove provider",
+        removing: "Removing...",
+      },
+      remove: {
+        confirmTitle: "Remove {{name}}?",
+        confirmMessage: "This deletes the provider entry from config.json. It cannot be undone.",
+        confirm: "Remove",
+        errorTitle: "Unable to remove provider",
+      },
       statuses: {
         disabled: "Désactivé",
         loading: "Chargement",

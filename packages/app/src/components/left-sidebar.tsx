@@ -41,8 +41,8 @@ import { useToast } from "@/contexts/toast-context";
 import { pickDirectory } from "@/desktop/pick-directory";
 import { agentHistoryQueryKey } from "@/hooks/agent-history-query-key";
 import { useIsLocalDaemon } from "@/hooks/use-is-local-daemon";
+import { useOpenAddProject } from "@/hooks/use-open-add-project";
 import { useOpenProject } from "@/hooks/use-open-project";
-import { useOpenProjectPicker } from "@/hooks/use-open-project-picker";
 import { useShortcutKeys } from "@/hooks/use-shortcut-keys";
 import { canCreateWorktreeForProjectKind } from "@/projects/host-projects";
 import { useHostFeature } from "@/runtime/host-features";
@@ -65,7 +65,7 @@ import {
 } from "@/stores/navigation-active-workspace-store";
 import { resolveSshExitWorkspace } from "@/screens/ssh/ssh-sidebar-toggle";
 import { useWorkspace } from "@/stores/session-store-hooks";
-import { selectIsAgentListOpen, usePanelStore } from "@/stores/panel-store";
+import { usePanelStore } from "@/stores/panel-store";
 import { useOwnsWindowChromeCorner, WindowChromeSafeArea } from "@/utils/desktop-window";
 import { useCloseAgentListGesture } from "@/mobile-panels/gestures";
 import { MobilePanelOverlay } from "@/mobile-panels/presentation";
@@ -159,12 +159,12 @@ interface MobileSidebarProps extends SidebarSharedProps {
 
 interface DesktopSidebarProps extends SidebarSharedProps {
   insetsTop: number;
-  isOpen: boolean;
+  active: boolean;
   handleViewMore: () => void;
   handleSchedulesNavigate: () => void;
 }
 
-export const LeftSidebar = memo(function LeftSidebar() {
+export const LeftSidebar = memo(function LeftSidebar({ active }: { active: boolean }) {
   const { theme } = useUnistyles();
   const { t } = useTranslation();
   const { settings } = useAppSettings();
@@ -174,9 +174,6 @@ export const LeftSidebar = memo(function LeftSidebar() {
   const isNewThemeSidebar = settings.newThemeEnabled;
   const insets = useSafeAreaInsets();
   const isCompactLayout = useIsCompactFormFactor();
-  const isOpen = usePanelStore((state) =>
-    selectIsAgentListOpen(state, { isCompact: isCompactLayout }),
-  );
   const showMobileAgent = usePanelStore((state) => state.showMobileAgent);
   const pathname = usePathname();
   const hosts = useHosts();
@@ -250,7 +247,7 @@ export const LeftSidebar = memo(function LeftSidebar() {
     }
   }, [isRevalidating, isManualRefresh]);
 
-  const openProjectPicker = useOpenProjectPicker();
+  const openProjectPicker = useOpenAddProject();
   const openProject = useOpenProject(activeServerId);
   const toast = useToast();
   const isLocalDaemon = useIsLocalDaemon(activeServerId ?? "");
@@ -287,8 +284,8 @@ export const LeftSidebar = memo(function LeftSidebar() {
       router.navigate(
         buildNewWorkspaceRoute({
           serverId: activeServerId,
-          sourceDirectory: result.projectRootPath,
-          projectId: result.projectKey,
+          sourceDirectory: result.project.projectRootPath,
+          projectId: result.project.projectId,
         }),
       );
     } catch (error) {
@@ -412,7 +409,7 @@ export const LeftSidebar = memo(function LeftSidebar() {
 
   if (isCompactLayout) {
     return (
-      <RetainedPanelActivity active={isOpen}>
+      <RetainedPanelActivity active={active}>
         <MobileSidebar
           {...sharedProps}
           insetsTop={insets.top}
@@ -432,11 +429,11 @@ export const LeftSidebar = memo(function LeftSidebar() {
   }
 
   return (
-    <RetainedPanelActivity active={isOpen}>
+    <RetainedPanelActivity active={active}>
       <DesktopSidebar
         {...sharedProps}
         insetsTop={insets.top}
-        isOpen={isOpen}
+        active={active}
         handleOpenProject={handleOpenProjectDesktop}
         handleOpenProjectFolder={handleOpenProjectFolderDesktop}
         handleHome={handleHomeDesktop}
@@ -748,6 +745,7 @@ function SidebarFooter({
             />
           </>
         ) : null}
+        <SidebarHelpMenu />
         <FooterIconButton
           onPress={handleSettings}
           testID="sidebar-settings"
@@ -756,7 +754,6 @@ function SidebarFooter({
           shortcutKeys={settingsKeys}
           theme={theme}
         />
-        <SidebarHelpMenu />
       </View>
     </View>
   );
@@ -1021,7 +1018,7 @@ function DesktopSidebar({
   handleAddHost,
   handleOpenHostSettings,
   insetsTop,
-  isOpen,
+  active,
   handleViewMore,
   handleSchedulesNavigate,
 }: DesktopSidebarProps) {
@@ -1083,8 +1080,12 @@ function DesktopSidebar({
   }));
 
   const desktopSidebarStyle = useMemo(
-    () => [staticStyles.desktopSidebar, resizeAnimatedStyle],
-    [resizeAnimatedStyle],
+    () => [
+      staticStyles.desktopSidebar,
+      !active && staticStyles.desktopSidebarHidden,
+      resizeAnimatedStyle,
+    ],
+    [active, resizeAnimatedStyle],
   );
   const desktopSidebarBorderStyle = useMemo(
     () => [styles.desktopSidebarBorder, { flex: 1, paddingTop: insetsTop }],
@@ -1105,12 +1106,13 @@ function DesktopSidebar({
     [],
   );
 
-  if (!isOpen) {
-    return null;
-  }
-
   return (
-    <Animated.View style={desktopSidebarStyle}>
+    <Animated.View
+      accessibilityElementsHidden={!active}
+      importantForAccessibility={active ? "auto" : "no-hide-descendants"}
+      pointerEvents={active ? "auto" : "none"}
+      style={desktopSidebarStyle}
+    >
       <View style={desktopSidebarBorderStyle}>
         {/* Whole-sidebar window drag region (Electron). Every non-interactive
             area of the sidebar — gaps, section headers, empty list space — acts
@@ -1415,6 +1417,9 @@ function WorkspacesSectionHeader({ onNewWorkspacePress }: { onNewWorkspacePress:
 const staticStyles = RNStyleSheet.create({
   desktopSidebar: {
     position: "relative" as const,
+  },
+  desktopSidebarHidden: {
+    display: "none",
   },
 });
 

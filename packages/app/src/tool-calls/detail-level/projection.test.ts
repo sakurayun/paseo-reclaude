@@ -7,7 +7,6 @@ import {
   type PreparedToolCallHistory,
   type ToolCallDetailLevel,
 } from "./projection";
-import { resolveOverviewHeader } from "./overview/model";
 
 type AssistantMessageItem = Extract<StreamItem, { kind: "assistant_message" }>;
 
@@ -111,25 +110,6 @@ describe("tool call detail-level projection", () => {
     });
   });
 
-  it("shows the latest call while collapsed and the summary while expanded", () => {
-    const calls = [
-      toolCall("1", { type: "shell", command: "one" }),
-      toolCall("2", { type: "read", filePath: "/repo/a.ts" }, { status: "running" }),
-    ];
-    const result = project({
-      level: "overview",
-      head: calls,
-      isTurnActive: true,
-    });
-    const group = result.groupsByHostId.get("1");
-    if (!group) {
-      throw new Error("Expected an overview group");
-    }
-
-    expect(resolveOverviewHeader(group, false)).toEqual({ kind: "latest", call: calls[1] });
-    expect(resolveOverviewHeader(group, true)).toEqual({ kind: "summary" });
-  });
-
   it("keeps a parallel group loading while any call is still running", () => {
     const calls = [
       toolCall("1", { type: "shell", command: "slow" }, { status: "running" }),
@@ -140,16 +120,18 @@ describe("tool call detail-level projection", () => {
     expect(result.groupsByHostId.get("1")?.isLoading).toBe(true);
   });
 
-  it("keeps a one-call run presented as its tool call", () => {
-    const call = toolCall("1", { type: "shell", command: "one" });
-    const result = project({ level: "overview", head: [call] });
+  it("builds a loading aggregate for a one-call run", () => {
+    const call = toolCall("1", { type: "shell", command: "one" }, { status: "running" });
+    const result = project({ level: "overview", head: [call], isTurnActive: true });
     const group = result.groupsByHostId.get(call.id);
     if (!group) {
       throw new Error("Expected an overview group");
     }
 
-    expect(resolveOverviewHeader(group, false)).toEqual({ kind: "latest", call });
-    expect(resolveOverviewHeader(group, true)).toEqual({ kind: "latest", call });
+    expect(group).toMatchObject({
+      isLoading: true,
+      summary: { commandCount: 1 },
+    });
   });
 
   it("keeps an active overview group on its latest call until a visible boundary arrives", () => {
@@ -172,11 +154,6 @@ describe("tool call detail-level projection", () => {
       mode: "overview",
       run: { id: "1", latest: calls[3], isSealed: false },
     });
-    expect(resolveOverviewHeader(activeGroup!, false)).toEqual({
-      kind: "latest",
-      call: calls[3],
-    });
-
     const boundary = assistant("answer");
     const sealed = project({
       level: "overview",
@@ -189,12 +166,9 @@ describe("tool call detail-level projection", () => {
       run: { latest: calls[3], isSealed: true },
       summary: { editedFileCount: 1, readFileCount: 2, commandCount: 1 },
     });
-    expect(resolveOverviewHeader(sealed.groupsByHostId.get("1")!, false)).toEqual({
-      kind: "summary",
-    });
   });
 
-  it("keeps a running overview header live before the agent lifecycle catches up", () => {
+  it("keeps a running overview group live before the agent lifecycle catches up", () => {
     const calls = ["1", "2", "3", "4"].map((id) =>
       toolCall(id, { type: "shell", command: id }, { status: "running" }),
     );
@@ -207,10 +181,8 @@ describe("tool call detail-level projection", () => {
 
     expect(result.groupsByHostId.get("1")).toMatchObject({
       run: { latest: calls[3], isSealed: false },
-    });
-    expect(resolveOverviewHeader(result.groupsByHostId.get("1")!, false)).toEqual({
-      kind: "latest",
-      call: calls[3],
+      isLoading: true,
+      summary: { commandCount: 4 },
     });
   });
 
@@ -239,22 +211,11 @@ describe("tool call detail-level projection", () => {
     });
 
     expect(betweenCalls.groupsByHostId.get("1")?.run.isSealed).toBe(false);
-    expect(resolveOverviewHeader(betweenCalls.groupsByHostId.get("1")!, false)).toEqual({
-      kind: "latest",
-      call: calls[3],
-    });
     expect(continued.groupsByHostId.get("1")?.run).toMatchObject({
       latest: nextCall,
       isSealed: false,
     });
-    expect(resolveOverviewHeader(continued.groupsByHostId.get("1")!, false)).toEqual({
-      kind: "latest",
-      call: nextCall,
-    });
     expect(ended.groupsByHostId.get("1")?.run.isSealed).toBe(true);
-    expect(resolveOverviewHeader(ended.groupsByHostId.get("1")!, false)).toEqual({
-      kind: "summary",
-    });
   });
 
   it("builds overview summaries without category-specific presentation data", () => {
@@ -270,7 +231,6 @@ describe("tool call detail-level projection", () => {
     expect(overview.groupsByHostId.get("1")).toEqual({
       mode: "overview",
       run: expect.any(Object),
-      failedCount: 1,
       isLoading: false,
       summary: {
         editedFileCount: 1,
@@ -299,7 +259,6 @@ describe("tool call detail-level projection", () => {
     const result = project({ level: "overview", head: calls });
 
     expect(result.groupsByHostId.get("1")).toMatchObject({
-      failedCount: 1,
       summary: {
         editedFileCount: 0,
         commandCount: 0,

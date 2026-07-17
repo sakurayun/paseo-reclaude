@@ -19,6 +19,10 @@ export function installWebScrollbarStyles(): () => void {
   scrollbar-width: ${WEB_SCROLLBAR_WIDTH};
 }
 
+[data-composer-input] {
+  scrollbar-gutter: stable;
+}
+
 *::-webkit-scrollbar {
   width: ${WEB_SCROLLBAR_SIZE_PX}px;
   height: ${WEB_SCROLLBAR_SIZE_PX}px;

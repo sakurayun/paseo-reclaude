@@ -49,12 +49,14 @@ function MobileMenuIcon({ color }: { color: string }) {
 
 function SidebarMenuToggleButton({
   isMobile,
+  extraMutedIdleIcon = false,
   resolvedStyle,
   tooltipSide = "right",
   testID = "menu-button",
   nativeID = "menu-button",
 }: Omit<SidebarMenuToggleProps, "style"> & {
   isMobile: boolean;
+  extraMutedIdleIcon?: boolean;
   resolvedStyle: StyleProp<ViewStyle>;
 }) {
   const { theme } = useUnistyles();
@@ -87,7 +89,12 @@ function SidebarMenuToggleButton({
       accessibilityState={accessibilityState}
     >
       {({ hovered, pressed }) => {
-        const color = hovered || pressed ? theme.colors.foreground : theme.colors.foregroundMuted;
+        let color = extraMutedIdleIcon
+          ? theme.colors.foregroundExtraMuted
+          : theme.colors.foregroundMuted;
+        if (hovered || pressed) {
+          color = theme.colors.foreground;
+        }
         return isMobile ? (
           <MobileMenuIcon color={color} />
         ) : (
@@ -125,7 +132,14 @@ export function SidebarMenuToggle({ style, ...props }: SidebarMenuToggleProps = 
 
 export function WindowSidebarMenuToggle({ style, ...props }: SidebarMenuToggleProps = {}) {
   const resolvedStyle = useMemo(() => [styles.leadingToggle, style], [style]);
-  return <SidebarMenuToggleButton {...props} isMobile={false} resolvedStyle={resolvedStyle} />;
+  return (
+    <SidebarMenuToggleButton
+      {...props}
+      isMobile={false}
+      extraMutedIdleIcon
+      resolvedStyle={resolvedStyle}
+    />
+  );
 }
 
 export function MenuHeader({

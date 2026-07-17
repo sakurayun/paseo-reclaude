@@ -1,13 +1,18 @@
 import { webContents as allWebContents, type WebContents } from "electron";
+import { PASEO_BROWSER_PROFILE_PARTITION } from "../browser-profile.js";
 import {
   BROWSER_NEW_TAB_REQUEST_EVENT,
-  handleBrowserWindowOpenRequest,
+  decideBrowserWindowOpenRequest,
   isAllowedBrowserWebviewUrl,
+  PendingBrowserWindowOpenRequests,
 } from "./window-open.js";
-import { PaseoBrowserWebviewRegistry, type BrowserWorkspaceRegistration } from "./registry.js";
+import { PaseoBrowserWebviewRegistry } from "./registry.js";
 
-export { BROWSER_NEW_TAB_REQUEST_EVENT, handleBrowserWindowOpenRequest };
-export type { BrowserWorkspaceRegistration };
+export {
+  BROWSER_NEW_TAB_REQUEST_EVENT,
+  decideBrowserWindowOpenRequest,
+  PendingBrowserWindowOpenRequests,
+};
 
 export const BROWSER_FOUND_IN_PAGE_EVENT = "paseo:event:browser-found-in-page";
 
@@ -22,27 +27,28 @@ interface BrowserWebContentsIdentity {
 }
 
 interface RegisteredBrowserWebContents extends BrowserWebContentsIdentity {
+  readonly hostWebContents: BrowserWebContentsIdentity | null;
+  readonly session: object;
   setBackgroundThrottling(allowed: boolean): void;
   once(event: "destroyed", listener: () => void): void;
 }
 
-function getBrowserIdFromWebviewPartition(partition: string | undefined): string | null {
-  const prefix = "persist:paseo-browser-";
-  if (!partition?.startsWith(prefix)) {
-    return null;
-  }
-  const browserId = partition.slice(prefix.length).trim();
-  return browserId.length > 0 ? browserId : null;
+interface AttachedBrowserRegistration {
+  browserId: string;
+  workspaceId: string;
+  webContentsId: number;
 }
 
-export function readBrowserIdFromWebviewAttach(input: {
-  src?: string;
-  partition?: string;
-}): string | null {
-  if (!isAllowedBrowserWebviewUrl(input.src)) {
-    return null;
-  }
-  return getBrowserIdFromWebviewPartition(input.partition);
+interface RegisterAttachedBrowserInput extends AttachedBrowserRegistration {
+  sender: BrowserWebContentsIdentity;
+  profileSession: object;
+  findWebContents(webContentsId: number): RegisteredBrowserWebContents | null;
+}
+
+export function isPaseoBrowserWebviewAttach(input: { src?: string; partition?: string }): boolean {
+  return (
+    isAllowedBrowserWebviewUrl(input.src) && input.partition === PASEO_BROWSER_PROFILE_PARTITION
+  );
 }
 
 export function listRegisteredPaseoBrowserIds(): string[] {
@@ -80,28 +86,35 @@ function ensureOwnerFoundInPageListener(ownerContents: WebContents): void {
   });
 }
 
-export function registerPaseoBrowserWebContents(
-  contents: RegisteredBrowserWebContents,
-  browserId: string,
-  ownerContents?: WebContents,
-): void {
+export function preparePaseoBrowserWebContents(contents: RegisteredBrowserWebContents): void {
   contents.setBackgroundThrottling(false);
-  browserRegistry.registerWebContents({ webContentsId: contents.id, browserId });
-  if (ownerContents && !ownerContents.isDestroyed()) {
-    ownerWebContentsIdsByBrowserId.set(browserId, ownerContents.id);
-    ensureOwnerFoundInPageListener(ownerContents);
-  }
   contents.once("destroyed", () => {
     browserRegistry.unregisterWebContents(contents.id);
-    const ownerContentsId = ownerWebContentsIdsByBrowserId.get(browserId);
-    ownerWebContentsIdsByBrowserId.delete(browserId);
-    if (
-      ownerContentsId &&
-      activeFindBrowserIdsByOwnerWebContentsId.get(ownerContentsId) === browserId
-    ) {
-      activeFindBrowserIdsByOwnerWebContentsId.delete(ownerContentsId);
-    }
   });
+}
+
+export function registerAttachedPaseoBrowser(input: RegisterAttachedBrowserInput): boolean {
+  const guest = input.findWebContents(input.webContentsId);
+  if (
+    !guest ||
+    guest.isDestroyed() ||
+    guest.hostWebContents !== input.sender ||
+    guest.session !== input.profileSession
+  ) {
+    return false;
+  }
+
+  browserRegistry.registerWebContents({
+    webContentsId: input.webContentsId,
+    browserId: input.browserId,
+  });
+  browserRegistry.registerWorkspace({
+    browserId: input.browserId,
+    workspaceId: input.workspaceId,
+  });
+  // fork(find-in-page): 记录 host WebContents 作为 owner，供 setActivePaseoBrowserFind 挂 found-in-page 监听。
+  ownerWebContentsIdsByBrowserId.set(input.browserId, input.sender.id);
+  return true;
 }
 
 export function getPaseoBrowserIdForWebContents(
@@ -113,12 +126,17 @@ export function getPaseoBrowserIdForWebContents(
   return browserRegistry.getBrowserIdForWebContents(contents.id);
 }
 
-export function registerPaseoBrowserWorkspace(input: BrowserWorkspaceRegistration): void {
-  browserRegistry.registerWorkspace(input);
-}
-
 export function unregisterPaseoBrowser(browserId: string): void {
   browserRegistry.unregisterBrowser(browserId);
+  // fork(find-in-page): 清理该 browser 的 owner 映射与激活的查找状态。
+  const ownerContentsId = ownerWebContentsIdsByBrowserId.get(browserId);
+  ownerWebContentsIdsByBrowserId.delete(browserId);
+  if (
+    ownerContentsId &&
+    activeFindBrowserIdsByOwnerWebContentsId.get(ownerContentsId) === browserId
+  ) {
+    activeFindBrowserIdsByOwnerWebContentsId.delete(ownerContentsId);
+  }
 }
 
 export function getPaseoBrowserWorkspaceId(browserId: string): string | null {

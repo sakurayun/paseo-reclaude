@@ -179,6 +179,7 @@ const lightSemanticColors = {
   // Text
   foreground: "#1a1a1e",
   foregroundMuted: "#71717a",
+  foregroundExtraMuted: "#a1a1aa",
 
   // Controls
   scrollbarHandle: "#3f3f46", // zinc-700
@@ -269,6 +270,7 @@ const claudeLightSemanticColors = {
   // Text — warm near-black
   foreground: "#1f1e1d",
   foregroundMuted: "#87867f",
+  foregroundExtraMuted: "#b7b6af",
 
   // Controls
   scrollbarHandle: "#56544e",
@@ -373,6 +375,7 @@ interface DarkThemeConfig {
   surfaceSidebar: string;
   surfaceSidebarHover: string;
   foregroundMuted: string;
+  foregroundExtraMuted: string;
   scrollbarHandle: string;
   border: string;
   borderAccent: string;
@@ -417,6 +420,7 @@ function buildDarkSemanticColors(tint: DarkThemeConfig) {
 
     foreground: "#fafafa",
     foregroundMuted: tint.foregroundMuted,
+    foregroundExtraMuted: tint.foregroundExtraMuted,
 
     scrollbarHandle: tint.scrollbarHandle,
 
@@ -483,6 +487,7 @@ const paseoDarkColors = buildDarkSemanticColors({
   surfaceSidebar: "#141716",
   surfaceSidebarHover: "#1c1f1e",
   foregroundMuted: "#A1A5A4",
+  foregroundExtraMuted: "#717574",
   scrollbarHandle: "#717574",
   border: "#252B2A",
   borderAccent: "#2F3534",
@@ -502,6 +507,7 @@ const zincDarkColors = buildDarkSemanticColors({
   surfaceSidebar: "#131316",
   surfaceSidebarHover: "#1b1b1e",
   foregroundMuted: "#a1a1aa",
+  foregroundExtraMuted: "#71717a",
   scrollbarHandle: "#71717a",
   border: "#27272a",
   borderAccent: "#303036",
@@ -522,6 +528,7 @@ const midnightDarkColors = buildDarkSemanticColors({
   surfaceSidebar: "#121420",
   surfaceSidebarHover: "#1a1c28",
   foregroundMuted: "#9a9db0",
+  foregroundExtraMuted: "#6b6e82",
   scrollbarHandle: "#6b6e82",
   border: "#242636",
   borderAccent: "#2e3040",
@@ -541,6 +548,7 @@ const claudeDarkColors = buildDarkSemanticColors({
   surfaceSidebar: "#1a1918",
   surfaceSidebarHover: "#222120",
   foregroundMuted: "#ada9a5",
+  foregroundExtraMuted: "#78746f",
   scrollbarHandle: "#78746f",
   border: "#2c2a27",
   borderAccent: "#36332f",
@@ -561,6 +569,7 @@ const ghosttyDarkColors = buildDarkSemanticColors({
   surfaceSidebar: "#21252d",
   surfaceSidebarHover: "#292d36",
   foregroundMuted: "#c8ccd8",
+  foregroundExtraMuted: "#a0a4b2",
   scrollbarHandle: "#a0a4b2",
   border: "#353a47",
   borderAccent: "#3f4454",
@@ -716,6 +725,7 @@ function buildCatppuccinDarkTint(p: CatppuccinPalette): DarkThemeConfig {
     surfaceSidebar: p.mantle,
     surfaceSidebarHover: p.surface0,
     foregroundMuted: p.subtext0,
+    foregroundExtraMuted: p.overlay0,
     scrollbarHandle: p.overlay0,
     border: p.surface0,
     borderAccent: p.surface1,
@@ -748,6 +758,7 @@ const catppuccinLatteSemanticColors = {
   surfaceGlassStrong: withAlpha(CATPPUCCIN_LATTE.mantle, 0.94),
   foreground: CATPPUCCIN_LATTE.text,
   foregroundMuted: CATPPUCCIN_LATTE.subtext0,
+  foregroundExtraMuted: CATPPUCCIN_LATTE.overlay0,
   scrollbarHandle: CATPPUCCIN_LATTE.overlay1,
   border: CATPPUCCIN_LATTE.surface0,
   borderAccent: CATPPUCCIN_LATTE.crust,
@@ -1091,6 +1102,7 @@ function buildNewThemeDarkFloatingSemantic(
       surfaceSidebar: NEW_THEME_DARK_CHROME,
       surfaceSidebarHover: tint.surfaceSidebarHover,
       foregroundMuted: tint.foregroundMuted,
+      foregroundExtraMuted: tint.foregroundExtraMuted,
       scrollbarHandle: NEW_THEME_DARK_CHROME,
       border: tint.border,
       borderAccent: tint.borderAccent,
@@ -1117,6 +1129,7 @@ export const newThemeDark = {
       surfaceDiffEmpty: "#141418",
       surfaceSidebarHover: "#1a1a1e",
       foregroundMuted: "#a8a8b3",
+      foregroundExtraMuted: "#787883",
       border: "#26262c",
       borderAccent: "#34343c",
       accent: "#e4e4e7",
@@ -1138,6 +1151,7 @@ export const newThemePaseoDark = {
       surfaceDiffEmpty: "#252827",
       surfaceSidebarHover: "#1c1f1e",
       foregroundMuted: "#A1A5A4",
+      foregroundExtraMuted: "#717574",
       border: "#252B2A",
       borderAccent: "#2F3534",
       accent: "#20744A",
@@ -1158,6 +1172,7 @@ export const newThemeMidnightDark = {
       surfaceDiffEmpty: "#222430",
       surfaceSidebarHover: "#1a1c28",
       foregroundMuted: "#9a9db0",
+      foregroundExtraMuted: "#6b6e82",
       border: "#242636",
       borderAccent: "#2e3040",
       accent: "#3b6fcf",
@@ -1178,6 +1193,7 @@ export const newThemeGhosttyDark = {
       surfaceDiffEmpty: "#323643",
       surfaceSidebarHover: "#292d36",
       foregroundMuted: "#c8ccd8",
+      foregroundExtraMuted: "#a0a4b2",
       border: "#353a47",
       borderAccent: "#3f4454",
       accent: "#89b4fa",
@@ -1198,6 +1214,7 @@ export const newThemeClaudeDark = {
       surfaceDiffEmpty: "#2a2826",
       surfaceSidebarHover: "#222120",
       foregroundMuted: "#ada9a5",
+      foregroundExtraMuted: "#78746f",
       border: "#2c2a27",
       borderAccent: "#36332f",
       accent: "#d97757",
@@ -1236,6 +1253,7 @@ function newThemeCatppuccinDarkFloating(p: CatppuccinPalette) {
         surfaceDiffEmpty: tint.surfaceDiffEmpty,
         surfaceSidebarHover: tint.surfaceSidebarHover,
         foregroundMuted: tint.foregroundMuted,
+        foregroundExtraMuted: tint.foregroundExtraMuted,
         border: tint.border,
         borderAccent: tint.borderAccent,
         accent: tint.accent,

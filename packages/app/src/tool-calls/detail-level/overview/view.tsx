@@ -4,21 +4,13 @@ import { useTranslation } from "react-i18next";
 import { Wrench } from "lucide-react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { ExpandableBadge } from "@/components/message";
-import { ToolCallDetailsContent } from "@/components/tool-call-details";
-import { useToolCallSheet } from "@/components/tool-call-sheet";
-import { buildToolCallPresentation } from "@/tool-calls/presentation";
-import { resolveToolCallIcon } from "@/utils/tool-call-icon";
-import { describeToolCall } from "../grouping";
-import { resolveOverviewHeader, type OverviewSummary, type OverviewToolCallGroup } from "./model";
+import { type OverviewSummary, type OverviewToolCallGroup } from "./model";
 
 interface OverviewGroupProps {
   group: OverviewToolCallGroup;
   expanded: boolean;
-  isCompact: boolean;
   isLastInSequence: boolean;
   onExpandedChange: (groupId: string, expanded: boolean) => void;
-  cwd?: string;
-  onOpenFilePath?: (filePath: string) => void;
   children: ReactNode;
 }
 
@@ -62,74 +54,20 @@ function useOverviewSummary(summary: OverviewSummary): string {
 export const OverviewToolCallGroupView = memo(function OverviewToolCallGroupView({
   group,
   expanded,
-  isCompact,
   isLastInSequence,
   onExpandedChange,
-  cwd,
-  onOpenFilePath,
   children,
 }: OverviewGroupProps) {
-  const { t } = useTranslation();
-  const { openToolCall } = useToolCallSheet();
   const scrollRef = useRef<ScrollView>(null);
   const aggregateSummary = useOverviewSummary(group.summary);
-  const header = resolveOverviewHeader(group, expanded);
-  const latestCall = header.kind === "latest" ? header.call : group.run.latest;
-  const latest = useMemo(() => {
-    const descriptor = describeToolCall(latestCall);
-    return {
-      detail: descriptor.detail,
-      presentation: buildToolCallPresentation({
-        toolName: descriptor.name,
-        status: descriptor.status,
-        error: descriptor.error,
-        detail: descriptor.detail,
-        metadata: descriptor.metadata,
-        cwd,
-        resolveIcon: resolveToolCallIcon,
-      }),
-    };
-  }, [cwd, latestCall]);
-  const showsLatest = header.kind === "latest";
-  const opensSingleCallSheet = isCompact && group.run.calls.length === 1;
-  const openLatestFile = useMemo(() => {
-    const path = latest.presentation.openFilePath;
-    if (!showsLatest || !path || !onOpenFilePath) {
-      return undefined;
-    }
-    return () => onOpenFilePath(path);
-  }, [showsLatest, latest.presentation.openFilePath, onOpenFilePath]);
-  const failedSummary =
-    group.failedCount > 0 ? t("toolCallGroup.failed", { count: group.failedCount }) : undefined;
   const scrollToLatest = useCallback(() => {
     scrollRef.current?.scrollToEnd({ animated: false });
   }, []);
   const toggle = useCallback(() => {
-    if (opensSingleCallSheet) {
-      openToolCall({
-        displayName: latest.presentation.displayName,
-        summary: latest.presentation.summary,
-        detail: latest.detail,
-        errorText: latest.presentation.errorText,
-        icon: latest.presentation.icon,
-        showLoadingSkeleton: latest.presentation.isLoadingDetails,
-      });
-      return;
-    }
     onExpandedChange(group.run.id, !expanded);
-  }, [expanded, group.run.id, latest, onExpandedChange, openToolCall, opensSingleCallSheet]);
-  const renderDetails = useCallback(() => {
-    if (group.run.calls.length === 1) {
-      return (
-        <ToolCallDetailsContent
-          detail={latest.detail}
-          errorText={latest.presentation.errorText}
-          maxHeight={TOOL_CALL_GROUP_MAX_HEIGHT}
-          showLoadingSkeleton={latest.presentation.isLoadingDetails}
-        />
-      );
-    }
-    return (
+  }, [expanded, group.run.id, onExpandedChange]);
+  const renderDetails = useCallback(
+    () => (
       <ScrollView
         ref={scrollRef}
         style={styles.scroll}
@@ -140,23 +78,20 @@ export const OverviewToolCallGroupView = memo(function OverviewToolCallGroupView
       >
         {children}
       </ScrollView>
-    );
-  }, [children, group.run.calls.length, latest, scrollToLatest]);
-  const canExpand = group.run.calls.length > 1 || latest.presentation.canOpenDetails;
+    ),
+    [children, scrollToLatest],
+  );
 
   return (
     <ExpandableBadge
       testID="tool-call-group"
-      label={showsLatest ? latest.presentation.displayName : aggregateSummary}
-      secondaryLabel={showsLatest ? latest.presentation.summary : failedSummary}
-      icon={showsLatest ? latest.presentation.icon : Wrench}
+      label={aggregateSummary}
+      icon={Wrench}
       isLoading={group.isLoading}
-      isError={group.failedCount > 0}
-      isExpanded={opensSingleCallSheet ? false : expanded}
+      isExpanded={expanded}
       isLastInSequence={isLastInSequence}
-      onToggle={canExpand ? toggle : undefined}
-      onOpenFile={openLatestFile}
-      renderDetails={canExpand && !opensSingleCallSheet ? renderDetails : undefined}
+      onToggle={toggle}
+      renderDetails={renderDetails}
       borderlessWhenExpanded
     />
   );

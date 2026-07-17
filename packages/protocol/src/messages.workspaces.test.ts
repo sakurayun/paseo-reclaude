@@ -286,36 +286,45 @@ describe("workspace message schemas", () => {
     expect(parsed.type).toBe("open_project_request");
   });
 
-  test("parses workspace GitHub clone request and response repo paths", () => {
+  test("parses a GitHub clone response that registers a project without a workspace", () => {
     const request = SessionInboundMessageSchema.parse({
-      type: "workspace.github.clone.request",
+      type: "project.github.clone.request",
       repo: "a/b",
       cloneProtocol: "https",
       targetDirectory: "~/workspace",
       requestId: "req-clone",
     });
     const response = SessionOutboundMessageSchema.parse({
-      type: "workspace.github.clone.response",
+      type: "project.github.clone.response",
       payload: {
         requestId: "req-clone",
         repo: "a/b",
         checkoutPath: "/tmp/b",
-        workspace: null,
+        project: {
+          projectId: "project-b",
+          projectDisplayName: "b",
+          projectRootPath: "/tmp/b",
+          projectKind: "git",
+        },
         error: null,
       },
     });
 
-    expect(request.type).toBe("workspace.github.clone.request");
-    if (request.type !== "workspace.github.clone.request") {
-      throw new Error("expected workspace.github.clone.request");
+    expect(request.type).toBe("project.github.clone.request");
+    if (request.type !== "project.github.clone.request") {
+      throw new Error("expected project.github.clone.request");
     }
     expect(request.cloneProtocol).toBe("https");
-    expect(response.type).toBe("workspace.github.clone.response");
+    expect(response.type).toBe("project.github.clone.response");
+    if (response.type !== "project.github.clone.response") {
+      throw new Error("expected project.github.clone.response");
+    }
+    expect(response.payload.project?.projectId).toBe("project-b");
   });
 
-  test("rejects invalid workspace GitHub clone protocols", () => {
+  test("rejects invalid project GitHub clone protocols", () => {
     const request = SessionInboundMessageSchema.safeParse({
-      type: "workspace.github.clone.request",
+      type: "project.github.clone.request",
       repo: "a/b",
       cloneProtocol: "ftp",
       targetDirectory: "~/workspace",
@@ -325,20 +334,20 @@ describe("workspace message schemas", () => {
     expect(request.success).toBe(false);
   });
 
-  test("rejects workspace GitHub clone repo paths shorter than owner slash repo", () => {
+  test("rejects project GitHub clone repo paths shorter than owner slash repo", () => {
     const request = SessionInboundMessageSchema.safeParse({
-      type: "workspace.github.clone.request",
+      type: "project.github.clone.request",
       repo: "ab",
       targetDirectory: "~/workspace",
       requestId: "req-clone",
     });
     const response = SessionOutboundMessageSchema.safeParse({
-      type: "workspace.github.clone.response",
+      type: "project.github.clone.response",
       payload: {
         requestId: "req-clone",
         repo: "ab",
         checkoutPath: null,
-        workspace: null,
+        project: null,
         error: "failed",
       },
     });

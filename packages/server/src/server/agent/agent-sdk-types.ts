@@ -125,6 +125,7 @@ export interface ProviderSnapshotEntry {
   provider: AgentProvider;
   status: ProviderStatus;
   enabled: boolean;
+  source?: "builtin" | "custom";
   error?: string;
   models?: AgentModelDefinition[];
   modes?: AgentMode[];

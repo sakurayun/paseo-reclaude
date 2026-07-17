@@ -38,6 +38,8 @@ import { GenericACPAgentClient } from "./providers/generic-acp-agent.js";
 import { GROK_MODES, GrokACPAgentClient } from "./providers/grok-acp-agent.js";
 import { KiroACPAgentClient } from "./providers/kiro-acp-agent.js";
 import { OpenCodeAgentClient } from "./providers/opencode-agent.js";
+import { OmpAgentClient } from "./providers/omp/agent.js";
+import type { OmpRuntime } from "./providers/omp/runtime.js";
 import { PiRpcAgentClient } from "./providers/pi/agent.js";
 import { TraeACPAgentClient } from "./providers/trae-acp-agent.js";
 import { MockLoadTestAgentClient } from "./providers/mock-load-test-agent.js";
@@ -82,11 +84,12 @@ export interface BuildProviderRegistryOptions {
   workspaceGitService?: Pick<WorkspaceGitService, "resolveRepoRoot">;
   managedProcesses?: ManagedProcessRegistry;
   isDev?: boolean;
+  ompRuntime?: OmpRuntime;
 }
 
 interface ProviderClientFactoryOptions extends Pick<
   BuildProviderRegistryOptions,
-  "workspaceGitService" | "managedProcesses"
+  "workspaceGitService" | "managedProcesses" | "ompRuntime"
 > {
   providerParams?: unknown;
   customProvider?: {
@@ -151,21 +154,11 @@ const PROVIDER_CLIENT_FACTORIES: Record<string, ProviderClientFactory> = {
       providerParams: options?.providerParams,
     }),
   omp: (logger, runtimeSettings, options) =>
-    new PiRpcAgentClient({
+    new OmpAgentClient({
       logger,
-      runtimeSettings: mergeRuntimeSettings(
-        {
-          command: {
-            mode: "replace",
-            argv: ["omp"],
-          },
-        },
-        runtimeSettings,
-      ),
-      providerParams: options?.providerParams ?? {
-        sessionDir: "~/.omp/agent/sessions",
-      },
-      commandsRpcType: "get_available_commands",
+      runtimeSettings,
+      providerParams: options?.providerParams,
+      runtime: options?.ompRuntime,
     }),
   mock: (logger) => new MockLoadTestAgentClient(logger),
   "mock-slow": () => new MockSlowProviderClient(),
@@ -586,7 +579,10 @@ function createResolvedProviderClient(
 function buildResolvedBuiltinProviders(
   providerOverrides: Record<string, ProviderOverride>,
   runtimeSettings: AgentProviderRuntimeSettingsMap | undefined,
-  options: Pick<BuildProviderRegistryOptions, "workspaceGitService" | "managedProcesses">,
+  options: Pick<
+    BuildProviderRegistryOptions,
+    "workspaceGitService" | "managedProcesses" | "ompRuntime"
+  >,
   isDev: boolean,
 ): Map<string, ResolvedProvider> {
   const resolvedProviders = new Map<string, ResolvedProvider>();
@@ -616,6 +612,7 @@ function buildResolvedBuiltinProviders(
         factory(logger, mergedRuntimeSettings, {
           workspaceGitService: options.workspaceGitService,
           managedProcesses: options.managedProcesses,
+          ompRuntime: options.ompRuntime,
           providerParams: override?.params,
           transport: override?.transport,
         }),
@@ -754,6 +751,7 @@ export function buildProviderRegistry(
     {
       workspaceGitService: options?.workspaceGitService,
       managedProcesses: options?.managedProcesses,
+      ompRuntime: options?.ompRuntime,
     },
     options?.isDev === true,
   );

@@ -674,11 +674,14 @@ export class AgentManager {
     providerDefinitions: ProviderEnabledMap;
     clients: ProviderClientMap;
   }): void {
+    this.providerEnabled.clear();
     for (const [provider, definition] of Object.entries(input.providerDefinitions)) {
       if (definition) {
         this.providerEnabled.set(provider, definition.enabled);
       }
     }
+
+    this.clients.clear();
     for (const [provider, client] of Object.entries(input.clients)) {
       if (client) {
         this.clients.set(provider, client);
@@ -1768,7 +1771,10 @@ export class AgentManager {
     return nextRecord;
   }
 
-  async unarchiveSnapshot(agentId: string): Promise<boolean> {
+  async unarchiveSnapshot(
+    agentId: string,
+    updates?: { workspaceId?: string; labels?: AgentLabelPatch },
+  ): Promise<boolean> {
     const registry = this.requireRegistry();
     const record = await registry.get(agentId);
     if (!record || !record.archivedAt) {
@@ -1779,6 +1785,8 @@ export class AgentManager {
 
     await registry.upsert({
       ...record,
+      ...(updates?.workspaceId ? { workspaceId: updates.workspaceId } : {}),
+      ...(updates?.labels ? { labels: applyLabelPatch(record.labels, updates.labels) } : {}),
       archivedAt: null,
       updatedAt: new Date().toISOString(),
     });

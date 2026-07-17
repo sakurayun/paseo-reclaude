@@ -87,8 +87,8 @@ async function runAddProjectFlow(input: {
     router.navigate(
       buildNewWorkspaceRoute({
         serverId: input.serverId,
-        sourceDirectory: result.projectRootPath,
-        projectId: result.projectKey,
+        sourceDirectory: result.project.projectRootPath,
+        projectId: result.project.projectId,
       }),
     );
   } catch (error) {
