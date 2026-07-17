@@ -9,20 +9,26 @@ import {
   type ViewStyle,
 } from "react-native";
 import { ScrollView as GHScrollView } from "react-native-gesture-handler";
-import { StyleSheet } from "react-native-unistyles";
+import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { AppearanceStyleBoundary } from "@/components/appearance-style-boundary";
 import type { ToolCallDetail } from "@getpaseo/protocol/agent-types";
 import { buildLineDiff, parseUnifiedDiff, type DiffLine } from "@/utils/tool-call-parsers";
 import { highlightDiffLines } from "@/utils/diff-highlight";
 import { hasMeaningfulToolCallDetail } from "@/utils/tool-call-detail-state";
 import { useWebScrollbarStyle } from "@/hooks/use-web-scrollbar-style";
+import { useSettings } from "@/hooks/use-settings";
+import { resolveTerminalPalette } from "@/constants/terminal-color-presets";
 import { inlineUnistylesStyle } from "@/styles/unistyles-inline-style";
 import { CODE_SURFACE_DATASET } from "@/styles/code-surface";
+import { monoLigatureInlineWebStyle, monoLigatureTextStyle } from "@/styles/mono-ligatures";
+import type { Theme } from "@/styles/theme";
 import { extensionFromPath, highlightToKeyedLines } from "@/utils/highlight-cache";
 import { HighlightedLines } from "./highlighted-content";
 import { DiffViewer } from "./diff-viewer";
+import { AnsiText } from "./ansi-text";
 import { getCodeInsets } from "./code-insets";
 import { isWeb } from "@/constants/platform";
+import { ansiToPlainText, mapRawRangeToVisible } from "@/utils/ansi-spans";
 // Type-only import keeps the message <-> tool-call-details cycle compile-time only.
 import type { MessageFindHighlight } from "./message";
 
@@ -164,46 +170,10 @@ interface ShellDetailProps {
   findHighlights?: Map<string, MessageFindHighlight[]>;
 }
 
-function ShellHighlightedText({
-  text,
-  highlights,
-}: {
-  text: string;
-  highlights: MessageFindHighlight[] | undefined;
-}): ReactNode {
-  if (!highlights || highlights.length === 0) {
-    return text;
-  }
-  const sorted = [...highlights].sort((a, b) => a.start - b.start);
-  const parts: ReactNode[] = [];
-  let cursor = 0;
-  for (const highlight of sorted) {
-    const start = Math.max(0, Math.min(text.length, highlight.start));
-    const end = Math.max(start, Math.min(text.length, highlight.end));
-    if (end <= cursor) {
-      continue;
-    }
-    if (cursor < start) {
-      parts.push(text.slice(cursor, start));
-    }
-    parts.push(
-      <Text
-        key={highlight.id}
-        style={highlight.isCurrent ? styles.shellHitCurrent : styles.shellHit}
-      >
-        {text.slice(start, end)}
-      </Text>,
-    );
-    cursor = end;
-  }
-  if (cursor < text.length) {
-    parts.push(text.slice(cursor));
-  }
-  return parts;
-}
-
 // Output is rendered with leading newlines stripped, so shift its highlight
-// offsets to keep them aligned with the trimmed string.
+// offsets to keep them aligned with the trimmed string. When the source still
+// carries ANSI codes, re-map raw offsets onto the visible (stripped) text so
+// find highlights land on the glyphs the user actually sees.
 function shiftShellHighlights(
   highlights: MessageFindHighlight[] | undefined,
   delta: number,
@@ -218,18 +188,127 @@ function shiftShellHighlights(
   }));
 }
 
-function ShellDetailSection({ command, output, ds, findHighlights }: ShellDetailProps) {
+/**
+ * Map find-highlight offsets from a raw string (which may still include ANSI
+ * CSI) onto the visible plain-text offsets used by AnsiText.
+ */
+function mapHighlightsToVisibleText(
+  rawText: string,
+  highlights: MessageFindHighlight[] | undefined,
+): MessageFindHighlight[] | undefined {
+  if (!highlights || highlights.length === 0) return highlights;
+  if (!rawText.includes("\u001b")) return highlights;
+
+  const mapped: MessageFindHighlight[] = [];
+  for (const highlight of highlights) {
+    const range = mapRawRangeToVisible(rawText, highlight.start, highlight.end);
+    if (range.end <= range.start) continue;
+    mapped.push({ ...highlight, start: range.start, end: range.end });
+  }
+  return mapped.length > 0 ? mapped : undefined;
+}
+
+interface ShellDetailSectionThemeProps {
+  /** Active theme's terminal palette — used when the scheme is "auto". */
+  themeTerminal: Theme["colors"]["terminal"];
+  monoFontFamily: string;
+  monoLigatures: boolean;
+}
+
+function ShellDetailSectionBase({
+  command,
+  output,
+  ds,
+  findHighlights,
+  themeTerminal,
+  monoFontFamily,
+  monoLigatures,
+}: ShellDetailProps & ShellDetailSectionThemeProps) {
+  const terminalColorScheme = useSettings((settings) => settings.terminalColorScheme);
+  // Prefer the settings toggle (source of truth for the terminal); theme.monoLigatures
+  // is patched from the same flag via applyAppearance and stays as a fallback.
+  const terminalLigaturesEnabled = useSettings((settings) => settings.terminalLigaturesEnabled);
+
+  const palette = useMemo(
+    () => resolveTerminalPalette(terminalColorScheme, themeTerminal),
+    [terminalColorScheme, themeTerminal],
+  );
+  const ligaturesEnabled = terminalLigaturesEnabled ?? monoLigatures;
+
   const normalizedCommand = command.replace(/\n+$/, "");
   const rawOutput = output ?? "";
   const commandOutput = rawOutput.replace(/^\n+/, "");
   const hasOutput = commandOutput.length > 0;
-  const outputHighlights = shiftShellHighlights(
-    findHighlights?.get("shell.output"),
-    commandOutput.length - rawOutput.length,
+  const trimmedDelta = commandOutput.length - rawOutput.length;
+  const commandHighlights = mapHighlightsToVisibleText(
+    normalizedCommand,
+    findHighlights?.get("shell.command"),
   );
+  const outputHighlights = mapHighlightsToVisibleText(
+    commandOutput,
+    shiftShellHighlights(findHighlights?.get("shell.output"), trimmedDelta),
+  );
+
+  // Compose a single ANSI document: green `$ ` prompt + command + blank line +
+  // output. One AnsiText pass keeps selection continuous across the card.
+  const shellDocument = useMemo(() => {
+    const prompt = "\u001b[32m$ \u001b[0m";
+    if (!hasOutput) {
+      return `${prompt}${normalizedCommand}`;
+    }
+    return `${prompt}${normalizedCommand}\n\n${commandOutput}`;
+  }, [commandOutput, hasOutput, normalizedCommand]);
+
+  const documentHighlights = useMemo(() => {
+    // Prompt is 2 visible chars (`$ `). Command highlights shift by that.
+    // Output starts after command + "\n\n".
+    const promptVisibleLen = 2;
+    const commandVisibleLen = ansiToPlainText(normalizedCommand).length;
+    const outputStart = promptVisibleLen + commandVisibleLen + (hasOutput ? 2 : 0);
+
+    const merged: MessageFindHighlight[] = [];
+    for (const highlight of commandHighlights ?? []) {
+      merged.push({
+        ...highlight,
+        start: highlight.start + promptVisibleLen,
+        end: highlight.end + promptVisibleLen,
+      });
+    }
+    for (const highlight of outputHighlights ?? []) {
+      merged.push({
+        ...highlight,
+        start: highlight.start + outputStart,
+        end: highlight.end + outputStart,
+      });
+    }
+    return merged.length > 0 ? merged : undefined;
+  }, [commandHighlights, hasOutput, normalizedCommand, outputHighlights]);
+
+  const shellBlockStyle = useMemo(
+    () => [
+      ds.codeBlockFillStyle,
+      // Resolved scheme background so Dracula/One Dark/etc. match the terminal pane.
+      inlineUnistylesStyle({ backgroundColor: palette.background }),
+    ],
+    [ds.codeBlockFillStyle, palette.background],
+  );
+
+  const shellTextStyle = useMemo(
+    () => [
+      styles.shellAnsiText,
+      inlineUnistylesStyle({
+        color: palette.foreground,
+        fontFamily: monoFontFamily,
+      }),
+      monoLigatureTextStyle(ligaturesEnabled),
+      monoLigatureInlineWebStyle(ligaturesEnabled),
+    ],
+    [palette.foreground, monoFontFamily, ligaturesEnabled],
+  );
+
   return (
     <View style={ds.sectionFillStyle}>
-      <View style={ds.codeBlockFillStyle}>
+      <View style={shellBlockStyle}>
         <ScrollView
           style={ds.codeVerticalScrollStyle}
           contentContainerStyle={styles.codeVerticalContent}
@@ -237,24 +316,14 @@ function ShellDetailSection({ command, output, ds, findHighlights }: ShellDetail
           showsVerticalScrollIndicator
         >
           <View style={styles.codeHorizontalContent}>
-            <View style={styles.codeLine} dataSet={CODE_SURFACE_DATASET}>
-              <Text selectable style={styles.scrollText}>
-                <Text style={styles.shellPrompt}>$ </Text>
-                <ShellHighlightedText
-                  text={normalizedCommand}
-                  highlights={findHighlights?.get("shell.command")}
-                />
-                {hasOutput
-                  ? [
-                      "\n\n",
-                      <ShellHighlightedText
-                        key="output"
-                        text={commandOutput}
-                        highlights={outputHighlights}
-                      />,
-                    ]
-                  : null}
-              </Text>
+            <View style={styles.shellCodeLine} dataSet={CODE_SURFACE_DATASET}>
+              <AnsiText
+                text={shellDocument}
+                style={shellTextStyle}
+                findHighlights={documentHighlights}
+                palette={palette}
+                ligaturesEnabled={ligaturesEnabled}
+              />
             </View>
           </View>
         </ScrollView>
@@ -262,6 +331,14 @@ function ShellDetailSection({ command, output, ds, findHighlights }: ShellDetail
     </View>
   );
 }
+
+// Inject theme terminal palette + mono face without useUnistyles (banned).
+// Only this leaf re-renders on theme changes; settings drive the scheme override.
+const ShellDetailSection = withUnistyles(ShellDetailSectionBase, (theme: Theme) => ({
+  themeTerminal: theme.colors.terminal,
+  monoFontFamily: theme.fontFamily.mono,
+  monoLigatures: theme.monoLigatures,
+}));
 
 interface WorktreeSetupDetailProps {
   log: string;
@@ -923,6 +1000,18 @@ const styles = StyleSheet.create((theme) => {
       paddingHorizontal: insets.padding,
       paddingVertical: insets.padding,
     },
+    // Shell block background/foreground are applied at runtime from the
+    // resolved terminal color scheme (see ShellDetailSectionBase). These
+    // styles only own layout + the mono typeface.
+    shellCodeLine: {
+      minWidth: "100%",
+      paddingHorizontal: insets.padding,
+      paddingVertical: insets.padding,
+    },
+    shellAnsiText: {
+      fontFamily: theme.fontFamily.mono,
+      fontSize: theme.fontSize.code,
+    },
     scrollArea: {
       borderRadius: theme.borderRadius.lg,
       backgroundColor: theme.colors.surface2,
@@ -941,17 +1030,6 @@ const styles = StyleSheet.create((theme) => {
             overflowWrap: "anywhere",
           }
         : null),
-    },
-    shellPrompt: {
-      color: theme.colors.foregroundMuted,
-    },
-    shellHit: {
-      backgroundColor:
-        theme.colorScheme === "dark" ? "rgba(250, 204, 21, 0.32)" : "rgba(250, 204, 21, 0.38)",
-    },
-    shellHitCurrent: {
-      backgroundColor:
-        theme.colorScheme === "dark" ? "rgba(251, 146, 60, 0.58)" : "rgba(251, 146, 60, 0.48)",
     },
     subAgentSessionText: {
       fontFamily: theme.fontFamily.mono,

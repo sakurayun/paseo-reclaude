@@ -42,12 +42,15 @@ function DiffLineRow({ line }: { line: DiffLine }) {
     [line.type],
   );
 
-  const gutterTextStyle = React.useMemo(
+  // Marker column (+ / − / blank) is styled independently of the line body so
+  // additions read green and deletions red without tinting the code text.
+  const markerTextStyle = React.useMemo(
     () => [
-      styles.gutterText,
-      line.type === "add" && styles.addText,
-      line.type === "remove" && styles.removeText,
-      line.type === "context" && styles.contextText,
+      styles.markerText,
+      line.type === "add" && styles.addMarker,
+      line.type === "remove" && styles.removeMarker,
+      line.type === "context" && styles.contextMarker,
+      line.type === "header" && styles.headerMarker,
     ],
     [line.type],
   );
@@ -77,8 +80,10 @@ function DiffLineRow({ line }: { line: DiffLine }) {
 
   return (
     <View style={lineContainerStyle}>
-      <Text style={gutterTextStyle}>{diffLinePrefix(line)}</Text>
-      {content}
+      <View style={styles.markerColumn}>
+        <Text style={markerTextStyle}>{diffLinePrefix(line)}</Text>
+      </View>
+      <View style={styles.codeColumn}>{content}</View>
     </View>
   );
 }
@@ -213,29 +218,52 @@ const styles = StyleSheet.create((theme) => {
     horizontalContent: {
       flexDirection: "column" as const,
     },
-    // No horizontal padding: the marker gutter and line backgrounds run flush
-    // to the panel edges. Keep the vertical inset tight and symmetric so the
-    // diff doesn't float with a large band above/below it inside the card.
+    // No padding: marker gutter and line backgrounds run flush to the panel
+    // edges on all four sides (no empty band above/below the first/last line).
     linesContainer: {
       alignSelf: "flex-start",
-      paddingVertical: theme.spacing[1],
+      paddingVertical: 0,
     },
     line: {
       minWidth: "100%",
       flexDirection: "row" as const,
+      alignItems: "flex-start" as const,
       paddingVertical: theme.spacing[1],
     },
-    gutterText: {
+    // Dedicated +/- column: fixed width, never compresses into the code.
+    markerColumn: {
       width: 20,
-      textAlign: "center" as const,
+      flexShrink: 0,
+      alignItems: "center" as const,
+      justifyContent: "flex-start" as const,
+    },
+    markerText: {
       fontFamily: theme.fontFamily.mono,
       fontSize: theme.fontSize.code,
+      fontWeight: theme.fontWeight.semibold,
+      textAlign: "center" as const,
       color: theme.colors.foregroundMuted,
       ...(isWeb
         ? {
             whiteSpace: "pre",
           }
         : null),
+    },
+    addMarker: {
+      color: theme.colors.diffAddition,
+    },
+    removeMarker: {
+      color: theme.colors.diffDeletion,
+    },
+    contextMarker: {
+      color: theme.colors.foregroundMuted,
+    },
+    headerMarker: {
+      color: theme.colors.foregroundMuted,
+    },
+    codeColumn: {
+      flexShrink: 1,
+      minWidth: 0,
     },
     lineText: {
       fontFamily: theme.fontFamily.mono,

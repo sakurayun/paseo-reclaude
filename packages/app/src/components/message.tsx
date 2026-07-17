@@ -1517,8 +1517,10 @@ const expandableBadgeStylesheet = StyleSheet.create((theme, rt) => ({
   pressableExpanded: {
     backgroundColor: theme.colors.surface1,
   },
+  // Flatten the bottom corners so the header joins the detail surface as one
+  // block. Keep the base transparent border (no stroke) — the expanded outline
+  // was too heavy in the workspace stream.
   pressableExpandedAttached: {
-    borderColor: theme.colors.border,
     borderBottomLeftRadius: 0,
     borderBottomRightRadius: 0,
   },
