@@ -138,6 +138,7 @@ export function createEditorTargetRuntime(
   return {
     platform,
     env,
+    homeDirectory,
     pathExists,
     isAbsolutePath: (targetPath) => isAbsolutePath(targetPath, platform),
     resolveCommand: (commands) => resolveExecutable(commands, { env, pathExists, platform }),

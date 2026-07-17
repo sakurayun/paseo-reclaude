@@ -1192,6 +1192,7 @@ export const zhCN: TranslationResources = {
         viewAll: "查看全部会话",
         editTitle: "修改标题",
         archive: "归档",
+        archiveSelected: "归档 ({{count}})",
         archivePending: "归档中…",
       },
       status: {
@@ -1858,6 +1859,12 @@ export const zhCN: TranslationResources = {
   providerUsage: {
     codexReset: {
       title: "Codex 用量已达上限",
+      sources: {
+        official: "官方",
+        newapi: "NewAPI",
+        sub2api: "Sub2API",
+        cpa: "CPA",
+      },
       description: "你已触发 Codex 用量限制。可消耗一次重置额度立即解除。",
       remaining: "剩余 {{count}} 次",
       consume: "消耗一次重置用量机会重置额度",
@@ -1993,6 +2000,8 @@ export const zhCN: TranslationResources = {
       grokSessionExpired: "Grok 会话已过期。请运行 `grok login` 后刷新用量。",
       billingHttp: "用量接口请求失败。",
       parseFailed: "无法解析用量响应。",
+      codexChatgptAuthRequired:
+        "Codex 官方限额需要 ChatGPT 登录。若使用 API Key 或自定义 Base URL（NewAPI / Sub2API / CPA），将从网关查询额度。",
     },
     grok: {
       sync: "同步用量",
@@ -2472,6 +2481,17 @@ export const zhCN: TranslationResources = {
       agents: {
         unavailable: "连接到这个 Host 以管理 Agent",
       },
+      browserTools: {
+        title: "浏览器工具",
+        hint: "允许 Agent 访问并控制 Paseo 浏览器标签页（包括已登录状态）。请仅对你信任的 Agent 开启。",
+        updating: "正在更新浏览器工具…",
+      },
+      terminalAgents: {
+        sectionTitle: "终端 Agent",
+        enableTitle: "启用终端 Agent 钩子",
+        enableHint: "接收来自终端 Agent 的通知与状态。会在你的 Agent 配置文件中安装钩子。",
+        updateFailedTitle: "无法更新终端 Agent 钩子",
+      },
       workspaces: {
         unavailable: "连接到这个 Host 以管理 Workspace",
         autoArchive: {
@@ -2648,6 +2668,15 @@ export const zhCN: TranslationResources = {
         loading: "正在加载模型…",
         notInstalled: "尚未下载",
         downloading: "正在下载…",
+        downloadingPercent: "正在下载 {{percent}}%",
+        downloadingPercentWithSpeed: "正在下载 {{percent}}% · {{speed}}",
+        downloadSpeed: "{{speed}}",
+        download: "下载",
+        apply: "应用",
+        applied: "已应用",
+        running: "已启动",
+        starting: "启动中…",
+        stopped: "未启动",
         selectErrorTitle: "切换听写模型失败",
       },
     },

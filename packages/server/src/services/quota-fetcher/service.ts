@@ -14,6 +14,8 @@ export interface ProviderUsageServiceOptions {
   now?: () => number;
   reclaude?: ReclaudeAccountService;
   grokUsage?: GrokUsageService;
+  /** Optional agents.providers.*.env maps for gateway usage probes. */
+  providerEnvById?: Partial<Record<string, Record<string, string> | undefined>>;
 }
 
 export interface ProviderUsageListResult {
@@ -40,6 +42,7 @@ export class ProviderUsageService {
         fetch: options.fetch,
         reclaude: options.reclaude,
         grokUsage: options.grokUsage,
+        providerEnvById: options.providerEnvById,
       });
     this.cacheTtlMs = options.cacheTtlMs ?? DEFAULT_PROVIDER_USAGE_CACHE_TTL_MS;
     this.now = options.now ?? Date.now;

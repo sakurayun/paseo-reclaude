@@ -17,7 +17,7 @@ import { useStableEvent } from "@/hooks/use-stable-event";
 import { openExternalUrl } from "@/utils/open-external-url";
 
 const CHECK_INTERVAL_MS = 30 * 60 * 1000;
-const CHANGELOG_URL = "https://paseo.sh/changelog";
+const CHANGELOG_URL = "https://github.com/sakurayun/paseo-reclaude/blob/main/CHANGELOG.md";
 
 function renderBody(body: UpdateCalloutBody, t: ReturnType<typeof useTranslation>["t"]): ReactNode {
   if (body.kind === "installing") return t("desktop.updates.callout.installingDescription");

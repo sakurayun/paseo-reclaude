@@ -172,6 +172,10 @@ const ERROR_HINTS: Array<{ match: RegExp; key: string }> = [
     match: /could not be parsed/i,
     key: "providerUsage.errors.parseFailed",
   },
+  {
+    match: /chatgpt authentication required|authentication required to read rate limits/i,
+    key: "providerUsage.errors.codexChatgptAuthRequired",
+  },
 ];
 
 function localizeError(t: TFunction, error: string | null | undefined): string | null {

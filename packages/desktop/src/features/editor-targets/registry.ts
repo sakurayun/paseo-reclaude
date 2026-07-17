@@ -58,8 +58,13 @@ export async function listAvailableEditorTargets(
 ): Promise<EditorTargetDescriptor[]> {
   const descriptors: EditorTargetDescriptor[] = [];
   for (const target of targets) {
-    if (await target.isInstalled(runtime)) {
+    try {
+      if (!(await target.isInstalled(runtime))) {
+        continue;
+      }
       descriptors.push(await target.describe(runtime));
+    } catch {
+      // One broken target (icon load, missing binary, etc.) must not hide the rest.
     }
   }
   return descriptors;

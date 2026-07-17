@@ -1265,9 +1265,17 @@ function insertNewTabIntoFocusedPane(input: {
 function findExistingTabForTarget(root: SplitNodeInternal, target: WorkspaceTabTarget) {
   const targetTabId = buildDeterministicWorkspaceTabId(target);
   return (
-    collectAllTabs(root).find(
-      (tab) => tab.tabId === targetTabId || workspaceTabTargetsEqual(tab.target, target),
-    ) ?? null
+    collectAllTabs(root).find((tab) => {
+      // Match by target first — the real identity of the tab.
+      if (workspaceTabTargetsEqual(tab.target, target)) {
+        return true;
+      }
+      // Only treat a matching tabId as the same tab when the kind still matches.
+      // After draft→agent conversion a tab may keep a draft-like id (e.g. "new")
+      // until renamed; matching that id for a fresh draft open would clobber the
+      // agent conversation or fail to open a clean draft beside it.
+      return tab.tabId === targetTabId && tab.target.kind === target.kind;
+    }) ?? null
   );
 }
 

@@ -377,9 +377,22 @@ function DraftPanel() {
         next.set(agentSnapshot.id, agent);
         return next;
       });
+      // Prefer convertDraftToAgent so the tab takes the canonical agent_* id.
+      // Keeping the draft tab id (e.g. "new") after retarget lets a later
+      // openWorkspaceDraftTab("new") collide with that tab and can re-open a
+      // second "New Agent" draft beside the conversation.
+      const workspaceKey = buildWorkspaceTabPersistenceKey({ serverId, workspaceId });
+      if (workspaceKey) {
+        const converted = useWorkspaceLayoutStore
+          .getState()
+          .convertDraftToAgent(workspaceKey, tabId, agentSnapshot.id);
+        if (converted) {
+          return;
+        }
+      }
       retargetCurrentTab({ kind: "agent", agentId: agentSnapshot.id });
     },
-    [retargetCurrentTab, serverId],
+    [retargetCurrentTab, serverId, tabId, workspaceId],
   );
 
   return (

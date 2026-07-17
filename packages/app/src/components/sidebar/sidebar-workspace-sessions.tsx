@@ -24,6 +24,11 @@ import { toErrorMessage } from "@/utils/error-messages";
 import { formatTimeAgo } from "@/utils/time";
 import { navigateToAgentDirectoryEntry } from "@/utils/navigate-to-agent-directory-entry";
 import { navigateToPreparedWorkspaceTab } from "@/utils/workspace-navigation";
+import {
+  SidebarSessionSelectionProvider,
+  useSidebarSessionSelection,
+} from "@/components/sidebar/sidebar-session-selection-context";
+import { toSidebarSessionSelectionKey } from "@/components/sidebar/sidebar-session-selection";
 
 const MAX_SIDEBAR_SESSIONS = 5;
 // The new-theme flat sessions list is primary navigation, so its rows get a
@@ -143,12 +148,36 @@ export const SidebarSessionRow = memo(function SidebarSessionRow({
   const toast = useToast();
   const queryClient = useQueryClient();
   const { archiveAgent } = useArchiveAgent();
+  const selection = useSidebarSessionSelection();
+  const selectionKey = useMemo(
+    () => toSidebarSessionSelectionKey({ serverId: session.serverId, id: session.id }),
+    [session.id, session.serverId],
+  );
+  const isRowSelected = selection?.isSelected(selectionKey) ?? false;
+  const isBulkContext =
+    Boolean(selection) && selection!.selectedCount > 1 && selection!.isSelected(selectionKey);
+  const accessibilityState = useMemo(() => ({ selected: isRowSelected }), [isRowSelected]);
   const [isRenameOpen, setIsRenameOpen] = useState(false);
   const [isArchiving, setIsArchiving] = useState(false);
 
-  const handlePress = useCallback(() => {
-    navigateToAgentDirectoryEntry(session);
-  }, [session]);
+  const handlePress = useCallback(
+    (event?: unknown) => {
+      if (selection?.handleRowPress({ key: selectionKey, event })) {
+        return;
+      }
+      navigateToAgentDirectoryEntry(session);
+    },
+    [selection, selectionKey, session],
+  );
+
+  const handleMenuOpenChange = useCallback(
+    (open: boolean) => {
+      if (open) {
+        selection?.prepareContextMenu(selectionKey);
+      }
+    },
+    [selection, selectionKey],
+  );
 
   const handleOpenRename = useCallback(() => {
     setIsRenameOpen(true);
@@ -182,13 +211,39 @@ export const SidebarSessionRow = memo(function SidebarSessionRow({
       });
   }, [archiveAgent, isArchiving, session.id, session.serverId, toast]);
 
+  const handleBulkArchive = useCallback(() => {
+    if (!selection || isArchiving) {
+      return;
+    }
+    const targets = selection.getSelectedTargets();
+    if (targets.length === 0) {
+      return;
+    }
+    selection.clearSelection();
+    setIsArchiving(true);
+    void (async () => {
+      try {
+        for (const target of targets) {
+          try {
+            await archiveAgent({ serverId: target.serverId, agentId: target.agentId });
+          } catch (error) {
+            toast.error(toErrorMessage(error));
+          }
+        }
+      } finally {
+        setIsArchiving(false);
+      }
+    })();
+  }, [archiveAgent, isArchiving, selection, toast]);
+
   const pressableStyle = useCallback(
     ({ hovered, pressed }: PressableStateCallbackType & { hovered?: boolean }) => [
       styles.sessionRow,
       variant === "flat" && styles.sessionRowFlatRadius,
+      isRowSelected && styles.sessionRowSelected,
       (Boolean(hovered) || pressed) && styles.rowHovered,
     ],
-    [variant],
+    [isRowSelected, variant],
   );
 
   const stateBucket = deriveSidebarStateBucket({
@@ -207,12 +262,17 @@ export const SidebarSessionRow = memo(function SidebarSessionRow({
     [stateBucket],
   );
 
+  const archiveLabel = isBulkContext
+    ? t("sidebar.workspace.sessions.archiveSelected", { count: selection!.selectedCount })
+    : t("sidebar.workspace.sessions.archive");
+
   return (
-    <ContextMenu>
+    <ContextMenu onOpenChange={handleMenuOpenChange}>
       <ContextMenuTrigger
         onPress={handlePress}
         style={pressableStyle}
         accessibilityRole="button"
+        accessibilityState={accessibilityState}
         testID={`sidebar-session-${session.id}`}
       >
         <SessionStatusIcon
@@ -240,20 +300,22 @@ export const SidebarSessionRow = memo(function SidebarSessionRow({
         mobileMode="sheet"
         testID={`sidebar-session-context-${session.id}`}
       >
-        <ContextMenuItem
-          testID={`sidebar-session-context-${session.id}-rename`}
-          onSelect={handleOpenRename}
-        >
-          {t("sidebar.workspace.sessions.editTitle")}
-        </ContextMenuItem>
+        {isBulkContext ? null : (
+          <ContextMenuItem
+            testID={`sidebar-session-context-${session.id}-rename`}
+            onSelect={handleOpenRename}
+          >
+            {t("sidebar.workspace.sessions.editTitle")}
+          </ContextMenuItem>
+        )}
         <ContextMenuItem
           testID={`sidebar-session-context-${session.id}-archive`}
           status={isArchiving ? "pending" : "idle"}
           pendingLabel={t("sidebar.workspace.sessions.archivePending")}
           destructive
-          onSelect={handleArchive}
+          onSelect={isBulkContext ? handleBulkArchive : handleArchive}
         >
-          {t("sidebar.workspace.sessions.archive")}
+          {archiveLabel}
         </ContextMenuItem>
       </ContextMenuContent>
       <AdaptiveRenameModal
@@ -281,6 +343,14 @@ export const SidebarWorkspaceSessions = memo(function SidebarWorkspaceSessions({
   sessions: AgentDirectoryEntry[];
 }) {
   const { t } = useTranslation();
+  const visibleSessions = useMemo(() => sessions.slice(0, MAX_SIDEBAR_SESSIONS), [sessions]);
+  const orderedSessionKeys = useMemo(
+    () =>
+      visibleSessions.map((session) =>
+        toSidebarSessionSelectionKey({ serverId: session.serverId, id: session.id }),
+      ),
+    [visibleSessions],
+  );
 
   const handleViewAll = useCallback(() => {
     navigateToPreparedWorkspaceTab({
@@ -306,21 +376,23 @@ export const SidebarWorkspaceSessions = memo(function SidebarWorkspaceSessions({
   }
 
   return (
-    <View style={styles.container}>
-      {sessions.slice(0, MAX_SIDEBAR_SESSIONS).map((session) => (
-        <SidebarSessionRow key={session.id} session={session} />
-      ))}
-      {sessions.length > MAX_SIDEBAR_SESSIONS ? (
-        <Pressable
-          onPress={handleViewAll}
-          style={viewAllStyle}
-          accessibilityRole="button"
-          testID={`sidebar-workspace-sessions-view-all-${workspaceKey}`}
-        >
-          <Text style={styles.viewAllText}>{t("sidebar.workspace.sessions.viewAll")}</Text>
-        </Pressable>
-      ) : null}
-    </View>
+    <SidebarSessionSelectionProvider orderedKeys={orderedSessionKeys}>
+      <View style={styles.container}>
+        {visibleSessions.map((session) => (
+          <SidebarSessionRow key={session.id} session={session} />
+        ))}
+        {sessions.length > MAX_SIDEBAR_SESSIONS ? (
+          <Pressable
+            onPress={handleViewAll}
+            style={viewAllStyle}
+            accessibilityRole="button"
+            testID={`sidebar-workspace-sessions-view-all-${workspaceKey}`}
+          >
+            <Text style={styles.viewAllText}>{t("sidebar.workspace.sessions.viewAll")}</Text>
+          </Pressable>
+        ) : null}
+      </View>
+    </SidebarSessionSelectionProvider>
   );
 });
 
@@ -330,6 +402,9 @@ const styles = StyleSheet.create((theme) => ({
     paddingBottom: theme.spacing[1],
   },
   rowHovered: {
+    backgroundColor: theme.colors.surfaceSidebarHover,
+  },
+  sessionRowSelected: {
     backgroundColor: theme.colors.surfaceSidebarHover,
   },
   sessionRow: {

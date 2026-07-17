@@ -359,7 +359,12 @@ describe("real provider usage fetchers", () => {
           platform: options.platform,
           fetch: fetchThroughTestDouble,
         }),
-        new CodexQuotaProvider({ logger, codexHome }),
+        new CodexQuotaProvider({
+          logger,
+          codexHome,
+          fetch: fetchThroughTestDouble,
+          env: {},
+        }),
         new CopilotQuotaProvider({ logger, fetch: fetchThroughTestDouble }),
         new CursorQuotaProvider({ logger, fetch: fetchThroughTestDouble }),
         new ZaiQuotaProvider({ logger, fetch: fetchThroughTestDouble }),

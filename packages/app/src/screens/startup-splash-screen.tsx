@@ -29,8 +29,8 @@ interface StartupSplashScreenProps {
   };
 }
 
-const GITHUB_ISSUE_URL = "https://github.com/getpaseo/paseo/issues/new";
-const DOCS_URL = "https://paseo.sh/docs";
+const GITHUB_ISSUE_URL = "https://github.com/sakurayun/paseo-reclaude/issues/new";
+const DOCS_URL = "https://github.com/sakurayun/paseo-reclaude";
 
 const LOGO_SIZE = 96;
 const SHIMMER_PEAK_WIDTH = 120;

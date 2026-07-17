@@ -1216,6 +1216,7 @@ export const ja: TranslationResources = {
         viewAll: "すべてのセッションを表示",
         editTitle: "タイトルを編集",
         archive: "アーカイブ",
+        archiveSelected: "アーカイブ ({{count}})",
         archivePending: "アーカイブ中…",
       },
       status: {
@@ -1909,6 +1910,12 @@ export const ja: TranslationResources = {
   providerUsage: {
     codexReset: {
       title: "Codexの使用上限に達しました",
+      sources: {
+        official: "公式",
+        newapi: "NewAPI",
+        sub2api: "Sub2API",
+        cpa: "CPA",
+      },
       description: "Codexの使用上限に達しました。リセットクレジットを使うと今すぐ解除できます。",
       remaining: "残り {{count}} 回",
       consume: "リセットクレジットを使って使用量をリセット",
@@ -2046,6 +2053,8 @@ export const ja: TranslationResources = {
         "Grok セッションの有効期限が切れました。`grok login` を実行してから使用量を更新してください。",
       billingHttp: "請求 API リクエストに失敗しました。",
       parseFailed: "使用量レスポンスを解析できませんでした。",
+      codexChatgptAuthRequired:
+        "公式のレート制限には ChatGPT ログインが必要です。API キー / カスタム Base URL（NewAPI / Sub2API / CPA）ではゲートウェイから使用量を取得します。",
     },
     grok: {
       sync: "使用量を同期",
@@ -2537,6 +2546,18 @@ export const ja: TranslationResources = {
       agents: {
         unavailable: "エージェントを管理するにはこのホストに接続してください",
       },
+      browserTools: {
+        title: "ブラウザツール",
+        hint: "エージェントが Paseo のブラウザタブ（ログイン状態を含む）にアクセス・操作できるようにします。信頼できるエージェントにのみ有効にしてください。",
+        updating: "ブラウザツールを更新中…",
+      },
+      terminalAgents: {
+        sectionTitle: "ターミナルエージェント",
+        enableTitle: "ターミナルエージェントフックを有効化",
+        enableHint:
+          "ターミナルエージェントからの通知と状態を受け取ります。エージェント設定ファイルにフックをインストールします。",
+        updateFailedTitle: "ターミナルエージェントフックを更新できません",
+      },
       workspaces: {
         unavailable: "ワークスペースを管理するにはこのホストに接続してください",
         autoArchive: {
@@ -2721,6 +2742,15 @@ export const ja: TranslationResources = {
         loading: "モデルを読み込み中…",
         notInstalled: "未ダウンロード",
         downloading: "ダウンロード中…",
+        downloadingPercent: "ダウンロード中 {{percent}}%",
+        downloadingPercentWithSpeed: "ダウンロード中 {{percent}}% · {{speed}}",
+        downloadSpeed: "{{speed}}",
+        download: "ダウンロード",
+        apply: "適用",
+        applied: "適用済み",
+        running: "起動中",
+        starting: "起動しています…",
+        stopped: "未起動",
         selectErrorTitle: "ディクテーションモデルを切り替えできませんでした",
       },
     },

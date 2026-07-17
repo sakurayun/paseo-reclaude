@@ -2649,6 +2649,13 @@ export class Session {
 
   private emitLifecycleIntent(intent: SessionLifecycleIntent): void {
     if (!this.onLifecycleIntent) {
+      // Without a supervisor / desktop lifecycle owner, restart/shutdown intents
+      // would otherwise be silently dropped after the client already got
+      // `restart_requested` — the settings Restart button then appears broken.
+      this.sessionLogger.error(
+        { intent },
+        "Lifecycle intent has no handler; restart/shutdown cannot be carried out",
+      );
       return;
     }
     try {

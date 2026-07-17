@@ -1,15 +1,13 @@
 import type { EditorTarget, EditorTargetLaunchInput, EditorTargetRuntime } from "../target.js";
+import { isMacEditorInstalled, macElectronAppCommandCandidates } from "../mac-app-commands.js";
+
+const MAC_APP_NAME = "Cursor";
 
 function commands(runtime: EditorTargetRuntime): string[] {
-  const candidates = ["cursor"];
-  if (runtime.platform === "darwin") {
-    candidates.push("/Applications/Cursor.app/Contents/Resources/app/bin/cursor");
-    if (runtime.env.HOME) {
-      candidates.push(
-        `${runtime.env.HOME}/Applications/Cursor.app/Contents/Resources/app/bin/cursor`,
-      );
-    }
-  }
+  const candidates = [
+    "cursor",
+    ...macElectronAppCommandCandidates(runtime, MAC_APP_NAME, "cursor"),
+  ];
   if (runtime.platform === "win32") {
     if (runtime.env.LOCALAPPDATA) {
       candidates.push(`${runtime.env.LOCALAPPDATA}/Programs/cursor/resources/app/bin/cursor.cmd`);
@@ -47,9 +45,10 @@ export const cursorTarget: EditorTarget = {
     };
   },
   async isInstalled(runtime) {
-    return (
-      runtime.resolveCommand(commands(runtime)) !== null || runtime.hasMacApplication("Cursor")
-    );
+    return isMacEditorInstalled(runtime, {
+      commands: commands(runtime),
+      applicationNames: [MAC_APP_NAME],
+    });
   },
   async launch(input, runtime) {
     const command = runtime.resolveCommand(commands(runtime));
@@ -57,9 +56,9 @@ export const cursorTarget: EditorTarget = {
       await runtime.spawnDetached({ command, args: launchArgs(input) });
       return;
     }
-    if (runtime.hasMacApplication("Cursor")) {
+    if (runtime.hasMacApplication(MAC_APP_NAME)) {
       await runtime.openMacApplication({
-        applicationName: "Cursor",
+        applicationName: MAC_APP_NAME,
         paths: input.filePath ? [input.workspacePath, input.filePath] : [input.workspacePath],
       });
       return;

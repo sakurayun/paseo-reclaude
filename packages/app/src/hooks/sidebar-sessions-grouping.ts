@@ -1,6 +1,8 @@
 import type { SidebarSessionEntry } from "@/hooks/use-sidebar-sessions-list";
+import type { WorkspaceDescriptor } from "@/stores/session-store";
 import { deriveProjectDisplayName } from "@/utils/agent-grouping";
 import { parseGitHubRepoFromRemote } from "@/git/github-url";
+import { projectDisplayNameFromProjectId } from "@/utils/project-display-name";
 
 export type SidebarProjectNameOverrides = ReadonlyMap<string, string>;
 export type SidebarSessionGroupIconKind = "folder" | "git-folder" | "github";
@@ -12,8 +14,9 @@ export interface SidebarSessionGroup {
   /** Project identity used for project-level actions such as rename. */
   projectKey: string | null;
   /**
-   * Project groups do not map one-to-one to a live workspace, so they are not
-   * renameable through the workspace-title API.
+   * Preferred live workspace for "new agent" / open-workspace actions. Populated
+   * from session rows when present, otherwise from an empty active workspace so
+   * workspaces without sessions still have a navigation target.
    */
   workspaceId: string | null;
   /**
@@ -146,14 +149,18 @@ export function groupSidebarSessionsByProject(
     const baseLabel = resolveBaseLabel(session, projectKey);
     const iconKind = resolveIconKind(session, projectKey);
     const key = resolveGroupKey(session, label);
+    const sessionWorkspaceId = trimNonEmpty(session.workspaceId);
     const existing = groups.get(key);
     if (existing) {
       existing.sessions.push(session);
+      if (!existing.workspaceId && sessionWorkspaceId) {
+        existing.workspaceId = sessionWorkspaceId;
+      }
     } else {
       groups.set(key, {
         key,
         projectKey,
-        workspaceId: null,
+        workspaceId: sessionWorkspaceId,
         label,
         baseLabel,
         iconKind,
@@ -162,6 +169,146 @@ export function groupSidebarSessionsByProject(
     }
   }
   return Array.from(groups.values());
+}
+
+function resolveWorkspaceProjectKey(workspace: WorkspaceDescriptor): string {
+  const fromPlacement = trimNonEmpty(workspace.project?.projectKey);
+  if (fromPlacement) {
+    return fromPlacement;
+  }
+  return workspace.projectId.trim();
+}
+
+function resolveWorkspaceGroupKey(projectKey: string): string {
+  return `project:${projectKey}`;
+}
+
+function resolveWorkspaceBaseLabel(workspace: WorkspaceDescriptor, projectKey: string): string {
+  if (!projectKey.startsWith("remote:")) {
+    const custom = trimNonEmpty(workspace.projectCustomName);
+    if (custom) {
+      return custom;
+    }
+    const display = trimNonEmpty(workspace.projectDisplayName);
+    if (display) {
+      return display;
+    }
+  }
+  return deriveProjectDisplayName({
+    projectKey,
+    projectName: workspace.projectDisplayName ?? "",
+  });
+}
+
+function resolveWorkspaceGroupLabel(
+  workspace: WorkspaceDescriptor,
+  projectKey: string,
+  projectNameOverrides: SidebarProjectNameOverrides | undefined,
+): string {
+  const override = projectNameOverrides?.get(projectKey)?.trim();
+  if (override) {
+    return override;
+  }
+  if (workspace.project) {
+    return deriveProjectDisplayName({
+      projectKey: workspace.project.projectKey,
+      projectName: workspace.project.projectName,
+    });
+  }
+  return (
+    trimNonEmpty(workspace.projectCustomName) ??
+    trimNonEmpty(workspace.projectDisplayName) ??
+    projectDisplayNameFromProjectId(projectKey)
+  );
+}
+
+function resolveWorkspaceIconKind(
+  workspace: WorkspaceDescriptor,
+  projectKey: string,
+): SidebarSessionGroupIconKind {
+  const checkout = workspace.project?.checkout;
+  if (
+    projectKey.startsWith("remote:github.com/") ||
+    parseGitHubRepoFromRemote(checkout?.remoteUrl)
+  ) {
+    return "github";
+  }
+  if (workspace.projectKind === "git" || checkout?.isGit) {
+    return "git-folder";
+  }
+  return "folder";
+}
+
+/**
+ * Ensure every active (non-archiving) workspace appears in the new-theme
+ * sessions sidebar, even when it currently has zero sessions.
+ *
+ * Project-first grouping is preserved: workspaces fold into the same
+ * `project:…` groups as sessions. Session-derived groups keep their relative
+ * order; brand-new empty-only groups are appended, sorted by label.
+ */
+export function mergeActiveWorkspacesIntoSidebarGroups(input: {
+  groups: readonly SidebarSessionGroup[];
+  workspaces: Iterable<WorkspaceDescriptor>;
+  projectNameOverrides?: SidebarProjectNameOverrides;
+}): SidebarSessionGroup[] {
+  const groups = input.groups.map((group) => ({
+    ...group,
+    sessions: [...group.sessions],
+  }));
+  const byKey = new Map(groups.map((group) => [group.key, group]));
+  const emptyOnlyGroups: SidebarSessionGroup[] = [];
+
+  for (const workspace of input.workspaces) {
+    if (workspace.archivingAt) {
+      continue;
+    }
+    const projectKey = resolveWorkspaceProjectKey(workspace);
+    if (!projectKey) {
+      continue;
+    }
+    const key = resolveWorkspaceGroupKey(projectKey);
+    const existing = byKey.get(key);
+    if (existing) {
+      if (!existing.workspaceId) {
+        existing.workspaceId = workspace.id;
+      }
+      continue;
+    }
+
+    const label = resolveWorkspaceGroupLabel(workspace, projectKey, input.projectNameOverrides);
+    const group: SidebarSessionGroup = {
+      key,
+      projectKey,
+      workspaceId: workspace.id,
+      label,
+      baseLabel: resolveWorkspaceBaseLabel(workspace, projectKey),
+      iconKind: resolveWorkspaceIconKind(workspace, projectKey),
+      sessions: [],
+    };
+    byKey.set(key, group);
+    emptyOnlyGroups.push(group);
+  }
+
+  emptyOnlyGroups.sort((left, right) =>
+    left.label.localeCompare(right.label, undefined, { numeric: true, sensitivity: "base" }),
+  );
+
+  // Preserve session-group order, then append empty-only projects.
+  const sessionDerivedKeys = new Set(input.groups.map((group) => group.key));
+  const ordered: SidebarSessionGroup[] = [];
+  for (const group of input.groups) {
+    const next = byKey.get(group.key);
+    if (next) {
+      ordered.push(next);
+    }
+  }
+  for (const group of emptyOnlyGroups) {
+    if (!sessionDerivedKeys.has(group.key)) {
+      ordered.push(group);
+    }
+  }
+  return ordered;
 }
 
 interface SidebarTerminalLike {
@@ -189,6 +336,10 @@ export function assignTerminalsToSidebarGroups<TTerminal extends SidebarTerminal
   const groupKeyByWorkspaceId = new Map<string, string>();
   const sessionCwds: Array<{ cwd: string; groupKey: string }> = [];
   for (const group of groups) {
+    const groupWorkspaceId = trimNonEmpty(group.workspaceId);
+    if (groupWorkspaceId && !groupKeyByWorkspaceId.has(groupWorkspaceId)) {
+      groupKeyByWorkspaceId.set(groupWorkspaceId, group.key);
+    }
     for (const session of group.sessions) {
       const workspaceId = trimNonEmpty(session.workspaceId);
       if (workspaceId && !groupKeyByWorkspaceId.has(workspaceId)) {
@@ -256,6 +407,11 @@ export function resolveSidebarSessionGroupWorkspaceTarget(
   const normalizedServerId = trimNonEmpty(serverId);
   if (!normalizedServerId) {
     return null;
+  }
+
+  const preferredWorkspaceId = trimNonEmpty(group.workspaceId);
+  if (preferredWorkspaceId) {
+    return { serverId: normalizedServerId, workspaceId: preferredWorkspaceId };
   }
 
   for (const session of group.sessions) {

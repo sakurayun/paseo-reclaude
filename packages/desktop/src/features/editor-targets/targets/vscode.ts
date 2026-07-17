@@ -1,21 +1,20 @@
 import type { EditorTarget, EditorTargetLaunchInput, EditorTargetRuntime } from "../target.js";
+import { isMacEditorInstalled, macElectronAppCommandCandidates } from "../mac-app-commands.js";
+
+const MAC_APP_NAME = "Visual Studio Code";
 
 function commands(runtime: EditorTargetRuntime): string[] {
-  const candidates = ["code"];
-  if (runtime.platform === "darwin") {
-    candidates.push("/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code");
-    if (runtime.env.HOME) {
-      candidates.push(
-        `${runtime.env.HOME}/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code`,
-      );
-    }
-  }
+  const candidates = ["code", ...macElectronAppCommandCandidates(runtime, MAC_APP_NAME, "code")];
   if (runtime.platform === "win32") {
     if (runtime.env.LOCALAPPDATA) {
       candidates.push(`${runtime.env.LOCALAPPDATA}/Programs/Microsoft VS Code/bin/code.cmd`);
     }
     if (runtime.env.ProgramFiles) {
       candidates.push(`${runtime.env.ProgramFiles}/Microsoft VS Code/bin/code.cmd`);
+    }
+    const programFilesX86 = runtime.env["ProgramFiles(x86)"];
+    if (programFilesX86) {
+      candidates.push(`${programFilesX86}/Microsoft VS Code/bin/code.cmd`);
     }
   }
   return candidates;
@@ -45,10 +44,10 @@ export const vscodeTarget: EditorTarget = {
     };
   },
   async isInstalled(runtime) {
-    return (
-      runtime.resolveCommand(commands(runtime)) !== null ||
-      runtime.hasMacApplication("Visual Studio Code")
-    );
+    return isMacEditorInstalled(runtime, {
+      commands: commands(runtime),
+      applicationNames: [MAC_APP_NAME],
+    });
   },
   async launch(input, runtime) {
     const command = runtime.resolveCommand(commands(runtime));
@@ -56,9 +55,9 @@ export const vscodeTarget: EditorTarget = {
       await runtime.spawnDetached({ command, args: launchArgs(input) });
       return;
     }
-    if (runtime.hasMacApplication("Visual Studio Code")) {
+    if (runtime.hasMacApplication(MAC_APP_NAME)) {
       await runtime.openMacApplication({
-        applicationName: "Visual Studio Code",
+        applicationName: MAC_APP_NAME,
         paths: input.filePath ? [input.workspacePath, input.filePath] : [input.workspacePath],
       });
       return;

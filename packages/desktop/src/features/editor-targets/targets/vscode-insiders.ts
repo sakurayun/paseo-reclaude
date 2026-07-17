@@ -1,17 +1,13 @@
 import type { EditorTarget, EditorTargetLaunchInput, EditorTargetRuntime } from "../target.js";
+import { isMacEditorInstalled, macElectronAppCommandCandidates } from "../mac-app-commands.js";
+
+const MAC_APP_NAME = "Visual Studio Code - Insiders";
 
 function commands(runtime: EditorTargetRuntime): string[] {
-  const candidates = ["code-insiders"];
-  if (runtime.platform === "darwin") {
-    candidates.push(
-      "/Applications/Visual Studio Code - Insiders.app/Contents/Resources/app/bin/code",
-    );
-    if (runtime.env.HOME) {
-      candidates.push(
-        `${runtime.env.HOME}/Applications/Visual Studio Code - Insiders.app/Contents/Resources/app/bin/code`,
-      );
-    }
-  }
+  const candidates = [
+    "code-insiders",
+    ...macElectronAppCommandCandidates(runtime, MAC_APP_NAME, "code"),
+  ];
   if (runtime.platform === "win32") {
     if (runtime.env.LOCALAPPDATA) {
       candidates.push(
@@ -51,10 +47,10 @@ export const vscodeInsidersTarget: EditorTarget = {
     };
   },
   async isInstalled(runtime) {
-    return (
-      runtime.resolveCommand(commands(runtime)) !== null ||
-      runtime.hasMacApplication("Visual Studio Code - Insiders")
-    );
+    return isMacEditorInstalled(runtime, {
+      commands: commands(runtime),
+      applicationNames: [MAC_APP_NAME],
+    });
   },
   async launch(input, runtime) {
     const command = runtime.resolveCommand(commands(runtime));
@@ -62,9 +58,9 @@ export const vscodeInsidersTarget: EditorTarget = {
       await runtime.spawnDetached({ command, args: launchArgs(input) });
       return;
     }
-    if (runtime.hasMacApplication("Visual Studio Code - Insiders")) {
+    if (runtime.hasMacApplication(MAC_APP_NAME)) {
       await runtime.openMacApplication({
-        applicationName: "Visual Studio Code - Insiders",
+        applicationName: MAC_APP_NAME,
         paths: input.filePath ? [input.workspacePath, input.filePath] : [input.workspacePath],
       });
       return;

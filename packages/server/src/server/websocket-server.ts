@@ -671,6 +671,21 @@ export class VoiceAssistantWebSocketServer {
       logger: this.logger,
       reclaude: this.reclaudeAccountService,
       grokUsage: this.grokUsageService,
+      // Surface agents.providers.*.env (if present on the mutable config via passthrough)
+      // so gateway usage probes can pick up base URL + key overrides set in Paseo.
+      providerEnvById: (() => {
+        const providers = this.daemonConfigStore.get().providers as
+          | Record<string, { env?: Record<string, string> } | undefined>
+          | undefined;
+        if (!providers) return undefined;
+        const claudeEnv = providers.claude?.env;
+        const codexEnv = providers.codex?.env;
+        if (!claudeEnv && !codexEnv) return undefined;
+        return {
+          ...(claudeEnv ? { claude: claudeEnv } : {}),
+          ...(codexEnv ? { codex: codexEnv } : {}),
+        };
+      })(),
     });
 
     // Fan reclaude auth/usage changes (login/logout/sync from any client) out to

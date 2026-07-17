@@ -1225,6 +1225,7 @@ export const ru: TranslationResources = {
         viewAll: "Показать все сессии",
         editTitle: "Изменить название",
         archive: "Архивировать",
+        archiveSelected: "Архивировать ({{count}})",
         archivePending: "Архивация…",
       },
       status: {
@@ -1913,6 +1914,12 @@ export const ru: TranslationResources = {
   providerUsage: {
     codexReset: {
       title: "Достигнут лимит использования Codex",
+      sources: {
+        official: "Официальный",
+        newapi: "NewAPI",
+        sub2api: "Sub2API",
+        cpa: "CPA",
+      },
       description:
         "Вы достигли лимита использования Codex. Используйте кредит сброса, чтобы снять его сейчас.",
       remaining: "Осталось: {{count}}",
@@ -2052,6 +2059,8 @@ export const ru: TranslationResources = {
         "Сессия Grok истекла. Выполните `grok login` и обновите данные об использовании.",
       billingHttp: "Запрос к API биллинга не выполнен.",
       parseFailed: "Не удалось разобрать ответ об использовании.",
+      codexChatgptAuthRequired:
+        "Официальные лимиты Codex требуют входа в ChatGPT. Для API-ключа / своего Base URL (NewAPI / Sub2API / CPA) использование читается с шлюза.",
     },
     grok: {
       sync: "Синхронизировать использование",
@@ -2546,6 +2555,18 @@ export const ru: TranslationResources = {
       agents: {
         unavailable: "Подключитесь к этому хосту, чтобы управлять агентами",
       },
+      browserTools: {
+        title: "Инструменты браузера",
+        hint: "Разрешить агентам доступ и управление вкладками браузера Paseo, включая состояние входа. Включайте только для доверенных агентов.",
+        updating: "Обновление инструментов браузера…",
+      },
+      terminalAgents: {
+        sectionTitle: "Терминальные агенты",
+        enableTitle: "Включить хуки терминальных агентов",
+        enableHint:
+          "Получать уведомления и статус от терминальных агентов. Устанавливает хуки в файлы конфигурации агента.",
+        updateFailedTitle: "Не удалось обновить хуки терминальных агентов",
+      },
       workspaces: {
         unavailable: "Подключитесь к этому хосту, чтобы управлять рабочими пространствами",
         autoArchive: {
@@ -2729,6 +2750,15 @@ export const ru: TranslationResources = {
         loading: "Загрузка моделей…",
         notInstalled: "Ещё не загружено",
         downloading: "Загрузка…",
+        downloadingPercent: "Загрузка {{percent}}%",
+        downloadingPercentWithSpeed: "Загрузка {{percent}}% · {{speed}}",
+        downloadSpeed: "{{speed}}",
+        download: "Скачать",
+        apply: "Применить",
+        applied: "Применено",
+        running: "Запущена",
+        starting: "Запуск…",
+        stopped: "Не запущена",
         selectErrorTitle: "Не удалось переключить модель диктовки",
       },
     },

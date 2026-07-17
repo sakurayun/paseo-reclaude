@@ -3,9 +3,11 @@ import type { ProjectPlacementPayload } from "@getpaseo/protocol/messages";
 import {
   assignTerminalsToSidebarGroups,
   groupSidebarSessionsByProject,
+  mergeActiveWorkspacesIntoSidebarGroups,
   resolveSidebarSessionGroupWorkspaceTarget,
 } from "./sidebar-sessions-grouping";
 import type { SidebarSessionEntry } from "./use-sidebar-sessions-list";
+import type { WorkspaceDescriptor } from "@/stores/session-store";
 
 function placement(input: {
   projectKey?: string;
@@ -153,7 +155,7 @@ describe("groupSidebarSessionsByProject", () => {
     expect(groups[0].iconKind).toBe("git-folder");
   });
 
-  it("does not expose a workspace id for project groups", () => {
+  it("keeps a preferred workspace id for project open/new-agent actions", () => {
     const groups = groupSidebarSessionsByProject([
       session({
         id: "newer",
@@ -170,7 +172,9 @@ describe("groupSidebarSessionsByProject", () => {
     ]);
     expect(groups).toHaveLength(1);
     expect(groups[0].projectKey).toBe("proj");
-    expect(groups[0].workspaceId).toBeNull();
+    // Preferred target is the first session's workspace so empty-workspace
+    // groups and session groups share the same open/new-agent path.
+    expect(groups[0].workspaceId).toBe("ws-1");
     expect(groups[0].key).toBe("project:proj");
     expect(groups[0].label).toBe("Project");
     expect(groups[0].baseLabel).toBe("Project");
@@ -202,7 +206,7 @@ describe("groupSidebarSessionsByProject", () => {
     ]);
     expect(groups).toHaveLength(1);
     expect(groups[0].key).toBe("project:remote:github.com/sakurayun/paseo-reclaude");
-    expect(groups[0].workspaceId).toBeNull();
+    expect(groups[0].workspaceId).toBe("ws-1");
     expect(groups[0].label).toBe("sakurayun/paseo-reclaude");
     expect(groups[0].baseLabel).toBe("sakurayun/paseo-reclaude");
     expect(groups[0].sessions.map((s) => s.id)).toEqual(["a", "b"]);
@@ -286,6 +290,152 @@ describe("groupSidebarSessionsByProject", () => {
     expect(groups[0].label).toBe("");
     expect(groups[0].workspaceId).toBeNull();
     expect(groups[0].sessions.map((s) => s.id)).toEqual(["a"]);
+  });
+});
+
+function workspace(input: {
+  id: string;
+  projectId?: string;
+  projectDisplayName?: string;
+  projectCustomName?: string | null;
+  projectKind?: WorkspaceDescriptor["projectKind"];
+  archivingAt?: string | null;
+  remoteUrl?: string | null;
+}): WorkspaceDescriptor {
+  const projectId = input.projectId ?? "remote:github.com/acme/repo";
+  return {
+    id: input.id,
+    projectId,
+    projectDisplayName: input.projectDisplayName ?? "repo",
+    projectCustomName: input.projectCustomName ?? null,
+    projectRootPath: "/repo",
+    workspaceDirectory: "/repo",
+    projectKind: input.projectKind ?? "git",
+    workspaceKind: "local_checkout",
+    name: input.id,
+    title: null,
+    pinnedAt: null,
+    status: "done",
+    statusEnteredAt: null,
+    archivingAt: input.archivingAt ?? null,
+    diffStat: null,
+    scripts: [],
+    project: {
+      projectKey: projectId,
+      projectName: input.projectDisplayName ?? "repo",
+      workspaceName: null,
+      checkout:
+        input.projectKind === "directory"
+          ? {
+              cwd: "/repo",
+              isGit: false as const,
+              currentBranch: null,
+              remoteUrl: null,
+              worktreeRoot: null,
+              isPaseoOwnedWorktree: false,
+              mainRepoRoot: null,
+            }
+          : {
+              cwd: "/repo",
+              isGit: true as const,
+              currentBranch: "main",
+              remoteUrl: input.remoteUrl ?? "https://github.com/acme/repo.git",
+              worktreeRoot: "/repo",
+              isPaseoOwnedWorktree: false,
+              mainRepoRoot: null,
+            },
+    },
+  };
+}
+
+describe("mergeActiveWorkspacesIntoSidebarGroups", () => {
+  it("adds empty active workspaces as project groups when no sessions exist", () => {
+    const groups = mergeActiveWorkspacesIntoSidebarGroups({
+      groups: [],
+      workspaces: [
+        workspace({
+          id: "ws-empty",
+          projectId: "remote:github.com/acme/empty",
+          projectDisplayName: "empty",
+          remoteUrl: "https://github.com/acme/empty.git",
+        }),
+      ],
+    });
+    expect(groups).toHaveLength(1);
+    expect(groups[0].key).toBe("project:remote:github.com/acme/empty");
+    expect(groups[0].workspaceId).toBe("ws-empty");
+    expect(groups[0].sessions).toEqual([]);
+    expect(groups[0].iconKind).toBe("github");
+    expect(groups[0].label).toBe("acme/empty");
+  });
+
+  it("does not duplicate a project that already has sessions", () => {
+    const fromSessions = groupSidebarSessionsByProject([
+      session({
+        id: "s1",
+        recencyMs: 10,
+        workspaceId: "ws-live",
+        projectPlacement: placement({
+          projectKey: "remote:github.com/acme/repo",
+          projectName: "repo",
+          remoteUrl: "https://github.com/acme/repo.git",
+        }),
+      }),
+    ]);
+    const groups = mergeActiveWorkspacesIntoSidebarGroups({
+      groups: fromSessions,
+      workspaces: [workspace({ id: "ws-live" }), workspace({ id: "ws-sibling-empty" })],
+    });
+    expect(groups).toHaveLength(1);
+    expect(groups[0].sessions.map((s) => s.id)).toEqual(["s1"]);
+    expect(groups[0].workspaceId).toBe("ws-live");
+  });
+
+  it("skips workspaces that are archiving", () => {
+    const groups = mergeActiveWorkspacesIntoSidebarGroups({
+      groups: [],
+      workspaces: [workspace({ id: "ws-gone", archivingAt: new Date().toISOString() })],
+    });
+    expect(groups).toEqual([]);
+  });
+
+  it("appends empty-only groups after session-derived groups", () => {
+    const fromSessions = groupSidebarSessionsByProject([
+      session({
+        id: "s1",
+        recencyMs: 10,
+        workspaceId: "ws-a",
+        projectPlacement: placement({ projectKey: "p-a", projectName: "Alpha" }),
+      }),
+    ]);
+    const groups = mergeActiveWorkspacesIntoSidebarGroups({
+      groups: fromSessions,
+      workspaces: [
+        workspace({
+          id: "ws-b",
+          projectId: "p-b",
+          projectDisplayName: "Beta",
+          projectKind: "directory",
+          remoteUrl: null,
+        }),
+      ],
+    });
+    expect(groups.map((g) => g.projectKey)).toEqual(["p-a", "p-b"]);
+    expect(groups[1].sessions).toEqual([]);
+    expect(groups[1].workspaceId).toBe("ws-b");
+  });
+
+  it("resolves a target for empty workspace groups", () => {
+    const [group] = mergeActiveWorkspacesIntoSidebarGroups({
+      groups: [],
+      workspaces: [
+        workspace({ id: "ws-empty", projectId: "p-empty", projectDisplayName: "Empty" }),
+      ],
+    });
+    expect(resolveSidebarSessionGroupWorkspaceTarget(group, "server")).toEqual({
+      serverId: "server",
+      workspaceId: "ws-empty",
+    });
   });
 });
 

@@ -84,15 +84,40 @@ export function createDictationSettingsController(params: {
     const modelsDir = resolveModelsDir(persisted, resolved.speech.local?.modelsDir);
     const sttModels = listLocalSpeechModels().filter((m) => m.kind === "stt-offline");
 
+    const r = speechService.getReadiness();
+    const progressByModelId = r.download.progressByModelId ?? {};
+    const missingIds = new Set(r.missingLocalModelIds);
+    const downloadInProgress = r.download.inProgress;
+
     const models = await Promise.all(
-      sttModels.map(
-        async (m): Promise<DictationModelInfo> => ({
+      sttModels.map(async (m): Promise<DictationModelInfo> => {
+        const installed = await isInstalled(modelsDir, m.id, m.requiredFiles);
+        const modelProgress = progressByModelId[m.id];
+        const downloading =
+          downloadInProgress && (missingIds.has(m.id) || modelProgress !== undefined);
+
+        const info: DictationModelInfo = {
           id: m.id,
           description: m.description,
           languages: [...m.languages],
-          installed: await isInstalled(modelsDir, m.id, m.requiredFiles),
-        }),
-      ),
+          installed,
+          downloading: false,
+        };
+
+        if (downloading) {
+          info.downloading = true;
+          info.downloadProgress =
+            modelProgress !== undefined
+              ? Math.max(0, Math.min(100, Math.round(modelProgress.percent)))
+              : 0;
+          info.downloadBytesPerSecond =
+            modelProgress !== undefined ? Math.max(0, Math.round(modelProgress.bytesPerSecond)) : 0;
+          info.downloadReceivedBytes = modelProgress?.receivedBytes ?? 0;
+          info.downloadTotalBytes = modelProgress?.totalBytes ?? null;
+        }
+
+        return info;
+      }),
     );
 
     const current: DictationCurrentSelection = {
@@ -101,13 +126,29 @@ export function createDictationSettingsController(params: {
       language: resolved.speech.sttLanguages?.dictation ?? "en",
     };
 
-    const r = speechService.getReadiness();
+    const progressEntries = Object.values(progressByModelId);
+    const aggregateProgress =
+      progressEntries.length > 0
+        ? Math.round(
+            progressEntries.reduce((sum, value) => sum + value.percent, 0) / progressEntries.length,
+          )
+        : undefined;
+    const aggregateSpeed =
+      progressEntries.length > 0
+        ? Math.round(
+            progressEntries.reduce((sum, value) => sum + value.bytesPerSecond, 0) /
+              progressEntries.length,
+          )
+        : undefined;
+
     const readiness: DictationReadiness = {
       available: r.dictation.available,
-      downloading: r.download.inProgress,
+      downloading: downloadInProgress,
       missingModelIds: [...r.missingLocalModelIds],
       reasonCode: r.dictation.reasonCode,
       message: r.dictation.message,
+      ...(typeof aggregateProgress === "number" ? { downloadProgress: aggregateProgress } : {}),
+      ...(typeof aggregateSpeed === "number" ? { downloadBytesPerSecond: aggregateSpeed } : {}),
     };
 
     return { models, current, readiness };

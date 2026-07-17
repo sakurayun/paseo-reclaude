@@ -21,6 +21,8 @@ export interface EditorTargetLaunchInput {
 export interface EditorTargetRuntime {
   readonly platform: NodeJS.Platform;
   readonly env: NodeJS.ProcessEnv;
+  /** Prefer this over `env.HOME` — GUI-launched Electron can omit HOME in edge cases. */
+  readonly homeDirectory: string;
 
   pathExists(path: string): boolean;
   isAbsolutePath(path: string): boolean;

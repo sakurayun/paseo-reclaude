@@ -1405,6 +1405,63 @@ describe("workspace-layout-store actions", () => {
     expect(findPaneById(layout.root, "main")?.focusedTabId).toBe("draft-agent");
   });
 
+  it("convertDraftToAgent then opening a new draft does not clobber the agent conversation", () => {
+    // Regression: draft tabs opened with draftId "new" keep tabId "new". After
+    // retarget-to-agent kept that id, a later open of draft "new" matched the
+    // agent tab by tabId and either overwrote it or left an extra draft beside it.
+    const workspaceKey = createWorkspaceKey();
+    const store = workspaceLayoutStore.getState();
+
+    const draftTabId = store.openTabFocused(workspaceKey, { kind: "draft", draftId: "new" });
+    expect(draftTabId).toBe("new");
+
+    const agentTabId = store.convertDraftToAgent(workspaceKey, draftTabId!, "agent-created");
+    expect(agentTabId).toBe("agent_agent-created");
+
+    // Simulate the empty-workspace seed / "+" opening another New Agent draft.
+    const nextDraftTabId = store.openTabFocused(workspaceKey, {
+      kind: "draft",
+      draftId: "new",
+    });
+    // "new" would collide with the old draft id; openTabFocused must not reuse
+    // the agent tab as if it were still a draft.
+    expect(nextDraftTabId).toBe("new");
+
+    const tabs = collectAllTabs(
+      workspaceLayoutStore.getState().layoutByWorkspace[workspaceKey].root,
+    );
+    expect(tabs.map((tab) => ({ tabId: tab.tabId, kind: tab.target.kind }))).toEqual([
+      { tabId: "agent_agent-created", kind: "agent" },
+      { tabId: "new", kind: "draft" },
+    ]);
+    expect(tabs.find((tab) => tab.tabId === "agent_agent-created")?.target).toEqual({
+      kind: "agent",
+      agentId: "agent-created",
+    });
+  });
+
+  it("reconcileTabs does not auto-open agents while a draft create is still in-flight (sent)", () => {
+    const workspaceKey = createWorkspaceKey();
+    const store = workspaceLayoutStore.getState();
+    store.openTabFocused(workspaceKey, { kind: "draft", draftId: "draft-pending" });
+
+    store.reconcileTabs(workspaceKey, {
+      agentsHydrated: true,
+      terminalsHydrated: true,
+      activeAgentIds: ["agent-1"],
+      autoOpenAgentIds: ["agent-1"],
+      knownAgentIds: ["agent-1"],
+      standaloneTerminalIds: [],
+      hasActivePendingDraftCreate: true,
+    });
+
+    expect(
+      collectAllTabs(workspaceLayoutStore.getState().layoutByWorkspace[workspaceKey].root).map(
+        (tab) => tab.tabId,
+      ),
+    ).toEqual(["draft-pending"]);
+  });
+
   it("reconcileTabs does not re-add locally hidden agent tabs", () => {
     const workspaceKey = createWorkspaceKey();
 

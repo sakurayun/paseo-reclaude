@@ -2,11 +2,10 @@ import { expect, test, type Page } from "./fixtures";
 import { gotoAppShell, openSettings } from "./helpers/app";
 import { openSettingsSection } from "./helpers/settings";
 
-const DISCORD_DESTINATION =
-  /^https:\/\/(?:discord\.gg\/jz8T2uahpH|discord\.com\/invite\/jz8T2uahpH)(?:[/?#]|$)/;
 const GITHUB_ISSUE_DESTINATION =
-  /^https:\/\/github\.com\/(?:getpaseo\/paseo\/issues\/new(?:\/choose)?(?:[/?#]|$)|login\?return_to=https%3A%2F%2Fgithub\.com%2Fgetpaseo%2Fpaseo%2Fissues%2Fnew$)/;
-const CHANGELOG_DESTINATION = /^https:\/\/paseo\.sh\/changelog(?:[/?#]|$)/;
+  /^https:\/\/github\.com\/(?:sakurayun\/paseo-reclaude\/issues\/new(?:\/choose)?(?:[/?#]|$)|login\?return_to=https%3A%2F%2Fgithub\.com%2Fsakurayun%2Fpaseo-reclaude%2Fissues%2Fnew$)/;
+const CHANGELOG_DESTINATION =
+  /^https:\/\/github\.com\/sakurayun\/paseo-reclaude\/blob\/main\/CHANGELOG\.md(?:[/?#]|$)/;
 const APP_VERSION = /^Paseo v\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
 
 async function openHelpMenu(page: Page): Promise<void> {
@@ -70,9 +69,6 @@ test("opens troubleshooting tools from the sidebar help menu", async ({ page }) 
 
 test("opens support and release destinations", async ({ page }) => {
   await gotoAppShell(page);
-
-  await openHelpMenu(page);
-  await expectExternalPage(page, "sidebar-help-discord", DISCORD_DESTINATION);
 
   await openHelpMenu(page);
   await expectExternalPage(page, "sidebar-help-github", GITHUB_ISSUE_DESTINATION);

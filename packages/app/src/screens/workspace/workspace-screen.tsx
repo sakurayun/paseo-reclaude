@@ -2271,12 +2271,19 @@ function WorkspaceScreenContent({
       return;
     }
 
+    // Treat both "active" and "sent" as in-flight. "sent" means createAgent
+    // returned but the draft tab may not have converted to the agent tab yet —
+    // auto-opening the agent during that window creates a second tab and can
+    // leave an extra "New Agent" draft beside the conversation.
     const hasActivePendingDraftCreateInWorkspace = uiTabs.some((tab) => {
       if (tab.target.kind !== "draft") {
         return false;
       }
       const pending = pendingByDraftId[tab.target.draftId];
-      return pending?.serverId === normalizedServerId && pending.lifecycle === "active";
+      return (
+        pending?.serverId === normalizedServerId &&
+        (pending.lifecycle === "active" || pending.lifecycle === "sent")
+      );
     });
 
     reconcileWorkspaceTabs(

@@ -1162,6 +1162,17 @@ export const DictationModelInfoSchema = z.object({
   languages: z.array(z.string()),
   /** Whether the model's files are already present on disk. */
   installed: z.boolean(),
+  // COMPAT(dictationModelDownloadProgress): added in v0.1.x — optional so old daemons omit it.
+  /** True while this model's archive is being downloaded/extracted. */
+  downloading: z.boolean().optional(),
+  /** Overall download progress for this model, 0–100. Present while downloading. */
+  downloadProgress: z.number().optional(),
+  /** Instantaneous download speed in bytes/sec. Present while downloading. */
+  downloadBytesPerSecond: z.number().optional(),
+  /** Bytes received so far for the active download. */
+  downloadReceivedBytes: z.number().optional(),
+  /** Total archive size in bytes when known (Content-Length). */
+  downloadTotalBytes: z.number().nullable().optional(),
 });
 
 export const DictationCurrentSelectionSchema = z.object({
@@ -1176,6 +1187,11 @@ export const DictationReadinessSchema = z.object({
   missingModelIds: z.array(z.string()),
   reasonCode: z.string(),
   message: z.string(),
+  // COMPAT(dictationModelDownloadProgress): added in v0.1.x — optional so old daemons omit it.
+  /** Aggregate download progress for models currently downloading, 0–100. */
+  downloadProgress: z.number().optional(),
+  /** Aggregate download speed in bytes/sec. */
+  downloadBytesPerSecond: z.number().optional(),
 });
 
 export const SpeechDictationListModelsRequestSchema = z.object({
@@ -6072,6 +6088,21 @@ export const ProviderUsageDetailSchema = z.object({
   tone: ProviderUsageToneSchema.optional(),
 });
 
+// COMPAT(usageGatewaySources): added for Claude/Codex multi-gateway tabs.
+// Optional so old clients ignore the list and old daemons simply omit it.
+export const ProviderUsageSourceKindSchema = z.enum(["official", "newapi", "sub2api", "cpa"]);
+
+export const ProviderUsageSourceSchema = z.object({
+  kind: ProviderUsageSourceKindSchema,
+  label: z.string(),
+  status: ProviderUsageStatusSchema,
+  planLabel: z.string().nullable(),
+  windows: z.array(ProviderUsageWindowSchema),
+  balances: z.array(ProviderUsageBalanceSchema).optional(),
+  details: z.array(ProviderUsageDetailSchema).optional(),
+  error: z.string().nullable().optional(),
+});
+
 export const ProviderUsageSchema = z.object({
   providerId: z.string(),
   displayName: z.string(),
@@ -6093,6 +6124,12 @@ export const ProviderUsageSchema = z.object({
   // COMPAT(codexRateLimitReset): true when the provider currently reports a hit
   // rate-limit window (Codex `rateLimitReachedType` set).
   rateLimitReached: z.boolean().optional(),
+  // COMPAT(usageGatewaySources): which source is currently projected into the
+  // top-level windows/balances/status fields. Optional.
+  selectedSourceKind: ProviderUsageSourceKindSchema.optional(),
+  // COMPAT(usageGatewaySources): alternate official / NewAPI / Sub2API / CPA
+  // snapshots so the client can render a tab switcher without re-fetching.
+  sources: z.array(ProviderUsageSourceSchema).optional(),
 });
 
 export const ProviderUsageListResponseMessageSchema = z.object({
@@ -6914,6 +6951,8 @@ export type ProviderDiagnosticResponseMessage = z.infer<
 >;
 export type ProviderUsageTone = z.infer<typeof ProviderUsageToneSchema>;
 export type ProviderUsageStatus = z.infer<typeof ProviderUsageStatusSchema>;
+export type ProviderUsageSourceKind = z.infer<typeof ProviderUsageSourceKindSchema>;
+export type ProviderUsageSource = z.infer<typeof ProviderUsageSourceSchema>;
 export type ProviderUsage = z.infer<typeof ProviderUsageSchema>;
 export type ProviderUsageWindow = z.infer<typeof ProviderUsageWindowSchema>;
 export type ProviderUsageBalance = z.infer<typeof ProviderUsageBalanceSchema>;

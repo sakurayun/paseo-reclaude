@@ -1204,6 +1204,7 @@ export const ar: TranslationResources = {
         viewAll: "عرض جميع الجلسات",
         editTitle: "تعديل العنوان",
         archive: "أرشفة",
+        archiveSelected: "أرشفة ({{count}})",
         archivePending: "جارٍ الأرشفة…",
       },
       status: {
@@ -1880,6 +1881,12 @@ export const ar: TranslationResources = {
   providerUsage: {
     codexReset: {
       title: "تم بلوغ حد استخدام Codex",
+      sources: {
+        official: "رسمي",
+        newapi: "NewAPI",
+        sub2api: "Sub2API",
+        cpa: "CPA",
+      },
       description: "لقد بلغت حد استخدام Codex. استخدم رصيد إعادة التعيين لرفعه الآن.",
       remaining: "المتبقي: {{count}}",
       consume: "استخدم رصيد إعادة تعيين لإعادة ضبط الاستخدام",
@@ -2015,6 +2022,8 @@ export const ar: TranslationResources = {
       grokSessionExpired: "انتهت جلسة Grok. نفّذ `grok login` ثم حدّث بيانات الاستخدام.",
       billingHttp: "فشل طلب واجهة الفوترة.",
       parseFailed: "تعذّر تحليل استجابة الاستخدام.",
+      codexChatgptAuthRequired:
+        "حدود Codex الرسمية تتطلب تسجيل الدخول إلى ChatGPT. مع مفتاح API / عنوان Base مخصص (NewAPI / Sub2API / CPA) تُقرأ الحصة من البوابة.",
     },
     grok: {
       sync: "مزامنة الاستخدام",
@@ -2499,6 +2508,17 @@ export const ar: TranslationResources = {
       agents: {
         unavailable: "اتصل بهذا المضيف لإدارة الوكلاء",
       },
+      browserTools: {
+        title: "أدوات المتصفح",
+        hint: "السماح للوكلاء بالوصول إلى علامات تبويب متصفح Paseo والتحكم بها، بما في ذلك حالة تسجيل الدخول. فعّل هذا فقط للوكلاء الموثوق بهم.",
+        updating: "جارٍ تحديث أدوات المتصفح…",
+      },
+      terminalAgents: {
+        sectionTitle: "وكلاء الطرفية",
+        enableTitle: "تفعيل خطافات وكلاء الطرفية",
+        enableHint: "احصل على إشعارات وحالة من وكلاء الطرفية. يثبّت خطافات في ملفات إعداد الوكيل.",
+        updateFailedTitle: "تعذّر تحديث خطافات وكلاء الطرفية",
+      },
       workspaces: {
         unavailable: "اتصل بهذا المضيف لإدارة مساحات العمل",
         autoArchive: {
@@ -2680,6 +2700,15 @@ export const ar: TranslationResources = {
         loading: "جارٍ تحميل النماذج…",
         notInstalled: "لم يتم التنزيل بعد",
         downloading: "جارٍ التنزيل…",
+        downloadingPercent: "جارٍ التنزيل {{percent}}%",
+        downloadingPercentWithSpeed: "جارٍ التنزيل {{percent}}% · {{speed}}",
+        downloadSpeed: "{{speed}}",
+        download: "تنزيل",
+        apply: "تطبيق",
+        applied: "مُطبَّق",
+        running: "قيد التشغيل",
+        starting: "جارٍ التشغيل…",
+        stopped: "غير مُشغَّل",
         selectErrorTitle: "تعذّر تبديل نموذج الإملاء",
       },
     },

@@ -1,6 +1,25 @@
-import type { EditorTarget, EditorTargetLaunchInput } from "../target.js";
+import type { EditorTarget, EditorTargetLaunchInput, EditorTargetRuntime } from "../target.js";
+import { isMacEditorInstalled } from "../mac-app-commands.js";
 
-const COMMANDS = ["agy", "antigravity"] as const;
+const MAC_APP_NAME = "Antigravity";
+
+function commands(runtime: EditorTargetRuntime): string[] {
+  const candidates = ["agy", "antigravity"];
+  const home = runtime.homeDirectory || runtime.env.HOME || "";
+  if (home) {
+    candidates.push(
+      `${home}/.antigravity/antigravity/bin/agy`,
+      `${home}/.antigravity/antigravity/bin/antigravity`,
+    );
+  }
+  if (runtime.platform === "darwin") {
+    candidates.push(
+      `/Applications/${MAC_APP_NAME}.app/Contents/MacOS/${MAC_APP_NAME}`,
+      ...(home ? [`${home}/Applications/${MAC_APP_NAME}.app/Contents/MacOS/${MAC_APP_NAME}`] : []),
+    );
+  }
+  return candidates;
+}
 
 function location(input: EditorTargetLaunchInput): string {
   if (!input.line) return input.filePath!;
@@ -26,11 +45,24 @@ export const antigravityTarget: EditorTarget = {
     };
   },
   async isInstalled(runtime) {
-    return runtime.resolveCommand(COMMANDS) !== null;
+    return isMacEditorInstalled(runtime, {
+      commands: commands(runtime),
+      applicationNames: [MAC_APP_NAME],
+    });
   },
   async launch(input, runtime) {
-    const command = runtime.resolveCommand(COMMANDS);
-    if (!command) throw new Error("Antigravity is not installed");
-    await runtime.spawnDetached({ command, args: launchArgs(input) });
+    const command = runtime.resolveCommand(commands(runtime));
+    if (command) {
+      await runtime.spawnDetached({ command, args: launchArgs(input) });
+      return;
+    }
+    if (runtime.hasMacApplication(MAC_APP_NAME)) {
+      await runtime.openMacApplication({
+        applicationName: MAC_APP_NAME,
+        paths: input.filePath ? [input.workspacePath, input.filePath] : [input.workspacePath],
+      });
+      return;
+    }
+    throw new Error("Antigravity is not installed");
   },
 };

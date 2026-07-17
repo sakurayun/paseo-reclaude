@@ -11,6 +11,12 @@ import type {
   ProviderUsageWindow,
 } from "../../../server/messages.js";
 import type { ReclaudeAccountService } from "../../reclaude/reclaude-account-service.js";
+import {
+  assembleMultiSourceUsage,
+  probeAllGatewayKinds,
+  type GatewayProbeResult,
+} from "../gateway/probe.js";
+import { resolveClaudeGatewayAuth } from "../gateway/resolve-auth.js";
 import type { ProviderApiFetch, ProviderUsageFetcher } from "../provider.js";
 import {
   ApiNumberSchema,
@@ -74,6 +80,10 @@ interface ClaudeQuotaProviderOptions {
   platform?: typeof process.platform;
   fetch?: ProviderApiFetch;
   reclaude?: ReclaudeAccountService;
+  /** Optional env override for tests. */
+  env?: NodeJS.ProcessEnv;
+  /** Optional agents.providers.claude.env from Paseo config. */
+  providerEnv?: Record<string, string> | null;
 }
 
 function buildClaudePlan(
@@ -84,6 +94,68 @@ function buildClaudePlan(
   const label = subscriptionType.charAt(0).toUpperCase() + subscriptionType.slice(1);
   const tier = rateLimitTier?.split("_").pop();
   return tier ? `${label} ${tier}` : label;
+}
+
+function mapClaudeUsageWindows(resp: ClaudeUsageResponse): ProviderUsageWindow[] {
+  const windows: ProviderUsageWindow[] = [];
+  if (resp.five_hour) {
+    windows.push(
+      windowFromUsedPct({
+        id: "five_hour",
+        label: "Session",
+        utilizationPct: resp.five_hour.utilization,
+        resetsAt: resp.five_hour.resets_at ?? null,
+        tone: "ok",
+      }),
+    );
+  }
+  if (resp.seven_day) {
+    windows.push(
+      windowFromUsedPct({
+        id: "weekly",
+        label: "Weekly",
+        utilizationPct: resp.seven_day.utilization,
+        resetsAt: resp.seven_day.resets_at ?? null,
+        tone: "ok",
+      }),
+    );
+  }
+  if (resp.seven_day_opus) {
+    windows.push(
+      windowFromUsedPct({
+        id: "weekly_opus",
+        label: "Weekly · Opus",
+        utilizationPct: resp.seven_day_opus.utilization,
+        resetsAt: resp.seven_day_opus.resets_at ?? null,
+        tone: "ok",
+      }),
+    );
+  }
+  if (resp.seven_day_omelette) {
+    windows.push(
+      windowFromUsedPct({
+        id: "weekly_omelette",
+        label: "Weekly · Omelette",
+        utilizationPct: resp.seven_day_omelette.utilization,
+        resetsAt: resp.seven_day_omelette.resets_at ?? null,
+        tone: "ok",
+      }),
+    );
+  }
+  return windows;
+}
+
+function mapClaudeUsageDetails(resp: ClaudeUsageResponse): ProviderUsageDetail[] {
+  const details: ProviderUsageDetail[] = [];
+  const extraUsageEnabled = resp.extra_usage?.is_enabled;
+  if (extraUsageEnabled !== undefined) {
+    details.push({
+      id: "extra_usage",
+      label: "Extra usage",
+      value: extraUsageEnabled ? "Enabled" : "Disabled",
+    });
+  }
+  return details;
 }
 
 async function readClaudeKeychainCredentials(): Promise<unknown | null> {
@@ -105,19 +177,25 @@ export class ClaudeQuotaProvider implements ProviderUsageFetcher {
   readonly providerId = "claude";
   readonly displayName = "Claude";
 
+  private readonly logger: Logger;
   private readonly claudeHome: string;
   private readonly readKeychainCredentials: () => Promise<unknown | null>;
   private readonly platform: typeof process.platform;
   private readonly fetchApi: ProviderApiFetch;
   private readonly reclaude: ReclaudeAccountService | undefined;
+  private readonly env: NodeJS.ProcessEnv;
+  private readonly providerEnv: Record<string, string> | null;
 
   constructor(options: ClaudeQuotaProviderOptions) {
+    this.logger = options.logger;
     this.claudeHome =
       options.claudeHome || process.env["CLAUDE_HOME"] || join(homedir(), ".claude");
     this.readKeychainCredentials = options.claudeKeychainReader ?? readClaudeKeychainCredentials;
     this.platform = options.platform ?? process.platform;
     this.fetchApi = options.fetch ?? fetch;
     this.reclaude = options.reclaude;
+    this.env = options.env ?? process.env;
+    this.providerEnv = options.providerEnv ?? null;
   }
 
   async fetchUsage(): Promise<ProviderUsage> {
@@ -127,13 +205,28 @@ export class ClaudeQuotaProvider implements ProviderUsageFetcher {
     if (this.reclaude?.isActive()) {
       return this.fetchReclaudeUsage(this.reclaude);
     }
-    return this.fetchAnthropicUsage();
+
+    const [official, gatewayResults] = await Promise.all([
+      this.fetchOfficialUsage(),
+      this.fetchGatewayResults(),
+    ]);
+
+    if (!official && (!gatewayResults || gatewayResults.length === 0)) {
+      return unavailableUsage(this);
+    }
+
+    return assembleMultiSourceUsage({
+      providerId: this.providerId,
+      displayName: this.displayName,
+      official,
+      gatewayResults: gatewayResults ?? undefined,
+    });
   }
 
-  private async fetchAnthropicUsage(): Promise<ProviderUsage> {
+  private async fetchOfficialUsage(): Promise<ProviderUsage | null> {
     const credentials = await this.readCredentials();
     if (!credentials) {
-      return unavailableUsage(this);
+      return null;
     }
 
     const { oauth, filePath } = credentials;
@@ -142,12 +235,12 @@ export class ClaudeQuotaProvider implements ProviderUsageFetcher {
 
     if (resp === "NEEDS_AUTH") {
       if (!filePath || !oauth.refreshToken) {
-        return unavailableUsage(this);
+        return null;
       }
 
       const refreshed = await this.refreshClaudeToken(oauth.refreshToken);
       if (!refreshed?.access_token) {
-        return unavailableUsage(this);
+        return null;
       }
 
       await this.saveClaudeCredentials(filePath, {
@@ -158,64 +251,15 @@ export class ClaudeQuotaProvider implements ProviderUsageFetcher {
 
       resp = await this.callClaudeApi(refreshed.access_token);
       if (resp === "NEEDS_AUTH") {
-        return unavailableUsage(this);
+        return null;
       }
     }
 
-    const windows: ProviderUsageWindow[] = [];
-    if (resp.five_hour) {
-      windows.push(
-        windowFromUsedPct({
-          id: "five_hour",
-          label: "Session",
-          utilizationPct: resp.five_hour.utilization,
-          resetsAt: resp.five_hour.resets_at ?? null,
-          tone: "ok",
-        }),
-      );
-    }
-    if (resp.seven_day) {
-      windows.push(
-        windowFromUsedPct({
-          id: "weekly",
-          label: "Weekly",
-          utilizationPct: resp.seven_day.utilization,
-          resetsAt: resp.seven_day.resets_at ?? null,
-          tone: "ok",
-        }),
-      );
-    }
-    if (resp.seven_day_opus) {
-      windows.push(
-        windowFromUsedPct({
-          id: "weekly_opus",
-          label: "Weekly · Opus",
-          utilizationPct: resp.seven_day_opus.utilization,
-          resetsAt: resp.seven_day_opus.resets_at ?? null,
-          tone: "ok",
-        }),
-      );
-    }
-    if (resp.seven_day_omelette) {
-      windows.push(
-        windowFromUsedPct({
-          id: "weekly_omelette",
-          label: "Weekly · Omelette",
-          utilizationPct: resp.seven_day_omelette.utilization,
-          resetsAt: resp.seven_day_omelette.resets_at ?? null,
-          tone: "ok",
-        }),
-      );
-    }
+    const windows = mapClaudeUsageWindows(resp);
+    const details = mapClaudeUsageDetails(resp);
 
-    const details: ProviderUsageDetail[] = [];
-    const extraUsageEnabled = resp.extra_usage?.is_enabled;
-    if (extraUsageEnabled !== undefined) {
-      details.push({
-        id: "extra_usage",
-        label: "Extra usage",
-        value: extraUsageEnabled ? "Enabled" : "Disabled",
-      });
+    if (windows.length === 0 && details.length === 0) {
+      return null;
     }
 
     return {
@@ -238,6 +282,24 @@ export class ClaudeQuotaProvider implements ProviderUsageFetcher {
     return reclaude.getCachedUsage({
       providerId: this.providerId,
       displayName: this.displayName,
+    });
+  }
+
+  private async fetchGatewayResults(): Promise<GatewayProbeResult[] | null> {
+    const auth = await resolveClaudeGatewayAuth({
+      claudeHome: this.claudeHome,
+      env: this.env,
+      providerEnv: this.providerEnv,
+    });
+    if (!auth) {
+      return null;
+    }
+    return probeAllGatewayKinds({
+      auth,
+      providerId: this.providerId,
+      displayName: this.displayName,
+      fetchApi: this.fetchApi,
+      logger: this.logger,
     });
   }
 

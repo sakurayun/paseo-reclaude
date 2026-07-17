@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { DesktopDaemonStatus } from "@/desktop/daemon/desktop-daemon";
-import { restartDaemonFromSettings, type SettingsDaemonRestartDeps } from "./daemon-restart";
+import type { HostProfile } from "@/types/host-connection";
+import {
+  hostProfileLooksLocal,
+  restartDaemonFromSettings,
+  shouldRestartViaDesktopBridge,
+  type SettingsDaemonRestartDeps,
+} from "./daemon-restart";
 
 const runningDesktopDaemonStatus: DesktopDaemonStatus = {
   serverId: "local-desktop",
@@ -57,11 +63,76 @@ function makeDeps(overrides?: {
   return { calls, deps };
 }
 
+function makeHost(connections: HostProfile["connections"]): HostProfile {
+  return {
+    serverId: "srv",
+    label: "Local",
+    lifecycle: {},
+    connections,
+    preferredConnectionId: connections[0]?.id ?? null,
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+  };
+}
+
+describe("hostProfileLooksLocal", () => {
+  it("detects loopback TCP hosts", () => {
+    expect(
+      hostProfileLooksLocal(
+        makeHost([
+          {
+            id: "direct:localhost:6767",
+            type: "directTcp",
+            endpoint: "localhost:6767",
+          },
+        ]),
+      ),
+    ).toBe(true);
+    expect(
+      hostProfileLooksLocal(
+        makeHost([
+          {
+            id: "direct:127.0.0.1:6767",
+            type: "directTcp",
+            endpoint: "127.0.0.1:6767",
+          },
+        ]),
+      ),
+    ).toBe(true);
+  });
+
+  it("rejects remote TCP hosts", () => {
+    expect(
+      hostProfileLooksLocal(
+        makeHost([
+          {
+            id: "direct:example.com:6767",
+            type: "directTcp",
+            endpoint: "example.com:6767",
+          },
+        ]),
+      ),
+    ).toBe(false);
+  });
+});
+
 describe("restartDaemonFromSettings", () => {
   it("restarts the local desktop-managed daemon through the desktop bridge", async () => {
     const { calls, deps } = makeDeps();
 
     await restartDaemonFromSettings(" local-desktop ", "settings_daemon_restart_local", deps);
+
+    expect(calls).toEqual(["desktop-status", "desktop-settings", "desktop-restart"]);
+  });
+
+  it("uses the desktop bridge for loopback hosts when serverId is temporarily empty", async () => {
+    const { calls, deps } = makeDeps({
+      desktopDaemonStatus: { ...runningDesktopDaemonStatus, serverId: "" },
+    });
+
+    await restartDaemonFromSettings("orphan-id", "settings_daemon_restart_local", deps, {
+      hostLooksLocal: true,
+    });
 
     expect(calls).toEqual(["desktop-status", "desktop-settings", "desktop-restart"]);
   });
@@ -127,5 +198,12 @@ describe("restartDaemonFromSettings", () => {
     ).rejects.toThrow("Desktop restart failed.");
 
     expect(calls).toEqual(["desktop-status", "desktop-settings", "desktop-restart"]);
+  });
+
+  it("shouldRestartViaDesktopBridge is false for remote hosts even when desktopManaged", async () => {
+    const { deps } = makeDeps();
+    await expect(
+      shouldRestartViaDesktopBridge("remote-host", deps, { hostLooksLocal: false }),
+    ).resolves.toBe(false);
   });
 });

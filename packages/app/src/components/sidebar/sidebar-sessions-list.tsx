@@ -50,11 +50,17 @@ import {
 import {
   assignTerminalsToSidebarGroups,
   groupSidebarSessionsByProject,
+  mergeActiveWorkspacesIntoSidebarGroups,
   resolveSidebarSessionGroupWorkspaceTarget,
   type SidebarSessionGroup,
 } from "@/hooks/sidebar-sessions-grouping";
 import { useHostTerminals, type HostTerminalEntry } from "@/hooks/use-host-terminals";
 import { SidebarSessionRow } from "@/components/sidebar/sidebar-workspace-sessions";
+import { SidebarSessionSelectionProvider } from "@/components/sidebar/sidebar-session-selection-context";
+import {
+  toSidebarSessionSelectionKey,
+  type SidebarSessionSelectionKey,
+} from "@/components/sidebar/sidebar-session-selection";
 import { SidebarAgentListSkeleton } from "@/components/sidebar-agent-list-skeleton";
 import {
   ContextMenu,
@@ -90,6 +96,18 @@ import { OsBadge } from "@/components/ssh/os-badge";
 import { useSshTerminalHostOs } from "@/screens/ssh/use-ssh-terminal-host-os";
 import { deriveTerminalActivityStatusBucket } from "@getpaseo/protocol/terminal-activity";
 import { navigateToWorkspace } from "@/stores/navigation-active-workspace-store";
+
+function orderedSessionKeysFromGroups(
+  groups: readonly SidebarSessionGroup[],
+): SidebarSessionSelectionKey[] {
+  const keys: SidebarSessionSelectionKey[] = [];
+  for (const group of groups) {
+    for (const session of group.sessions) {
+      keys.push(toSidebarSessionSelectionKey({ serverId: session.serverId, id: session.id }));
+    }
+  }
+  return keys;
+}
 
 interface SidebarSessionsListProps {
   serverId: string | null;
@@ -235,14 +253,33 @@ function SidebarSessionsScroll({
   );
 }
 
+function useSidebarSessionGroups(
+  serverId: string | null,
+  sessions: ReturnType<typeof useSidebarSessionsList>["sessions"],
+  projectNamesByKey: ReturnType<typeof useProjectNamesMap>,
+): SidebarSessionGroup[] {
+  const workspacesMap = useSessionStore((state) =>
+    serverId ? state.sessions[serverId]?.workspaces : undefined,
+  );
+  return useMemo(() => {
+    const fromSessions = groupSidebarSessionsByProject(sessions, projectNamesByKey);
+    if (!workspacesMap || workspacesMap.size === 0) {
+      return fromSessions;
+    }
+    return mergeActiveWorkspacesIntoSidebarGroups({
+      groups: fromSessions,
+      workspaces: workspacesMap.values(),
+      projectNameOverrides: projectNamesByKey,
+    });
+  }, [projectNamesByKey, sessions, workspacesMap]);
+}
+
 function SidebarSingleHostSessions({ serverId, parentGestureRef }: SidebarSessionsListProps) {
   const { t } = useTranslation();
   const { sessions, isInitialLoad } = useSidebarSessionsList(serverId);
   const projectNamesByKey = useProjectNamesMap(serverId);
-  const groups = useMemo(
-    () => groupSidebarSessionsByProject(sessions, projectNamesByKey),
-    [projectNamesByKey, sessions],
-  );
+  const groups = useSidebarSessionGroups(serverId, sessions, projectNamesByKey);
+  const orderedSessionKeys = useMemo(() => orderedSessionKeysFromGroups(groups), [groups]);
   const { terminals } = useHostTerminals(serverId);
   const terminalsByGroupKey = useMemo(
     () => assignTerminalsToSidebarGroups(groups, terminals),
@@ -265,14 +302,16 @@ function SidebarSingleHostSessions({ serverId, parentGestureRef }: SidebarSessio
   return (
     <Animated.View entering={FadeIn.duration(200)} style={a.fill}>
       <SidebarSessionsScroll parentGestureRef={parentGestureRef}>
-        <SidebarProjectGroups
-          groups={groups}
-          serverId={serverId}
-          expandedKeys={expandedKeys}
-          onToggle={toggle}
-          unknownLabel={t("sidebar.sessionsList.unknownWorkspace")}
-          terminalsByGroupKey={terminalsByGroupKey}
-        />
+        <SidebarSessionSelectionProvider orderedKeys={orderedSessionKeys}>
+          <SidebarProjectGroups
+            groups={groups}
+            serverId={serverId}
+            expandedKeys={expandedKeys}
+            onToggle={toggle}
+            unknownLabel={t("sidebar.sessionsList.unknownWorkspace")}
+            terminalsByGroupKey={terminalsByGroupKey}
+          />
+        </SidebarSessionSelectionProvider>
       </SidebarSessionsScroll>
     </Animated.View>
   );
@@ -327,10 +366,8 @@ const SidebarHostSection = memo(function SidebarHostSection({
   const reduceMotion = useReducedMotion();
   const { sessions, isInitialLoad } = useSidebarSessionsList(host.serverId);
   const projectNamesByKey = useProjectNamesMap(host.serverId);
-  const groups = useMemo(
-    () => groupSidebarSessionsByProject(sessions, projectNamesByKey),
-    [projectNamesByKey, sessions],
-  );
+  const groups = useSidebarSessionGroups(host.serverId, sessions, projectNamesByKey);
+  const orderedSessionKeys = useMemo(() => orderedSessionKeysFromGroups(groups), [groups]);
   const { terminals } = useHostTerminals(host.serverId);
   const terminalsByGroupKey = useMemo(
     () => assignTerminalsToSidebarGroups(groups, terminals),
@@ -350,6 +387,13 @@ const SidebarHostSection = memo(function SidebarHostSection({
   );
 
   const activeSessions = useMemo(() => sessions.filter(isSessionActive), [sessions]);
+  const collapsedOrderedKeys = useMemo(
+    () =>
+      activeSessions.map((session) =>
+        toSidebarSessionSelectionKey({ serverId: session.serverId, id: session.id }),
+      ),
+    [activeSessions],
+  );
   const label = host.label.trim().length > 0 ? host.label : host.serverId;
   const unknownLabel = t("sidebar.sessionsList.unknownWorkspace");
 
@@ -367,14 +411,16 @@ const SidebarHostSection = memo(function SidebarHostSection({
       body = <SidebarAgentListSkeleton />;
     } else if (groups.length > 0) {
       body = (
-        <SidebarProjectGroups
-          groups={groups}
-          serverId={host.serverId}
-          expandedKeys={expandedKeys}
-          onToggle={toggle}
-          unknownLabel={unknownLabel}
-          terminalsByGroupKey={terminalsByGroupKey}
-        />
+        <SidebarSessionSelectionProvider orderedKeys={orderedSessionKeys}>
+          <SidebarProjectGroups
+            groups={groups}
+            serverId={host.serverId}
+            expandedKeys={expandedKeys}
+            onToggle={toggle}
+            unknownLabel={unknownLabel}
+            terminalsByGroupKey={terminalsByGroupKey}
+          />
+        </SidebarSessionSelectionProvider>
       );
     } else {
       body = <Text style={styles.hostEmptyText}>{t("sidebar.sessionsList.empty")}</Text>;
@@ -383,16 +429,18 @@ const SidebarHostSection = memo(function SidebarHostSection({
     // Collapsed: still surface this host's live work so cross-host monitoring is
     // never lost behind a closed section.
     body = (
-      <View style={styles.groupSessions}>
-        {activeSessions.map((session) => (
-          <SidebarSessionRow
-            key={`${session.serverId}:${session.id}`}
-            session={session}
-            timeOverride={session.recencyAt}
-            variant="flat"
-          />
-        ))}
-      </View>
+      <SidebarSessionSelectionProvider orderedKeys={collapsedOrderedKeys}>
+        <View style={styles.groupSessions}>
+          {activeSessions.map((session) => (
+            <SidebarSessionRow
+              key={`${session.serverId}:${session.id}`}
+              session={session}
+              timeOverride={session.recencyAt}
+              variant="flat"
+            />
+          ))}
+        </View>
+      </SidebarSessionSelectionProvider>
     );
   }
 

@@ -1222,6 +1222,7 @@ export const ptBR: TranslationResources = {
         viewAll: "View all sessions",
         editTitle: "Edit title",
         archive: "Archive",
+        archiveSelected: "Arquivar ({{count}})",
         archivePending: "Archiving…",
       },
       status: {
@@ -1917,6 +1918,12 @@ export const ptBR: TranslationResources = {
   providerUsage: {
     codexReset: {
       title: "Limite de uso do Codex atingido",
+      sources: {
+        official: "Oficial",
+        newapi: "NewAPI",
+        sub2api: "Sub2API",
+        cpa: "CPA",
+      },
       description:
         "Você atingiu um limite de uso do Codex. Use um crédito de redefinição para liberá-lo agora.",
       remaining: "Restante: {{count}}",
@@ -2054,6 +2061,8 @@ export const ptBR: TranslationResources = {
       grokSessionExpired: "Sessão do Grok expirada. Execute `grok login` e atualize o uso.",
       billingHttp: "Falha na solicitação da API de cobrança.",
       parseFailed: "Não foi possível analisar a resposta de uso.",
+      codexChatgptAuthRequired:
+        "Os limites oficiais do Codex exigem login no ChatGPT. Com API key / Base URL personalizada (NewAPI / Sub2API / CPA), o uso é lido do gateway.",
     },
     grok: {
       sync: "Sincronizar uso",
@@ -2544,6 +2553,18 @@ export const ptBR: TranslationResources = {
       agents: {
         unavailable: "Conecte-se a este host para gerenciar agentes",
       },
+      browserTools: {
+        title: "Ferramentas do navegador",
+        hint: "Permitir que agentes acessem e controlem abas do navegador do Paseo, incluindo o estado de login. Ative apenas para agentes confiáveis.",
+        updating: "Atualizando ferramentas do navegador…",
+      },
+      terminalAgents: {
+        sectionTitle: "Agentes de terminal",
+        enableTitle: "Ativar hooks de agentes de terminal",
+        enableHint:
+          "Receba notificações e status de agentes de terminal. Isso instala hooks nos arquivos de configuração do agente.",
+        updateFailedTitle: "Não foi possível atualizar os hooks de agentes de terminal",
+      },
       workspaces: {
         unavailable: "Conecte-se a este host para gerenciar workspaces",
         autoArchive: {
@@ -2728,6 +2749,15 @@ export const ptBR: TranslationResources = {
         loading: "Loading models…",
         notInstalled: "Not downloaded yet",
         downloading: "Downloading…",
+        downloadingPercent: "Downloading {{percent}}%",
+        downloadingPercentWithSpeed: "Downloading {{percent}}% · {{speed}}",
+        downloadSpeed: "{{speed}}",
+        download: "Download",
+        apply: "Apply",
+        applied: "Applied",
+        running: "Running",
+        starting: "Starting…",
+        stopped: "Not started",
         selectErrorTitle: "Couldn't switch dictation model",
       },
     },

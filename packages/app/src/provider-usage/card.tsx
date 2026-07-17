@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Text, View } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
@@ -8,7 +8,8 @@ import type { Theme } from "@/styles/theme";
 import { ProviderUsageBalanceBar } from "./balance-bar";
 import { formatAgo } from "./format";
 import { localizeProviderUsage } from "./localize";
-import type { ProviderUsage } from "./types";
+import { ProviderUsageSourceTabs } from "./source-tabs";
+import type { ProviderUsage, ProviderUsageSource, ProviderUsageSourceKind } from "./types";
 import { ProviderUsageWindowBar } from "./window-bar";
 
 interface ProviderUsageIconProps {
@@ -25,6 +26,7 @@ function ProviderUsageIcon({ iconKey, size, color = "" }: ProviderUsageIconProps
 const ThemedProviderUsageIcon = withUnistyles(ProviderUsageIcon);
 
 const mutedIconColor = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
+const EMPTY_SOURCES: NonNullable<ProviderUsage["sources"]> = [];
 
 function statusText(
   usage: ProviderUsage,
@@ -53,6 +55,28 @@ function footerText(
   return usage.sourceLabel || null;
 }
 
+function projectSourceOntoUsage(base: ProviderUsage, source: ProviderUsageSource): ProviderUsage {
+  return {
+    ...base,
+    status: source.status,
+    planLabel: source.planLabel,
+    sourceLabel: source.label,
+    windows: source.windows,
+    balances: source.balances,
+    details: source.details,
+    error: source.error ?? null,
+    selectedSourceKind: source.kind,
+  };
+}
+
+function pickDefaultSourceKind(usage: ProviderUsage): ProviderUsageSourceKind | null {
+  if (usage.selectedSourceKind) return usage.selectedSourceKind;
+  const sources = usage.sources ?? [];
+  if (sources.length === 0) return null;
+  const available = sources.find((source) => source.status === "available");
+  return available?.kind ?? sources[0]?.kind ?? null;
+}
+
 export function ProviderUsageCard({
   usage,
   compact = false,
@@ -61,10 +85,39 @@ export function ProviderUsageCard({
   compact?: boolean;
 }) {
   const { t, i18n } = useTranslation();
+  const sources = usage.sources ?? EMPTY_SOURCES;
+  const showSourceTabs =
+    (usage.providerId === "claude" || usage.providerId === "codex") && sources.length > 1;
+
+  const [selectedKind, setSelectedKind] = useState<ProviderUsageSourceKind | null>(() =>
+    pickDefaultSourceKind(usage),
+  );
+
+  // Keep selection in sync when a refresh returns a new preferred source, but
+  // don't clobber a manual tab choice that still exists in the new payload.
+  useEffect(() => {
+    setSelectedKind((prev) => {
+      if (prev && sources.some((source) => source.kind === prev)) {
+        return prev;
+      }
+      return pickDefaultSourceKind(usage);
+    });
+  }, [usage, sources]);
+
+  const activeSource = useMemo(() => {
+    if (!selectedKind) return null;
+    return sources.find((source) => source.kind === selectedKind) ?? null;
+  }, [selectedKind, sources]);
+
+  const projected = useMemo(() => {
+    if (!activeSource) return usage;
+    return projectSourceOntoUsage(usage, activeSource);
+  }, [activeSource, usage]);
+
   // Server labels are English protocol strings — localize known ids for the UI.
   const localized = useMemo(
-    () => localizeProviderUsage(usage, t, i18n.language),
-    [i18n.language, t, usage],
+    () => localizeProviderUsage(projected, t, i18n.language),
+    [i18n.language, projected, t],
   );
   const status = statusText(localized, t);
   const footer = footerText(localized, t);
@@ -84,8 +137,12 @@ export function ProviderUsageCard({
     [localized.status],
   );
 
+  const handleSelectSource = useCallback((kind: ProviderUsageSourceKind) => {
+    setSelectedKind(kind);
+  }, []);
+
   return (
-    <View style={containerStyle}>
+    <View style={containerStyle} testID={`provider-usage-card-${usage.providerId}`}>
       <View style={styles.header}>
         <ThemedProviderUsageIcon
           iconKey={localized.providerId}
@@ -105,8 +162,16 @@ export function ProviderUsageCard({
         ) : null}
       </View>
 
+      {showSourceTabs && selectedKind ? (
+        <ProviderUsageSourceTabs
+          sources={sources}
+          selectedKind={selectedKind}
+          onSelect={handleSelectSource}
+        />
+      ) : null}
+
       {localized.error ? (
-        <Text style={styles.error} numberOfLines={3}>
+        <Text style={styles.error} numberOfLines={4}>
           {localized.error}
         </Text>
       ) : null}

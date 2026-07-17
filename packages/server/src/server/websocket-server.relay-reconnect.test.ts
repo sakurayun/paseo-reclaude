@@ -312,6 +312,7 @@ function createReadySpeechReadinessSnapshot(): SpeechReadinessSnapshot {
     download: {
       inProgress: false,
       error: null,
+      progressByModelId: {},
     },
     dictation: {
       enabled: true,
@@ -348,6 +349,15 @@ function createDownloadInProgressSpeechReadinessSnapshot(): SpeechReadinessSnaps
     download: {
       inProgress: true,
       error: null,
+      progressByModelId: {
+        "parakeet-tdt-0.6b-v2-int8": {
+          percent: 42,
+          bytesPerSecond: 1_500_000,
+          receivedBytes: 42_000_000,
+          totalBytes: 100_000_000,
+          phase: "download",
+        },
+      },
     },
     dictation: {
       enabled: true,

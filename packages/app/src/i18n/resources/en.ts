@@ -1210,6 +1210,7 @@ export const en = {
         viewAll: "View all sessions",
         editTitle: "Edit title",
         archive: "Archive",
+        archiveSelected: "Archive ({{count}})",
         archivePending: "Archiving…",
       },
       status: {
@@ -1887,6 +1888,12 @@ export const en = {
   providerUsage: {
     codexReset: {
       title: "Codex usage limit reached",
+      sources: {
+        official: "Official",
+        newapi: "NewAPI",
+        sub2api: "Sub2API",
+        cpa: "CPA",
+      },
       description: "You've hit a Codex usage limit. Spend a reset credit to lift it now.",
       remaining: "Remaining: {{count}}",
       consume: "Use a reset credit to reset usage",
@@ -2023,6 +2030,8 @@ export const en = {
       grokSessionExpired: "Grok session expired. Run `grok login` and refresh usage.",
       billingHttp: "Billing API request failed.",
       parseFailed: "Usage response could not be parsed.",
+      codexChatgptAuthRequired:
+        "Codex needs a ChatGPT login for official rate limits. For API-key / custom base URL gateways, usage is read from NewAPI, Sub2API, or CPA instead.",
     },
     grok: {
       sync: "Sync usage",
@@ -2509,6 +2518,18 @@ export const en = {
       agents: {
         unavailable: "Connect to this host to manage agents",
       },
+      browserTools: {
+        title: "Browser tools",
+        hint: "Allow agents to access and control Paseo browser tabs, including logged-in browser state. Only enable this for agents you trust.",
+        updating: "Updating browser tools…",
+      },
+      terminalAgents: {
+        sectionTitle: "Terminal agents",
+        enableTitle: "Enable terminal agent hooks",
+        enableHint:
+          "Get notifications and status from terminal agents. This installs hooks in your agent config files.",
+        updateFailedTitle: "Unable to update terminal agent hooks",
+      },
       workspaces: {
         unavailable: "Connect to this host to manage workspaces",
         autoArchive: {
@@ -2691,6 +2712,15 @@ export const en = {
         loading: "Loading models…",
         notInstalled: "Not downloaded yet",
         downloading: "Downloading…",
+        downloadingPercent: "Downloading {{percent}}%",
+        downloadingPercentWithSpeed: "Downloading {{percent}}% · {{speed}}",
+        downloadSpeed: "{{speed}}",
+        download: "Download",
+        apply: "Apply",
+        applied: "Applied",
+        running: "Running",
+        starting: "Starting…",
+        stopped: "Not started",
         selectErrorTitle: "Couldn't switch dictation model",
       },
     },

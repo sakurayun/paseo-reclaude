@@ -20,6 +20,12 @@ export interface ProviderUsageFetcherFactoryOptions {
   // When present, the Grok provider list path returns only the last-synced cache;
   // live billing is driven by provider.grok.sync.
   grokUsage?: GrokUsageService;
+  /**
+   * Optional env maps from `agents.providers.<id>.env` in Paseo config.
+   * Used as a fallback source for custom base URL + API key when probing
+   * NewAPI / Sub2API / CPA usage.
+   */
+  providerEnvById?: Partial<Record<string, Record<string, string> | undefined>>;
 }
 
 export interface ProviderUsageFetcherManifestEntry {

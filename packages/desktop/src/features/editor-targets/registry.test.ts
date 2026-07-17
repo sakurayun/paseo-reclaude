@@ -26,13 +26,19 @@ class FakeEditorTargets implements EditorTargetRuntime {
 
   readonly env: NodeJS.ProcessEnv;
   readonly platform: NodeJS.Platform;
+  readonly homeDirectory: string;
   private readonly paths = new Set<string>();
   private readonly commands = new Map<string, string>();
   private readonly macApplications = new Set<string>();
 
-  constructor(platform: NodeJS.Platform = "linux", env: NodeJS.ProcessEnv = {}) {
+  constructor(
+    platform: NodeJS.Platform = "linux",
+    env: NodeJS.ProcessEnv = {},
+    homeDirectory = "/Users/me",
+  ) {
     this.platform = platform;
     this.env = env;
+    this.homeDirectory = homeDirectory;
   }
 
   addPath(targetPath: string): void {
@@ -212,6 +218,46 @@ describe("editor target registry", () => {
         paths: ["/repo", "/repo/src/app.ts"],
       },
     ]);
+  });
+
+  it("detects VS Code via the macOS app bundle when `code` is not on PATH", async () => {
+    const runtime = new FakeEditorTargets("darwin", { PATH: "/usr/bin:/bin" });
+    runtime.installMacApplication("Visual Studio Code");
+
+    expect(await vscodeTarget.isInstalled(runtime)).toBe(true);
+    await vscodeTarget.launch(
+      { workspacePath: "/repo", filePath: "/repo/src/app.ts", line: 4, column: 2 },
+      runtime,
+    );
+
+    // Without a resolvable CLI, fall back to open -a so the editor still launches.
+    expect(runtime.openedMacApplications).toEqual([
+      {
+        applicationName: "Visual Studio Code",
+        paths: ["/repo", "/repo/src/app.ts"],
+      },
+    ]);
+  });
+
+  it("prefers VS Code's bundled CLI so line:column positions survive app detection", async () => {
+    const runtime = new FakeEditorTargets("darwin", { PATH: "/usr/bin:/bin" });
+    const bundledCommand = "/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code";
+    runtime.installCommand(bundledCommand, bundledCommand);
+    runtime.installMacApplication("Visual Studio Code");
+
+    expect(await vscodeTarget.isInstalled(runtime)).toBe(true);
+    await vscodeTarget.launch(
+      { workspacePath: "/repo", filePath: "/repo/src/app.ts", line: 10, column: 5 },
+      runtime,
+    );
+
+    expect(runtime.launches).toEqual([
+      {
+        command: bundledCommand,
+        args: ["/repo", "--goto", "/repo/src/app.ts:10:5"],
+      },
+    ]);
+    expect(runtime.openedMacApplications).toEqual([]);
   });
 
   it("uses Cursor's bundled macOS command so file positions survive application detection", async () => {
