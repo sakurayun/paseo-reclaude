@@ -134,6 +134,8 @@ function createServer(terminalManager: TerminalManager, workspaceRegistry?: Work
   };
   const daemonConfigStore = {
     onChange: vi.fn(() => () => {}),
+    // Fork: the ctor eagerly reads providers config for reclaude/gateway usage probes.
+    get: vi.fn(() => ({})),
   };
 
   const server = new VoiceAssistantWebSocketServer(
@@ -198,6 +200,7 @@ function createOpenSocket() {
 function connectClient(server: VoiceAssistantWebSocketServer) {
   const ws = createOpenSocket();
   asInternals<{ sessions: Map<unknown, unknown> }>(server).sessions.set(ws, {
+    kind: "trusted",
     session: {
       getClientActivity: vi.fn(() => null),
     },

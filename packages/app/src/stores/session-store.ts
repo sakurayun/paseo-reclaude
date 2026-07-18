@@ -2,6 +2,7 @@ import equal from "fast-deep-equal";
 import { create } from "zustand";
 import { subscribeWithSelector } from "zustand/middleware";
 import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
+import type { ViewedTimelineUiBridge } from "@/timeline/viewed-timeline-sync";
 import type { AgentDirectoryEntry } from "@/types/agent-directory";
 import {
   handoffCreatedAgentUserMessageToStream,
@@ -320,12 +321,16 @@ export interface AgentTimelineCursorState {
   endSeq: number;
 }
 
+export type WorkspaceRestoreStatus = "restoring" | "failed" | "needs-host-upgrade";
+
 // Per-session state
 export interface SessionState {
   serverId: string;
 
   // Daemon client (immutable reference)
   client: DaemonClient | null;
+  clientGeneration: number;
+  viewedTimelineSync: ViewedTimelineUiBridge | null;
 
   // Server metadata (from server_info handshake)
   serverInfo: DaemonServerInfo | null;
@@ -366,6 +371,9 @@ export interface SessionState {
   // Project parents with no active workspaces, keyed by projectId. The
   // `emptyProjects` name is the existing protocol/store projection.
   emptyProjects: Map<string, EmptyProjectDescriptor>;
+  // Transient restore state for archived workspaces, keyed by normalized
+  // workspaceId. Cleared in mergeWorkspaces when the descriptor lands.
+  restoringWorkspaces: Map<string, WorkspaceRestoreStatus>;
 
   // Permissions
   pendingPermissions: Map<string, PendingPermission>;
@@ -393,10 +401,11 @@ interface SessionStoreState {
 // Action types
 interface SessionStoreActions {
   // Session management
-  initializeSession: (serverId: string, client: DaemonClient) => void;
+  initializeSession: (serverId: string, client: DaemonClient, clientGeneration?: number) => void;
   clearSession: (serverId: string) => void;
   getSession: (serverId: string) => SessionState | undefined;
-  updateSessionClient: (serverId: string, client: DaemonClient) => void;
+  updateSessionClient: (serverId: string, client: DaemonClient, clientGeneration?: number) => void;
+  setViewedTimelineSync: (serverId: string, sync: ViewedTimelineUiBridge | null) => void;
   updateSessionServerInfo: (serverId: string, info: DaemonServerInfo) => void;
 
   // Audio state
@@ -488,6 +497,13 @@ interface SessionStoreActions {
   setEmptyProjects: (serverId: string, emptyProjects: Iterable<EmptyProjectDescriptor>) => void;
   addEmptyProject: (serverId: string, emptyProject: EmptyProjectDescriptor) => void;
   removeEmptyProject: (serverId: string, projectId: string) => void;
+  setWorkspaceRestoreStatus: (
+    serverId: string,
+    workspaceId: string,
+    status: WorkspaceRestoreStatus,
+  ) => void;
+  clearWorkspaceRestoreStatus: (serverId: string, workspaceId: string) => void;
+
   // Agent activity timestamps
   setAgentLastActivity: (agentId: string, timestamp: Date) => void;
   setAgentLastActivityBatch: (
@@ -536,10 +552,16 @@ type SessionStore = SessionStoreState & SessionStoreActions;
 const agentLastActivityCoalescer = createAgentLastActivityCoalescer();
 
 // Helper to create initial session state
-function createInitialSessionState(serverId: string, client: DaemonClient): SessionState {
+function createInitialSessionState(
+  serverId: string,
+  client: DaemonClient,
+  clientGeneration = 0,
+): SessionState {
   return {
     serverId,
     client,
+    clientGeneration,
+    viewedTimelineSync: null,
     serverInfo: null,
     hasHydratedAgents: false,
     hasHydratedWorkspaces: false,
@@ -562,6 +584,7 @@ function createInitialSessionState(serverId: string, client: DaemonClient): Sess
     agentDetails: new Map(),
     workspaces: new Map(),
     emptyProjects: new Map(),
+    restoringWorkspaces: new Map(),
     pendingPermissions: new Map(),
     fileExplorer: new Map(),
     queuedMessages: new Map(),
@@ -643,7 +666,7 @@ export const useSessionStore = create<SessionStore>()(
       agentLastActivity: new Map(),
 
       // Session management
-      initializeSession: (serverId, client) => {
+      initializeSession: (serverId, client, clientGeneration) => {
         set((prev) => {
           if (prev.sessions[serverId]) {
             return prev;
@@ -652,7 +675,7 @@ export const useSessionStore = create<SessionStore>()(
             ...prev,
             sessions: {
               ...prev.sessions,
-              [serverId]: createInitialSessionState(serverId, client),
+              [serverId]: createInitialSessionState(serverId, client, clientGeneration),
             },
           };
         });
@@ -692,7 +715,7 @@ export const useSessionStore = create<SessionStore>()(
         });
       },
 
-      updateSessionClient: (serverId, client) => {
+      updateSessionClient: (serverId, client, clientGeneration = 0) => {
         set((prev) => {
           const session = prev.sessions[serverId];
 
@@ -700,7 +723,7 @@ export const useSessionStore = create<SessionStore>()(
             return prev;
           }
 
-          if (session.client === client) {
+          if (session.client === client && session.clientGeneration === clientGeneration) {
             return prev;
           }
 
@@ -711,7 +734,24 @@ export const useSessionStore = create<SessionStore>()(
               [serverId]: {
                 ...session,
                 client,
+                clientGeneration,
               },
+            },
+          };
+        });
+      },
+
+      setViewedTimelineSync: (serverId, viewedTimelineSync) => {
+        set((prev) => {
+          const session = prev.sessions[serverId];
+          if (!session || session.viewedTimelineSync === viewedTimelineSync) {
+            return prev;
+          }
+          return {
+            ...prev,
+            sessions: {
+              ...prev.sessions,
+              [serverId]: { ...session, viewedTimelineSync },
             },
           };
         });
@@ -1326,6 +1366,54 @@ export const useSessionStore = create<SessionStore>()(
         });
       },
 
+      setWorkspaceRestoreStatus: (serverId, workspaceId, status) => {
+        set((prev) => {
+          const session = prev.sessions[serverId];
+          if (!session) {
+            return prev;
+          }
+          if (session.restoringWorkspaces.get(workspaceId) === status) {
+            return prev;
+          }
+          // A late dir-gone timeout must not override a successful restore:
+          // only mark failed while still restoring and the descriptor is absent.
+          if (
+            status === "failed" &&
+            (session.restoringWorkspaces.get(workspaceId) !== "restoring" ||
+              session.workspaces.has(workspaceId))
+          ) {
+            return prev;
+          }
+          const next = new Map(session.restoringWorkspaces);
+          next.set(workspaceId, status);
+          return {
+            ...prev,
+            sessions: {
+              ...prev.sessions,
+              [serverId]: { ...session, restoringWorkspaces: next },
+            },
+          };
+        });
+      },
+
+      clearWorkspaceRestoreStatus: (serverId, workspaceId) => {
+        set((prev) => {
+          const session = prev.sessions[serverId];
+          if (!session || !session.restoringWorkspaces.has(workspaceId)) {
+            return prev;
+          }
+          const next = new Map(session.restoringWorkspaces);
+          next.delete(workspaceId);
+          return {
+            ...prev,
+            sessions: {
+              ...prev.sessions,
+              [serverId]: { ...session, restoringWorkspaces: next },
+            },
+          };
+        });
+      },
+
       mergeWorkspaces: (serverId, workspaces) => {
         const nextEntries = Array.from(workspaces);
         set((prev) => {
@@ -1339,8 +1427,16 @@ export const useSessionStore = create<SessionStore>()(
           // empty: prune any stale empty descriptor so it stops governing the
           // project's rendered metadata.
           const nextEmptyProjects = new Map(session.emptyProjects);
+          // A descriptor arriving is the success signal for a pending restore:
+          // clear it at the source so every entry point converges to "ready".
+          let nextRestoring: Map<string, WorkspaceRestoreStatus> | null = null;
           for (const workspace of nextEntries) {
             if (nextEmptyProjects.delete(workspace.projectId)) {
+              changed = true;
+            }
+            if (session.restoringWorkspaces.has(workspace.id)) {
+              nextRestoring ??= new Map(session.restoringWorkspaces);
+              nextRestoring.delete(workspace.id);
               changed = true;
             }
             const existing = next.get(workspace.id);
@@ -1362,6 +1458,7 @@ export const useSessionStore = create<SessionStore>()(
                 ...session,
                 workspaces: next,
                 emptyProjects: nextEmptyProjects,
+                restoringWorkspaces: nextRestoring ?? session.restoringWorkspaces,
               },
             },
           };
@@ -1592,3 +1689,14 @@ export const useSessionStore = create<SessionStore>()(
     };
   }),
 );
+
+export function useWorkspaceRestoreStatus(
+  serverId: string | null,
+  workspaceId: string | null,
+): WorkspaceRestoreStatus | null {
+  return useSessionStore((state) =>
+    serverId && workspaceId
+      ? (state.sessions[serverId]?.restoringWorkspaces.get(workspaceId) ?? null)
+      : null,
+  );
+}

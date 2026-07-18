@@ -23,7 +23,7 @@ import {
   View,
   type PressableStateCallbackType,
 } from "react-native";
-import { Gesture, GestureDetector } from "react-native-gesture-handler";
+import { Gesture } from "react-native-gesture-handler";
 import Animated, { runOnJS, useAnimatedStyle, useSharedValue } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
@@ -33,10 +33,10 @@ import { HostPicker } from "@/components/hosts/host-picker";
 import { SidebarHeaderRow } from "@/components/sidebar/sidebar-header-row";
 import { SidebarDisplayPreferencesMenu } from "@/components/sidebar/sidebar-display-preferences-menu";
 import { SidebarHelpMenu } from "@/components/sidebar/sidebar-help-menu";
+import { SidebarResizeHandle } from "@/components/sidebar-resize-handle";
 import { Shortcut } from "@/components/ui/shortcut";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { HEADER_INNER_HEIGHT, useIsCompactFormFactor } from "@/constants/layout";
-import { isWeb } from "@/constants/platform";
 import { useToast } from "@/contexts/toast-context";
 import { pickDirectory } from "@/desktop/pick-directory";
 import { agentHistoryQueryKey } from "@/hooks/agent-history-query-key";
@@ -796,6 +796,7 @@ function MobileSidebar({
   handleSchedulesNavigate,
 }: MobileSidebarProps) {
   const pathname = usePathname();
+  const hasActiveHostFilter = useSidebarViewStore((state) => state.hostFilters.length > 0);
   const isSessionsActive = pathname.includes("/sessions");
   const toolbarLabels = useMemo(
     () => ({
@@ -859,26 +860,27 @@ function MobileSidebar({
 
   // Classic workspace body (skeleton while loading, else the grouped list).
   // Held in a variable so the SSH branch below is a flat, single ternary.
-  const classicWorkspaceBody = isInitialLoad ? (
-    <SidebarAgentListSkeleton />
-  ) : (
-    <SidebarWorkspaceList
-      collapsedProjectKeys={collapsedProjectKeys}
-      onToggleProjectCollapsed={toggleProjectCollapsed}
-      shortcutIndexByWorkspaceKey={shortcutIndexByWorkspaceKey}
-      groupMode={groupMode}
-      statusGroups={statusGroups}
-      pinnedGroups={pinnedGroups}
-      workspaceEntriesByKey={workspaceEntriesByKey}
-      projects={projects}
-      projectNamesByKey={projectNamesByKey}
-      isRefreshing={isManualRefresh && isRevalidating}
-      onRefresh={handleRefresh}
-      onWorkspacePress={handleWorkspacePress}
-      onAddProject={handleOpenProject}
-      parentGestureRef={closeGestureRef}
-    />
-  );
+  const classicWorkspaceBody =
+    isInitialLoad && !hasActiveHostFilter ? (
+      <SidebarAgentListSkeleton />
+    ) : (
+      <SidebarWorkspaceList
+        collapsedProjectKeys={collapsedProjectKeys}
+        onToggleProjectCollapsed={toggleProjectCollapsed}
+        shortcutIndexByWorkspaceKey={shortcutIndexByWorkspaceKey}
+        groupMode={groupMode}
+        statusGroups={statusGroups}
+        pinnedGroups={pinnedGroups}
+        workspaceEntriesByKey={workspaceEntriesByKey}
+        projects={projects}
+        projectNamesByKey={projectNamesByKey}
+        isRefreshing={isManualRefresh && isRevalidating}
+        onRefresh={handleRefresh}
+        onWorkspacePress={handleWorkspacePress}
+        onAddProject={handleOpenProject}
+        parentGestureRef={closeGestureRef}
+      />
+    );
 
   return (
     <MobilePanelOverlay
@@ -1024,6 +1026,7 @@ function DesktopSidebar({
 }: DesktopSidebarProps) {
   const ownsTopLeft = useOwnsWindowChromeCorner("top-left");
   const pathname = usePathname();
+  const hasActiveHostFilter = useSidebarViewStore((state) => state.hostFilters.length > 0);
   const isSessionsActive = pathname.includes("/sessions");
   const toolbarLabels = useMemo(
     () => ({
@@ -1095,17 +1098,6 @@ function DesktopSidebar({
     () => [styles.sidebarHeaderGroup, ownsTopLeft && styles.sidebarHeaderGroupBelowChrome],
     [ownsTopLeft],
   );
-  const resizeHandleStyle = useMemo(
-    // The resize handle is a plain View, so the whole-sidebar drag region below
-    // would otherwise treat it as a window-drag handle. Opt it out of dragging so
-    // the resize gesture keeps working (no-op outside Electron).
-    () => [
-      styles.resizeHandle,
-      isWeb && ({ cursor: "col-resize", WebkitAppRegion: "no-drag" } as object),
-    ],
-    [],
-  );
-
   return (
     <Animated.View
       accessibilityElementsHidden={!active}
@@ -1189,7 +1181,7 @@ function DesktopSidebar({
               <>
                 <WorkspacesSectionHeader onNewWorkspacePress={handleNewWorkspaceNavigate} />
 
-                {isInitialLoad ? (
+                {isInitialLoad && !hasActiveHostFilter ? (
                   <SidebarAgentListSkeleton />
                 ) : (
                   <SidebarWorkspaceList
@@ -1225,10 +1217,11 @@ function DesktopSidebar({
           handleOpenHostSettings={handleOpenHostSettings}
         />
 
-        {/* Resize handle - absolutely positioned over right border */}
-        <GestureDetector gesture={resizeGesture}>
-          <View style={resizeHandleStyle} />
-        </GestureDetector>
+        <SidebarResizeHandle
+          edge="right"
+          gesture={resizeGesture}
+          testID="left-sidebar-resize-handle"
+        />
       </View>
     </Animated.View>
   );
@@ -1524,14 +1517,6 @@ const styles = StyleSheet.create((theme) => ({
     borderRightWidth: theme.shell.chromeDivider,
     borderRightColor: theme.colors.border,
     backgroundColor: theme.colors.surfaceSidebar,
-  },
-  resizeHandle: {
-    position: "absolute",
-    right: -5,
-    top: 0,
-    bottom: 0,
-    width: 10,
-    zIndex: 10,
   },
   sidebarDragArea: {
     position: "relative",

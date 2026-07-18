@@ -14,6 +14,7 @@ import { useStoreWithEqualityFn } from "zustand/traditional";
 import { AgentStreamView, type AgentStreamViewHandle } from "@/agent-stream/view";
 import { ArchivedAgentCallout } from "@/components/archived-agent-callout";
 import { FileDropZone } from "@/components/file-drop/file-drop-zone";
+import { useRetainedPanelActive } from "@/components/retained-panel";
 import { Composer } from "@/composer";
 import { AgentModeControl } from "@/composer/agent-controls/mode-control";
 import { RewindComposerRestoreProvider } from "@/components/rewind/composer-restore";
@@ -27,7 +28,7 @@ import {
 import type { WorkspaceComposerAttachment } from "@/attachments/types";
 import { useWorkspaceAttachmentScopeKey } from "@/attachments/workspace-attachments-store";
 import { COMPACT_FORM_FACTOR_WIDTH, useIsCompactFormFactor } from "@/constants/layout";
-import { isNative, isWeb } from "@/constants/platform";
+import { isWeb } from "@/constants/platform";
 import { useAgentAttentionClear } from "@/hooks/use-agent-attention-clear";
 import { useAgentInitialization } from "@/hooks/use-agent-initialization";
 import { useAgentInputDraft, type AgentInputDraft } from "@/composer/draft/input-draft";
@@ -41,13 +42,10 @@ import {
 import { useArchiveAgent } from "@/hooks/use-archive-agent";
 import { useKeyboardShiftStyle } from "@/hooks/use-keyboard-shift-style";
 import { useContainerWidthBelow } from "@/hooks/use-container-width";
-import {
-  clearHistorySyncErrorAfterSuccessfulSync,
-  reconcileMissingAgentStateWithPresentAgent,
-} from "@/panels/agent-panel-load-state";
+import { reconcileMissingAgentStateWithPresentAgent } from "@/panels/agent-panel-load-state";
 import { usePaneContext, usePaneFocus } from "@/panels/pane-context";
 import type { PanelDescriptor, PanelRegistration } from "@/panels/panel-registry";
-import { formatErrorForLog, toErrorMessage } from "@/utils/error-messages";
+import { toErrorMessage } from "@/utils/error-messages";
 import { RenderProfile } from "@/utils/render-profiler";
 import { buildDraftPanelDescriptor } from "@/panels/draft-panel-descriptor";
 import {
@@ -724,6 +722,7 @@ function ChatAgentContent({
   onOpenWorkspaceFile?: (request: WorkspaceFileOpenRequest) => void;
 }) {
   const { t } = useTranslation();
+  const isPaneVisible = useRetainedPanelActive();
   const { api: toastApi, toast: toastState, dismiss: dismissToast } = useToastHost();
   const { isArchivingAgent } = useArchiveAgent();
   const streamViewRef = useRef<AgentStreamViewHandle>(null);
@@ -797,44 +796,6 @@ function ChatAgentContent({
     mode: "translate",
   });
 
-  const handleHistorySyncFailure = useCallback(
-    ({ origin, error }: { origin: "focus" | "entry"; error: unknown }) => {
-      if (agentId) {
-        console.warn("[AgentPanel] history sync failed", {
-          origin,
-          agentId,
-          error: formatErrorForLog(error),
-        });
-      }
-      const message = toErrorMessage(error);
-      setMissingAgentState((previous) => {
-        if (previous.kind === "error" && previous.message === message) {
-          return previous;
-        }
-        return { kind: "error", message };
-      });
-    },
-    [agentId],
-  );
-
-  const ensureInitializedWithSyncErrorHandling = useCallback(
-    (origin: "focus" | "entry") => {
-      if (!agentId) {
-        return;
-      }
-      ensureAgentIsInitialized(agentId)
-        .then(() => {
-          setMissingAgentState(clearHistorySyncErrorAfterSuccessfulSync);
-          return undefined;
-        })
-        .catch((error) => {
-          handleHistorySyncFailure({ origin, error });
-          return undefined;
-        });
-    },
-    [agentId, ensureAgentIsInitialized, handleHistorySyncFailure],
-  );
-
   useEffect(() => {
     if (connectionStatus === "online") {
       if (reconnectToastArmedRef.current) {
@@ -854,13 +815,6 @@ function ChatAgentContent({
       });
     }
   }, [connectionStatus, dismissToast, toastApi, t]);
-
-  useEffect(() => {
-    if (!isPaneFocused || !agentId || !isConnected || !hasSession) {
-      return;
-    }
-    ensureInitializedWithSyncErrorHandling("focus");
-  }, [agentId, ensureInitializedWithSyncErrorHandling, hasSession, isConnected, isPaneFocused]);
 
   const isArchivingCurrentAgent = Boolean(agentId && isArchivingAgent({ serverId, agentId }));
 
@@ -962,27 +916,6 @@ function ChatAgentContent({
   }, [agentId]);
 
   useEffect(() => {
-    if (!agentId) {
-      return;
-    }
-    if (!isConnected || !hasSession) {
-      return;
-    }
-    const shouldSyncOnEntry = needsAuthoritativeSync || isNative;
-    if (!shouldSyncOnEntry) {
-      return;
-    }
-
-    ensureInitializedWithSyncErrorHandling("entry");
-  }, [
-    agentId,
-    ensureInitializedWithSyncErrorHandling,
-    hasSession,
-    isConnected,
-    needsAuthoritativeSync,
-  ]);
-
-  useEffect(() => {
     initAttemptTokenRef.current += 1;
     setMissingAgentState({ kind: "idle" });
   }, [agentId, serverId]);
@@ -991,16 +924,24 @@ function ChatAgentContent({
     if (!agentId) {
       return;
     }
-    if (agentState.id) {
-      if (missingAgentState.kind === "resolving" || missingAgentState.kind === "not_found") {
+    if (agentState.id && hasAppliedAuthoritativeHistory) {
+      if (
+        missingAgentState.kind === "resolving" ||
+        missingAgentState.kind === "not_found" ||
+        missingAgentState.kind === "error"
+      ) {
         setMissingAgentState(reconcileMissingAgentStateWithPresentAgent);
       }
       return;
     }
-    if (!isConnected || !hasSession) {
+    if (!isPaneVisible || !isConnected || !hasSession) {
       return;
     }
-    if (missingAgentState.kind === "resolving" || missingAgentState.kind === "not_found") {
+    if (
+      missingAgentState.kind === "resolving" ||
+      missingAgentState.kind === "not_found" ||
+      missingAgentState.kind === "error"
+    ) {
       return;
     }
 
@@ -1048,11 +989,13 @@ function ChatAgentContent({
       });
   }, [
     agentState.id,
+    hasAppliedAuthoritativeHistory,
     agentId,
     client,
     ensureAgentIsInitialized,
     hasSession,
     isConnected,
+    isPaneVisible,
     missingAgentState.kind,
     serverId,
   ]);

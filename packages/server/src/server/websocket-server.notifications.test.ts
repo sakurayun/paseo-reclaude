@@ -101,6 +101,8 @@ function createServer(agentManagerOverrides?: Record<string, unknown>) {
   };
   const daemonConfigStore = {
     onChange: vi.fn(() => () => {}),
+    // Fork: the ctor eagerly reads providers config for reclaude/gateway usage probes.
+    get: vi.fn(() => ({})),
   };
 
   const server = new VoiceAssistantWebSocketServer(
@@ -173,6 +175,8 @@ function createSessionWithActivity(
 ) {
   return {
     getClientActivity: vi.fn(() => activity),
+    supports: () => false,
+    supportsForSource: () => false,
   };
 }
 
@@ -188,6 +192,7 @@ function connectClient(
 ) {
   const ws = createOpenSocket();
   asInternals<WebSocketServerInternals>(server).sessions.set(ws, {
+    kind: "trusted",
     session: createSessionWithActivity(activity),
     clientId: "client-test",
     appVersion: null,
