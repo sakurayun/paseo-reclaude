@@ -7,12 +7,32 @@ runs:
   - variant: workspace_tabs_css
     scale: full
     change: move workspace-tab visual hover and active state to the Desktop-web CSS fast path
-    status: queued
+    status: measured_idle
   - variant: button_primitive_css
     scale: full
     change: move Button visual hover and active state to a web-specific primitive
-    status: queued
+    status: implemented
   - variant: timeline_actions_css
     scale: full
     change: move visible timeline row action feedback to CSS without changing content state
+    status: partial_user_message_actions
+  - variant: diff_review_gutter_css
+    scale: full
+    change: replace per-line review gutter state and mounted plus icons with a CSS pseudo-element
+    status: implemented
+  - variant: sidebar_project_row_css
+    scale: full
+    change: move project row background, chevron, and trailing action reveal to CSS
+    status: implemented
+  - variant: composer_attach_voice_css
+    scale: full
+    change: move attach and voice visual hover to CSS while keeping tooltip state semantic
+    status: implemented
+  - variant: browser_toolbar_css
+    scale: full
+    change: move seven browser toolbar hover and active visuals to CSS
+    status: implemented
+  - variant: stream_contention
+    scale: 256KiB
+    change: repeat the tab interaction workload while live stream work occupies the renderer
     status: queued

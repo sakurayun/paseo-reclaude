@@ -16,3 +16,13 @@ Run `20260719_230204__static_inventory_property_access__65a27b` scanned 887 prod
 interaction callback/prop sites across 72 files, including 149 hover consumers, 109 press consumers,
 32 explicit React interaction state cells, 34 explicit hover tracker pairs, and 19 press-phase
 bindings. Metrics overlap and are not additive.
+
+## First wave
+
+- Static result: 167 callback/prop sites, 23 interaction state cells, 27 hover tracker pairs, and 17
+  press-phase bindings.
+- Runtime: tab-row `actualDuration` across 100 hover cycles fell 70.9% with 8 tabs and 69.6% with 20
+  tabs. The one-tab case and feedback-to-frame measurements were noise-bound.
+- RN Web `Pressable` still produced 201 leaf commits in both variants. CSS removed the app-level
+  cascade; only the Electron Button fast host bypasses Pressable for ordinary buttons.
+- Full values, method, validation, and remaining gates are in `results.md`.
