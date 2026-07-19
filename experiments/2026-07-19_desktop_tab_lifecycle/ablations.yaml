@@ -1,0 +1,15 @@
+plan: plan.yaml
+runs:
+  - variant: retained_same_source
+    scale: full
+    run_id: 20260719_222752__retained_same_source__b2ee34
+    status: measured
+  - variant: active_agent_only
+    scale: full
+    change: exclude inactive Agent timeline tabs from the existing mounted-tab LRU
+    run_id: 20260719_222952__active_agent_only__c064f5
+    status: deferred
+    rollback: retain inactive Agent tabs in the existing three-entry LRU
+    decision: >-
+      DOM and several medium-history cases improved, but the frozen 8x176 post-GC heap gate missed
+      and switch/render p95 regressed. Keep the retained product default.

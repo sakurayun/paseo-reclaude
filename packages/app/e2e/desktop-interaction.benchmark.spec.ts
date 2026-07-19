@@ -78,11 +78,13 @@ interface WindowWithBenchmarkState extends Window {
   __PASEO_DESKTOP_SWITCH_RESULT__?: Promise<Omit<SwitchSample, "heapDeltaBytes">>;
   __PASEO_E2E_WEB_PARTIAL_VIRTUALIZATION_THRESHOLD?: number;
   __PASEO_E2E_WEB_MOUNTED_RECENT_STREAM_ITEMS?: number;
+  __PASEO_E2E_RETAIN_INACTIVE_AGENT_TIMELINES?: boolean;
 }
 
 interface WebVirtualizationPolicy {
   threshold: number;
   mountedRecentItems: number;
+  retainInactiveAgentTimelines: boolean;
 }
 
 function readPositiveIntegerEnvironment(name: string, fallback: number): number {
@@ -96,6 +98,8 @@ function readPositiveIntegerEnvironment(name: string, fallback: number): number 
 }
 
 function readWebVirtualizationPolicy(): WebVirtualizationPolicy {
+  const retainInactiveTimelineEnvironment =
+    process.env.PASEO_BENCHMARK_RETAIN_INACTIVE_AGENT_TIMELINES;
   return {
     threshold: readPositiveIntegerEnvironment(
       "PASEO_BENCHMARK_WEB_VIRTUALIZATION_THRESHOLD",
@@ -105,6 +109,7 @@ function readWebVirtualizationPolicy(): WebVirtualizationPolicy {
       "PASEO_BENCHMARK_WEB_MOUNTED_RECENT_ITEMS",
       PRODUCT_DEFAULT_WEB_MOUNTED_RECENT_STREAM_ITEMS,
     ),
+    retainInactiveAgentTimelines: retainInactiveTimelineEnvironment !== "0",
   };
 }
 
@@ -178,6 +183,8 @@ async function createBenchmarkContext(
         virtualizationPolicy.threshold;
       benchmarkWindow.__PASEO_E2E_WEB_MOUNTED_RECENT_STREAM_ITEMS =
         virtualizationPolicy.mountedRecentItems;
+      benchmarkWindow.__PASEO_E2E_RETAIN_INACTIVE_AGENT_TIMELINES =
+        virtualizationPolicy.retainInactiveAgentTimelines;
     },
     {
       seededDaemon: daemon,
@@ -517,6 +524,7 @@ function buildCaseResult(input: {
       measuredSwitches: samples.length,
       webVirtualizationThreshold: webVirtualizationPolicy.threshold,
       webMountedRecentItems: webVirtualizationPolicy.mountedRecentItems,
+      retainInactiveAgentTimelines: webVirtualizationPolicy.retainInactiveAgentTimelines,
       fullStoredHistoryLoaded: true,
     },
     metrics: {
@@ -673,6 +681,7 @@ test("benchmarks Desktop interaction under retained heavy timelines", async ({ b
         viewportHeight: VIEWPORT.height,
         webVirtualizationThreshold: webVirtualizationPolicy.threshold,
         webMountedRecentItems: webVirtualizationPolicy.mountedRecentItems,
+        retainInactiveAgentTimelines: webVirtualizationPolicy.retainInactiveAgentTimelines,
         fullStoredHistoryLoaded: true,
       },
       cases,

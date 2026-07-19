@@ -1,0 +1,32 @@
+defaults:
+  scale: full
+  variant: image_reference_change
+entrypoint:
+  command: npm run benchmark -- draft-attachment-gc --output {run_dir}/benchmark.json
+  type: shell
+experiment: desktop_draft_gc
+gates:
+  correctness:
+    - ordinary text changes schedule zero attachment GC scans
+    - image attachment additions and removals still schedule GC
+    - draft lifecycle and startup migration still schedule GC
+  performance:
+    - 500-session ordinary typing scans zero stream items
+hypothesis: Scheduling attachment GC only when image references change removes history-scaled
+  work from ordinary keystrokes without changing attachment ownership.
+metrics:
+  file: benchmark.json
+  primary: tasks.0.cases.2.metrics.candidateItemsScanned.values.total
+  secondary:
+    - tasks.0.cases.2.metrics.candidateScans.values.total
+    - tasks.0.cases.2.metrics.candidateDuration.values.p95
+    - tasks.0.cases.2.metrics.baselineDuration.values.p95
+params:
+  items_per_session: 176
+  keystrokes: 60
+  session_counts:
+    - 0
+    - 100
+    - 500
+scale: full
+variant: image_reference_change_fast_path

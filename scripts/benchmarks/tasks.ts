@@ -75,4 +75,16 @@ export const benchmarkTasks: BenchmarkTaskDefinition[] = [
       "desktop-streaming.benchmark.spec.ts",
     ],
   },
+  {
+    id: "draft-attachment-gc",
+    description: "Measure history-scaled attachment GC work during ordinary draft typing",
+    command: npxCommand,
+    args: [
+      "--no-install",
+      "tsx",
+      "--tsconfig",
+      "packages/app/tsconfig.json",
+      "packages/app/scripts/benchmark-draft-attachment-gc.ts",
+    ],
+  },
 ];

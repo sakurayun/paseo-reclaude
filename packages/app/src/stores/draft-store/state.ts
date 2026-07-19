@@ -4,6 +4,7 @@ import {
   type UserComposerAttachment,
 } from "@/attachments/types";
 import { ForgeSearchItemSchema, GitHubSearchItemSchema } from "@getpaseo/protocol/messages";
+import type { StreamItem } from "@/types/stream";
 
 export const DRAFT_STORE_VERSION = 5;
 export const FINALIZED_DRAFT_TTL_MS = 5 * 60 * 1000;
@@ -187,6 +188,53 @@ export function collectReferencedAttachmentIdsFromState(state: DraftStoreState):
   }
 
   return referencedIds;
+}
+
+function collectDraftImageAttachmentIds(attachments: UserComposerAttachment[]): Set<string> {
+  const ids = new Set<string>();
+  for (const attachment of attachments) {
+    if (attachment.kind === "image") {
+      ids.add(attachment.metadata.id);
+    }
+  }
+  return ids;
+}
+
+export function haveDraftImageReferencesChanged(
+  previous: UserComposerAttachment[],
+  next: UserComposerAttachment[],
+): boolean {
+  if (previous.length === 0 && next.length === 0) {
+    return false;
+  }
+  const previousIds = collectDraftImageAttachmentIds(previous);
+  const nextIds = collectDraftImageAttachmentIds(next);
+  if (previousIds.size !== nextIds.size) {
+    return true;
+  }
+  for (const id of previousIds) {
+    if (!nextIds.has(id)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+export function collectStreamUserImageIds(
+  streams: ReadonlyMap<string, StreamItem[]>,
+  referencedIds: Set<string>,
+): number {
+  let scannedItems = 0;
+  for (const stream of streams.values()) {
+    for (const item of stream) {
+      scannedItems += 1;
+      if (item.kind !== "user_message") continue;
+      for (const image of item.images ?? []) {
+        referencedIds.add(image.id);
+      }
+    }
+  }
+  return scannedItems;
 }
 
 export function pruneFinalizedDraftRecords(input: {

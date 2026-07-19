@@ -1,0 +1,43 @@
+defaults:
+  scale: full
+  variant: baseline
+entrypoint:
+  command: npm run benchmark -- desktop-interaction --output {run_dir}/benchmark.json
+  type: shell
+experiment: desktop_tab_lifecycle
+gates:
+  correctness:
+    - target title and visible timeline body agree after every measured switch
+    - inactiveTimelineDomNodes equals zero for every case
+    - no browser request or WebSocket can reach port 6767
+  performance:
+    - 8x176 body-consistency p95 is no greater than 200ms
+    - 8x176 post-GC live heap improves by at least 15 percent
+  regression:
+    - non-Agent tabs keep the existing retained LRU lifecycle
+    - provider epoch, cursor, messageId, gap, pagination, and scroll behavior remain
+      covered
+    - native retained panels keep their existing lifecycle
+hypothesis: Mounting only the active Agent timeline removes retained inactive DOM
+  and heap while preserving fast, correct switches through server/query state and
+  keyed active content.
+metrics:
+  file: benchmark.json
+  primary: tasks.0.cases.8.metrics.footprint.values.inactiveTimelineDomNodes
+  secondary:
+    - tasks.0.cases.8.metrics.heap.values.used
+    - tasks.0.cases.8.metrics.bodyConsistent.values.p95
+    - tasks.0.cases.8.metrics.titleBodyMismatch.values.p95
+    - tasks.0.cases.8.metrics.reactDuration.values.p95
+params:
+  heavy_tabs:
+    - 1
+    - 4
+    - 8
+  history_items:
+    - 50
+    - 100
+    - 176
+  measured_switches: 12
+scale: full
+variant: retained_same_source

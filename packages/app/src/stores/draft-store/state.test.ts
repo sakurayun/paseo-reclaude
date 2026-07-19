@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { applyClearDraftRecord, pruneFinalizedDraftRecords, toDraftInputIfReady } from "./state";
+import {
+  applyClearDraftRecord,
+  haveDraftImageReferencesChanged,
+  pruneFinalizedDraftRecords,
+  toDraftInputIfReady,
+} from "./state";
 
 describe("draft-store lifecycle", () => {
   it("prunes finalized tombstones after TTL", () => {
@@ -99,5 +104,28 @@ describe("draft-store normalization", () => {
       text: "Keep this prompt",
       attachments: [pickerAttachment],
     });
+  });
+});
+
+describe("draft attachment garbage-collection policy", () => {
+  const image = {
+    kind: "image" as const,
+    metadata: {
+      id: "image-1",
+      mimeType: "image/png",
+      storageType: "web-indexeddb" as const,
+      storageKey: "image-1",
+      createdAt: 1,
+    },
+  };
+
+  it("does not schedule attachment GC for text-only draft changes", () => {
+    expect(haveDraftImageReferencesChanged([], [])).toBe(false);
+    expect(haveDraftImageReferencesChanged([image], [{ ...image }])).toBe(false);
+  });
+
+  it("detects image attachment additions and removals", () => {
+    expect(haveDraftImageReferencesChanged([], [image])).toBe(true);
+    expect(haveDraftImageReferencesChanged([image], [])).toBe(true);
   });
 });

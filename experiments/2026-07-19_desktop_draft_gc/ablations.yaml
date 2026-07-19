@@ -1,0 +1,13 @@
+plan: plan.yaml
+runs:
+  - variant: always_scan
+    scale: full
+    status: measured_in_shared_workload
+  - variant: image_reference_change
+    scale: full
+    run_id: 20260719_223641__image_reference_change__fa0872
+    status: superseded
+  - variant: image_reference_change_fast_path
+    scale: full
+    run_id: 20260719_224102__image_reference_change_fast_path__984e79
+    status: accepted
