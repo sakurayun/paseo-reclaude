@@ -512,11 +512,18 @@ async function expectHoverCommentButtonAlignedWithCodeLine(
     .getByTestId(`diff-gutter-action-${target.index}`)
     .evaluate((action, expectedCodeCenterY) => {
       const rect = action.getBoundingClientRect();
+      const pseudoElementStyle = window.getComputedStyle(action, "::after");
       return {
         actionCenterY: rect.top + rect.height / 2,
+        backgroundColor: pseudoElementStyle.backgroundColor,
+        backgroundImage: pseudoElementStyle.backgroundImage,
         codeCenterY: expectedCodeCenterY,
+        opacity: pseudoElementStyle.opacity,
       };
     }, target.codeCenterY);
+  expect(geometry.opacity).toBe("1");
+  expect(geometry.backgroundColor).not.toBe("rgba(0, 0, 0, 0)");
+  expect(geometry.backgroundImage).not.toBe("none");
   expect(geometry.actionCenterY).toBeCloseTo(geometry.codeCenterY, 0);
 }
 
