@@ -59,6 +59,19 @@ timeline/store 恢复、React commit 和 RN Web layout。subagent 列表和工�
 574.8 ms。这继续支持“超长单消息/高亮是尖峰热点”，但普通重型切换的主成本仍是
 timeline 视图构建和布局，不应仅靠更换 Markdown 库解决。
 
+### v2 原始证据
+
+- 正常 tail A/B：`runs/2026-07-20/production_v2_tail_latest_main_3d86c7/benchmark.json`
+  与 `runs/2026-07-20/production_v2_tail_optimized_74f05b/benchmark.json`。
+- 交互复测：`runs/2026-07-20/production_v2_tail_interactions_latest_main/benchmark.json`
+  与 `runs/2026-07-20/production_v2_tail_interactions_optimized/benchmark.json`。
+- 全历史饱和失败：`runs/2026-07-20/production_v2_latest_main_3d86c7/benchmark.failure.json`
+  与 `runs/2026-07-20/production_v2_optimized_74f05b/benchmark.failure.json`。
+- GIF：`production_v2_tail_latest_main_3d86c7/artifacts/latest_main-desktop-version-ab.gif`
+  与 `production_v2_tail_optimized_74f05b/artifacts/optimized_p0-desktop-version-ab.gif`。
+
+`runs/` 是本地实验产物，不进入 Git；可复现 fixture、runner、实验定义和结论进入 Git。
+
 ## 优化账本与下一优先级
 
 | 优先级 | 项目                                   | v2 证据                                             | 状态                   |
