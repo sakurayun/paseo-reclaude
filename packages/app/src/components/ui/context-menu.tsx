@@ -354,7 +354,7 @@ export function ContextMenuTrigger({
       onLongPress={handleLongPress}
       // @ts-ignore - onContextMenu is web-only and not in RN types.
       onContextMenu={handleContextMenu}
-      style={pressableStyle}
+      style={typeof style === "function" ? pressableStyle : style}
     >
       {children}
     </Pressable>
