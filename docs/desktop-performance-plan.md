@@ -87,7 +87,7 @@ gets its own commit and before/after run; do not combine adjacent rows into one 
 |    7 | SUBAGENT-01         | P1       | About 10 running subagents or large tool groups | Mount/hydrate selected detail only; keep bounded inline summaries              | measuring |
 |    8 | DIFF-01             | P1       | Large multi-file diffs and large tool JSON      | Add visibility/expansion gates and explicit byte/line budgets                  | measuring |
 |    9 | CHANGES-01          | P1       | Large repositories or cold git state            | Separate Changes RPC, daemon git, cache, and render latency                    | measuring |
-|   10 | CSS-INPUT-01        | P1       | Main-thread load during hover/press             | Move ordinary Desktop-web visual feedback to CSS selectors                     | queued    |
+|   10 | CSS-INPUT-01        | P1       | Main-thread load during hover/press             | Move ordinary Desktop-web visual feedback to CSS selectors                     | measuring |
 |   11 | SPLIT-01            | P1       | Pointermove during pane resize                  | rAF-coalesce layout/terminal fit; persist once on pointerup                    | measuring |
 |   12 | COMMAND-01          | P2       | Hundreds of Agents/workspaces                   | Bound or virtualize Command Center results and search measurement              | deferred  |
 |   13 | IPC-BINARY-01       | P2       | High-throughput terminal/binary frames          | Measure and remove avoidable Electron base64 copies                            | deferred  |
@@ -268,6 +268,11 @@ cache invalidation, or rendering.
 fixture; stale or canceled requests cannot replace a newer result.
 
 ### CSS-INPUT-01 — Desktop-web CSS interaction fast path
+
+The source inventory and prioritized component-family ledger live in
+[`desktop-css-interaction-debt.md`](desktop-css-interaction-debt.md). Current static baseline: 173
+interaction callback/prop sites across 72 production files, 32 explicit hover/press React state
+cells, and 34 explicit hover-tracker pairs. Counts overlap and are not runtime instance counts.
 
 Start with one high-frequency component family, such as icon buttons or timeline copy controls.
 Move ordinary visual-only hover/active state to CSS `:hover`, `:active`, and `:focus-visible`; keep

@@ -87,4 +87,10 @@ export const benchmarkTasks: BenchmarkTaskDefinition[] = [
       "packages/app/scripts/benchmark-draft-attachment-gc.ts",
     ],
   },
+  {
+    id: "desktop-css-interaction-audit",
+    description: "Inventory Desktop-web hover/press behavior that depends on React or JS state",
+    command: process.execPath,
+    args: ["packages/app/scripts/audit-desktop-css-interactions.mjs"],
+  },
 ];

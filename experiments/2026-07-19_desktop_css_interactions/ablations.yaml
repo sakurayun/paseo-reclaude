@@ -1,0 +1,18 @@
+plan: plan.yaml
+runs:
+  - variant: static_inventory_property_access
+    scale: full
+    run_id: 20260719_230204__static_inventory_property_access__65a27b
+    status: measured
+  - variant: workspace_tabs_css
+    scale: full
+    change: move workspace-tab visual hover and active state to the Desktop-web CSS fast path
+    status: queued
+  - variant: button_primitive_css
+    scale: full
+    change: move Button visual hover and active state to a web-specific primitive
+    status: queued
+  - variant: timeline_actions_css
+    scale: full
+    change: move visible timeline row action feedback to CSS without changing content state
+    status: queued
