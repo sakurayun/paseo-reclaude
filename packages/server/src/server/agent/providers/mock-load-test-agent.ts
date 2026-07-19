@@ -132,6 +132,75 @@ interface AgentStreamStressRequest {
   intervalMs?: number;
 }
 
+interface DesktopProductionFixtureProfile {
+  id: "A1" | "A2" | "A3" | "A4" | "A5" | "A6";
+  assistantItems: number;
+  toolItems: number;
+  targetContentChars: number;
+  largeItemChars: number;
+  providerSubagents?: boolean;
+}
+
+const DESKTOP_PRODUCTION_FIXTURE_PROFILES: Record<
+  DesktopProductionFixtureProfile["id"],
+  DesktopProductionFixtureProfile
+> = {
+  A1: {
+    id: "A1",
+    assistantItems: 67,
+    toolItems: 2,
+    targetContentChars: 44_111,
+    largeItemChars: 15_000,
+  },
+  A2: {
+    id: "A2",
+    assistantItems: 1_216,
+    toolItems: 854,
+    targetContentChars: 1_084_160,
+    largeItemChars: 68_000,
+    providerSubagents: true,
+  },
+  A3: {
+    id: "A3",
+    assistantItems: 223,
+    toolItems: 208,
+    targetContentChars: 1_152_992,
+    largeItemChars: 500_000,
+  },
+  A4: {
+    id: "A4",
+    assistantItems: 614,
+    toolItems: 953,
+    targetContentChars: 1_876_617,
+    largeItemChars: 49_000,
+  },
+  A5: {
+    id: "A5",
+    assistantItems: 77,
+    toolItems: 476,
+    targetContentChars: 773_063,
+    largeItemChars: 36_000,
+  },
+  A6: {
+    id: "A6",
+    assistantItems: 38,
+    toolItems: 0,
+    targetContentChars: 255_978,
+    largeItemChars: 202_000,
+  },
+};
+
+function parseDesktopProductionFixtureProfile(
+  prompt: AgentPromptInput,
+): DesktopProductionFixtureProfile | null {
+  const match = /emit\s+production calibrated desktop fixture profile\s+(a[1-6])/i.exec(
+    promptToText(prompt),
+  );
+  if (!match) return null;
+  const id = match[1]?.toUpperCase() as DesktopProductionFixtureProfile["id"] | undefined;
+  return id ? DESKTOP_PRODUCTION_FIXTURE_PROFILES[id] : null;
+}
+
 const MARKDOWN_BENCHMARK_WORKLOADS = [
   "plain_unbroken",
   "prose_blocks",
@@ -619,6 +688,125 @@ function createToolCall(input: {
   };
 }
 
+function fitFixtureText(prefix: string, targetChars: number): string {
+  if (targetChars <= prefix.length) return prefix.slice(0, Math.max(0, targetChars));
+  return `${prefix}${repeatBenchmarkPattern(
+    "Deterministic production-calibrated Markdown paragraph with **bold text**, a [link](https://example.com), and stable wrapping.\n\n",
+    targetChars - prefix.length,
+  )}`;
+}
+
+function buildDesktopFixtureAssistantItems(
+  profileId: string,
+  count: number,
+  targetContentChars: number,
+  largeAssistantChars = 0,
+): AgentTimelineItem[] {
+  const items: AgentTimelineItem[] = [];
+  const remainingChars = Math.max(0, targetContentChars - largeAssistantChars);
+  const regularCount = count - (largeAssistantChars > 0 ? 1 : 0);
+  let allocatedRegularChars = 0;
+  for (let index = 0; index < count; index += 1) {
+    const isLarge = index === 0 && largeAssistantChars > 0;
+    const regularIndex = index - (largeAssistantChars > 0 ? 1 : 0);
+    const targetChars = isLarge
+      ? largeAssistantChars
+      : Math.floor(((regularIndex + 1) * remainingChars) / Math.max(1, regularCount)) -
+        allocatedRegularChars;
+    if (!isLarge) allocatedRegularChars += targetChars;
+    const ordinal = String(index + 1).padStart(4, "0");
+    const marker =
+      index === count - 1
+        ? `desktop-production-${profileId.toLowerCase()}-last`
+        : `desktop-production-${profileId.toLowerCase()}-message-${ordinal}`;
+    const prefix = `## ${marker}\n\n`;
+    items.push({
+      type: "assistant_message",
+      text: fitFixtureText(prefix, Math.max(prefix.length, targetChars)),
+      messageId: `desktop-production-${profileId.toLowerCase()}-${ordinal}`,
+    });
+  }
+  return items;
+}
+
+function buildDesktopFixtureToolCall(
+  profileId: string,
+  index: number,
+  largeItemChars: number,
+): ToolCallTimelineItem {
+  const ordinal = String(index + 1).padStart(4, "0");
+  const callId = `desktop-production-${profileId.toLowerCase()}-tool-${ordinal}`;
+  if (index === 0 && largeItemChars > 0) {
+    const prefix = "diff --git a/src/production-heavy.ts b/src/production-heavy.ts\n";
+    return createToolCall({
+      callId,
+      name: "edit",
+      status: "completed",
+      detail: {
+        type: "edit",
+        filePath: "src/production-heavy.ts",
+        unifiedDiff: `${prefix}${repeatBenchmarkPattern(
+          "+ production-calibrated large diff line with deterministic content\n",
+          Math.max(0, largeItemChars - prefix.length),
+        )}`,
+      },
+    });
+  }
+  switch (index % 4) {
+    case 0:
+      return createToolCall({
+        callId,
+        name: "bash",
+        status: "completed",
+        detail: {
+          type: "shell",
+          command: `npm run fixture:${profileId.toLowerCase()}:${ordinal}`,
+          cwd: "/tmp/paseo-production-fixture",
+          output: `production fixture command ${ordinal} completed\n`,
+          exitCode: 0,
+        },
+      });
+    case 1:
+      return createToolCall({
+        callId,
+        name: "read",
+        status: "completed",
+        detail: {
+          type: "read",
+          filePath: `src/fixture/file-${ordinal}.ts`,
+          content: `export const fixture${index} = ${index};\n`,
+        },
+      });
+    case 2:
+      return createToolCall({
+        callId,
+        name: "grep",
+        status: "completed",
+        detail: {
+          type: "search",
+          query: `production-fixture-${ordinal}`,
+          toolName: "grep",
+          filePaths: [`src/fixture/file-${ordinal}.ts`],
+          numFiles: 1,
+          numMatches: 1,
+        },
+      });
+    default:
+      return createToolCall({
+        callId,
+        name: "edit",
+        status: "completed",
+        detail: {
+          type: "edit",
+          filePath: `src/fixture/file-${ordinal}.ts`,
+          oldString: `before-${ordinal}`,
+          newString: `after-${ordinal}`,
+          unifiedDiff: `@@ -1 +1 @@\n-before-${ordinal}\n+after-${ordinal}\n`,
+        },
+      });
+  }
+}
+
 export class MockLoadTestAgentClient implements AgentClient {
   readonly provider: AgentProvider = MOCK_LOAD_TEST_PROVIDER_ID;
   readonly capabilities = CAPABILITIES;
@@ -767,11 +955,14 @@ export class MockLoadTestAgentSession implements AgentSession {
       });
     }, 0);
 
+    const desktopFixtureProfile = parseDesktopProductionFixtureProfile(prompt);
     const largePayload = parseLargeAgentStreamPayloadPrompt(prompt);
     const stress = parseAgentStreamStressPrompt(prompt);
     const questionPrompt = parseMockQuestionPrompt(prompt);
     const structuredBranchName = parseStructuredBranchNamePrompt(prompt);
-    if (shouldEmitTurnFailure(prompt)) {
+    if (desktopFixtureProfile) {
+      this.scheduleDesktopProductionFixtureTurn(turn, desktopFixtureProfile);
+    } else if (shouldEmitTurnFailure(prompt)) {
       this.scheduleFailedTurn(turn);
     } else if (structuredBranchName) {
       this.scheduleStructuredJsonTurn(turn, structuredBranchName);
@@ -933,6 +1124,16 @@ export class MockLoadTestAgentSession implements AgentSession {
   ): void {
     turn.timer = setTimeout(() => {
       this.emitLargePayloadTurn(turn, largePayload);
+    }, 0);
+    turn.timer.unref?.();
+  }
+
+  private scheduleDesktopProductionFixtureTurn(
+    turn: ActiveTurn,
+    profile: DesktopProductionFixtureProfile,
+  ): void {
+    turn.timer = setTimeout(() => {
+      this.emitDesktopProductionFixtureTurn(turn, profile);
     }, 0);
     turn.timer.unref?.();
   }
@@ -1144,6 +1345,145 @@ export class MockLoadTestAgentSession implements AgentSession {
       this.emitStressTimelineUpdate(turn, stress, index);
     }
     this.finishStressTurn(turn, stress);
+  }
+
+  private emitDesktopProductionFixtureTurn(
+    turn: ActiveTurn,
+    profile: DesktopProductionFixtureProfile,
+  ): void {
+    if (this.activeTurn !== turn) return;
+
+    this.clearTurnTimer(turn);
+    this.emit({
+      type: "turn_started",
+      provider: this.provider,
+      turnId: turn.turnId,
+    });
+
+    const hasLargeAssistant = profile.toolItems === 0;
+    const assistantItems = buildDesktopFixtureAssistantItems(
+      profile.id,
+      profile.assistantItems,
+      profile.targetContentChars - (hasLargeAssistant ? 0 : profile.largeItemChars),
+      hasLargeAssistant ? profile.largeItemChars : 0,
+    );
+    const toolItems = Array.from({ length: profile.toolItems }, (_, index) =>
+      buildDesktopFixtureToolCall(profile.id, index, profile.largeItemChars),
+    );
+    this.emitInterleavedDesktopFixtureTimeline(turn.turnId, assistantItems, toolItems);
+
+    if (profile.providerSubagents) {
+      this.emitDesktopProviderSubagents();
+    }
+
+    this.activeTurn = null;
+    const usage = {
+      inputTokens: 1,
+      outputTokens: profile.assistantItems + profile.toolItems,
+      contextWindowUsedTokens: profile.assistantItems + profile.toolItems,
+      contextWindowMaxTokens: 128_000,
+    };
+    this.emit({
+      type: "turn_completed",
+      provider: this.provider,
+      turnId: turn.turnId,
+      usage,
+    });
+    turn.resolve({
+      sessionId: this.id,
+      finalText: `desktop-production-${profile.id.toLowerCase()}-last`,
+      usage,
+      timeline: [],
+      canceled: false,
+    });
+  }
+
+  private emitInterleavedDesktopFixtureTimeline(
+    turnId: string,
+    assistantItems: AgentTimelineItem[],
+    toolItems: ToolCallTimelineItem[],
+  ): void {
+    let assistantIndex = 0;
+    let toolIndex = 0;
+    const total = assistantItems.length + toolItems.length;
+    for (let index = 0; index < total; index += 1) {
+      const expectedToolCount = Math.floor(((index + 1) * toolItems.length) / total);
+      if (toolIndex < expectedToolCount) {
+        const tool = toolItems[toolIndex];
+        if (tool) this.emitTimeline(turnId, tool);
+        toolIndex += 1;
+      } else {
+        const assistant = assistantItems[assistantIndex];
+        if (assistant) this.emitTimeline(turnId, assistant);
+        assistantIndex += 1;
+      }
+    }
+  }
+
+  private emitDesktopProviderSubagents(): void {
+    const baseTimestamp = Date.UTC(2026, 6, 20, 0, 0, 0);
+    for (let index = 0; index < 108; index += 1) {
+      const ordinal = String(index + 1).padStart(3, "0");
+      this.emit({
+        type: "provider_subagent",
+        provider: this.provider,
+        event: {
+          type: "upsert",
+          id: `desktop-provider-subagent-${ordinal}`,
+          title: `Production provider subagent ${ordinal}`,
+          description: `Production-calibrated provider subagent row ${ordinal}`,
+          status: index >= 98 ? "running" : "completed",
+          cwd: "/tmp/paseo-production-fixture",
+          timestamp: new Date(baseTimestamp + index * 1_000).toISOString(),
+        },
+      });
+    }
+
+    this.emitDesktopProviderSubagentTimeline({
+      id: "desktop-provider-subagent-001",
+      assistantItems: 324,
+      toolItems: 50,
+      targetContentChars: 415_000,
+      largeItemChars: 70_000,
+    });
+    this.emitDesktopProviderSubagentTimeline({
+      id: "desktop-provider-subagent-002",
+      assistantItems: 243,
+      toolItems: 43,
+      targetContentChars: 350_000,
+      largeItemChars: 70_000,
+    });
+  }
+
+  private emitDesktopProviderSubagentTimeline(input: {
+    id: string;
+    assistantItems: number;
+    toolItems: number;
+    targetContentChars: number;
+    largeItemChars: number;
+  }): void {
+    const assistantItems = buildDesktopFixtureAssistantItems(
+      input.id,
+      input.assistantItems,
+      input.targetContentChars - input.largeItemChars,
+    );
+    const toolItems = Array.from({ length: input.toolItems }, (_, index) =>
+      buildDesktopFixtureToolCall(input.id, index, input.largeItemChars),
+    );
+    let assistantIndex = 0;
+    let toolIndex = 0;
+    const total = assistantItems.length + toolItems.length;
+    for (let index = 0; index < total; index += 1) {
+      const expectedToolCount = Math.floor(((index + 1) * toolItems.length) / total);
+      const item =
+        toolIndex < expectedToolCount ? toolItems[toolIndex++] : assistantItems[assistantIndex++];
+      if (!item) continue;
+      this.emit({
+        type: "provider_subagent",
+        provider: this.provider,
+        event: { type: "timeline", id: input.id, item },
+      });
+    }
   }
 
   private emitStressUpdate(

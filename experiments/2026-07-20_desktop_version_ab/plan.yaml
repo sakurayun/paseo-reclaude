@@ -1,0 +1,70 @@
+experiment: desktop_version_ab
+defaults:
+  variant: optimized_p0
+  scale: full
+hypothesis: >-
+  当前性能分支的 timeline 挂载窗口与 Markdown P0 优化会降低生产校准的 8-tab
+  workload 的 p95 延迟、Long Task、DOM 和 renderer 内存；full-history saturation
+  用于验证客户端是否存在真正的内存硬上限。
+entrypoint:
+  type: shell
+  command: npx tsx scripts/benchmark-desktop-version-ab.ts
+benchmark:
+  id: desktop_production_calibrated_fixture
+  release: v2
+  status: released
+  fixture_server_id: srv_desktop_production_perf_v2b
+  fixture_endpoint: 127.0.0.1:17678
+  calibration:
+    timeline_items: 5394
+    json_bytes: 6956521
+    real_json_bytes: 7602591
+    tool_calls: 2586
+    provider_subagents: 108
+eval:
+  benchmark: desktop_production_calibrated_fixture
+  benchmark_version: v2
+  split: full
+  scorer_version: desktop_version_metrics_v2
+params:
+  cdp_endpoint: http://127.0.0.1:9223
+  app_origin: http://localhost:8082
+  switch_cycles: 3
+  gif_frame_delay_ms: 120
+  history_warmup_modes:
+    - tail
+    - full
+metrics:
+  file: metrics.json
+  primary: switch_body_consistent_p95_ms
+  secondary:
+    - switch_title_body_mismatch_p95_ms
+    - switch_long_task_duration_p95_ms
+    - switch_max_frame_gap_p95_ms
+    - switch_dropped_frames_p95
+    - switch_react_commits_p95
+    - switch_react_duration_p95_ms
+    - markdown_ready_ms
+    - markdown_long_task_duration_ms
+    - dom_nodes_post_gc
+    - inactive_timeline_dom_nodes_post_gc
+    - heap_used_post_gc_mb
+    - renderer_rss_peak_mb
+    - renderer_physical_footprint_mb
+    - workspace_to_heavy_p95_ms
+    - subagent_expand_p95_ms
+    - tool_expand_p95_ms
+gates:
+  correctness:
+    - 每次切换后 document title 与可见正文属于同一个目标 Agent
+    - 6 个 root Agent 加 2 个 provider subagent tab 均可进入并显示各自 sentinel
+    - timeline 条目、JSON 字节、工具调用和 subagent 数量与真实校准值偏差不超过 15%
+    - 1 MiB Markdown Agent 的 prompt 与代码内容可见
+    - 浏览器和 WebSocket 不访问生产端口 6767
+  comparison:
+    - 两个版本使用同一 daemon 进程与 fixture manifest
+    - 两个版本均使用 8082 Metro、9223 CDP 和独立空白 userData
+    - 数字测量与 GIF 录制分开执行，截图开销不进入指标
+  saturation:
+    - full-history warmup 不得 renderer OOM
+    - full-history warmup 后 heap 必须存在可解释的硬上限

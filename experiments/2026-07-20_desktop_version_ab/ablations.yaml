@@ -1,0 +1,26 @@
+experiment: desktop_version_ab
+plan: plan.yaml
+runs:
+  - variant: optimized_p0
+    scale: full
+    source: perf/desktop-interaction-followup
+    change: timeline and Markdown P0 performance commits
+    final_run: production_v2_tail_interactions_optimized
+  - variant: latest_main
+    scale: full
+    source: origin/main
+    change: source revision only; fixture, ports, profile initialization, and workload stay fixed
+    final_run: production_v2_tail_interactions_latest_main
+diagnostic_ablations:
+  - name: full_history_saturation
+    main_run: production_v2_latest_main_3d86c7
+    optimized_run: production_v2_optimized_74f05b
+    interpretation: both variants OOM near the 4 GB V8 heap limit; client history memory bound remains P0
+  - name: production_tail_pages
+    main_run: production_v2_tail_latest_main_3d86c7
+    optimized_run: production_v2_tail_optimized_74f05b
+    interpretation: canonical resource comparison; 24 switches per version with identical fixture
+  - name: eager_inactive_markdown
+    main_run: 20260720_014836__latest_main__2a0ee8
+    optimized_run: 20260720_014450__optimized_p0__e229c4
+    interpretation: v1 smoke only; inactive Markdown was pre-opened

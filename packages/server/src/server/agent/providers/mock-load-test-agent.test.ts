@@ -241,6 +241,57 @@ describe("MockLoadTestAgentClient", () => {
     }
   });
 
+  test("emits production-calibrated desktop history and provider subagents", async () => {
+    vi.useFakeTimers();
+    const client = new MockLoadTestAgentClient();
+
+    const profileA1 = await client.createSession({
+      provider: "mock",
+      cwd: process.cwd(),
+      model: "ten-second-stream",
+    });
+    const a1Events: AgentStreamEvent[] = [];
+    const unsubscribeA1 = profileA1.subscribe((event) => a1Events.push(event));
+    const a1Result = profileA1.run("emit production calibrated desktop fixture profile A1");
+    await vi.advanceTimersByTimeAsync(0);
+    await a1Result;
+    unsubscribeA1();
+
+    const a1Timeline = a1Events.flatMap((event) => (event.type === "timeline" ? [event.item] : []));
+    expect(a1Timeline).toHaveLength(70);
+    expect(a1Timeline.filter((item) => item.type === "assistant_message")).toHaveLength(67);
+    expect(a1Timeline.filter((item) => item.type === "tool_call")).toHaveLength(2);
+    expect(JSON.stringify(a1Timeline)).toContain("desktop-production-a1-last");
+
+    const profileA2 = await client.createSession({
+      provider: "mock",
+      cwd: process.cwd(),
+      model: "ten-second-stream",
+    });
+    const a2Events: AgentStreamEvent[] = [];
+    const unsubscribeA2 = profileA2.subscribe((event) => a2Events.push(event));
+    const a2Result = profileA2.run("emit production calibrated desktop fixture profile A2");
+    await vi.advanceTimersByTimeAsync(0);
+    await a2Result;
+    unsubscribeA2();
+
+    const a2Timeline = a2Events.flatMap((event) => (event.type === "timeline" ? [event.item] : []));
+    expect(a2Timeline).toHaveLength(2_071);
+    expect(a2Timeline.filter((item) => item.type === "assistant_message")).toHaveLength(1_216);
+    expect(a2Timeline.filter((item) => item.type === "tool_call")).toHaveLength(854);
+
+    const providerEvents = a2Events.flatMap((event) =>
+      event.type === "provider_subagent" ? [event.event] : [],
+    );
+    const descriptors = providerEvents.filter((event) => event.type === "upsert");
+    const providerTimeline = providerEvents.filter((event) => event.type === "timeline");
+    expect(descriptors).toHaveLength(108);
+    expect(
+      descriptors.filter((event) => event.type === "upsert" && event.status === "running"),
+    ).toHaveLength(10);
+    expect(providerTimeline).toHaveLength(660);
+  });
+
   test("emits a terminal failure without an assistant provider message", async () => {
     vi.useFakeTimers();
     const client = new MockLoadTestAgentClient();
