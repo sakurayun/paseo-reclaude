@@ -1,5 +1,0 @@
-version: 1
-runs_dir: runs
-experiments_dir: experiments
-benchmarks_dir: benchmarks
-frozen_run_marker: manifest.json
