@@ -55,6 +55,10 @@ import {
   releaseResidentBrowserWebview,
   takeResidentBrowserWebview,
 } from "./browser-webview-resident";
+import {
+  BROWSER_TOOLBAR_BUTTON_DATA_SET,
+  installBrowserPaneInteractionStyles,
+} from "./browser-pane-interaction-styles";
 
 type ElectronWebview = HTMLElement & {
   canGoBack?: () => boolean;
@@ -470,7 +474,7 @@ function ToolbarButton({
   active?: boolean;
   disabled?: boolean;
   onPress: () => void;
-  style: (state: { hovered?: boolean; pressed?: boolean }) => StyleProp<ViewStyle>;
+  style: StyleProp<ViewStyle>;
 }) {
   const accessibilityState = useMemo(
     () => ({ disabled: Boolean(disabled), selected: Boolean(active) }),
@@ -483,6 +487,7 @@ function ToolbarButton({
           accessibilityRole="button"
           accessibilityLabel={label}
           accessibilityState={accessibilityState}
+          dataSet={BROWSER_TOOLBAR_BUTTON_DATA_SET}
           disabled={disabled}
           onPress={onPress}
           style={style}
@@ -553,7 +558,7 @@ function DeviceSizeMenu({
 }: {
   selectedId: DeviceSizeId;
   onSelect: (id: DeviceSizeId) => void;
-  triggerStyle: (state: { hovered?: boolean; pressed?: boolean }) => StyleProp<ViewStyle>;
+  triggerStyle: StyleProp<ViewStyle>;
 }) {
   const { t } = useTranslation();
   const selectedPreset =
@@ -564,7 +569,11 @@ function DeviceSizeMenu({
     <DropdownMenu>
       <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
         <TooltipTrigger asChild>
-          <DropdownMenuTrigger accessibilityLabel={label} style={triggerStyle}>
+          <DropdownMenuTrigger
+            accessibilityLabel={label}
+            dataSet={BROWSER_TOOLBAR_BUTTON_DATA_SET}
+            style={triggerStyle}
+          >
             <View style={styles.deviceTrigger}>
               <SelectedIcon size={16} uniProps={deviceMutedIconMapping} />
               <ThemedChevronDown size={12} uniProps={deviceMutedIconMapping} />
@@ -608,6 +617,7 @@ export function BrowserPane({
 }) {
   const { theme } = useUnistyles();
   const { t } = useTranslation();
+  useEffect(() => installBrowserPaneInteractionStyles(), []);
   const browser = useBrowserStore((state) => state.browsersById[browserId] ?? null);
   const updateBrowser = useBrowserStore((state) => state.updateBrowser);
   const webviewRef = useRef<ElectronWebview | null>(null);
@@ -1485,43 +1495,21 @@ export function BrowserPane({
       });
   }, []);
 
-  const baseIconButtonStyle = useCallback(
-    ({ hovered, pressed }: { hovered?: boolean; pressed?: boolean }) => [
-      styles.iconButton,
-      (hovered || pressed) && styles.iconButtonHovered,
-    ],
-    [],
-  );
-  const backIconButtonStyle = useCallback(
-    ({ hovered, pressed }: { hovered?: boolean; pressed?: boolean }) => [
-      styles.iconButton,
-      (hovered || pressed) && styles.iconButtonHovered,
-      !browser?.canGoBack && styles.iconButtonDisabled,
-    ],
+  const baseIconButtonStyle = styles.iconButton;
+  const backIconButtonStyle = useMemo(
+    () => [styles.iconButton, !browser?.canGoBack && styles.iconButtonDisabled],
     [browser?.canGoBack],
   );
-  const forwardIconButtonStyle = useCallback(
-    ({ hovered, pressed }: { hovered?: boolean; pressed?: boolean }) => [
-      styles.iconButton,
-      (hovered || pressed) && styles.iconButtonHovered,
-      !browser?.canGoForward && styles.iconButtonDisabled,
-    ],
+  const forwardIconButtonStyle = useMemo(
+    () => [styles.iconButton, !browser?.canGoForward && styles.iconButtonDisabled],
     [browser?.canGoForward],
   );
-  const annotateIconButtonStyle = useCallback(
-    ({ hovered, pressed }: { hovered?: boolean; pressed?: boolean }) => [
-      styles.iconButton,
-      selectorMode === "annotate" && styles.selectorActiveButton,
-      (hovered || pressed) && styles.iconButtonHovered,
-    ],
+  const annotateIconButtonStyle = useMemo(
+    () => [styles.iconButton, selectorMode === "annotate" && styles.selectorActiveButton],
     [selectorMode],
   );
-  const screenshotIconButtonStyle = useCallback(
-    ({ hovered, pressed }: { hovered?: boolean; pressed?: boolean }) => [
-      styles.iconButton,
-      selectorMode === "screenshot" && styles.selectorActiveButton,
-      (hovered || pressed) && styles.iconButtonHovered,
-    ],
+  const screenshotIconButtonStyle = useMemo(
+    () => [styles.iconButton, selectorMode === "screenshot" && styles.selectorActiveButton],
     [selectorMode],
   );
 
@@ -1824,9 +1812,6 @@ const styles = StyleSheet.create((theme) => ({
   },
   selectorActiveButton: {
     backgroundColor: `${String(theme.colors.accent)}20`,
-  },
-  iconButtonHovered: {
-    backgroundColor: theme.colors.surface2,
   },
   iconButtonDisabled: {
     opacity: 0.45,
