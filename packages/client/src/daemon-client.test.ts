@@ -221,6 +221,25 @@ test("advertises consumer-provided browser automation capabilities", async () =>
   });
 });
 
+test("Hub management requires daemon support before dispatching requests", async () => {
+  const mock = createMockTransport();
+  const client = new DaemonClient({
+    url: "ws://test",
+    clientId: "hub_feature_gate_unit_test",
+    transportFactory: () => mock.transport,
+    reconnect: { enabled: false },
+  });
+  clients.push(client);
+  const connecting = client.connect();
+  mock.triggerOpen();
+  await connecting;
+
+  await expect(client.getHubStatus()).rejects.toThrow(
+    "Update the host to use Hub relationship management.",
+  );
+  expect(mock.sent).toEqual([]);
+});
+
 test("sets the complete viewed timeline subscription only when the daemon supports it", async () => {
   const supportedTransport = createMockTransport();
   const supportedClient = new DaemonClient({
@@ -646,6 +665,7 @@ test("advertises client capabilities in hello", async () => {
     protocolVersion: 1,
     capabilities: {
       custom_mode_icons: true,
+      project_updates: true,
       provider_subagents: true,
       reasoning_merge_enum: true,
       terminal_reflowable_snapshot: true,
@@ -655,6 +675,32 @@ test("advertises client capabilities in hello", async () => {
       },
     },
   });
+});
+
+test("allows callers to disable default client capabilities", async () => {
+  const mock = createMockTransport();
+  const client = new DaemonClient({
+    url: "ws://test",
+    clientId: "clsk_capability_override_test",
+    reconnect: { enabled: false },
+    transportFactory: () => mock.transport,
+    capabilities: {
+      [CLIENT_CAPS.projectUpdates]: false,
+    },
+  });
+  clients.push(client);
+
+  const connectPromise = client.connect();
+  mock.triggerOpen({ preserveSent: true });
+  await connectPromise;
+
+  const hello = z
+    .object({
+      type: z.literal("hello"),
+      capabilities: z.record(z.unknown()),
+    })
+    .parse(JSON.parse(assertStr(mock.sent[0])));
+  expect(hello.capabilities[CLIENT_CAPS.projectUpdates]).toBe(false);
 });
 
 test("sends new-agent run options when creating schedules", async () => {
@@ -677,7 +723,7 @@ test("sends new-agent run options when creating schedules", async () => {
   const createPromise = client.scheduleCreate({
     requestId: "request-1",
     prompt: "Run the task",
-    cadence: { type: "every", everyMs: 60_000 },
+    cadence: { type: "cron", expression: "* * * * *" },
     target: {
       type: "new-agent",
       config: {
@@ -695,7 +741,7 @@ test("sends new-agent run options when creating schedules", async () => {
     type: "schedule/create",
     requestId: "request-1",
     prompt: "Run the task",
-    cadence: { type: "every", everyMs: 60_000 },
+    cadence: { type: "cron", expression: "* * * * *" },
     target: {
       type: "new-agent",
       config: {
@@ -1945,7 +1991,7 @@ test("normalizes workspace_setup_progress into a workspace-scoped daemon event",
   });
 });
 
-test("sends create_agent_request with string workspace ids", async () => {
+test("sends create_agent_request with workspace and caller identity", async () => {
   const logger = createMockLogger();
   const mock = createMockTransport();
 
@@ -1966,6 +2012,7 @@ test("sends create_agent_request with string workspace ids", async () => {
     provider: "codex",
     cwd: "/tmp/project/.paseo/worktrees/feature-a",
     workspaceId: "ws-feature-a",
+    callerAgentId: "parent-agent",
     title: "Compat agent",
     modeId: "default",
   });
@@ -1976,6 +2023,7 @@ test("sends create_agent_request with string workspace ids", async () => {
     expect.objectContaining({
       type: "create_agent_request",
       workspaceId: "ws-feature-a",
+      callerAgentId: "parent-agent",
     }),
   );
 

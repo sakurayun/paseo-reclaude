@@ -54,22 +54,30 @@ The heart of Paseo. A Node.js process that:
 
 All paths are under `packages/server/src/`.
 
+Project identity is daemon-global rather than session-owned. After registry bootstrap, the daemon's
+project Git observer keeps one non-recursive watch on each lexically equivalent active project root
+and listens only for the root `.git` entry, with a slow rescan as a missed-event fallback. It runs
+for empty projects and without connected clients, then fans metadata changes through the WebSocket
+server to capability-aware sessions. It deliberately does not use the broad recursive working-tree
+watcher or the per-session Git observer: those are checkout/status mechanisms and intentionally do
+not retain non-Git directories.
+
 **Key modules:**
 
-| Module                          | Responsibility                                                               |
-| ------------------------------- | ---------------------------------------------------------------------------- |
-| `server/bootstrap.ts`           | Daemon initialization: HTTP server, WS server, agent manager, storage, relay |
-| `server/websocket-server.ts`    | WebSocket connection management, hello handshake, binary frame routing       |
-| `server/session.ts`             | Per-client session state, timeline subscriptions, terminal operations        |
-| `server/agent/agent-manager.ts` | Agent lifecycle state machine, timeline tracking, subscriber management      |
-| `server/agent/agent-storage.ts` | File-backed JSON persistence at `$PASEO_HOME/agents/`                        |
-| `server/agent/tools/`           | Transport-neutral Paseo tool catalog for subagents, permissions, worktrees   |
-| `server/agent/mcp-server.ts`    | Thin MCP adapter that registers the Paseo tool catalog with the MCP SDK      |
-| `server/agent/providers/`       | Provider adapters (see "Agent providers" below)                              |
-| `server/relay-transport.ts`     | Outbound relay connection with E2E encryption                                |
-| `server/schedule/`              | Cron-based scheduled agents                                                  |
-| `server/loop-service.ts`        | Looping agent runs that retry until an exit condition                        |
-| `server/chat/`                  | Chat rooms for agent-to-agent and human-to-agent messaging                   |
+| Module                          | Responsibility                                                                |
+| ------------------------------- | ----------------------------------------------------------------------------- |
+| `server/bootstrap.ts`           | Daemon initialization: HTTP server, WS server, agent manager, storage, relay  |
+| `server/websocket-server.ts`    | WebSocket connection management, hello handshake, binary frame routing        |
+| `server/session.ts`             | Per-client session state, timeline subscriptions, terminal operations         |
+| `server/agent/agent-manager.ts` | Agent lifecycle state machine, timeline tracking, subscriber management       |
+| `server/agent/agent-storage.ts` | File-backed JSON persistence at `$PASEO_HOME/agents/`                         |
+| `server/agent/tools/`           | Transport-neutral catalog for workspaces, agents, permissions, and automation |
+| `server/agent/mcp-server.ts`    | Thin MCP adapter that registers the Paseo tool catalog with the MCP SDK       |
+| `server/agent/providers/`       | Provider adapters (see "Agent providers" below)                               |
+| `server/relay-transport.ts`     | Outbound relay connection with E2E encryption                                 |
+| `server/schedule/`              | Cron-based scheduled agents                                                   |
+| `server/loop-service.ts`        | Looping agent runs that retry until an exit condition                         |
+| `server/chat/`                  | Chat rooms for agent-to-agent and human-to-agent messaging                    |
 
 ### `packages/protocol` — Wire schemas and shared protocol types
 
@@ -89,13 +97,21 @@ code imports from `@getpaseo/client`.
 
 Cross-platform React Native app that connects to one or more daemons.
 
-- Expo Router navigation (`/h/[serverId]/workspace/[workspaceId]`, `/h/[serverId]/agent/[agentId]`, etc.). The `workspaceId` URL segment is an opaque workspace id (path-shaped today and opaque-encoded for routing), not a directly meaningful filesystem path.
+- Expo Router navigation (`/h/[serverId]/workspace/[workspaceId]`, `/h/[serverId]/agent/[agentId]`, etc.). The `workspaceId` URL segment is an opaque workspace id, not a directly meaningful filesystem path.
 - `HostRuntimeController` manages saved host connections, reconnection, and per-host runtime state
+- `runtime/replica-cache` keeps a non-authoritative per-host display replica in AsyncStorage: only the last focused agent, its workspace, and a short timeline tail. It restores before navigation becomes ready, leaves remote hydration flags false, and is atomically replaced by the normal snapshot-plus-delta synchronization path.
 - `SessionContext` wraps the daemon client for the active session
 - Composer UI and submit/draft behavior live in `packages/app/src/composer/`; screens and panels should integrate it from there instead of dropping composer internals into `components/`, `hooks/`, or `screens/workspace/`
 - Timeline reducers in `timeline/session-stream-reducers.ts` handle compaction, gap detection, sequence-based deduplication
 - Timeline sync correctness is documented in [docs/timeline-sync.md](timeline-sync.md): live streams are for immediacy, `fetch_agent_timeline_request` is authoritative, and catch-up is paged but complete.
 - Voice features: dictation (STT) and voice agent (realtime)
+
+The replica cache exists only to paint stale data immediately while the host connects. It does not
+own mutations, infer deletions, or replace daemon reconciliation. Pending permission requests are
+not restored from it. AsyncStorage is not encrypted, so the cached timeline tail may contain source
+code, prompts, and tool output; encrypted-at-rest storage is a separate product/security decision.
+Its serialized payload has a 1 MiB byte budget and evicts whole host snapshots in least-recently-
+written order; a single oversized host is omitted rather than partially restored.
 
 ### `packages/cli` — Command-line client
 
@@ -107,9 +123,11 @@ Commander.js CLI with Docker-style commands. Common agent operations are also ex
 - `paseo terminal ls/create/capture/send-keys/kill`
 - `paseo loop run/ls/inspect/logs/stop`
 - `paseo schedule create/ls/inspect/update/pause/resume/run-once/logs/delete`
+- `paseo heartbeat create/update/delete`
+- `paseo workspace create/ls/archive`
 - `paseo permit allow/deny/ls`
 - `paseo provider ls/models`
-- `paseo worktree create/ls/archive`
+- hidden legacy `paseo worktree create/ls/archive` compatibility alias
 - `paseo speech …`
 
 Communicates with the daemon via the same WebSocket protocol as the app.
@@ -125,6 +143,11 @@ Enables remote access when the daemon is behind a firewall.
 - Self-hosted relays opt into TLS with `daemon.relay.useTls` or `PASEO_RELAY_USE_TLS=true`; the public (client-facing) TLS setting can be overridden independently via `daemon.relay.publicUseTls` or `PASEO_RELAY_PUBLIC_USE_TLS`
 
 See [SECURITY.md](../SECURITY.md) for the full threat model.
+
+### Paseo Hub
+
+The optional Hub relationship is daemon-outbound and does not use the relay. Its connection,
+authorization, ownership, persistence, and lifecycle contract is documented in [hub.md](hub.md).
 
 ### `packages/desktop` — Desktop app (Electron)
 

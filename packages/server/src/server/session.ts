@@ -1,7 +1,7 @@
 import equal from "fast-deep-equal";
 import { v4 as uuidv4 } from "uuid";
 import { lstat, mkdir, mkdtemp, rename, rm, stat } from "node:fs/promises";
-import { basename, normalize, resolve, sep } from "path";
+import { resolve, sep } from "path";
 import { homedir } from "node:os";
 import { CLIENT_CAPS, type ClientCapability } from "@getpaseo/protocol/client-capabilities";
 import {
@@ -36,7 +36,7 @@ import {
   isStoredAgentProviderAvailable,
   toAgentPersistenceHandle,
 } from "./persistence-hooks.js";
-import { ensureAgentLoaded } from "./agent/agent-loading.js";
+import { ensureAgentLoaded, ensureUnarchivedAgentLoaded } from "./agent/agent-loading.js";
 import {
   formatSystemNotificationPrompt,
   sendPromptToAgent,
@@ -61,6 +61,7 @@ import { getErrorMessage, getErrorMessageOr } from "@getpaseo/protocol/error-uti
 import { getAgentStatusPriority } from "@getpaseo/protocol/agent-state-bucket";
 import { getParentAgentIdFromLabels } from "@getpaseo/protocol/agent-labels";
 import type { WorkspaceGitRuntimeSnapshot, WorkspaceGitService } from "./workspace-git-service.js";
+import type { ProjectUpdate } from "./workspace-reconciliation-service.js";
 import {
   CLIENT_SHUTDOWN_RPC_REASON,
   normalizeClientRestartRpcReason,
@@ -76,6 +77,7 @@ import type {
   ManagedAgent,
 } from "./agent/agent-manager.js";
 import { createAgentCommand } from "./agent/create-agent/create.js";
+import { resolveCreateAgentIntent, type CreateAgentIntent } from "./agent/create-agent/intent.js";
 import {
   archiveAgentCommand,
   cancelAgentRunCommand,
@@ -119,6 +121,7 @@ import {
 } from "./agent/import-sessions.js";
 import {
   checkoutLiteFromGitSnapshot,
+  checkoutFromPersistedWorkspacePlacement,
   deriveWorkspaceDisplayName,
 } from "./workspace-registry-model.js";
 import { resolveWorkspaceIdForPath } from "./resolve-workspace-id-for-path.js";
@@ -150,11 +153,15 @@ import { AgentConfigSession } from "./session/agent-config/agent-config-session.
 import { ProjectConfigSession } from "./session/project-config/project-config-session.js";
 import { DaemonSession, type DaemonRuntimeConfig } from "./session/daemon/daemon-session.js";
 import type { DaemonWebSocketRuntimeDiagnosticSnapshot } from "./session/daemon/diagnostics.js";
+import type { HubRelationshipManagement } from "./hub/relationship-controller.js";
+import { HubExecutionController } from "./hub/execution-controller.js";
+import type { HubExecutionAgents } from "./hub/daemon-executions.js";
 import { DownloadTokenStore } from "./file-download/token-store.js";
 import { PushTokenStore } from "./push/token-store.js";
 import {
   archivePersistedWorkspaceRecord,
   archiveWorkspaceContents,
+  requireActiveWorkspaceForArchive,
 } from "./workspace-archive-service.js";
 import { WorkspaceReconciliationService } from "./workspace-reconciliation-service.js";
 import type { ServiceProxySubsystem } from "./service-proxy.js";
@@ -165,6 +172,7 @@ import {
 } from "./session/git-mutation/git-mutation-service.js";
 import {
   createWorkspaceProvisioningService,
+  WorkspaceProvisioningError,
   type WorkspaceProvisioningService,
 } from "./session/workspace-provisioning/workspace-provisioning-service.js";
 import {
@@ -199,13 +207,13 @@ import type { ForgeService } from "../services/forge-service.js";
 import type { ProviderUsageService } from "../services/quota-fetcher/service.js";
 import {
   summarizeFetchWorkspacesEntries,
+  workspaceIdsForProjects,
   workspaceIdsOnCheckout,
   WorkspaceDirectory,
   type WorkspaceUpdatesFilter,
 } from "./workspace-directory.js";
 import { shouldEmitPendingBootstrapUpdate } from "./workspace-bootstrap-dedupe.js";
 import {
-  createLocalCheckoutWorkspace,
   createPaseoWorktree,
   type CreatePaseoWorktreeInput,
   type CreatePaseoWorktreeResult,
@@ -222,19 +230,15 @@ import {
   handleWorkspaceSetupStatusRequest as handleWorkspaceSetupStatusRequestMessage,
 } from "./worktree-session.js";
 import { archiveByScope, type ActiveWorkspaceRef } from "./workspace-archive-service.js";
-import {
-  WorktreeRequestError,
-  toWorktreeRequestError,
-  toWorktreeWireError,
-} from "./worktree-errors.js";
+import { WorktreeRequestError, toWorktreeWireError } from "./worktree-errors.js";
 import { parseGitRemoteLocation } from "@getpaseo/protocol/git-remote";
 import {
   createProjectDirectory,
   ProjectDirectoryRequestError,
 } from "./project-directory-service.js";
-import { type WorktreeConfig, createWorktree } from "../utils/worktree.js";
 import { runGitCommand } from "../utils/run-git-command.js";
 import { CreateAgentLifecycleDispatch } from "./agent/create-agent-lifecycle-dispatch.js";
+import { resolveWorktreeSourceCwd } from "./workspace-source.js";
 
 // TODO: Remove once all app store clients are on >=0.1.45 and understand arbitrary provider strings.
 // Clients before 0.1.45 validate providers with z.enum(["claude", "codex", "opencode"]) and reject
@@ -257,49 +261,6 @@ function resolveSubscriptionId(
     return requestedSubscriptionId;
   }
   return uuidv4();
-}
-
-function buildWorkspaceCheckout(
-  workspace: PersistedWorkspaceRecord,
-  project: PersistedProjectRecord,
-  // The persisted `branch` field is the source of truth, but it is null for
-  // records created before branch was lifted to its own field (no migrations,
-  // per data-model.md) and for any path that didn't backfill it. Fall back to
-  // the live git branch so checkout.currentBranch never regresses to null.
-  fallbackBranch?: string | null,
-): ProjectPlacementPayload["checkout"] {
-  if (project.kind !== "git") {
-    return {
-      cwd: workspace.cwd,
-      isGit: false,
-      currentBranch: null,
-      remoteUrl: null,
-      worktreeRoot: null,
-      isPaseoOwnedWorktree: false,
-      mainRepoRoot: null,
-    };
-  }
-  const currentBranch = workspace.branch ?? fallbackBranch ?? null;
-  if (workspace.kind === "worktree") {
-    return {
-      cwd: workspace.cwd,
-      isGit: true,
-      currentBranch,
-      remoteUrl: null,
-      worktreeRoot: workspace.cwd,
-      isPaseoOwnedWorktree: true,
-      mainRepoRoot: project.rootPath,
-    };
-  }
-  return {
-    cwd: workspace.cwd,
-    isGit: true,
-    currentBranch,
-    remoteUrl: null,
-    worktreeRoot: workspace.cwd,
-    isPaseoOwnedWorktree: false,
-    mainRepoRoot: null,
-  };
 }
 
 function isAppVersionAtLeast(appVersion: string | null, minVersion: string): boolean {
@@ -372,6 +333,14 @@ type FetchAgentsResponsePayload = Extract<
 type FetchAgentsResponseEntry = FetchAgentsResponsePayload["entries"][number];
 type FetchAgentsResponsePageInfo = FetchAgentsResponsePayload["pageInfo"];
 type AgentUpdatesFilter = FetchAgentsRequestFilter;
+type CreateAgentRequestMessage = Extract<SessionInboundMessage, { type: "create_agent_request" }>;
+
+interface ResolvedSessionCreateAgentIntent {
+  config: AgentSessionConfig;
+  intent: CreateAgentIntent;
+  createdDirectoryWorkspace: boolean;
+}
+
 type FetchWorkspacesRequestMessage = Extract<
   SessionInboundMessage,
   { type: "fetch_workspaces_request" }
@@ -426,6 +395,7 @@ type AgentMcpTransportFactory = () => Promise<unknown>;
 
 export interface SessionOptions {
   clientId: string;
+  scopes: readonly string[];
   appVersion?: string | null;
   clientCapabilities?: Record<string, unknown> | null;
   onMessage: (msg: SessionOutboundMessage) => void;
@@ -463,6 +433,8 @@ export interface SessionOptions {
   terminalManager: TerminalManager | null;
   providerSnapshotManager: ProviderSnapshotManager;
   providerUsageService: ProviderUsageService;
+  hubExecutionAgents?: HubExecutionAgents;
+  hubRelationships?: HubRelationshipManagement;
   serviceProxy?: ServiceProxySubsystem;
   scriptRuntimeStore?: WorkspaceScriptRuntimeStore;
   workspaceSetupSnapshots?: Map<string, WorkspaceSetupSnapshot>;
@@ -526,6 +498,34 @@ function parseClientCapabilities(
   return new Set(result);
 }
 
+export function isSessionRpcAllowed(scopes: readonly string[], rpcName: string): boolean {
+  return scopes.some((scope) => {
+    if (scope === "*" || scope === rpcName) {
+      return true;
+    }
+    if (!scope.endsWith(".*")) {
+      return false;
+    }
+    return rpcName.startsWith(scope.slice(0, -1));
+  });
+}
+
+function sessionRequestId(message: SessionInboundMessage): string | null {
+  if ("requestId" in message && typeof message.requestId === "string") {
+    return message.requestId;
+  }
+  if (
+    "payload" in message &&
+    typeof message.payload === "object" &&
+    message.payload !== null &&
+    "requestId" in message.payload &&
+    typeof message.payload.requestId === "string"
+  ) {
+    return message.payload.requestId;
+  }
+  return null;
+}
+
 interface AgentTimelineProjectionSelection {
   timeline: AgentTimelineFetchResult;
   entries: TimelineProjectionEntry[];
@@ -555,6 +555,7 @@ function describeRegistryTransition(record: ArchivedRecordSnapshot | null): Regi
  */
 export class Session {
   private readonly clientId: string;
+  private scopes: readonly string[];
   private appVersion: string | null;
   private clientCapabilities: ReadonlySet<ClientCapability>;
   private readonly sessionId: string;
@@ -589,7 +590,7 @@ export class Session {
   private unsubscribeAgentEvents: (() => void) | null = null;
   private viewedTimelineAgentIds = new Set<string>();
   private readonly viewedTimelineAgentIdsBySource = new Map<object, Set<string>>();
-  private readonly selectiveTimelineCapabilityBySource = new Map<object, boolean>();
+  private readonly clientCapabilitiesBySource = new Map<object, ReadonlySet<ClientCapability>>();
   private readonly defaultTimelineSubscriptionSource = {};
   private unsubscribeTerminalWorkspaceContributionEvents: (() => void) | null = null;
   private readonly agentUpdates: AgentUpdatesService;
@@ -624,12 +625,14 @@ export class Session {
   private readonly agentConfigSession: AgentConfigSession;
   private readonly projectConfigSession: ProjectConfigSession;
   private readonly daemonSession: DaemonSession;
+  private readonly hubExecutionController: HubExecutionController | null;
   private readonly workspaceScripts: WorkspaceScriptsService;
   private readonly createAgentLifecycleDispatch: CreateAgentLifecycleDispatch;
 
   constructor(options: SessionOptions) {
     const {
       clientId,
+      scopes,
       appVersion,
       clientCapabilities,
       onMessage,
@@ -680,6 +683,7 @@ export class Session {
       getWebSocketRuntimeMetrics,
     } = options;
     this.clientId = clientId;
+    this.scopes = [...scopes];
     this.appVersion = appVersion ?? null;
     this.clientCapabilities = parseClientCapabilities(clientCapabilities);
     this.sessionId = uuidv4();
@@ -727,10 +731,11 @@ export class Session {
       logger: this.sessionLogger,
     });
     this.workspaceRecovery = createWorkspaceRecoveryService({
+      paseoHome: this.paseoHome,
+      worktreesRoot: this.worktreesRoot,
       getWorkspace: (workspaceId) => this.workspaceRegistry.get(workspaceId),
       getProject: (projectId) => this.projectRegistry.get(projectId),
       isDirectory: (path) => this.filesystem.isDirectory(path),
-      recreateWorktree: (workspace) => this.recreateArchivedWorktree(workspace),
       unarchiveWorkspace: async (workspace) => {
         await this.workspaceProvisioning.ensureWorkspaceRecordUnarchived(workspace);
       },
@@ -811,6 +816,13 @@ export class Session {
         emit: (msg) => this.emit(msg),
       },
       operations: {
+        ensureLoaded: async (agentId) => {
+          await ensureUnarchivedAgentLoaded(agentId, {
+            agentManager,
+            agentStorage,
+            logger: this.sessionLogger,
+          });
+        },
         setMode: async (agentId, modeId) =>
           (await setAgentModeCommand({ agentManager }, { agentId, modeId })).notice,
         setModel: (agentId, modelId) => agentManager.setAgentModel(agentId, modelId),
@@ -844,7 +856,14 @@ export class Session {
       listProjects: () => this.projectRegistry.list(),
       listWorkspaces: () => this.workspaceRegistry.list(),
       logger: this.sessionLogger,
+      hubRelationships: options.hubRelationships,
     });
+    this.hubExecutionController = options.hubExecutionAgents
+      ? new HubExecutionController({
+          agents: options.hubExecutionAgents,
+          send: (message) => this.emit(message),
+        })
+      : null;
     this.daemonConfigStore = daemonConfigStore;
     this.terminalManager = terminalManager;
     this.terminalController = new TerminalSessionController({
@@ -907,6 +926,7 @@ export class Session {
       scriptRuntimeStore: this.scriptRuntimeStore,
       terminalManager: this.terminalManager,
       workspaceRegistry: this.workspaceRegistry,
+      projectRegistry: this.projectRegistry,
       workspaceGitService: this.workspaceGitService,
       getDaemonTcpPort: this.getDaemonTcpPort,
       getDaemonTcpHost: this.getDaemonTcpHost,
@@ -976,10 +996,7 @@ export class Session {
   updateClientCapabilities(capabilities: Record<string, unknown> | null, source?: object): void {
     this.clientCapabilities = parseClientCapabilities(capabilities);
     if (source) {
-      this.selectiveTimelineCapabilityBySource.set(
-        source,
-        this.supports(CLIENT_CAPS.selectiveAgentTimeline),
-      );
+      this.clientCapabilitiesBySource.set(source, this.clientCapabilities);
     }
     if (!source && !this.supports(CLIENT_CAPS.selectiveAgentTimeline)) {
       this.viewedTimelineAgentIdsBySource.clear();
@@ -988,7 +1005,7 @@ export class Session {
   }
 
   clearAgentTimelineSubscription(source: object): void {
-    this.selectiveTimelineCapabilityBySource.delete(source);
+    this.clientCapabilitiesBySource.delete(source);
     if (this.viewedTimelineAgentIdsBySource.delete(source)) {
       this.rebuildViewedTimelineAgentIds();
     }
@@ -1010,11 +1027,11 @@ export class Session {
   }
 
   private usesSelectiveTimelineDelivery(): boolean {
-    if (this.selectiveTimelineCapabilityBySource.size === 0) {
+    if (this.clientCapabilitiesBySource.size === 0) {
       return this.supports(CLIENT_CAPS.selectiveAgentTimeline);
     }
-    for (const capable of this.selectiveTimelineCapabilityBySource.values()) {
-      if (!capable) return false;
+    for (const capabilities of this.clientCapabilitiesBySource.values()) {
+      if (!capabilities.has(CLIENT_CAPS.selectiveAgentTimeline)) return false;
     }
     return true;
   }
@@ -1023,7 +1040,7 @@ export class Session {
     event: Extract<AgentManagerEvent, { type: "agent_stream" }>,
     serializedEvent: Extract<SessionOutboundMessage, { type: "agent_stream" }>["payload"]["event"],
   ): void {
-    if (this.selectiveTimelineCapabilityBySource.size === 0 || !this.onMessageToSource) {
+    if (this.clientCapabilitiesBySource.size === 0 || !this.onMessageToSource) {
       if (this.usesSelectiveTimelineDelivery() && serializedEvent.type === "attention_required") {
         this.emit({
           type: "agent_attention_required",
@@ -1047,7 +1064,8 @@ export class Session {
       return;
     }
 
-    for (const [source, supportsSelectiveDelivery] of this.selectiveTimelineCapabilityBySource) {
+    for (const [source, capabilities] of this.clientCapabilitiesBySource) {
+      const supportsSelectiveDelivery = capabilities.has(CLIENT_CAPS.selectiveAgentTimeline);
       if (supportsSelectiveDelivery && serializedEvent.type === "attention_required") {
         this.onMessageToSource(source, {
           type: "agent_attention_required",
@@ -1079,10 +1097,28 @@ export class Session {
   }
 
   supportsForSource(capability: ClientCapability, source: object): boolean {
-    if (capability === CLIENT_CAPS.selectiveAgentTimeline) {
-      return this.selectiveTimelineCapabilityBySource.get(source) ?? this.supports(capability);
+    return (
+      this.clientCapabilitiesBySource.get(source)?.has(capability) ?? this.supports(capability)
+    );
+  }
+
+  emitProjectUpdate(update: ProjectUpdate): void {
+    const message: SessionOutboundMessage = {
+      type: "project.update",
+      payload:
+        update.kind === "upsert"
+          ? { kind: "upsert", project: this.buildProjectDescriptor(update.project) }
+          : update,
+    };
+    if (this.clientCapabilitiesBySource.size === 0 || !this.onMessageToSource) {
+      if (this.supports(CLIENT_CAPS.projectUpdates)) this.emit(message);
+      return;
     }
-    return this.supports(capability);
+    for (const [source, capabilities] of this.clientCapabilitiesBySource) {
+      if (capabilities.has(CLIENT_CAPS.projectUpdates)) {
+        this.onMessageToSource(source, message);
+      }
+    }
   }
 
   async syncWorkspaceGitObserverForWorkspace(workspace: PersistedWorkspaceRecord): Promise<void> {
@@ -1118,8 +1154,24 @@ export class Session {
     this.clearWorkspaceArchiving(workspaceIds);
   }
 
-  async emitWorkspaceUpdatesForExternalWorkspaceIds(workspaceIds: Iterable<string>): Promise<void> {
-    await this.emitWorkspaceUpdatesForWorkspaceIds(workspaceIds);
+  async emitWorkspaceUpdatesForExternalWorkspaceIds(
+    workspaceIds: Iterable<string>,
+    options?: { skipReconcile?: boolean },
+  ): Promise<void> {
+    await this.emitWorkspaceUpdatesForWorkspaceIds(workspaceIds, options);
+  }
+
+  async syncWorkspaceGitObserversForExternalWorkspaceIds(
+    workspaceIds: Iterable<string>,
+  ): Promise<void> {
+    await Promise.all(
+      Array.from(new Set(workspaceIds)).map(async (workspaceId) => {
+        const workspace = await this.workspaceRegistry.get(workspaceId);
+        if (workspace && !workspace.archivedAt) {
+          await this.workspaceGitObserver.syncObserverForWorkspace(workspace);
+        }
+      }),
+    );
   }
 
   async warmWorkspaceGitDataForWorkspace(workspace: PersistedWorkspaceRecord): Promise<void> {
@@ -1473,9 +1525,15 @@ export class Session {
     if (!project) {
       throw new Error(`Project not found for workspace ${workspace.workspaceId}`);
     }
-    const liveBranch =
-      this.workspaceGitService.peekSnapshot(workspace.cwd)?.git.currentBranch ?? null;
-    const checkout = buildWorkspaceCheckout(workspace, project, liveBranch);
+    const snapshot = this.workspaceGitService.peekSnapshot(workspace.cwd);
+    const checkout = checkoutFromPersistedWorkspacePlacement({
+      workspace,
+      // COMPAT(workspacePlacementBackfill): added in v0.1.107, remove after 2027-01-15.
+      // Legacy records can lack branch and worktreeRoot because persisted registries
+      // are not migrated in place.
+      fallbackBranch: snapshot?.git.currentBranch ?? null,
+      fallbackWorktreeRoot: snapshot?.git.repoRoot,
+    });
     return {
       projectKey: project.projectId,
       projectName: resolveProjectDisplayName(project),
@@ -1511,6 +1569,21 @@ export class Session {
         },
         "agent.session.inbound",
       );
+      if (!isSessionRpcAllowed(this.scopes, msg.type)) {
+        const requestId = sessionRequestId(msg);
+        if (requestId) {
+          this.emit({
+            type: "rpc_error",
+            payload: {
+              requestId,
+              requestType: msg.type,
+              error: `Session is not authorized for ${msg.type}`,
+              code: "access_denied",
+            },
+          });
+        }
+        return;
+      }
       try {
         await this.dispatchInboundMessage(msg, source);
       } catch (error) {
@@ -1550,12 +1623,17 @@ export class Session {
     }
   }
 
+  public setScopes(scopes: readonly string[]): void {
+    this.scopes = [...scopes];
+  }
+
   private async dispatchInboundMessage(msg: SessionInboundMessage, source?: object): Promise<void> {
     const promise =
       this.dispatchVoiceAndControlMessage(msg) ??
       this.dispatchAgentRewindMessage(msg) ??
       this.dispatchAgentRelationshipMessage(msg) ??
       this.dispatchAgentTimelineMessage(msg, source) ??
+      this.dispatchHubExecutionMessage(msg) ??
       this.dispatchAgentLifecycleMessage(msg) ??
       this.dispatchAgentConfigMessage(msg) ??
       this.dispatchCheckoutMessage(msg) ??
@@ -1652,8 +1730,7 @@ export class Session {
         const agentIds = [...new Set(msg.agentIds)].sort();
         if (
           source
-            ? (this.selectiveTimelineCapabilityBySource.get(source) ??
-              this.supports(CLIENT_CAPS.selectiveAgentTimeline))
+            ? this.supportsForSource(CLIENT_CAPS.selectiveAgentTimeline, source)
             : this.supports(CLIENT_CAPS.selectiveAgentTimeline)
         ) {
           this.replaceAgentTimelineSubscription(source, agentIds);
@@ -1671,6 +1748,12 @@ export class Session {
       default:
         return undefined;
     }
+  }
+
+  private dispatchHubExecutionMessage(msg: SessionInboundMessage): Promise<void> | undefined {
+    return msg.type === "hub.execution.agent.create.request"
+      ? this.hubExecutionController?.createAgent(msg)
+      : undefined;
   }
 
   private dispatchAgentLifecycleMessage(msg: SessionInboundMessage): Promise<void> | undefined {
@@ -1736,6 +1819,10 @@ export class Session {
         return this.daemonSession.handleGetStatusRequest(msg);
       case "daemon.get_pairing_offer.request":
         return this.daemonSession.handleGetPairingOfferRequest(msg);
+      case "hub.management.daemon.connect.request":
+      case "hub.management.daemon.get_status.request":
+      case "hub.management.daemon.disconnect.request":
+        return this.daemonSession.handleHubRelationshipRequest(msg);
       case "diagnostics.request":
         return this.daemonSession.handleDiagnosticsRequest(msg);
       case "daemon.update.request":
@@ -2084,7 +2171,7 @@ export class Session {
 
     try {
       await this.agentStorage.remove(agentId);
-      await this.agentManager.deleteCommittedTimeline(agentId);
+      await this.agentManager.deleteAgentState(agentId);
     } catch (error) {
       this.sessionLogger.error({ err: error, agentId }, `Failed to fully delete agent ${agentId}`);
     }
@@ -2709,9 +2796,7 @@ export class Session {
   /**
    * Handle create agent request
    */
-  private async handleCreateAgentRequest(
-    msg: Extract<SessionInboundMessage, { type: "create_agent_request" }>,
-  ): Promise<void> {
+  private async handleCreateAgentRequest(msg: CreateAgentRequestMessage): Promise<void> {
     const {
       config,
       worktreeName,
@@ -2724,7 +2809,6 @@ export class Session {
       autoArchive,
       images,
       attachments,
-      labels,
       env,
     } = msg;
     this.sessionLogger.info(
@@ -2737,6 +2821,12 @@ export class Session {
     let createdWorktreeForCleanup: CreatePaseoWorktreeWorkflowResult | null = null;
     let createdAgentId: string | null = null;
     try {
+      const requestedCwd = resolve(config.cwd);
+      const needsRequestedDirectory =
+        Boolean(worktreeName || git || worktree) || (!msg.workspaceId && !msg.callerAgentId);
+      if (needsRequestedDirectory && !(await this.filesystem.isDirectory(requestedCwd))) {
+        throw new Error(`Working directory does not exist or is not a directory: ${requestedCwd}`);
+      }
       const trimmedPrompt = initialPrompt?.trim();
       const { provisionalTitle } = resolveCreateAgentTitles({
         configTitle: config.title,
@@ -2755,18 +2845,15 @@ export class Session {
         hasLegacyGitOptions: Boolean(git),
       });
       createdWorktreeForCleanup = createdWorktree;
-      const createAgentConfig: AgentSessionConfig = createdWorktree
-        ? { ...config, cwd: createdWorktree.worktree.worktreePath }
-        : config;
-      const workspaceId = await this.workspaceProvisioning.resolveOrCreateWorkspaceIdForCreateAgent(
-        {
-          createdWorktree,
-          requestedWorkspaceId: msg.workspaceId,
-          cwd: createAgentConfig.cwd,
-          initialTitle: workspacePromptTitle,
-        },
-      );
-      const createdDirectoryWorkspaceForAgent = !createdWorktree && !msg.workspaceId;
+      const resolvedIntent = await this.resolveSessionCreateAgentIntent({
+        request: msg,
+        createdWorktree,
+        workspacePromptTitle,
+      });
+      const resolvedCwd = resolve(resolvedIntent.config.cwd);
+      if (!(await this.filesystem.isDirectory(resolvedCwd))) {
+        throw new Error(`Working directory does not exist or is not a directory: ${resolvedCwd}`);
+      }
 
       const { snapshot, liveSnapshot } = await createAgentCommand(
         {
@@ -2779,8 +2866,8 @@ export class Session {
         },
         {
           kind: "session",
-          config: createAgentConfig,
-          workspaceId,
+          config: resolvedIntent.config,
+          workspaceId: resolvedIntent.intent.workspaceId,
           worktreeName,
           initialPrompt,
           clientMessageId,
@@ -2788,7 +2875,7 @@ export class Session {
           images,
           attachments,
           git,
-          labels,
+          labels: resolvedIntent.intent.labels,
           env,
           provisionalTitle,
           firstAgentContext,
@@ -2798,14 +2885,14 @@ export class Session {
       );
       createdAgentId = snapshot.id;
       await this.agentUpdates.forwardLiveAgent(snapshot);
-      if (createdDirectoryWorkspaceForAgent && trimmedPrompt) {
+      if (resolvedIntent.createdDirectoryWorkspace && trimmedPrompt) {
         this.workspaceAutoName.scheduleForDirectory(
           {
-            workspaceId,
-            cwd: createAgentConfig.cwd,
+            workspaceId: resolvedIntent.intent.workspaceId,
+            cwd: resolvedIntent.config.cwd,
             firstAgentContext,
           },
-          { currentSelection: this.getFocusedAgentSelectionForCwd(createAgentConfig.cwd) },
+          { currentSelection: this.getFocusedAgentSelectionForCwd(resolvedIntent.config.cwd) },
         );
       }
       this.createAgentLifecycleDispatch.registerAutoArchiveIfRequested({
@@ -2858,6 +2945,55 @@ export class Session {
         },
       });
     }
+  }
+
+  private async resolveSessionCreateAgentIntent(input: {
+    request: CreateAgentRequestMessage;
+    createdWorktree: CreatePaseoWorktreeWorkflowResult | null;
+    workspacePromptTitle: string | null;
+  }): Promise<ResolvedSessionCreateAgentIntent> {
+    const { request, createdWorktree } = input;
+    const callerAgent = request.callerAgentId
+      ? this.agentManager.getAgent(request.callerAgentId)
+      : null;
+    if (request.callerAgentId && !callerAgent) {
+      throw new Error(`Caller agent ${request.callerAgentId} not found`);
+    }
+
+    let config = request.config;
+
+    const intent = await resolveCreateAgentIntent({
+      explicitWorkspaceId: createdWorktree?.workspace.workspaceId ?? request.workspaceId,
+      caller: callerAgent
+        ? { id: callerAgent.id, cwd: callerAgent.cwd, workspaceId: callerAgent.workspaceId }
+        : null,
+      labels: request.labels,
+      resolveWorkspace: async (workspaceId) => {
+        if (createdWorktree?.workspace.workspaceId === workspaceId) {
+          return { workspaceId, cwd: createdWorktree.workspace.cwd };
+        }
+        const workspace = await this.workspaceRegistry.get(workspaceId);
+        if (!workspace || workspace.archivedAt) {
+          throw new Error(`Workspace ${workspaceId} not found`);
+        }
+        return { workspaceId, cwd: workspace.cwd };
+      },
+      createWorkspace: async () => ({
+        workspaceId: await this.workspaceProvisioning.resolveOrCreateWorkspaceIdForCreateAgent({
+          createdWorktree: null,
+          cwd: config.cwd,
+          initialTitle: input.workspacePromptTitle,
+        }),
+        cwd: config.cwd,
+      }),
+    });
+    config = { ...config, cwd: intent.cwd };
+
+    return {
+      config,
+      intent,
+      createdDirectoryWorkspace: !createdWorktree && !request.workspaceId && !callerAgent,
+    };
   }
 
   private async handleResumeAgentRequest(
@@ -3221,6 +3357,15 @@ export class Session {
     const agentIds = Array.isArray(agentId) ? agentId : [agentId];
 
     try {
+      await Promise.all(
+        agentIds.map((id) =>
+          ensureAgentLoaded(id, {
+            agentManager: this.agentManager,
+            agentStorage: this.agentStorage,
+            logger: this.sessionLogger,
+          }),
+        ),
+      );
       await Promise.all(agentIds.map((id) => this.agentManager.clearAgentAttention(id)));
       if (requestId) {
         const agents = (
@@ -3307,8 +3452,16 @@ export class Session {
     );
 
     try {
-      const agents = this.agentManager.listAgents();
-      const agent = agents.find((a) => a.id === agentId);
+      const existing = this.agentManager.getAgent(agentId);
+      const stored = existing ? null : await this.agentStorage.get(agentId);
+      const agent =
+        existing || (stored && !stored.archivedAt)
+          ? await ensureAgentLoaded(agentId, {
+              agentManager: this.agentManager,
+              agentStorage: this.agentStorage,
+              logger: this.sessionLogger,
+            })
+          : null;
 
       if (agent?.session?.listCommands) {
         const commands = await agent.session.listCommands();
@@ -3891,7 +4044,7 @@ export class Session {
       statusEnteredAt: null,
       activityAt: null,
       diffStat,
-      scripts: this.buildWorkspaceScriptPayloadSnapshot(workspace.workspaceId, workspace.cwd),
+      scripts: this.buildWorkspaceScriptPayloadSnapshot(workspace, resolvedProjectRecord),
       ...(resolvedProjectRecord
         ? {
             project: await this.buildProjectPlacementForWorkspace(workspace, resolvedProjectRecord),
@@ -3967,7 +4120,7 @@ export class Session {
       projectCustomName: projectRecord?.customName ?? null,
       projectRootPath: projectRecord?.rootPath ?? result.repoRoot,
       workspaceDirectory: result.workspace.cwd,
-      projectKind: "git",
+      projectKind: projectRecord?.kind ?? "git",
       workspaceKind: result.workspace.kind,
       name: resolveWorkspaceName({
         title: result.workspace.title,
@@ -3999,7 +4152,7 @@ export class Session {
     projectRecord?: PersistedProjectRecord | null;
     includeGitData: boolean;
   }): Promise<WorkspaceDescriptorPayload> {
-    if (input.includeGitData && input.projectRecord?.kind === "git") {
+    if (input.includeGitData && input.workspace.kind !== "directory") {
       return this.describeWorkspaceRecordWithGitData(input.workspace, input.projectRecord);
     }
     return this.describeWorkspaceRecord(input.workspace, input.projectRecord);
@@ -4130,65 +4283,6 @@ export class Session {
     };
   }
 
-  private async recreateArchivedWorktree(workspace: PersistedWorkspaceRecord): Promise<void> {
-    const branch = workspace.branch;
-    if (!branch) {
-      throw new WorktreeRequestError({
-        code: "unknown",
-        message: `Workspace ${workspace.workspaceId} has no branch to restore`,
-      });
-    }
-    const project = await this.projectRegistry.get(workspace.projectId);
-    if (!project) {
-      throw new WorktreeRequestError({
-        code: "unknown",
-        message: `Project ${workspace.projectId} not found for workspace ${workspace.workspaceId}`,
-      });
-    }
-    const projectRootExists = await this.filesystem
-      .isDirectory(project.rootPath)
-      .catch(() => false);
-    if (!projectRootExists) {
-      throw new WorktreeRequestError({
-        code: "unknown",
-        message: `Project root is missing for ${workspace.projectId}: ${project.rootPath}`,
-      });
-    }
-
-    // Archiving through the default path (scope "workspace", worktreePath only)
-    // resolves repoRoot=null, so deletePaseoWorktree's `git worktree remove`/
-    // `prune` is skipped and the admin registration survives — pinning the
-    // branch as "already checked out". Prune here frees any stale registration
-    // whose working dir is missing (a no-op for live worktrees) so the recreate
-    // below succeeds regardless of how the worktree was archived.
-    try {
-      await runGitCommand(["worktree", "prune"], { cwd: project.rootPath, timeout: 30_000 });
-    } catch {
-      // not critical; git will prune lazily
-    }
-
-    let result: WorktreeConfig;
-    try {
-      result = await createWorktree({
-        cwd: project.rootPath,
-        worktreeSlug: basename(workspace.cwd),
-        source: { kind: "checkout-branch", branchName: branch },
-        runSetup: false,
-        paseoHome: this.paseoHome,
-        worktreesRoot: this.worktreesRoot,
-      });
-    } catch (error) {
-      throw toWorktreeRequestError(error);
-    }
-
-    if (normalize(result.worktreePath) !== normalize(workspace.cwd)) {
-      throw new WorktreeRequestError({
-        code: "unknown",
-        message: `Recreated worktree diverged from ${workspace.cwd}: ${result.worktreePath}`,
-      });
-    }
-  }
-
   private async restoreWorkspaceAndEmit(workspaceId: string): Promise<void> {
     await this.workspaceRecovery.restore(workspaceId);
     const workspace = await this.workspaceRegistry.get(workspaceId);
@@ -4237,9 +4331,8 @@ export class Session {
       ...(options?.resolveDefaultBranch
         ? { resolveDefaultBranch: options.resolveDefaultBranch }
         : {}),
-      projectRegistry: this.projectRegistry,
-      workspaceRegistry: this.workspaceRegistry,
       workspaceGitService: this.workspaceGitService,
+      workspaceProvisioning: this.workspaceProvisioning,
     });
     void Promise.all([
       this.gitMutation.notifyGitMutation(input.cwd, "create-worktree"),
@@ -4261,6 +4354,9 @@ export class Session {
         workspaceId: workspace.workspaceId,
         cwd: workspace.cwd,
         kind: workspace.kind,
+        worktreeRoot: workspace.worktreeRoot,
+        isPaseoOwnedWorktree: workspace.isPaseoOwnedWorktree,
+        mainRepoRoot: workspace.mainRepoRoot,
       }));
   }
 
@@ -4292,21 +4388,12 @@ export class Session {
       );
     }
 
-    await this.teardownArchivedWorkspace({
-      workspaceId: existingWorkspace.workspaceId,
-      cwd: existingWorkspace.cwd,
-    });
+    await this.teardownArchivedWorkspace(existingWorkspace.workspaceId);
   }
 
-  // Git watch and subscription state is keyed by directory; the script runtime
-  // store is keyed by the opaque workspace id. Each cleanup uses its own key so an
-  // opaque id is never resolved as a filesystem path.
-  private async teardownArchivedWorkspace(input: {
-    workspaceId: string;
-    cwd: string;
-  }): Promise<void> {
-    this.workspaceGitObserver.removeForCwd(input.cwd);
-    this.scriptRuntimeStore?.removeForWorkspace(input.workspaceId);
+  private async teardownArchivedWorkspace(workspaceId: string): Promise<void> {
+    this.workspaceGitObserver.removeForWorkspaceId(workspaceId);
+    this.scriptRuntimeStore?.removeForWorkspace(workspaceId);
   }
 
   private async reconcileAndEmitWorkspaceUpdates(): Promise<void> {
@@ -4341,16 +4428,12 @@ export class Session {
       result.changesApplied.map(async (change) => {
         switch (change.kind) {
           case "workspace_archived":
-            await this.teardownArchivedWorkspace({
-              workspaceId: change.workspaceId,
-              cwd: change.directory,
-            });
+            await this.teardownArchivedWorkspace(change.workspaceId);
             changedWorkspaceIds.add(change.workspaceId);
             break;
           case "workspace_updated":
             changedWorkspaceIds.add(change.workspaceId);
             break;
-          case "project_archived":
           case "project_updated":
             changedProjectIds.add(change.projectId);
             break;
@@ -4359,10 +4442,11 @@ export class Session {
     );
 
     if (changedProjectIds.size > 0) {
-      for (const workspace of await this.workspaceRegistry.list()) {
-        if (changedProjectIds.has(workspace.projectId)) {
-          changedWorkspaceIds.add(workspace.workspaceId);
-        }
+      for (const workspaceId of workspaceIdsForProjects(
+        await this.workspaceRegistry.list(),
+        changedProjectIds,
+      )) {
+        changedWorkspaceIds.add(workspaceId);
       }
     }
 
@@ -4770,6 +4854,7 @@ export class Session {
         { err: error, sourceKind: request.source.kind, requestId: request.requestId },
         "Failed to create workspace",
       );
+      const errorCode = error instanceof WorkspaceProvisioningError ? error.code : undefined;
       this.emit({
         type: "workspace.create.response",
         payload: {
@@ -4777,6 +4862,7 @@ export class Session {
           workspace: null,
           setupTerminalId: null,
           error: message,
+          errorCode,
         },
       });
     }
@@ -4807,13 +4893,10 @@ export class Session {
 
     const explicitTitle = request.title?.trim() || null;
     const promptTitle = resolveFirstAgentPromptTitle(request.firstAgentContext);
-    const workspace = await createLocalCheckoutWorkspace(
-      { cwd, title: explicitTitle ?? promptTitle },
-      {
-        projectRegistry: this.projectRegistry,
-        workspaceRegistry: this.workspaceRegistry,
-        workspaceGitService: this.workspaceGitService,
-      },
+    const workspace = await this.workspaceProvisioning.createWorkspaceForDirectory(
+      cwd,
+      explicitTitle ?? promptTitle,
+      request.source.projectId,
     );
     await this.syncWorkspaceGitObserverForWorkspace(workspace);
     const descriptor = await this.describeWorkspaceRecord(workspace);
@@ -4871,10 +4954,7 @@ export class Session {
       return;
     }
 
-    const sourceCwd = await this.resolveWorktreeSourceCwd({
-      cwd: source.cwd,
-      projectId: source.projectId,
-    });
+    const sourceCwd = await resolveWorktreeSourceCwd(source, this.projectRegistry);
 
     const result = await this.createPaseoWorktreeWorkflow(
       {
@@ -4883,23 +4963,16 @@ export class Session {
         worktreeSlug: source.worktreeSlug,
         action: source.action,
         refName: source.refName,
+        branchName: source.branchName,
         checkoutSource: source.checkoutSource,
         githubPrNumber: source.githubPrNumber,
         firstAgentContext: request.firstAgentContext,
+        title: request.title,
       },
       source.baseBranch
         ? { resolveDefaultBranch: async () => source.baseBranch as string }
         : undefined,
     );
-
-    if (request.title?.trim()) {
-      await this.workspaceRegistry.upsert({
-        ...result.workspace,
-        title: request.title.trim(),
-        updatedAt: new Date().toISOString(),
-      });
-      result.workspace.title = request.title.trim();
-    }
 
     const descriptor = await this.describeCreatedWorktreeWorkspace(result);
     this.emit({
@@ -4912,20 +4985,6 @@ export class Session {
       },
     });
     await this.emitCreatedWorkspaceUpdate(descriptor);
-  }
-
-  private async resolveWorktreeSourceCwd(input: {
-    cwd?: string;
-    projectId?: string;
-  }): Promise<string> {
-    if (input.cwd) {
-      return expandTilde(input.cwd);
-    }
-    const project = await this.projectRegistry.get(input.projectId as string);
-    if (!project || project.archivedAt) {
-      throw new Error(`Project not found: ${input.projectId}`);
-    }
-    return project.rootPath;
   }
 
   private async handleOpenProjectRequest(
@@ -5287,10 +5346,10 @@ export class Session {
   // Named accessor: the workspace descriptor builder and the git-watch test both read a workspace's
   // scripts snapshot through here; the workspace-scripts module owns the payload assembly.
   private buildWorkspaceScriptPayloadSnapshot(
-    workspaceId: string,
-    workspaceDirectory: string,
+    workspace: PersistedWorkspaceRecord,
+    project: PersistedProjectRecord | null,
   ): WorkspaceDescriptorPayload["scripts"] {
-    return this.workspaceScripts.buildSnapshot(workspaceId, workspaceDirectory);
+    return this.workspaceScripts.buildSnapshot(workspace, project);
   }
 
   private handleStartWorkspaceScriptRequest(request: StartWorkspaceScriptRequest): Promise<void> {
@@ -5396,15 +5455,10 @@ export class Session {
     request: Extract<SessionInboundMessage, { type: "archive_workspace_request" }>,
   ): Promise<void> {
     try {
-      const existing = await this.workspaceRegistry.get(request.workspaceId);
-      if (!existing) {
-        throw new Error(`Workspace not found: ${request.workspaceId}`);
-      }
-
-      const gitSnapshot = await this.workspaceGitService
-        .getSnapshot(existing.cwd)
-        .catch(() => null);
-      const repoRoot = gitSnapshot?.git?.repoRoot ?? null;
+      const existing = await requireActiveWorkspaceForArchive(
+        { listActiveWorkspaces: () => this.listActiveWorkspaceRefs() },
+        request.workspaceId,
+      );
 
       await archiveByScope(
         {
@@ -5428,8 +5482,6 @@ export class Session {
         },
         {
           scope: { kind: "workspace", workspaceId: existing.workspaceId },
-          repoRoot,
-          paseoWorktreesBaseRoot: this.worktreesRoot,
           requestId: request.requestId,
         },
       );
@@ -5819,6 +5871,11 @@ export class Session {
     msg: Extract<SessionInboundMessage, { type: "agent.provider_subagents.list.request" }>,
   ): Promise<void> {
     try {
+      await ensureUnarchivedAgentLoaded(msg.parentAgentId, {
+        agentManager: this.agentManager,
+        agentStorage: this.agentStorage,
+        logger: this.sessionLogger,
+      });
       this.emit({
         type: "agent.provider_subagents.list.response",
         payload: {
@@ -5846,6 +5903,11 @@ export class Session {
   ): Promise<void> {
     const direction: AgentTimelineFetchDirection = msg.direction ?? (msg.cursor ? "after" : "tail");
     try {
+      await ensureUnarchivedAgentLoaded(msg.parentAgentId, {
+        agentManager: this.agentManager,
+        agentStorage: this.agentStorage,
+        logger: this.sessionLogger,
+      });
       const descriptor = this.agentManager.getProviderSubagent(msg.parentAgentId, msg.subagentId);
       if (!descriptor) {
         throw new Error("Provider subagent not found");
@@ -6191,6 +6253,9 @@ export class Session {
    * Emit a message to the client
    */
   private emit(msg: SessionOutboundMessage): void {
+    if (msg.type !== "rpc_error" && !isSessionRpcAllowed(this.scopes, msg.type)) {
+      return;
+    }
     // JSON.stringify(msg) is only computed when trace is enabled — it runs for
     // every outbound message otherwise, and trace is disabled by default.
     // Optional-chained because test logger stubs don't implement isLevelEnabled.
@@ -6228,6 +6293,7 @@ export class Session {
       this.unsubscribeAgentEvents = null;
     }
     this.agentUpdates.dispose();
+    await this.hubExecutionController?.cleanup();
     if (this.unsubscribeTerminalWorkspaceContributionEvents) {
       this.unsubscribeTerminalWorkspaceContributionEvents();
       this.unsubscribeTerminalWorkspaceContributionEvents = null;

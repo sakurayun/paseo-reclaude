@@ -329,7 +329,9 @@ export function PrBadge({ hint }: { hint: PrHint }) {
   const handleHoverIn = useCallback(() => setIsHovered(true), []);
   const handleHoverOut = useCallback(() => setIsHovered(false), []);
 
-  const textStyle = isHovered ? prBadgeTextHoveredCombined : prBadgeStyles.text;
+  const textStyle = isHovered
+    ? [prBadgeStyles.text, prBadgeStyles.textHovered]
+    : prBadgeStyles.text;
   const iconUniProps = isHovered ? foregroundColorMapping : getPrIconUniMapping(hint.state);
   const presentation = getForgePresentation(normalizeForge(hint.forge));
 
@@ -408,8 +410,6 @@ const prBadgeStyles = StyleSheet.create((theme) => ({
     color: theme.colors.foreground,
   },
 }));
-
-const prBadgeTextHoveredCombined = [prBadgeStyles.text, prBadgeStyles.textHovered];
 
 function StatusDotOverlay({
   dotColorStyle,

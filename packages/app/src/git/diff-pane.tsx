@@ -1088,7 +1088,11 @@ export function DiffFileBody({
   );
 
   return (
-    <View style={FILE_SECTION_BODY_STYLE} onLayout={handleLayout} testID={testID}>
+    <View
+      style={[styles.fileSectionBodyContainer, styles.fileSectionBorder]}
+      onLayout={handleLayout}
+      testID={testID}
+    >
       {(() => {
         if (file.status === "too_large" || file.status === "binary") {
           return (
@@ -1115,7 +1119,7 @@ export function DiffFileBody({
         if (layout === "split") {
           const rows = buildSplitDiffRows(file);
           return (
-            <View style={DIFF_CONTENT_SPLIT_ROW_STYLE} dataSet={CODE_SURFACE_DATASET}>
+            <View style={[styles.diffContent, styles.splitRow]} dataSet={CODE_SURFACE_DATASET}>
               <SplitDiffColumn
                 rows={rows}
                 side="left"
@@ -1169,7 +1173,7 @@ export function DiffFileBody({
         const textViewportWidth =
           scrollViewWidth > 0 ? scrollViewWidth : Math.max(0, bodyWidth - gutterWidth);
         return (
-          <View style={DIFF_CONTENT_ROW_STYLE} dataSet={CODE_SURFACE_DATASET}>
+          <View style={[styles.diffContent, styles.diffContentRow]} dataSet={CODE_SURFACE_DATASET}>
             <View style={styles.gutterColumn}>
               {computedLines.map(({ line, lineNumber, key, reviewTarget }, index) => (
                 <View key={key} testID={`diff-gutter-row-${index}`}>
@@ -3060,7 +3064,4 @@ const styles = StyleSheet.create((theme) => ({
   },
 }));
 
-const FILE_SECTION_BODY_STYLE = [styles.fileSectionBodyContainer, styles.fileSectionBorder];
-const DIFF_CONTENT_SPLIT_ROW_STYLE = [styles.diffContent, styles.splitRow];
-const DIFF_CONTENT_ROW_STYLE = [styles.diffContent, styles.diffContentRow];
 const DIFF_HEIGHT_CHANGE_EPSILON = 0.5;

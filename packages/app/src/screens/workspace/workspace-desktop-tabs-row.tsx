@@ -1361,7 +1361,6 @@ const styles = StyleSheet.create((theme) => ({
     height: 14,
   },
 }));
-
 const TAB_DROP_INDICATOR_BEFORE_STYLE = [styles.tabDropIndicator, styles.tabDropIndicatorBefore];
 const TAB_DROP_INDICATOR_AFTER_STYLE = [styles.tabDropIndicator, styles.tabDropIndicatorAfter];
 const WEB_TAB_CLOSE_BUTTON_STYLE = [styles.tabCloseButton, styles.tabCloseButtonShown];
