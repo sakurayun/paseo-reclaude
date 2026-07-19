@@ -117,6 +117,8 @@ export const ja: TranslationResources = {
       element: "要素",
       openBrowserElement: "ブラウザ要素の添付ファイルを開く",
       removeBrowserElement: "ブラウザ要素の添付ファイルを削除",
+      openChatHistory: "チャット履歴の添付ファイルを開く",
+      removeChatHistory: "チャット履歴の添付ファイルを削除",
       openReview: "レビュー添付ファイルを開く",
       removeReview: "レビュー添付ファイルを削除",
     },
@@ -275,6 +277,7 @@ export const ja: TranslationResources = {
       commentsOne: "1件のコメント",
       commentsMany: "{{count}}件のコメント",
       textAttachment: "テキスト添付ファイル",
+      previousConversation: "以前の会話",
       text: "テキスト",
       file: "ファイル",
     },
@@ -340,6 +343,43 @@ export const ja: TranslationResources = {
     row: {
       importing: "インポート中...",
     },
+  },
+  addTranscripts: {
+    title: "トランスクリプトを追加",
+    subtitle: "この新しいエージェントのコンテキストとして過去の会話を追加します",
+    searchPlaceholder: "トランスクリプトを検索...",
+    groups: {
+      thisWorkspace: "このワークスペース",
+      otherWorkspaces: "このプロジェクトの他のワークスペース",
+      sameRepository: "同じ Git プロジェクト",
+    },
+    status: {
+      loading: "トランスクリプトを読み込み中...",
+      failedToLoad: "トランスクリプトを読み込めません",
+      hostsUnavailable: "一部のホストを利用できません: {{hosts}}",
+      noTranscripts: "このプロジェクトで利用できるトランスクリプトはありません",
+      noMatches: "検索に一致するトランスクリプトはありません",
+      runningSnapshot: "実行中 · 現時点までのスナップショット",
+      updateHost: "トランスクリプトをエクスポートするにはこのホストを更新してください",
+      unavailable: "トランスクリプトは利用できなくなりました",
+      exportFailed: "トランスクリプトをエクスポートできません",
+      maximumSelected: "追加できるトランスクリプトは最大 {{count}} 件です",
+      totalTooLarge: "選択したトランスクリプトが下書きのサイズ上限を超えています",
+    },
+    actions: {
+      add: "トランスクリプトを追加",
+      adding: "追加中...",
+      loadMore: "さらに読み込む",
+    },
+    selection: {
+      count: "{{count}} 件を選択",
+    },
+    attachmentSummary: {
+      capturedWhileRunning: "実行中に取得",
+      truncated: "{{total}} 件中の最近の {{included}} 件",
+      truncatedUnknown: "最近の部分",
+    },
+    attachmentTitle: "トランスクリプト · {{title}}",
   },
   workspace: {
     route: {

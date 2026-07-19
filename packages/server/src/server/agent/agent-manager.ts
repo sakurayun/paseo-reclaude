@@ -997,6 +997,21 @@ export class AgentManager {
     return this.timelineStore.fetch(id, options);
   }
 
+  /**
+   * Read history already retained by this daemon without resuming or creating
+   * a provider session. Closed agents keep their in-memory timeline until the
+   * daemon discards it, so read-only consumers can avoid mutating lifecycle.
+   */
+  fetchRetainedTimeline(
+    id: string,
+    options?: AgentTimelineFetchOptions,
+  ): AgentTimelineFetchResult | null {
+    if (!this.timelineStore.has(id)) {
+      return null;
+    }
+    return this.timelineStore.fetch(id, options);
+  }
+
   listProviderSubagents(parentAgentId: string): ProviderSubagentDescriptor[] {
     this.requirePublicAgent(parentAgentId);
     return this.providerSubagents.list(parentAgentId);

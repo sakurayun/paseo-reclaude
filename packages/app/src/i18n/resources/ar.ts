@@ -117,6 +117,8 @@ export const ar: TranslationResources = {
       element: "عنصر",
       openBrowserElement: "افتح مرفق عنصر المتصفح",
       removeBrowserElement: "إزالة مرفق عنصر المتصفح",
+      openChatHistory: "فتح مرفق سجل المحادثة",
+      removeChatHistory: "إزالة مرفق سجل المحادثة",
       openReview: "فتح مرفق المراجعة",
       removeReview: "إزالة مرفق المراجعة",
     },
@@ -272,6 +274,7 @@ export const ar: TranslationResources = {
       commentsOne: "تعليق واحد",
       commentsMany: "{{count}} تعليقات",
       textAttachment: "مرفق النص",
+      previousConversation: "محادثة سابقة",
       text: "نص",
       file: "ملف",
     },
@@ -337,6 +340,43 @@ export const ar: TranslationResources = {
     row: {
       importing: "جارٍ الاستيراد...",
     },
+  },
+  addTranscripts: {
+    title: "إضافة نصوص المحادثات",
+    subtitle: "أضف محادثات سابقة كسياق لهذا الوكيل الجديد",
+    searchPlaceholder: "البحث في نصوص المحادثات...",
+    groups: {
+      thisWorkspace: "مساحة العمل هذه",
+      otherWorkspaces: "مساحات عمل أخرى في هذا المشروع",
+      sameRepository: "مشروع Git نفسه",
+    },
+    status: {
+      loading: "جارٍ تحميل نصوص المحادثات...",
+      failedToLoad: "تعذر تحميل نصوص المحادثات",
+      hostsUnavailable: "بعض المضيفين غير متاحين: {{hosts}}",
+      noTranscripts: "لا توجد نصوص محادثات متاحة لهذا المشروع",
+      noMatches: "لا توجد نصوص محادثات تطابق بحثك",
+      runningSnapshot: "قيد التشغيل · لقطة حتى الآن",
+      updateHost: "حدّث هذا المضيف لتصدير نصوص المحادثات",
+      unavailable: "لم يعد نص المحادثة متاحاً",
+      exportFailed: "تعذر تصدير نص المحادثة",
+      maximumSelected: "يمكنك إضافة ما يصل إلى {{count}} نصوص محادثات",
+      totalTooLarge: "تتجاوز نصوص المحادثات المحددة حد حجم المسودة",
+    },
+    actions: {
+      add: "إضافة نصوص المحادثات",
+      adding: "جارٍ الإضافة...",
+      loadMore: "تحميل المزيد",
+    },
+    selection: {
+      count: "تم تحديد {{count}}",
+    },
+    attachmentSummary: {
+      capturedWhileRunning: "تم الالتقاط أثناء التشغيل",
+      truncated: "أحدث {{included}} من {{total}} عنصرًا",
+      truncatedUnknown: "جزء حديث",
+    },
+    attachmentTitle: "نص المحادثة · {{title}}",
   },
   workspace: {
     route: {

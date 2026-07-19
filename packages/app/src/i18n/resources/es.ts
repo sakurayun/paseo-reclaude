@@ -117,6 +117,8 @@ export const es: TranslationResources = {
       element: "Elemento",
       openBrowserElement: "Abrir archivo adjunto de elemento del navegador",
       removeBrowserElement: "Eliminar el archivo adjunto del elemento del navegador",
+      openChatHistory: "Abrir archivo adjunto del historial de chat",
+      removeChatHistory: "Eliminar archivo adjunto del historial de chat",
       openReview: "Abrir archivo adjunto de reseña",
       removeReview: "Eliminar archivo adjunto de reseña",
     },
@@ -275,6 +277,7 @@ export const es: TranslationResources = {
       commentsOne: "1 comentario",
       commentsMany: "{{count}} comentarios",
       textAttachment: "Adjunto de texto",
+      previousConversation: "Conversación anterior",
       text: "Texto",
       file: "Archivo",
     },
@@ -340,6 +343,43 @@ export const es: TranslationResources = {
     row: {
       importing: "Importador...",
     },
+  },
+  addTranscripts: {
+    title: "Añadir transcripciones",
+    subtitle: "Añade conversaciones anteriores como contexto para este nuevo agente",
+    searchPlaceholder: "Buscar transcripciones...",
+    groups: {
+      thisWorkspace: "Este espacio de trabajo",
+      otherWorkspaces: "Otros espacios de trabajo de este proyecto",
+      sameRepository: "Mismo proyecto Git",
+    },
+    status: {
+      loading: "Cargando transcripciones...",
+      failedToLoad: "No se pudieron cargar las transcripciones",
+      hostsUnavailable: "Algunos hosts no están disponibles: {{hosts}}",
+      noTranscripts: "No hay transcripciones disponibles para este proyecto",
+      noMatches: "Ninguna transcripción coincide con tu búsqueda",
+      runningSnapshot: "En curso · instantánea hasta ahora",
+      updateHost: "Actualiza este host para exportar transcripciones",
+      unavailable: "La transcripción ya no está disponible",
+      exportFailed: "No se pudo exportar la transcripción",
+      maximumSelected: "Puedes añadir hasta {{count}} transcripciones",
+      totalTooLarge: "Las transcripciones seleccionadas superan el límite de tamaño del borrador",
+    },
+    actions: {
+      add: "Añadir transcripciones",
+      adding: "Añadiendo...",
+      loadMore: "Cargar más",
+    },
+    selection: {
+      count: "{{count}} seleccionadas",
+    },
+    attachmentSummary: {
+      capturedWhileRunning: "Capturada durante la ejecución",
+      truncated: "Últimos {{included}} de {{total}} elementos",
+      truncatedUnknown: "Parte reciente",
+    },
+    attachmentTitle: "Transcripción · {{title}}",
   },
   workspace: {
     route: {

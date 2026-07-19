@@ -293,6 +293,66 @@ test("sets the complete viewed timeline subscription only when the daemon suppor
   });
 });
 
+test("exports a bounded transcript snapshot through the daemon RPC", async () => {
+  const mock = createMockTransport();
+  const client = new DaemonClient({
+    url: "ws://test",
+    clientId: "transcript_export",
+    transportFactory: () => mock.transport,
+    reconnect: { enabled: false },
+  });
+  clients.push(client);
+
+  const connect = client.connect();
+  mock.triggerOpen({ features: { agentTranscriptExport: true } });
+  await connect;
+
+  const transcriptPromise = client.exportAgentTranscript({
+    agentId: "agent-1",
+    maxBytes: 4096,
+    requestId: "transcript-export-1",
+  });
+  const request = parseSentFrame(mock.sent[0]);
+  expect(request).toEqual({
+    type: "agent.transcript.export.request",
+    agentId: "agent-1",
+    maxBytes: 4096,
+    requestId: "transcript-export-1",
+  });
+
+  mock.triggerMessage(
+    wrapSessionMessage({
+      type: "agent.transcript.export.response",
+      payload: {
+        requestId: "transcript-export-1",
+        agentId: "agent-1",
+        attachment: {
+          type: "text",
+          mimeType: "text/plain",
+          contextKind: "chat_history",
+          title: "Chat history",
+          text: "<chat-history-summary>\n[User] Continue\n</chat-history-summary>",
+        },
+        totalItemCount: 4,
+        includedItemCount: 4,
+        byteCount: 68,
+        truncated: false,
+        capturedCursor: { epoch: "timeline-1", seq: 4 },
+        error: null,
+      },
+    }),
+  );
+
+  await expect(transcriptPromise).resolves.toMatchObject({
+    totalItemCount: 4,
+    includedItemCount: 4,
+    byteCount: 68,
+    truncated: false,
+    capturedCursor: { epoch: "timeline-1", seq: 4 },
+    attachment: { contextKind: "chat_history" },
+  });
+});
+
 test("normalizes legacy and dedicated agent attention notifications", async () => {
   const mock = createMockTransport();
   const client = new DaemonClient({

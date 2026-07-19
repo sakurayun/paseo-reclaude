@@ -119,6 +119,8 @@ export const fr: TranslationResources = {
       element: "Élément",
       openBrowserElement: "Ouvrir la pièce jointe de l'élément de navigateur",
       removeBrowserElement: "Supprimer la pièce jointe d'un élément de navigateur",
+      openChatHistory: "Ouvrir la pièce jointe de l'historique de conversation",
+      removeChatHistory: "Supprimer la pièce jointe de l'historique de conversation",
       openReview: "Ouvrir la pièce jointe de l'avis",
       removeReview: "Supprimer la pièce jointe de l'avis",
     },
@@ -276,6 +278,7 @@ export const fr: TranslationResources = {
       commentsOne: "1 commentaire",
       commentsMany: "{{count}} commentaires",
       textAttachment: "Texte en pièce jointe",
+      previousConversation: "Conversation précédente",
       text: "Texte",
       file: "Fichier",
     },
@@ -341,6 +344,43 @@ export const fr: TranslationResources = {
     row: {
       importing: "Importation...",
     },
+  },
+  addTranscripts: {
+    title: "Ajouter des transcriptions",
+    subtitle: "Ajoutez des conversations précédentes comme contexte pour ce nouvel agent",
+    searchPlaceholder: "Rechercher des transcriptions...",
+    groups: {
+      thisWorkspace: "Cet espace de travail",
+      otherWorkspaces: "Autres espaces de travail de ce projet",
+      sameRepository: "Même projet Git",
+    },
+    status: {
+      loading: "Chargement des transcriptions...",
+      failedToLoad: "Impossible de charger les transcriptions",
+      hostsUnavailable: "Certains hôtes sont indisponibles : {{hosts}}",
+      noTranscripts: "Aucune transcription disponible pour ce projet",
+      noMatches: "Aucune transcription ne correspond à votre recherche",
+      runningSnapshot: "En cours · instantané jusqu’à maintenant",
+      updateHost: "Mettez à jour cet hôte pour exporter des transcriptions",
+      unavailable: "La transcription n'est plus disponible",
+      exportFailed: "Impossible d'exporter la transcription",
+      maximumSelected: "Vous pouvez ajouter jusqu'à {{count}} transcriptions",
+      totalTooLarge: "Les transcriptions sélectionnées dépassent la limite de taille du brouillon",
+    },
+    actions: {
+      add: "Ajouter des transcriptions",
+      adding: "Ajout...",
+      loadMore: "Charger plus",
+    },
+    selection: {
+      count: "{{count}} sélectionnées",
+    },
+    attachmentSummary: {
+      capturedWhileRunning: "Capturée pendant l’exécution",
+      truncated: "{{included}} éléments récents sur {{total}}",
+      truncatedUnknown: "Partie récente",
+    },
+    attachmentTitle: "Transcription · {{title}}",
   },
   workspace: {
     route: {

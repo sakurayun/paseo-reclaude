@@ -18,12 +18,21 @@ import {
   removeSentContextAttachments,
   removeWorkspaceAttachmentsMatching,
 } from "./workspace-cleanup";
+import { mergeWorkspaceAttachments } from "./workspace-merge";
 import { useClearReviewDraft } from "@/review/store";
 
 interface WorkspaceAttachmentBindingInput {
   normalAttachments: UserComposerAttachment[];
   workspaceAttachments: readonly WorkspaceComposerAttachment[];
   onOpenWorkspaceAttachment?: (attachment: WorkspaceComposerAttachment) => void;
+  /** Enables a local preview for caller-owned, non-review workspace context. */
+  canOpenWorkspaceAttachment?: (attachment: WorkspaceComposerAttachment) => boolean;
+  /**
+   * Gives a durable attachment owner a chance to remove its own data before
+   * the transient workspace-attachment store is touched. Returning true means
+   * the owner handled removal.
+   */
+  onRemoveWorkspaceAttachment?: (attachment: WorkspaceComposerAttachment) => boolean;
 }
 
 interface RemoveWorkspaceAttachmentInput {
@@ -45,6 +54,7 @@ interface ComposerWorkspaceAttachmentBinding {
   buildOutgoingAttachments: (normalAttachments: UserComposerAttachment[]) => ComposerAttachment[];
   removeAttachment: (input: RemoveWorkspaceAttachmentInput) => boolean;
   openAttachment: (input: OpenWorkspaceAttachmentInput) => boolean;
+  isAttachmentOpenable: (attachment: WorkspaceComposerAttachment) => boolean;
   clearSentAttachments: (attachments: readonly ComposerAttachment[]) => void;
   completeSubmit: (input: CompleteSubmitInput) => void;
   resetSuppression: () => void;
@@ -61,7 +71,7 @@ function getOpenAccessibilityLabel(
     return "Open context attachment";
   }
   if (attachment.kind === "chat_history") {
-    return "Open chat history attachment";
+    return t("composer.attachments.openChatHistory");
   }
   return t("composer.attachments.openReview");
 }
@@ -77,7 +87,7 @@ function getRemoveAccessibilityLabel(
     return "Remove context attachment";
   }
   if (attachment.kind === "chat_history") {
-    return "Remove chat history attachment";
+    return t("composer.attachments.removeChatHistory");
   }
   return t("composer.attachments.removeReview");
 }
@@ -103,6 +113,8 @@ function useWorkspaceAttachmentBinding({
   normalAttachments,
   workspaceAttachments,
   onOpenWorkspaceAttachment,
+  canOpenWorkspaceAttachment,
+  onRemoveWorkspaceAttachment,
 }: WorkspaceAttachmentBindingInput): ComposerWorkspaceAttachmentBinding {
   const clearReviewDraft = useClearReviewDraft();
   const [suppressedKeys, setSuppressedKeys] = useState<readonly string[]>([]);
@@ -164,6 +176,9 @@ function useWorkspaceAttachmentBinding({
     ({ selectedAttachments: current, index }: RemoveWorkspaceAttachmentInput) => {
       const selected = current[index];
       if (isWorkspaceAttachment(selected)) {
+        if (onRemoveWorkspaceAttachment?.(selected)) {
+          return true;
+        }
         if (
           selected.kind === "browser_element" ||
           selected.kind === "chat_history" ||
@@ -178,18 +193,24 @@ function useWorkspaceAttachmentBinding({
       }
       return false;
     },
-    [suppressWorkspaceAttachment],
+    [onRemoveWorkspaceAttachment, suppressWorkspaceAttachment],
+  );
+
+  const isAttachmentOpenable = useCallback(
+    (attachment: WorkspaceComposerAttachment): boolean =>
+      attachment.kind === "review" || canOpenWorkspaceAttachment?.(attachment) === true,
+    [canOpenWorkspaceAttachment],
   );
 
   const openAttachment = useCallback(
     ({ attachment }: OpenWorkspaceAttachmentInput) => {
-      if (!isWorkspaceAttachment(attachment) || attachment.kind !== "review") {
+      if (!isWorkspaceAttachment(attachment) || !isAttachmentOpenable(attachment)) {
         return false;
       }
       onOpenWorkspaceAttachment?.(attachment);
       return true;
     },
-    [onOpenWorkspaceAttachment],
+    [isAttachmentOpenable, onOpenWorkspaceAttachment],
   );
 
   const resetSuppression = useCallback(() => {
@@ -213,6 +234,7 @@ function useWorkspaceAttachmentBinding({
     buildOutgoingAttachments,
     removeAttachment,
     openAttachment,
+    isAttachmentOpenable,
     clearSentAttachments,
     completeSubmit,
     resetSuppression,
@@ -223,6 +245,7 @@ interface RenderWorkspaceAttachmentPillArgs {
   attachment: WorkspaceComposerAttachment;
   index: number;
   disabled: boolean;
+  isOpenable: boolean;
   onOpen: (attachment: ComposerAttachment) => void;
   onRemove: (index: number) => void;
 }
@@ -238,6 +261,7 @@ function WorkspaceAttachmentPill({
   attachment,
   index,
   disabled,
+  isOpenable,
   onOpen,
   onRemove,
 }: WorkspaceAttachmentPillProps) {
@@ -252,9 +276,9 @@ function WorkspaceAttachmentPill({
   return (
     <AttachmentPill
       testID={getPillTestID(attachment)}
-      onOpen={handleOpen}
+      onOpen={isOpenable ? handleOpen : undefined}
       onRemove={handleRemove}
-      openAccessibilityLabel={getOpenAccessibilityLabel(attachment, t)}
+      openAccessibilityLabel={isOpenable ? getOpenAccessibilityLabel(attachment, t) : undefined}
       removeAccessibilityLabel={getRemoveAccessibilityLabel(attachment, t)}
       disabled={disabled}
     >
@@ -265,6 +289,7 @@ function WorkspaceAttachmentPill({
 
 export const composerWorkspaceAttachment = {
   is: isWorkspaceAttachment,
+  merge: mergeWorkspaceAttachments,
   renderPill,
   toSubmitAttachment: workspaceAttachmentToSubmitAttachment,
   userAttachmentsOnly,

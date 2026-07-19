@@ -1,11 +1,13 @@
 import {
   NEW_WORKSPACE_PICKER_ATTACHMENT_OWNER,
   type AttachmentMetadata,
+  type ChatHistoryContextAttachment,
   type UserComposerAttachment,
 } from "@/attachments/types";
 import { ForgeSearchItemSchema, GitHubSearchItemSchema } from "@getpaseo/protocol/messages";
+import { buildChatHistoryAttachmentId } from "@/attachments/chat-history-identity";
 
-export const DRAFT_STORE_VERSION = 5;
+export const DRAFT_STORE_VERSION = 6;
 export const FINALIZED_DRAFT_TTL_MS = 5 * 60 * 1000;
 
 export interface LegacyDraftImage {
@@ -18,6 +20,12 @@ export type PersistedDraftImage = AttachmentMetadata | LegacyDraftImage;
 export interface DraftInput {
   text: string;
   attachments: UserComposerAttachment[];
+  transcriptAttachments: ChatHistoryContextAttachment[];
+}
+
+export interface DraftTranscriptSource {
+  serverId: string;
+  agentId: string;
 }
 
 export type DraftLifecycleState = "active" | "abandoned" | "sent";
@@ -129,6 +137,186 @@ export function normalizeComposerAttachment(
   return attachment;
 }
 
+function isNonnegativeInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0;
+}
+
+function isTranscriptBoundaryCursor(
+  value: unknown,
+): value is NonNullable<ChatHistoryContextAttachment["source"]["boundaryCursor"]> {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const cursor = value as Record<string, unknown>;
+  return typeof cursor.epoch === "string" && isNonnegativeInteger(cursor.seq);
+}
+
+function isOptionalStringOrNull(value: unknown): boolean {
+  return value === undefined || value === null || typeof value === "string";
+}
+
+function isOptionalNonnegativeInteger(value: unknown): boolean {
+  return value === undefined || isNonnegativeInteger(value);
+}
+
+function isOptionalTranscriptBoundaryCursor(value: unknown): boolean {
+  return value === undefined || value === null || isTranscriptBoundaryCursor(value);
+}
+
+function isChatHistoryTextAttachment(
+  value: unknown,
+): value is ChatHistoryContextAttachment["attachment"] {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const attachment = value as Record<string, unknown>;
+  const title = attachment.title;
+  return (
+    attachment.type === "text" &&
+    attachment.mimeType === "text/plain" &&
+    attachment.contextKind === "chat_history" &&
+    typeof attachment.text === "string" &&
+    (title === undefined || title === null || typeof title === "string")
+  );
+}
+
+function isChatHistorySource(value: unknown): value is ChatHistoryContextAttachment["source"] {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const source = value as Record<string, unknown>;
+  return (
+    typeof source.serverId === "string" &&
+    typeof source.agentId === "string" &&
+    (source.workspaceLabel === undefined || typeof source.workspaceLabel === "string") &&
+    (source.serverLabel === undefined || typeof source.serverLabel === "string") &&
+    (source.capturedWhileRunning === undefined ||
+      typeof source.capturedWhileRunning === "boolean") &&
+    isOptionalStringOrNull(source.boundaryMessageId) &&
+    isOptionalTranscriptBoundaryCursor(source.boundaryCursor) &&
+    isOptionalNonnegativeInteger(source.itemCount) &&
+    isOptionalNonnegativeInteger(source.includedItemCount) &&
+    isOptionalNonnegativeInteger(source.byteCount) &&
+    (source.truncated === undefined || typeof source.truncated === "boolean")
+  );
+}
+
+export function isChatHistoryContextAttachment(
+  value: unknown,
+): value is ChatHistoryContextAttachment {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const attachment = value as Record<string, unknown>;
+  return (
+    attachment.kind === "chat_history" &&
+    typeof attachment.id === "string" &&
+    isChatHistoryTextAttachment(attachment.attachment) &&
+    isChatHistorySource(attachment.source)
+  );
+}
+
+export function buildDraftTranscriptAttachmentId(input: DraftTranscriptSource): string {
+  return buildChatHistoryAttachmentId(input);
+}
+
+export function normalizeDraftTranscriptAttachment(
+  attachment: ChatHistoryContextAttachment,
+): ChatHistoryContextAttachment {
+  const source = attachment.source;
+  const title = attachment.attachment.title;
+  const workspaceLabel = source.workspaceLabel?.trim();
+  const serverLabel = source.serverLabel?.trim();
+  const capturedWhileRunning = source.capturedWhileRunning;
+  const boundaryMessageId = source.boundaryMessageId;
+  const boundaryCursor = source.boundaryCursor;
+  const itemCount = source.itemCount;
+  const includedItemCount = source.includedItemCount;
+  const byteCount = source.byteCount;
+  const truncated = source.truncated;
+
+  return {
+    kind: "chat_history",
+    id: buildDraftTranscriptAttachmentId(source),
+    attachment: {
+      type: "text",
+      mimeType: "text/plain",
+      contextKind: "chat_history",
+      text: attachment.attachment.text,
+      ...(typeof title === "string" || title === null ? { title } : {}),
+    },
+    source: {
+      serverId: source.serverId,
+      agentId: source.agentId,
+      ...(workspaceLabel ? { workspaceLabel } : {}),
+      ...(serverLabel ? { serverLabel } : {}),
+      ...(typeof capturedWhileRunning === "boolean" ? { capturedWhileRunning } : {}),
+      ...(typeof boundaryMessageId === "string" || boundaryMessageId === null
+        ? { boundaryMessageId }
+        : {}),
+      ...(isTranscriptBoundaryCursor(boundaryCursor)
+        ? {
+            boundaryCursor: {
+              epoch: boundaryCursor.epoch,
+              seq: boundaryCursor.seq,
+            },
+          }
+        : {}),
+      ...(isNonnegativeInteger(itemCount) ? { itemCount } : {}),
+      ...(isNonnegativeInteger(includedItemCount) ? { includedItemCount } : {}),
+      ...(isNonnegativeInteger(byteCount) ? { byteCount } : {}),
+      ...(typeof truncated === "boolean" ? { truncated } : {}),
+    },
+  };
+}
+
+function isCanonicalDraftTranscriptAttachment(
+  value: unknown,
+): value is ChatHistoryContextAttachment {
+  if (!isChatHistoryContextAttachment(value)) {
+    return false;
+  }
+  return value.id === buildDraftTranscriptAttachmentId(value.source);
+}
+
+export function upsertDraftTranscriptAttachment(input: {
+  attachments: readonly ChatHistoryContextAttachment[];
+  attachment: ChatHistoryContextAttachment;
+}): ChatHistoryContextAttachment[] {
+  const nextAttachment = normalizeDraftTranscriptAttachment(input.attachment);
+  const existingIndex = input.attachments.findIndex(
+    (current) =>
+      current.source.serverId === nextAttachment.source.serverId &&
+      current.source.agentId === nextAttachment.source.agentId,
+  );
+  if (existingIndex < 0) {
+    return [...input.attachments, nextAttachment];
+  }
+  return input.attachments.map((current, index) =>
+    index === existingIndex ? nextAttachment : current,
+  );
+}
+
+export function normalizeDraftTranscriptAttachments(
+  attachments: readonly ChatHistoryContextAttachment[],
+): ChatHistoryContextAttachment[] {
+  return attachments.reduce<ChatHistoryContextAttachment[]>(
+    (current, attachment) => upsertDraftTranscriptAttachment({ attachments: current, attachment }),
+    [],
+  );
+}
+
+export function removeDraftTranscriptAttachment(input: {
+  attachments: readonly ChatHistoryContextAttachment[];
+  source: DraftTranscriptSource;
+}): ChatHistoryContextAttachment[] {
+  return input.attachments.filter(
+    (attachment) =>
+      attachment.source.serverId !== input.source.serverId ||
+      attachment.source.agentId !== input.source.agentId,
+  );
+}
+
 export function isCanonicalDraftInput(value: unknown): value is CanonicalDraftInput {
   if (!value || typeof value !== "object") {
     return false;
@@ -138,7 +326,11 @@ export function isCanonicalDraftInput(value: unknown): value is CanonicalDraftIn
   return (
     typeof input.text === "string" &&
     Array.isArray(input.attachments) &&
-    input.attachments.every(isUserComposerAttachment)
+    input.attachments.every(isUserComposerAttachment) &&
+    Array.isArray(input.transcriptAttachments) &&
+    input.transcriptAttachments.every(isCanonicalDraftTranscriptAttachment) &&
+    new Set(input.transcriptAttachments.map((attachment) => attachment.id)).size ===
+      input.transcriptAttachments.length
   );
 }
 
@@ -157,6 +349,9 @@ export function toDraftInputIfReady(
   return {
     text: record.input.text,
     attachments: record.input.attachments.map(normalizeComposerAttachment),
+    transcriptAttachments: record.input.transcriptAttachments.map(
+      normalizeDraftTranscriptAttachment,
+    ),
   };
 }
 
@@ -216,7 +411,7 @@ export function applyClearDraftRecord(input: {
 
   return {
     ...input.record,
-    input: { text: "", attachments: [] },
+    input: { text: "", attachments: [], transcriptAttachments: [] },
     lifecycle: input.lifecycle,
     updatedAt: input.nowMs,
     version: input.record.version + 1,

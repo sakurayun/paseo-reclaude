@@ -117,6 +117,8 @@ export const ru: TranslationResources = {
       element: "Элемент",
       openBrowserElement: "Открыть вложение элемента браузера",
       removeBrowserElement: "Удалить вложение элемента браузера",
+      openChatHistory: "Открыть вложение с историей чата",
+      removeChatHistory: "Удалить вложение с историей чата",
       openReview: "Открыть прикрепленный файл с отзывом",
       removeReview: "Удалить прикрепленный отзыв",
     },
@@ -274,6 +276,7 @@ export const ru: TranslationResources = {
       commentsOne: "1 комментарий",
       commentsMany: "Комментарии: {{count}}",
       textAttachment: "Текстовое вложение",
+      previousConversation: "Предыдущий разговор",
       text: "Текст",
       file: "Файл",
     },
@@ -339,6 +342,43 @@ export const ru: TranslationResources = {
     row: {
       importing: "Импорт...",
     },
+  },
+  addTranscripts: {
+    title: "Добавить расшифровки",
+    subtitle: "Добавьте предыдущие разговоры как контекст для нового агента",
+    searchPlaceholder: "Поиск расшифровок...",
+    groups: {
+      thisWorkspace: "Это рабочее пространство",
+      otherWorkspaces: "Другие рабочие пространства этого проекта",
+      sameRepository: "Тот же Git-проект",
+    },
+    status: {
+      loading: "Загрузка расшифровок...",
+      failedToLoad: "Не удалось загрузить расшифровки",
+      hostsUnavailable: "Некоторые хосты недоступны: {{hosts}}",
+      noTranscripts: "Для этого проекта нет доступных расшифровок",
+      noMatches: "Нет расшифровок, соответствующих поиску",
+      runningSnapshot: "Выполняется · снимок на текущий момент",
+      updateHost: "Обновите этот хост для экспорта расшифровок",
+      unavailable: "Расшифровка больше недоступна",
+      exportFailed: "Не удалось экспортировать расшифровку",
+      maximumSelected: "Можно добавить до {{count}} расшифровок",
+      totalTooLarge: "Выбранные расшифровки превышают лимит размера черновика",
+    },
+    actions: {
+      add: "Добавить расшифровки",
+      adding: "Добавление...",
+      loadMore: "Загрузить ещё",
+    },
+    selection: {
+      count: "Выбрано: {{count}}",
+    },
+    attachmentSummary: {
+      capturedWhileRunning: "Снимок во время выполнения",
+      truncated: "Последние {{included}} из {{total}} элементов",
+      truncatedUnknown: "Недавняя часть",
+    },
+    attachmentTitle: "Расшифровка · {{title}}",
   },
   workspace: {
     route: {

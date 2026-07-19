@@ -115,6 +115,8 @@ export const en = {
       element: "Element",
       openBrowserElement: "Open browser element attachment",
       removeBrowserElement: "Remove browser element attachment",
+      openChatHistory: "Open chat history attachment",
+      removeChatHistory: "Remove chat history attachment",
       openReview: "Open review attachment",
       removeReview: "Remove review attachment",
     },
@@ -271,6 +273,7 @@ export const en = {
       commentsOne: "1 comment",
       commentsMany: "{{count}} comments",
       textAttachment: "Text attachment",
+      previousConversation: "Previous conversation",
       text: "Text",
       file: "File",
     },
@@ -336,6 +339,43 @@ export const en = {
     row: {
       importing: "Importing...",
     },
+  },
+  addTranscripts: {
+    title: "Add transcripts",
+    subtitle: "Add past conversations as context for this new agent",
+    searchPlaceholder: "Search transcripts...",
+    groups: {
+      thisWorkspace: "This workspace",
+      otherWorkspaces: "Other workspaces in this project",
+      sameRepository: "Same Git project",
+    },
+    status: {
+      loading: "Loading transcripts...",
+      failedToLoad: "Unable to load transcripts",
+      hostsUnavailable: "Some hosts are unavailable: {{hosts}}",
+      noTranscripts: "No transcripts available for this project",
+      noMatches: "No transcripts match your search",
+      runningSnapshot: "Running · snapshot through now",
+      updateHost: "Update this host to export transcripts",
+      unavailable: "Transcript is no longer available",
+      exportFailed: "Unable to export transcript",
+      maximumSelected: "You can add up to {{count}} transcripts",
+      totalTooLarge: "Selected transcripts exceed the draft size limit",
+    },
+    actions: {
+      add: "Add transcripts",
+      adding: "Adding...",
+      loadMore: "Load more",
+    },
+    selection: {
+      count: "{{count}} selected",
+    },
+    attachmentSummary: {
+      capturedWhileRunning: "Captured while running",
+      truncated: "Recent {{included}} of {{total}} items",
+      truncatedUnknown: "Recent portion",
+    },
+    attachmentTitle: "Transcript · {{title}}",
   },
   workspace: {
     route: {

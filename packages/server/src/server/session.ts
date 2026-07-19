@@ -101,7 +101,10 @@ import {
   type TimelineProjectionEntry,
   type TimelineProjectionMode,
 } from "./agent/timeline-projection.js";
-import { buildAgentForkContextAttachment } from "./agent/activity-curator.js";
+import {
+  buildAgentForkContextAttachment,
+  buildAgentTranscriptExportAttachment,
+} from "./agent/activity-curator.js";
 import { buildAgentPrompt } from "./agent/prompt-attachments.js";
 import type { StructuredGenerationDaemonConfig } from "./agent/structured-generation-providers.js";
 import {
@@ -378,6 +381,10 @@ class SessionRequestError extends Error {
     this.name = "SessionRequestError";
   }
 }
+
+// A 128 KiB response can contain many one-line tool markers. Bound the source
+// window as well as the response so export work cannot grow with session age.
+const AGENT_TRANSCRIPT_EXPORT_SCAN_LIMIT = 25_000;
 
 export interface SessionFileSystem {
   isDirectory(path: string): Promise<boolean>;
@@ -1745,6 +1752,8 @@ export class Session {
       }
       case "agent.fork_context.request":
         return this.handleAgentForkContextRequest(msg);
+      case "agent.transcript.export.request":
+        return this.handleAgentTranscriptExportRequest(msg);
       default:
         return undefined;
     }
@@ -6021,6 +6030,83 @@ export class Session {
         },
       });
     }
+  }
+
+  private async handleAgentTranscriptExportRequest(
+    msg: Extract<SessionInboundMessage, { type: "agent.transcript.export.request" }>,
+  ): Promise<void> {
+    try {
+      const { cwd, storedRecord, timeline } = await this.resolveAgentTranscriptSource({
+        agentId: msg.agentId,
+      });
+      const capturedRow = timeline.rows.at(-1);
+      const transcript = buildAgentTranscriptExportAttachment({
+        rows: timeline.rows,
+        hasOlderRows: timeline.hasOlder,
+        maxBytes: msg.maxBytes,
+        agentTitle: storedRecord?.title ?? null,
+        cwd,
+      });
+
+      this.emit({
+        type: "agent.transcript.export.response",
+        payload: {
+          requestId: msg.requestId,
+          agentId: msg.agentId,
+          attachment: transcript.attachment,
+          totalItemCount: transcript.totalItemCount,
+          includedItemCount: transcript.includedItemCount,
+          byteCount: transcript.byteCount,
+          truncated: transcript.truncated,
+          capturedCursor: capturedRow ? { epoch: timeline.epoch, seq: capturedRow.seq } : null,
+          error: null,
+        },
+      });
+    } catch (error) {
+      this.sessionLogger.error(
+        { err: error, agentId: msg.agentId },
+        "Failed to handle agent.transcript.export.request",
+      );
+      this.emit({
+        type: "agent.transcript.export.response",
+        payload: {
+          requestId: msg.requestId,
+          agentId: msg.agentId,
+          attachment: null,
+          totalItemCount: 0,
+          includedItemCount: 0,
+          byteCount: 0,
+          truncated: false,
+          capturedCursor: null,
+          error: error instanceof Error ? error.message : String(error),
+        },
+      });
+    }
+  }
+
+  private async resolveAgentTranscriptSource(input: { agentId: string }): Promise<{
+    cwd: string | null;
+    storedRecord: StoredAgentRecord | null;
+    timeline: AgentTimelineFetchResult;
+  }> {
+    const liveAgent = this.agentManager.getAgent(input.agentId);
+    const storedRecord = await this.agentStorage.get(input.agentId);
+    if ((!liveAgent && !storedRecord) || liveAgent?.internal || storedRecord?.internal) {
+      throw new Error(`Agent not found: ${input.agentId}`);
+    }
+    if (storedRecord?.archivedAt) {
+      throw new Error("Transcript unavailable: archived history is not retained by this host.");
+    }
+    const timeline = this.agentManager.fetchRetainedTimeline(input.agentId, {
+      direction: "tail",
+      limit: AGENT_TRANSCRIPT_EXPORT_SCAN_LIMIT,
+    });
+    if (!timeline) {
+      throw new Error(
+        "Transcript unavailable: open the source session on this host, then try again.",
+      );
+    }
+    return { cwd: liveAgent?.cwd ?? storedRecord?.cwd ?? null, storedRecord, timeline };
   }
 
   private async handleSendAgentMessageRequest(

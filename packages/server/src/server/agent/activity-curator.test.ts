@@ -1,5 +1,15 @@
+import { Buffer } from "node:buffer";
 import { describe, expect, it } from "vitest";
-import { buildAgentForkContextAttachment, curateAgentActivity } from "./activity-curator.js";
+import {
+  buildAgentForkContextAttachment,
+  buildAgentTranscriptExportAttachment,
+  curateAgentActivity,
+  resolveAgentTranscriptExportMaxBytes,
+} from "./activity-curator.js";
+import {
+  AGENT_TRANSCRIPT_EXPORT_MAX_BYTES,
+  AGENT_TRANSCRIPT_EXPORT_MIN_BYTES,
+} from "@getpaseo/protocol/messages";
 import type { AgentTimelineItem } from "./agent-sdk-types.js";
 import type { AgentTimelineRow } from "./agent-timeline-store-types.js";
 
@@ -352,6 +362,201 @@ second line'`,
     expect(result.attachment.text).toContain("[User] Message 1");
     expect(result.attachment.text).toContain("[User] Message 25");
     expect(result.attachment.text).toContain("[Assistant] Done.");
+  });
+
+  it("exports a byte-bounded contiguous suffix of whole curated transcript entries", () => {
+    const oversizedAssistantMessage = "oversized assistant message ".repeat(80);
+    const result = buildAgentTranscriptExportAttachment({
+      agentTitle: "Source Agent",
+      cwd: "/repo",
+      maxBytes: 1024,
+      rows: [
+        row(1, { type: "user_message", text: "Older context" }),
+        row(2, { type: "assistant_message", text: oversizedAssistantMessage }),
+        row(3, { type: "user_message", text: "Newest complete context" }),
+      ],
+    });
+
+    expect(result).toMatchObject({
+      totalItemCount: 3,
+      includedItemCount: 1,
+      truncated: true,
+    });
+    expect(result.byteCount).toBe(Buffer.byteLength(result.attachment.text, "utf8"));
+    expect(result.byteCount).toBeLessThanOrEqual(1024);
+    expect(result.attachment.text).toContain("[User] Newest complete context");
+    expect(result.attachment.text).not.toContain(oversizedAssistantMessage);
+    expect(result.attachment.text).not.toContain("[User] Older context");
+    expect(result.attachment.text).toMatch(/\n<\/chat-history-summary>$/);
+  });
+
+  it("marks a bounded source window as truncated without inventing an exact total", () => {
+    const result = buildAgentTranscriptExportAttachment({
+      hasOlderRows: true,
+      rows: [
+        row(24_999, { type: "user_message", text: "Recent question" }),
+        row(25_000, { type: "assistant_message", text: "Recent answer" }),
+      ],
+    });
+
+    expect(result).toMatchObject({
+      totalItemCount: null,
+      includedItemCount: 2,
+      truncated: true,
+    });
+    expect(result.attachment.text).toContain("[User] Recent question");
+    expect(result.attachment.text).toContain("[Assistant] Recent answer");
+  });
+
+  it("clamps caller size policy at the daemon boundary", () => {
+    expect(resolveAgentTranscriptExportMaxBytes(1)).toBe(AGENT_TRANSCRIPT_EXPORT_MIN_BYTES);
+    expect(resolveAgentTranscriptExportMaxBytes(AGENT_TRANSCRIPT_EXPORT_MAX_BYTES * 2)).toBe(
+      AGENT_TRANSCRIPT_EXPORT_MAX_BYTES,
+    );
+  });
+
+  it("excludes raw sub-agent logs from portable transcript snapshots", () => {
+    const rawSubAgentLog = "SUBAGENT_LOG_SHOULD_NOT_EXPORT\n".repeat(1_000);
+    const result = buildAgentTranscriptExportAttachment({
+      maxBytes: 1024,
+      rows: [
+        row(1, { type: "user_message", text: "Inspect the repository" }),
+        row(
+          2,
+          toolCallItem({
+            callId: "task-1",
+            name: "SECRET_PROVIDER_TOOL_NAME",
+            detail: {
+              type: "sub_agent",
+              subAgentType: "SECRET_SUBAGENT_TYPE",
+              description: "SECRET_SUBAGENT_DESCRIPTION",
+              log: rawSubAgentLog,
+            },
+          }),
+        ),
+        row(3, { type: "assistant_message", text: "The investigation is complete." }),
+      ],
+    });
+
+    expect(result).toMatchObject({
+      totalItemCount: 3,
+      includedItemCount: 3,
+      truncated: false,
+    });
+    expect(result.byteCount).toBeLessThanOrEqual(1024);
+    expect(result.attachment.text).toContain("[Task]");
+    expect(result.attachment.text).not.toContain("SECRET_PROVIDER_TOOL_NAME");
+    expect(result.attachment.text).not.toContain("SECRET_SUBAGENT_TYPE");
+    expect(result.attachment.text).not.toContain("SECRET_SUBAGENT_DESCRIPTION");
+    expect(result.attachment.text).not.toContain("SUBAGENT_LOG_SHOULD_NOT_EXPORT");
+  });
+
+  it("uses a fixed marker for unknown portable tool calls", () => {
+    const result = buildAgentTranscriptExportAttachment({
+      rows: [
+        row(
+          1,
+          toolCallItem({
+            callId: "unknown-1",
+            name: "secret token embedded in a provider tool name",
+            input: { command: "secret command" },
+          }),
+        ),
+      ],
+    });
+
+    expect(result.attachment.text).toContain("[Tool]");
+    expect(result.attachment.text).not.toContain("secret token");
+    expect(result.attachment.text).not.toContain("secret command");
+  });
+
+  it("exports tool kinds without secret-bearing commands, queries, URLs, or descriptions", () => {
+    const result = buildAgentTranscriptExportAttachment({
+      rows: [
+        row(
+          1,
+          toolCallItem({
+            callId: "shell-secret",
+            name: "shell",
+            detail: {
+              type: "shell",
+              command: "curl -H 'Authorization: Bearer secret-shell-token' https://example.test",
+              output: "ok",
+              exitCode: 0,
+            },
+          }),
+        ),
+        row(
+          2,
+          toolCallItem({
+            callId: "search-secret",
+            name: "search",
+            detail: { type: "search", query: "password=secret-search-value" },
+          }),
+        ),
+        row(
+          3,
+          toolCallItem({
+            callId: "fetch-secret",
+            name: "fetch",
+            detail: {
+              type: "fetch",
+              url: "https://example.test/file?signature=secret-signed-url",
+            },
+          }),
+        ),
+        row(
+          4,
+          toolCallItem({
+            callId: "subagent-secret",
+            name: "Task",
+            detail: {
+              type: "sub_agent",
+              subAgentType: "Explore",
+              description: "Investigate secret-subagent-description",
+              log: "secret-subagent-log",
+            },
+          }),
+        ),
+      ],
+    });
+
+    expect(result.attachment.text).toContain("[Shell]");
+    expect(result.attachment.text).toContain("[Search]");
+    expect(result.attachment.text).toContain("[Fetch]");
+    expect(result.attachment.text).toContain("[Task]");
+    expect(result.attachment.text).not.toContain("Explore");
+    expect(result.attachment.text).not.toContain("secret-");
+    expect(result.attachment.text).not.toContain("Authorization");
+  });
+
+  it("retains sub-agent logs in Fork context", () => {
+    const result = buildAgentForkContextAttachment({
+      boundaryMessageId: "assistant-1",
+      rows: [
+        row(
+          1,
+          toolCallItem({
+            callId: "task-1",
+            name: "Task",
+            detail: {
+              type: "sub_agent",
+              subAgentType: "Explore",
+              description: "Inspect the repository",
+              log: "[Assistant] Child findings.",
+            },
+          }),
+        ),
+        row(2, {
+          type: "assistant_message",
+          text: "Parent conclusion.",
+          messageId: "assistant-1",
+        }),
+      ],
+    });
+
+    expect(result.attachment.text).toContain("[Explore] Inspect the repository");
+    expect(result.attachment.text).toContain("[Assistant] Child findings.");
   });
 
   it("selects the fork boundary before collapsing later tool updates", () => {

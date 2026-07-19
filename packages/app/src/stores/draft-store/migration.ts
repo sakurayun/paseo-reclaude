@@ -1,9 +1,16 @@
-import type { AttachmentMetadata, UserComposerAttachment } from "@/attachments/types";
+import type {
+  AttachmentMetadata,
+  ChatHistoryContextAttachment,
+  UserComposerAttachment,
+} from "@/attachments/types";
 import { isLegacyNewWorkspaceDraftKey, NEW_WORKSPACE_DRAFT_KEY } from "@/stores/draft-keys";
 import {
   isAttachmentMetadata,
+  isChatHistoryContextAttachment,
   isLegacyDraftImage,
   isUserComposerAttachment,
+  normalizeDraftTranscriptAttachment,
+  normalizeDraftTranscriptAttachments,
   normalizeAttachmentMetadata,
   normalizeComposerAttachment,
   type CanonicalDraftInput,
@@ -37,6 +44,15 @@ function normalizePersistedComposerAttachment(value: unknown): UserComposerAttac
   return normalizeComposerAttachment(value);
 }
 
+function normalizePersistedTranscriptAttachment(
+  value: unknown,
+): ChatHistoryContextAttachment | null {
+  if (!isChatHistoryContextAttachment(value)) {
+    return null;
+  }
+  return normalizeDraftTranscriptAttachment(value);
+}
+
 function legacyImagesToAttachments(
   images: readonly AttachmentMetadata[],
 ): UserComposerAttachment[] {
@@ -65,10 +81,18 @@ export async function migrateDraftInput(
         .filter((entry): entry is PersistedDraftImage => entry !== null)
     : [];
   const migratedImages = await ports.migrateLegacyImages(legacyImages);
+  const transcriptAttachments = Array.isArray(rawInput.transcriptAttachments)
+    ? normalizeDraftTranscriptAttachments(
+        rawInput.transcriptAttachments
+          .map((entry) => normalizePersistedTranscriptAttachment(entry))
+          .filter((entry): entry is ChatHistoryContextAttachment => entry !== null),
+      )
+    : [];
 
   return {
     text: typeof rawInput.text === "string" ? rawInput.text : "",
     attachments: [...attachments, ...legacyImagesToAttachments(migratedImages)],
+    transcriptAttachments,
   };
 }
 

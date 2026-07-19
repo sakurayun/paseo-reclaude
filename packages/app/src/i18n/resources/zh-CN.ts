@@ -117,6 +117,8 @@ export const zhCN: TranslationResources = {
       element: "元素",
       openBrowserElement: "打开浏览器元素附件",
       removeBrowserElement: "移除浏览器元素附件",
+      openChatHistory: "打开聊天记录附件",
+      removeChatHistory: "移除聊天记录附件",
       openReview: "打开 review 附件",
       removeReview: "移除 review 附件",
     },
@@ -272,6 +274,7 @@ export const zhCN: TranslationResources = {
       commentsOne: "1 条评论",
       commentsMany: "{{count}} 条评论",
       textAttachment: "文本附件",
+      previousConversation: "之前的对话",
       text: "文本",
       file: "文件",
     },
@@ -337,6 +340,43 @@ export const zhCN: TranslationResources = {
     row: {
       importing: "正在导入...",
     },
+  },
+  addTranscripts: {
+    title: "添加转录",
+    subtitle: "将过往对话作为此新代理的上下文",
+    searchPlaceholder: "搜索转录...",
+    groups: {
+      thisWorkspace: "此工作区",
+      otherWorkspaces: "此项目中的其他工作区",
+      sameRepository: "同一 Git 项目",
+    },
+    status: {
+      loading: "正在加载转录...",
+      failedToLoad: "无法加载转录",
+      hostsUnavailable: "部分主机不可用：{{hosts}}",
+      noTranscripts: "此项目没有可用的转录",
+      noMatches: "没有与搜索匹配的转录",
+      runningSnapshot: "运行中 · 截至当前的快照",
+      updateHost: "请更新此主机以导出转录",
+      unavailable: "转录不再可用",
+      exportFailed: "无法导出转录",
+      maximumSelected: "最多可添加 {{count}} 条转录",
+      totalTooLarge: "所选转录超出草稿大小限制",
+    },
+    actions: {
+      add: "添加转录",
+      adding: "正在添加...",
+      loadMore: "加载更多",
+    },
+    selection: {
+      count: "已选择 {{count}} 条",
+    },
+    attachmentSummary: {
+      capturedWhileRunning: "运行时捕获",
+      truncated: "最近 {{included}} / {{total}} 项",
+      truncatedUnknown: "最近部分",
+    },
+    attachmentTitle: "转录 · {{title}}",
   },
   workspace: {
     route: {

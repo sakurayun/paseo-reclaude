@@ -11,6 +11,8 @@ const TRANSPORT_BY_PROTOCOL: Record<string, GitRemoteLocation["transport"]> = {
 export interface GitRemoteLocation {
   transport: "scp" | "ssh" | "http" | "https";
   host: string;
+  /** Explicit non-default URL port. SCP-like remotes do not carry one. */
+  port?: string;
   path: string;
 }
 
@@ -71,7 +73,12 @@ export function parseGitRemoteLocation(remoteUrl: string): GitRemoteLocation | n
   const normalizedPath = normalizeRemotePath(path);
   if (!isValidRemoteHost(host) || !normalizedPath) return null;
 
-  return { transport, host, path: normalizedPath };
+  return {
+    transport,
+    host,
+    ...(parsed.port ? { port: parsed.port } : {}),
+    path: normalizedPath,
+  };
 }
 
 export function parseGitHubRemoteIdentity(path: string): GitHubRemoteIdentity | null {

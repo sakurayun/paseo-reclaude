@@ -358,6 +358,7 @@ describe("fetchAgentHistoryPage", () => {
         hasMore: true,
       },
     });
+    expect(page.failedHostIds).toEqual(["failed-host"]);
   });
 
   it("throws when every requested host history fetch fails", async () => {

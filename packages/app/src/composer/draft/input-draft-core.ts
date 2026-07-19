@@ -1,6 +1,7 @@
-import type { UserComposerAttachment } from "@/attachments/types";
+import type { ChatHistoryContextAttachment, UserComposerAttachment } from "@/attachments/types";
 import type { DraftAgentControlsProps } from "@/composer/agent-controls";
 import type { UseAgentFormStateResult } from "@/hooks/use-agent-form-state";
+import equal from "fast-deep-equal";
 
 export interface DraftKeyContext {
   selectedServerId: string | null;
@@ -55,8 +56,13 @@ export function buildDraftAgentControls(input: {
 export function hasDraftContent(input: {
   text: string;
   attachments: UserComposerAttachment[];
+  transcriptAttachments: readonly ChatHistoryContextAttachment[];
 }): boolean {
-  return input.text.trim().length > 0 || input.attachments.length > 0;
+  return (
+    input.text.trim().length > 0 ||
+    input.attachments.length > 0 ||
+    input.transcriptAttachments.length > 0
+  );
 }
 
 export function areAttachmentsEqual(input: {
@@ -70,5 +76,19 @@ export function areAttachmentsEqual(input: {
   return input.left.every((attachment, index) => {
     const other = input.right[index];
     return JSON.stringify(attachment) === JSON.stringify(other);
+  });
+}
+
+export function areTranscriptAttachmentsEqual(input: {
+  left: readonly ChatHistoryContextAttachment[];
+  right: readonly ChatHistoryContextAttachment[];
+}): boolean {
+  if (input.left.length !== input.right.length) {
+    return false;
+  }
+
+  return input.left.every((attachment, index) => {
+    const other = input.right[index];
+    return other !== undefined && (attachment === other || equal(attachment, other));
   });
 }

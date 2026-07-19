@@ -1,4 +1,5 @@
 import type { ComposerAttachment, WorkspaceComposerAttachment } from "@/attachments/types";
+import { getChatHistorySourceKey } from "@/attachments/chat-history-identity";
 import { useWorkspaceAttachmentsStore } from "@/attachments/workspace-attachments-store";
 import { isPullRequestContextAttachment } from "@/attachments/workspace-attachment-utils";
 
@@ -46,6 +47,32 @@ export function removeWorkspaceAttachmentsMatching(selectedKey: string): void {
   for (const [scopeKey, attachments] of Object.entries(attachmentsByScope)) {
     const nextAttachments = attachments.filter(
       (attachment) => getAttachmentKey(attachment) !== selectedKey,
+    );
+    if (nextAttachments.length !== attachments.length) {
+      setWorkspaceAttachments({ scopeKey, attachments: nextAttachments });
+    }
+  }
+}
+
+export function removeWorkspaceChatHistorySourceFromScopes(input: {
+  source: { serverId: string; agentId: string };
+  scopeKeys: readonly string[];
+}): void {
+  const sourceKey = getChatHistorySourceKey(input.source);
+  const relevantScopeKeys = new Set(input.scopeKeys.map((key) => key.trim()).filter(Boolean));
+  if (relevantScopeKeys.size === 0) {
+    return;
+  }
+  const { attachmentsByScope, setWorkspaceAttachments } = useWorkspaceAttachmentsStore.getState();
+  for (const scopeKey of relevantScopeKeys) {
+    const attachments = attachmentsByScope[scopeKey];
+    if (!attachments) {
+      continue;
+    }
+    const nextAttachments = attachments.filter(
+      (attachment) =>
+        attachment.kind !== "chat_history" ||
+        getChatHistorySourceKey(attachment.source) !== sourceKey,
     );
     if (nextAttachments.length !== attachments.length) {
       setWorkspaceAttachments({ scopeKey, attachments: nextAttachments });

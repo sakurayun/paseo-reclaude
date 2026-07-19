@@ -27,3 +27,19 @@ describe("isCompleteGitRemote", () => {
     }
   });
 });
+
+describe("parseGitRemoteLocation", () => {
+  it("retains explicit non-default ports for repository identity", () => {
+    expect(parseGitRemoteLocation("https://git.example:8443/org/repo.git")).toEqual({
+      transport: "https",
+      host: "git.example",
+      port: "8443",
+      path: "org/repo",
+    });
+    expect(parseGitRemoteLocation("https://git.example:443/org/repo.git")).toEqual({
+      transport: "https",
+      host: "git.example",
+      path: "org/repo",
+    });
+  });
+});

@@ -282,6 +282,7 @@ interface RenderAttachmentTrayArgs {
   isComposerLocked: boolean;
   handleOpenAttachment: (attachment: ComposerAttachment) => void;
   handleRemoveAttachment: (index: number) => void;
+  isWorkspaceAttachmentOpenable: (attachment: WorkspaceComposerAttachment) => boolean;
   labels: {
     openImage: string;
     removeImage: string;
@@ -314,6 +315,7 @@ function renderAttachmentTray(args: RenderAttachmentTrayArgs): ReactElement | nu
     isComposerLocked,
     handleOpenAttachment,
     handleRemoveAttachment,
+    isWorkspaceAttachmentOpenable,
     labels,
   } = args;
   if (selectedAttachments.length === 0) return null;
@@ -326,6 +328,7 @@ function renderAttachmentTray(args: RenderAttachmentTrayArgs): ReactElement | nu
           disabled: isComposerLocked,
           onOpen: handleOpenAttachment,
           onRemove: handleRemoveAttachment,
+          isWorkspaceAttachmentOpenable,
           labels,
         }),
       )}
@@ -367,6 +370,7 @@ interface RenderComposerAttachmentPillArgs {
   disabled: boolean;
   onOpen: (attachment: ComposerAttachment) => void;
   onRemove: (index: number) => void;
+  isWorkspaceAttachmentOpenable: (attachment: WorkspaceComposerAttachment) => boolean;
   labels: RenderAttachmentTrayArgs["labels"];
 }
 
@@ -405,6 +409,7 @@ function renderComposerAttachmentPill(args: RenderComposerAttachmentPillArgs): R
       disabled,
       onOpen,
       onRemove,
+      isOpenable: args.isWorkspaceAttachmentOpenable(attachment),
     });
   }
   return (
@@ -774,8 +779,14 @@ interface ComposerProps {
   value: string;
   onChangeText: (text: string) => void;
   attachments: UserComposerAttachment[];
+  /** Durable, caller-owned context attachments included alongside scoped transient attachments. */
+  persistentWorkspaceAttachments?: readonly WorkspaceComposerAttachment[];
   attachmentScopeKeys?: readonly string[];
   onOpenWorkspaceAttachment?: (attachment: WorkspaceComposerAttachment) => void;
+  /** Enables a local preview for caller-owned, non-review workspace context. */
+  canOpenWorkspaceAttachment?: (attachment: WorkspaceComposerAttachment) => boolean;
+  /** Called before removing a workspace attachment from the transient scope store. */
+  onRemoveWorkspaceAttachment?: (attachment: WorkspaceComposerAttachment) => boolean;
   onChangeAttachments: (updater: AttachmentListUpdater) => void;
   cwd: string;
   clearDraft: (lifecycle: "sent" | "abandoned") => void;
@@ -805,6 +816,7 @@ interface ComposerProps {
 const MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024;
 
 const EMPTY_ARRAY: readonly QueuedMessage[] = [];
+const EMPTY_WORKSPACE_ATTACHMENTS: readonly WorkspaceComposerAttachment[] = [];
 const StableMessageInput = memo(MessageInput);
 
 function resolveContextWindowValues(
@@ -986,8 +998,11 @@ export function Composer({
   value,
   onChangeText,
   attachments,
+  persistentWorkspaceAttachments = EMPTY_WORKSPACE_ATTACHMENTS,
   attachmentScopeKeys = EMPTY_ATTACHMENT_SCOPE_KEYS,
   onOpenWorkspaceAttachment,
+  canOpenWorkspaceAttachment,
+  onRemoveWorkspaceAttachment,
   onChangeAttachments,
   cwd,
   clearDraft,
@@ -1041,12 +1056,21 @@ export function Composer({
   const messagePlaceholder = resolveMessagePlaceholder(isDesktopLayout, t);
   const userInput = value;
   const setUserInput = onChangeText;
-  const workspaceAttachments = useWorkspaceAttachmentsForScopes(attachmentScopeKeys);
+  const scopedWorkspaceAttachments = useWorkspaceAttachmentsForScopes(attachmentScopeKeys);
+  const workspaceAttachments = useMemo(
+    () =>
+      composerWorkspaceAttachment.merge({
+        persistent: persistentWorkspaceAttachments,
+        scoped: scopedWorkspaceAttachments,
+      }),
+    [persistentWorkspaceAttachments, scopedWorkspaceAttachments],
+  );
   const {
     selectedAttachments,
     buildOutgoingAttachments,
     removeAttachment,
     openAttachment,
+    isAttachmentOpenable,
     clearSentAttachments,
     completeSubmit,
     resetSuppression,
@@ -1054,6 +1078,8 @@ export function Composer({
     normalAttachments: attachments,
     workspaceAttachments,
     onOpenWorkspaceAttachment,
+    canOpenWorkspaceAttachment,
+    onRemoveWorkspaceAttachment,
   });
   const setSelectedAttachments = onChangeAttachments;
   const checkoutStatusQuery = useCheckoutStatusQuery({ serverId, cwd });
@@ -1922,6 +1948,7 @@ export function Composer({
         isComposerLocked,
         handleOpenAttachment,
         handleRemoveAttachment,
+        isWorkspaceAttachmentOpenable: isAttachmentOpenable,
         labels: {
           openImage: t("composer.attachments.openImage"),
           removeImage: t("composer.attachments.removeImage"),
@@ -1932,7 +1959,14 @@ export function Composer({
             t("composer.attachments.removeGithub", { kind, number: numberLabel }),
         },
       }),
-    [handleOpenAttachment, handleRemoveAttachment, isComposerLocked, selectedAttachments, t],
+    [
+      handleOpenAttachment,
+      handleRemoveAttachment,
+      isAttachmentOpenable,
+      isComposerLocked,
+      selectedAttachments,
+      t,
+    ],
   );
 
   const queueList = useMemo(

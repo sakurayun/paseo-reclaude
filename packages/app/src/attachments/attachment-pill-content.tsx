@@ -10,6 +10,7 @@ import {
 import { withUnistyles } from "react-native-unistyles";
 import type { AgentAttachment } from "@getpaseo/protocol/messages";
 import type { WorkspaceComposerAttachment } from "@/attachments/types";
+import { getChatHistoryContextSubtitle } from "@/attachments/chat-history-presentation";
 import { getFileTypeLabel } from "@/attachments/file-types";
 import { isPullRequestContextAttachment } from "@/attachments/workspace-attachment-utils";
 import { getForgePresentation } from "@/git/forge";
@@ -48,7 +49,7 @@ function getTextAttachmentSubtitle(
   t: TFunction,
 ): string {
   if (attachment.contextKind === "chat_history") {
-    return "Previous conversation";
+    return t("message.attachments.previousConversation");
   }
   return t("message.attachments.text");
 }
@@ -122,7 +123,7 @@ export function getWorkspaceAttachmentPillContent(
     return {
       icon: attachmentFileIcon,
       title: attachment.attachment.title ?? t("message.attachments.textAttachment"),
-      subtitle: getTextAttachmentSubtitle(attachment.attachment, t),
+      subtitle: getChatHistoryContextSubtitle(attachment, t),
     };
   }
   return {

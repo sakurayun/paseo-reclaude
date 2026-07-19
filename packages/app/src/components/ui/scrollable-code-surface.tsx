@@ -15,11 +15,21 @@ import { CODE_SURFACE_DATASET } from "@/styles/code-surface";
 import { inlineUnistylesStyle } from "@/styles/unistyles-inline-style";
 
 type CodeSurfaceTone = "surface0" | "surface1" | "surface2";
+type WrappedWebTextStyle = TextStyle & {
+  whiteSpace?: "pre-wrap";
+  overflowWrap?: "anywhere";
+};
+
+const WRAPPED_CODE_TEXT_STYLE: WrappedWebTextStyle | null = isWeb
+  ? { whiteSpace: "pre-wrap", overflowWrap: "anywhere" }
+  : null;
 
 interface ScrollableCodeSurfaceProps {
   children: ReactNode;
   maxHeight?: number;
   horizontal?: boolean;
+  /** Render one Text node for large prose payloads instead of one per line. */
+  splitLines?: boolean;
   selectable?: boolean;
   tone?: CodeSurfaceTone;
   bordered?: boolean;
@@ -74,6 +84,7 @@ export function ScrollableCodeSurface({
   children,
   maxHeight,
   horizontal = true,
+  splitLines = true,
   selectable = true,
   tone = "surface1",
   bordered = true,
@@ -96,9 +107,12 @@ export function ScrollableCodeSurface({
     () => [styles.content, contentContainerStyle],
     [contentContainerStyle],
   );
-  const codeTextStyle = useMemo(() => [styles.text, textStyle], [textStyle]);
+  const codeTextStyle = useMemo(
+    () => [styles.text, !horizontal && WRAPPED_CODE_TEXT_STYLE, textStyle],
+    [horizontal, textStyle],
+  );
   const codeContent =
-    typeof children === "string" ? (
+    typeof children === "string" && splitLines ? (
       <PlainCodeText text={children} selectable={selectable} textStyle={codeTextStyle} />
     ) : (
       <Text selectable={selectable} style={codeTextStyle} dataSet={CODE_SURFACE_DATASET}>

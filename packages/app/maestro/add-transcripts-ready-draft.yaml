@@ -1,0 +1,43 @@
+appId: ${PASEO_MAESTRO_APP_ID}
+---
+# Cross-platform smoke flow for a prepared New Agent draft. The source agent
+# must already be visible to the connected host's history endpoint.
+
+- assertVisible:
+    id: "message-input-root"
+
+- tapOn:
+    id: "composer-add-transcripts-pill"
+
+- extendedWaitUntil:
+    visible:
+      id: "add-transcripts-sheet"
+    timeout: 30000
+
+- tapOn:
+    id: "add-transcripts-source-${PASEO_MAESTRO_SOURCE_SERVER_ID}-${PASEO_MAESTRO_SOURCE_AGENT_ID}"
+
+- tapOn:
+    id: "add-transcripts-confirm"
+
+- extendedWaitUntil:
+    visible:
+      id: "composer-chat-history-attachment-pill"
+    timeout: 30000
+
+- tapOn:
+    id: "composer-chat-history-attachment-pill"
+
+- extendedWaitUntil:
+    visible:
+      id: "transcript-preview-sheet"
+    timeout: 10000
+
+- assertVisible:
+    id: "transcript-preview-content"
+
+- tapOn:
+    id: "sheet-header-close"
+
+- assertVisible:
+    id: "composer-chat-history-attachment-pill"

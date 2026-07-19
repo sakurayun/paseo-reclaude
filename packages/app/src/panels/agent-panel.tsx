@@ -1124,19 +1124,43 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
   });
   // Stabilize the agentInputDraft object identity so that memo(AgentComposerSection) can bail out
   // when only toast state changes (which does not affect any draft field).
-  const { text, setText, attachments, setAttachments, clear, isHydrated, composerState } =
-    rawAgentInputDraft;
+  const {
+    text,
+    setText,
+    attachments,
+    setAttachments,
+    transcriptAttachments,
+    upsertTranscriptAttachment,
+    removeTranscriptAttachment,
+    clear,
+    isHydrated,
+    composerState,
+  } = rawAgentInputDraft;
   const agentInputDraft = useMemo(
     (): AgentInputDraft => ({
       text,
       setText,
       attachments,
       setAttachments,
+      transcriptAttachments,
+      upsertTranscriptAttachment,
+      removeTranscriptAttachment,
       clear,
       isHydrated,
       composerState,
     }),
-    [text, setText, attachments, setAttachments, clear, isHydrated, composerState],
+    [
+      text,
+      setText,
+      attachments,
+      setAttachments,
+      transcriptAttachments,
+      upsertTranscriptAttachment,
+      removeTranscriptAttachment,
+      clear,
+      isHydrated,
+      composerState,
+    ],
   );
   const streamSection = (
     <RenderProfile id={`AgentStreamSection:${agentId}`}>

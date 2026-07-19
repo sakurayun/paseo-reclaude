@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Keyboard, ScrollView, Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
 import ReanimatedAnimated from "react-native-reanimated";
@@ -10,18 +10,24 @@ import invariant from "tiny-invariant";
 import { Composer } from "@/composer";
 import { FileDropZone } from "@/components/file-drop/file-drop-zone";
 import { DraftAgentModeControl } from "@/composer/agent-controls/mode-control";
+import { ComposerAddTranscriptsPill } from "@/composer/draft/add-transcripts-pill";
 import { ComposerImportPill } from "@/composer/draft/import-pill";
+import { AddTranscriptsSheet } from "@/components/add-transcripts-sheet";
+import { TranscriptPreviewSheet } from "@/components/transcript-preview-sheet";
 import { AgentStreamView } from "@/agent-stream/view";
 import { composerWorkspaceAttachment } from "@/composer/attachments/workspace";
+import { removeWorkspaceChatHistorySourceFromScopes } from "@/composer/attachments/workspace-cleanup";
+import { selectEffectiveChatHistoryAttachments } from "@/composer/attachments/workspace-merge";
 import { useAgentInputDraft } from "@/composer/draft/input-draft";
+import { findPersistedDraftTranscriptAttachment } from "@/composer/draft/transcript-preview";
 import type { CreateAgentInitialValues } from "@/hooks/use-agent-form-state";
 import { useDraftAgentCreateFlow, type DraftCreateAttempt } from "@/composer/draft/create-flow";
 import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
 import { buildWorkspaceDraftAgentConfig } from "@/screens/workspace/workspace-draft-agent-config";
 import { buildDraftStoreKey } from "@/stores/draft-keys";
-import { usePanelStore } from "@/stores/panel-store";
+import { usePanelStore, type PanelState } from "@/stores/panel-store";
 import { useCreateFlowStore } from "@/stores/create-flow-store";
-import type { Agent } from "@/stores/session-store";
+import type { Agent, WorkspaceDescriptor } from "@/stores/session-store";
 import { useWorkspaceFields } from "@/stores/session-store-hooks";
 import { useWorkspaceDraftSubmissionStore } from "@/stores/workspace-draft-submission-store";
 import { useCommandCenterActions } from "@/command-center/provider";
@@ -37,10 +43,14 @@ import {
 import type { AgentCapabilityFlags } from "@getpaseo/protocol/agent-types";
 import type { AgentSnapshotPayload } from "@getpaseo/protocol/messages";
 import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
-import type { WorkspaceComposerAttachment } from "@/attachments/types";
+import type {
+  ChatHistoryContextAttachment,
+  WorkspaceComposerAttachment,
+} from "@/attachments/types";
 import {
   useDraftWorkspaceAttachmentScopeKey,
   useWorkspaceAttachmentScopeKey,
+  useWorkspaceAttachmentsForScopes,
   useWorkspaceAttachmentsStore,
 } from "@/attachments/workspace-attachments-store";
 import type { UserMessageImageAttachment } from "@/types/stream";
@@ -314,7 +324,40 @@ interface WorkspaceDraftAgentTabProps {
   onOpenImportSheet?: () => void;
 }
 
-function resolveImportPillPress(
+interface WorkspaceDraftFields {
+  workspaceDirectory: string;
+  id: string;
+  projectKey: string | null;
+  remoteUrl: string | null;
+}
+
+function selectWorkspaceDraftFields(workspace: WorkspaceDescriptor): WorkspaceDraftFields {
+  return {
+    workspaceDirectory: workspace.workspaceDirectory,
+    id: workspace.id,
+    projectKey: workspace.project?.projectKey ?? null,
+    remoteUrl: workspace.gitRuntime?.remoteUrl ?? workspace.project?.checkout.remoteUrl ?? null,
+  };
+}
+
+function resolveWorkspaceDirectory(fields: WorkspaceDraftFields | null): string | null {
+  return fields?.workspaceDirectory || null;
+}
+
+function buildTranscriptDestination(input: {
+  serverId: string;
+  workspaceId: string;
+  workspaceFields: WorkspaceDraftFields | null;
+}) {
+  return {
+    serverId: input.serverId,
+    workspaceId: input.workspaceId,
+    projectKey: input.workspaceFields?.projectKey ?? null,
+    remoteUrl: input.workspaceFields?.remoteUrl ?? null,
+  };
+}
+
+function resolvePillPress(
   onOpenImportSheet: (() => void) | undefined,
   isSubmitting: boolean,
 ): (() => void) | null {
@@ -322,6 +365,178 @@ function resolveImportPillPress(
     return null;
   }
   return onOpenImportSheet ?? null;
+}
+
+function resolveHydratedPillPress(input: {
+  isHydrated: boolean;
+  onPress: () => void;
+  isSubmitting: boolean;
+}): (() => void) | null {
+  if (!input.isHydrated) {
+    return null;
+  }
+  return resolvePillPress(input.onPress, input.isSubmitting);
+}
+
+function DraftContextActions({
+  importPillPress,
+  addTranscriptsPillPress,
+}: {
+  importPillPress: (() => void) | null;
+  addTranscriptsPillPress: (() => void) | null;
+}) {
+  if (!importPillPress && !addTranscriptsPillPress) {
+    return null;
+  }
+  return (
+    <View style={styles.importPillRow}>
+      <View style={styles.importPillContent}>
+        {importPillPress ? <ComposerImportPill onPress={importPillPress} /> : null}
+        {addTranscriptsPillPress ? (
+          <ComposerAddTranscriptsPill onPress={addTranscriptsPillPress} />
+        ) : null}
+      </View>
+    </View>
+  );
+}
+
+function removePersistedTranscriptAttachment(input: {
+  attachment: WorkspaceComposerAttachment;
+  transcriptAttachments: readonly ChatHistoryContextAttachment[];
+  removeTranscriptAttachment: (source: { serverId: string; agentId: string }) => void;
+}): boolean {
+  const attachment = input.attachment;
+  const persistedTranscript = findPersistedDraftTranscriptAttachment({
+    attachment,
+    transcriptAttachments: input.transcriptAttachments,
+  });
+  if (!persistedTranscript) {
+    return false;
+  }
+  input.removeTranscriptAttachment({
+    serverId: persistedTranscript.source.serverId,
+    agentId: persistedTranscript.source.agentId,
+  });
+  return true;
+}
+
+function useWorkspaceDraftAttachmentUi(input: {
+  serverId: string;
+  isPaneFocused: boolean;
+  isCompactFormFactor: boolean;
+  transcriptAttachments: readonly ChatHistoryContextAttachment[];
+  removeTranscriptAttachment: (source: { serverId: string; agentId: string }) => void;
+  removeScopedTranscriptAttachments: (source: { serverId: string; agentId: string }) => void;
+  openFileExplorerForCheckout: PanelState["openFileExplorerForCheckout"];
+  setExplorerTabForCheckout: PanelState["setExplorerTabForCheckout"];
+}) {
+  const {
+    serverId,
+    isPaneFocused,
+    isCompactFormFactor,
+    transcriptAttachments,
+    removeTranscriptAttachment,
+    removeScopedTranscriptAttachments,
+    openFileExplorerForCheckout,
+    setExplorerTabForCheckout,
+  } = input;
+  const [isAddTranscriptsVisible, setIsAddTranscriptsVisible] = useState(false);
+  const [transcriptPreviewAttachmentId, setTranscriptPreviewAttachmentId] = useState<string | null>(
+    null,
+  );
+  const transcriptPreviewAttachment = useMemo(() => {
+    if (!transcriptPreviewAttachmentId) {
+      return null;
+    }
+    return (
+      transcriptAttachments.find((attachment) => attachment.id === transcriptPreviewAttachmentId) ??
+      null
+    );
+  }, [transcriptAttachments, transcriptPreviewAttachmentId]);
+  const canOpenWorkspaceAttachment = useCallback(
+    (attachment: WorkspaceComposerAttachment) =>
+      findPersistedDraftTranscriptAttachment({
+        attachment,
+        transcriptAttachments,
+      }) !== null,
+    [transcriptAttachments],
+  );
+  const handleOpenWorkspaceAttachment = useCallback(
+    (attachment: WorkspaceComposerAttachment) => {
+      const transcript = findPersistedDraftTranscriptAttachment({
+        attachment,
+        transcriptAttachments,
+      });
+      if (transcript) {
+        setTranscriptPreviewAttachmentId(transcript.id);
+        return;
+      }
+      if (attachment.kind !== "review") {
+        return;
+      }
+      const checkout = {
+        serverId,
+        cwd: attachment.attachment.cwd,
+        isGit: true,
+      };
+      openFileExplorerForCheckout({
+        checkout,
+        isCompact: isCompactFormFactor,
+      });
+      setExplorerTabForCheckout({
+        ...checkout,
+        tab: "changes",
+      });
+    },
+    [
+      isCompactFormFactor,
+      openFileExplorerForCheckout,
+      serverId,
+      setExplorerTabForCheckout,
+      transcriptAttachments,
+    ],
+  );
+  const handleRemoveWorkspaceAttachment = useCallback(
+    (attachment: WorkspaceComposerAttachment): boolean => {
+      const didRemove = removePersistedTranscriptAttachment({
+        attachment,
+        transcriptAttachments,
+        removeTranscriptAttachment,
+      });
+      if (attachment.kind === "chat_history") {
+        removeScopedTranscriptAttachments(attachment.source);
+        setTranscriptPreviewAttachmentId((current) => (current === attachment.id ? null : current));
+        return true;
+      }
+      return didRemove;
+    },
+    [removeScopedTranscriptAttachments, removeTranscriptAttachment, transcriptAttachments],
+  );
+
+  useEffect(() => {
+    if (!isPaneFocused) {
+      setIsAddTranscriptsVisible(false);
+      setTranscriptPreviewAttachmentId(null);
+    }
+  }, [isPaneFocused]);
+
+  const handleOpenAddTranscripts = useCallback(() => setIsAddTranscriptsVisible(true), []);
+  const handleCloseAddTranscripts = useCallback(() => setIsAddTranscriptsVisible(false), []);
+  const handleCloseTranscriptPreview = useCallback(
+    () => setTranscriptPreviewAttachmentId(null),
+    [],
+  );
+
+  return {
+    isAddTranscriptsVisible,
+    transcriptPreviewAttachment,
+    canOpenWorkspaceAttachment,
+    handleOpenWorkspaceAttachment,
+    handleRemoveWorkspaceAttachment,
+    handleOpenAddTranscripts,
+    handleCloseAddTranscripts,
+    handleCloseTranscriptPreview,
+  };
 }
 
 export function WorkspaceDraftAgentTab({
@@ -339,11 +554,8 @@ export function WorkspaceDraftAgentTab({
   const insets = useSafeAreaInsets();
   const client = useHostRuntimeClient(serverId);
   const isConnected = useHostRuntimeIsConnected(serverId);
-  const workspaceFields = useWorkspaceFields(serverId, workspaceId, (w) => ({
-    workspaceDirectory: w.workspaceDirectory,
-    id: w.id,
-  }));
-  const workspaceDirectory = workspaceFields?.workspaceDirectory || null;
+  const workspaceFields = useWorkspaceFields(serverId, workspaceId, selectWorkspaceDraftFields);
+  const workspaceDirectory = resolveWorkspaceDirectory(workspaceFields);
   const draftSetup = initialSetup ?? null;
   const draftWorkingDirectory = resolveDraftWorkingDirectory({
     workspaceDirectory,
@@ -403,6 +615,9 @@ export function WorkspaceDraftAgentTab({
   const clearDraftInput = draftInput.clear;
   const setDraftText = draftInput.setText;
   const setDraftAttachments = draftInput.setAttachments;
+  const transcriptAttachments = draftInput.transcriptAttachments;
+  const removeTranscriptAttachment = draftInput.removeTranscriptAttachment;
+  const upsertTranscriptAttachment = draftInput.upsertTranscriptAttachment;
   const pendingAutoSubmit = useWorkspaceDraftSubmissionStore((state) => {
     const pending = state.pendingByDraftId[draftId] ?? null;
     return pending?.serverId === serverId && pending.workspaceId === workspaceId ? pending : null;
@@ -450,32 +665,56 @@ export function WorkspaceDraftAgentTab({
     () => [draftAttachmentScopeKey, workspaceAttachmentScopeKey].filter(Boolean),
     [draftAttachmentScopeKey, workspaceAttachmentScopeKey],
   );
+  const scopedWorkspaceAttachments = useWorkspaceAttachmentsForScopes(attachmentScopeKeys);
+  const effectiveTranscriptAttachments = useMemo(
+    () =>
+      selectEffectiveChatHistoryAttachments({
+        persistent: transcriptAttachments,
+        scoped: scopedWorkspaceAttachments,
+      }),
+    [scopedWorkspaceAttachments, transcriptAttachments],
+  );
   const clearWorkspaceAttachments = useWorkspaceAttachmentsStore(
     (state) => state.clearWorkspaceAttachments,
   );
+  const transcriptDestination = useMemo(
+    () => buildTranscriptDestination({ serverId, workspaceId, workspaceFields }),
+    [serverId, workspaceFields, workspaceId],
+  );
   const openFileExplorerForCheckout = usePanelStore((state) => state.openFileExplorerForCheckout);
   const setExplorerTabForCheckout = usePanelStore((state) => state.setExplorerTabForCheckout);
-  const handleOpenWorkspaceAttachment = useCallback(
-    (attachment: WorkspaceComposerAttachment) => {
-      if (attachment.kind !== "review") {
-        return;
-      }
-      const checkout = {
-        serverId,
-        cwd: attachment.attachment.cwd,
-        isGit: true,
-      };
-      openFileExplorerForCheckout({
-        checkout,
-        isCompact: isCompactFormFactor,
-      });
-      setExplorerTabForCheckout({
-        ...checkout,
-        tab: "changes",
-      });
+  const removeScopedTranscriptAttachments = useCallback(
+    (source: { serverId: string; agentId: string }) => {
+      removeWorkspaceChatHistorySourceFromScopes({ source, scopeKeys: attachmentScopeKeys });
     },
-    [isCompactFormFactor, openFileExplorerForCheckout, serverId, setExplorerTabForCheckout],
+    [attachmentScopeKeys],
   );
+  const handleAddTranscript = useCallback(
+    (attachment: ChatHistoryContextAttachment) => {
+      removeScopedTranscriptAttachments(attachment.source);
+      upsertTranscriptAttachment(attachment);
+    },
+    [removeScopedTranscriptAttachments, upsertTranscriptAttachment],
+  );
+  const {
+    isAddTranscriptsVisible,
+    transcriptPreviewAttachment,
+    canOpenWorkspaceAttachment,
+    handleOpenWorkspaceAttachment,
+    handleRemoveWorkspaceAttachment,
+    handleOpenAddTranscripts,
+    handleCloseAddTranscripts,
+    handleCloseTranscriptPreview,
+  } = useWorkspaceDraftAttachmentUi({
+    serverId,
+    isPaneFocused,
+    isCompactFormFactor,
+    transcriptAttachments,
+    removeTranscriptAttachment,
+    removeScopedTranscriptAttachments,
+    openFileExplorerForCheckout,
+    setExplorerTabForCheckout,
+  });
 
   const {
     formErrorMessage,
@@ -672,7 +911,12 @@ export function WorkspaceDraftAgentTab({
   const handleDropdownCloseFocus = useCallback(() => {
     focusInputRef.current?.();
   }, []);
-  const importPillPress = resolveImportPillPress(onOpenImportSheet, isSubmitting);
+  const importPillPress = resolvePillPress(onOpenImportSheet, isSubmitting);
+  const addTranscriptsPillPress = resolveHydratedPillPress({
+    isHydrated: draftInput.isHydrated,
+    onPress: handleOpenAddTranscripts,
+    isSubmitting,
+  });
   const composerAgentControls = useMemo(
     () => ({
       ...composerState.agentControls,
@@ -737,13 +981,10 @@ export function WorkspaceDraftAgentTab({
       </View>
 
       <ReanimatedAnimated.View style={inputAreaWrapperStyle} onLayout={onInputAreaLayout}>
-        {importPillPress ? (
-          <View style={styles.importPillRow}>
-            <View style={styles.importPillContent}>
-              <ComposerImportPill onPress={importPillPress} />
-            </View>
-          </View>
-        ) : null}
+        <DraftContextActions
+          importPillPress={importPillPress}
+          addTranscriptsPillPress={addTranscriptsPillPress}
+        />
         <Composer
           agentId={tabId}
           serverId={serverId}
@@ -755,8 +996,11 @@ export function WorkspaceDraftAgentTab({
           value={draftInput.text}
           onChangeText={draftInput.setText}
           attachments={draftInput.attachments}
+          persistentWorkspaceAttachments={transcriptAttachments}
           attachmentScopeKeys={attachmentScopeKeys}
           onOpenWorkspaceAttachment={handleOpenWorkspaceAttachment}
+          canOpenWorkspaceAttachment={canOpenWorkspaceAttachment}
+          onRemoveWorkspaceAttachment={handleRemoveWorkspaceAttachment}
           onChangeAttachments={draftInput.setAttachments}
           cwd={composerState.workingDir}
           clearDraft={draftInput.clear}
@@ -768,6 +1012,18 @@ export function WorkspaceDraftAgentTab({
           isCompactLayout={isCompactComposerLayout}
         />
       </ReanimatedAnimated.View>
+      <AddTranscriptsSheet
+        visible={isPaneFocused && isAddTranscriptsVisible}
+        destination={transcriptDestination}
+        existingAttachments={effectiveTranscriptAttachments}
+        onClose={handleCloseAddTranscripts}
+        onAddTranscript={handleAddTranscript}
+      />
+      <TranscriptPreviewSheet
+        visible={isPaneFocused && transcriptPreviewAttachment !== null}
+        attachment={transcriptPreviewAttachment}
+        onClose={handleCloseTranscriptPreview}
+      />
     </FileDropZone>
   );
 }
@@ -810,6 +1066,9 @@ const styles = StyleSheet.create((theme) => ({
     width: "100%",
     maxWidth: MAX_CONTENT_WIDTH,
     flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: theme.spacing[2],
   },
   errorContainer: {
     marginTop: theme.spacing[2],

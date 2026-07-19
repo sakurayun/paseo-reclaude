@@ -1402,6 +1402,17 @@ export const AgentForkContextRequestMessageSchema = z.object({
   requestId: z.string(),
 });
 
+export const AGENT_TRANSCRIPT_EXPORT_MIN_BYTES = 1024;
+export const AGENT_TRANSCRIPT_EXPORT_MAX_BYTES = 128 * 1024;
+
+export const AgentTranscriptExportRequestMessageSchema = z.object({
+  type: z.literal("agent.transcript.export.request"),
+  agentId: z.string(),
+  // The wire accepts future policy values; each daemon clamps to its supported bounds.
+  maxBytes: z.number().int().positive().optional(),
+  requestId: z.string(),
+});
+
 export const SetAgentModeRequestMessageSchema = z.object({
   type: z.literal("set_agent_mode_request"),
   agentId: z.string(),
@@ -2411,6 +2422,7 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   ProviderSubagentTimelineRequestMessageSchema,
   SetAgentTimelineSubscriptionRequestMessageSchema,
   AgentForkContextRequestMessageSchema,
+  AgentTranscriptExportRequestMessageSchema,
   SetAgentModeRequestMessageSchema,
   SetAgentModelRequestMessageSchema,
   SetAgentThinkingRequestMessageSchema,
@@ -2709,6 +2721,8 @@ export const ServerInfoStatusPayloadSchema = z
         agentForkContext: z.boolean().optional(),
         // COMPAT(agentForkContextCursor): added in v0.1.108, remove gate after 2027-01-14.
         agentForkContextCursor: z.boolean().optional(),
+        // COMPAT(agentTranscriptExport): added in v0.2.0, remove gate after 2027-01-18.
+        agentTranscriptExport: z.boolean().optional(),
         // COMPAT(providerSubagents): added in v0.1.107, remove gate after 2027-01-12.
         providerSubagents: z.boolean().optional(),
         // COMPAT(workspacePinning): added in v0.1.107, remove gate after 2027-01-12.
@@ -3528,6 +3542,22 @@ export const AgentForkContextResponseMessageSchema = z.object({
     itemCount: z.number().int().nonnegative(),
     boundaryMessageId: z.string().nullable(),
     boundaryCursor: AgentTimelineCursorSchema.nullable().optional(),
+    error: z.string().nullable(),
+  }),
+});
+
+export const AgentTranscriptExportResponseMessageSchema = z.object({
+  type: z.literal("agent.transcript.export.response"),
+  payload: z.object({
+    requestId: z.string(),
+    agentId: z.string(),
+    attachment: TextAttachmentSchema.nullable(),
+    // Null means the bounded scan did not reach the beginning of the timeline.
+    totalItemCount: z.number().int().nonnegative().nullable(),
+    includedItemCount: z.number().int().nonnegative(),
+    byteCount: z.number().int().nonnegative(),
+    truncated: z.boolean(),
+    capturedCursor: AgentTimelineCursorSchema.nullable(),
     error: z.string().nullable(),
   }),
 });
@@ -5029,6 +5059,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   SetAgentTimelineSubscriptionResponseMessageSchema,
   AgentAttentionRequiredMessageSchema,
   AgentForkContextResponseMessageSchema,
+  AgentTranscriptExportResponseMessageSchema,
   CancelAgentResponseMessageSchema,
   ClearAgentAttentionResponseMessageSchema,
   WorkspaceCreateResponseSchema,
@@ -5209,6 +5240,9 @@ export type FetchAgentTimelineResponseMessage = z.infer<
   typeof FetchAgentTimelineResponseMessageSchema
 >;
 export type AgentForkContextResponseMessage = z.infer<typeof AgentForkContextResponseMessageSchema>;
+export type AgentTranscriptExportResponseMessage = z.infer<
+  typeof AgentTranscriptExportResponseMessageSchema
+>;
 export type CancelAgentResponseMessage = z.infer<typeof CancelAgentResponseMessageSchema>;
 export type SendAgentMessageResponseMessage = z.infer<typeof SendAgentMessageResponseMessageSchema>;
 export type SetVoiceModeResponseMessage = z.infer<typeof SetVoiceModeResponseMessageSchema>;
@@ -5309,6 +5343,9 @@ export type FetchRecentProviderSessionsRequestMessage = z.infer<
 export type FetchWorkspacesRequestMessage = z.infer<typeof FetchWorkspacesRequestMessageSchema>;
 export type FetchAgentRequestMessage = z.infer<typeof FetchAgentRequestMessageSchema>;
 export type AgentForkContextRequestMessage = z.infer<typeof AgentForkContextRequestMessageSchema>;
+export type AgentTranscriptExportRequestMessage = z.infer<
+  typeof AgentTranscriptExportRequestMessageSchema
+>;
 export type SendAgentMessageRequest = z.infer<typeof SendAgentMessageRequestSchema>;
 export type WaitForFinishRequest = z.infer<typeof WaitForFinishRequestSchema>;
 export type DictationStreamStartMessage = z.infer<typeof DictationStreamStartMessageSchema>;

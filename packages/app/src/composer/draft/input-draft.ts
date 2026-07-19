@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { UserComposerAttachment } from "@/attachments/types";
+import type { ChatHistoryContextAttachment, UserComposerAttachment } from "@/attachments/types";
 import type { DraftAgentControlsProps } from "@/composer/agent-controls";
 import type { DraftCommandConfig } from "@/hooks/use-agent-commands-query";
 import {
@@ -10,6 +10,7 @@ import {
 import { useDraftAgentFeatures } from "@/hooks/use-draft-agent-features";
 import {
   areAttachmentsEqual,
+  areTranscriptAttachmentsEqual,
   buildDraftAgentControls,
   hasDraftContent,
   resolveDraftKey,
@@ -21,7 +22,12 @@ import {
   resolveEffectiveComposerThinkingOptionId,
   type ProviderSelectionState,
 } from "@/provider-selection/provider-selection";
-import { useDraftStore } from "@/stores/draft-store";
+import {
+  removeDraftTranscriptAttachment,
+  upsertDraftTranscriptAttachment,
+  useDraftStore,
+  type DraftTranscriptSource,
+} from "@/stores/draft-store";
 
 type AttachmentUpdater =
   | UserComposerAttachment[]
@@ -55,6 +61,9 @@ export interface AgentInputDraft {
   setText: (text: string) => void;
   attachments: UserComposerAttachment[];
   setAttachments: (updater: AttachmentUpdater) => void;
+  transcriptAttachments: ChatHistoryContextAttachment[];
+  upsertTranscriptAttachment: (attachment: ChatHistoryContextAttachment) => void;
+  removeTranscriptAttachment: (source: DraftTranscriptSource) => void;
   clear: (lifecycle: "sent" | "abandoned") => void;
   isHydrated: boolean;
   composerState: DraftComposerState | null;
@@ -79,6 +88,9 @@ export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDr
   );
   const [text, setText] = useState("");
   const [attachments, setAttachmentsState] = useState<UserComposerAttachment[]>([]);
+  const [transcriptAttachments, setTranscriptAttachmentsState] = useState<
+    ChatHistoryContextAttachment[]
+  >([]);
   const [isHydrated, setIsHydrated] = useState(false);
   const draftGenerationRef = useRef(0);
   const hydratedGenerationRef = useRef(0);
@@ -92,6 +104,18 @@ export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDr
     });
   }, []);
 
+  const upsertTranscriptAttachment = useCallback((attachment: ChatHistoryContextAttachment) => {
+    setTranscriptAttachmentsState((current) =>
+      upsertDraftTranscriptAttachment({ attachments: current, attachment }),
+    );
+  }, []);
+
+  const removeTranscriptAttachment = useCallback((source: DraftTranscriptSource) => {
+    setTranscriptAttachmentsState((current) =>
+      removeDraftTranscriptAttachment({ attachments: current, source }),
+    );
+  }, []);
+
   const clear = useCallback(
     (lifecycle: "sent" | "abandoned") => {
       const store = useDraftStore.getState();
@@ -103,6 +127,7 @@ export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDr
 
       setText("");
       setAttachmentsState([]);
+      setTranscriptAttachmentsState([]);
       setIsHydrated(true);
     },
     [draftKey],
@@ -116,6 +141,7 @@ export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDr
 
     setText("");
     setAttachmentsState([]);
+    setTranscriptAttachmentsState([]);
     setIsHydrated(false);
 
     let cancelled = false;
@@ -134,6 +160,7 @@ export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDr
       if (draft) {
         setText(draft.text);
         setAttachmentsState(draft.attachments);
+        setTranscriptAttachmentsState(draft.transcriptAttachments);
       }
 
       hydratedGenerationRef.current = generation;
@@ -170,12 +197,16 @@ export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDr
       areAttachmentsEqual({
         left: existing.attachments,
         right: attachments,
+      }) &&
+      areTranscriptAttachmentsEqual({
+        left: existing.transcriptAttachments,
+        right: transcriptAttachments,
       });
     if (isSameDraft) {
       return;
     }
 
-    if (!hasDraftContent({ text, attachments })) {
+    if (!hasDraftContent({ text, attachments, transcriptAttachments })) {
       if (existing) {
         store.clearDraftInput({ draftKey, lifecycle: "abandoned" });
       }
@@ -187,9 +218,10 @@ export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDr
       draft: {
         text,
         attachments,
+        transcriptAttachments,
       },
     });
-  }, [attachments, draftKey, text]);
+  }, [attachments, draftKey, text, transcriptAttachments]);
 
   const lockedWorkingDir = composerOptions?.lockedWorkingDir?.trim() ?? "";
   useEffect(() => {
@@ -302,6 +334,9 @@ export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDr
     setText,
     attachments,
     setAttachments,
+    transcriptAttachments,
+    upsertTranscriptAttachment,
+    removeTranscriptAttachment,
     clear,
     isHydrated,
     composerState,

@@ -146,4 +146,49 @@ describe("useDraftAgentCreateFlow", () => {
     });
     expect(onCreateSuccess).toHaveBeenCalledTimes(1);
   });
+
+  it("does not run draft cleanup when creation with transcript context fails", async () => {
+    const transcript = {
+      kind: "chat_history",
+      id: "chat_history:server-1:source-agent",
+      attachment: {
+        type: "text",
+        mimeType: "text/plain",
+        contextKind: "chat_history",
+        title: "Chat history",
+        text: "Previous conversation",
+      },
+      source: { serverId: "server-1", agentId: "source-agent" },
+    } as const;
+    const createRequest = vi.fn(async () => {
+      throw new Error("Destination disconnected");
+    });
+    const onCreateSuccess = vi.fn();
+
+    const { result } = renderHook(() =>
+      useDraftAgentCreateFlow({
+        draftId: "draft-failed",
+        getPendingServerId: () => "server-1",
+        buildDraftAgent: (currentAttempt) => ({ currentAttempt }),
+        createRequest,
+        onCreateSuccess,
+      }),
+    );
+
+    await act(async () => {
+      await expect(
+        result.current.handleCreateFromInput({
+          text: "",
+          attachments: [transcript],
+          cwd: "/repo",
+        }),
+      ).rejects.toThrow("Destination disconnected");
+    });
+
+    expect(createRequest).toHaveBeenCalledWith(
+      expect.objectContaining({ attachments: [transcript.attachment] }),
+    );
+    expect(onCreateSuccess).not.toHaveBeenCalled();
+    expect(result.current.formErrorMessage).toBe("Destination disconnected");
+  });
 });

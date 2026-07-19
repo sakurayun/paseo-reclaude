@@ -1,8 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  AGENT_TRANSCRIPT_EXPORT_MAX_BYTES,
+  AGENT_TRANSCRIPT_EXPORT_MIN_BYTES,
   AgentForkContextRequestMessageSchema,
   AgentForkContextResponseMessageSchema,
+  AgentTranscriptExportRequestMessageSchema,
+  AgentTranscriptExportResponseMessageSchema,
   CreateAgentRequestMessageSchema,
   CreatePaseoWorktreeRequestSchema,
   SendAgentMessageRequestSchema,
@@ -48,6 +52,70 @@ describe("shared messages attachments", () => {
         },
       }).payload.boundaryCursor,
     ).toBeUndefined();
+  });
+
+  it("validates bounded transcript export messages", () => {
+    const capturedCursor = { epoch: "timeline-2", seq: 84 };
+    const request = AgentTranscriptExportRequestMessageSchema.parse({
+      type: "agent.transcript.export.request",
+      agentId: "agent-2",
+      maxBytes: 4096,
+      requestId: "transcript-1",
+    });
+    const response = AgentTranscriptExportResponseMessageSchema.parse({
+      type: "agent.transcript.export.response",
+      payload: {
+        requestId: "transcript-1",
+        agentId: "agent-2",
+        attachment: {
+          type: "text",
+          mimeType: "text/plain",
+          contextKind: "chat_history",
+          title: "Chat history",
+          text: "<chat-history-summary>\nsummary\n</chat-history-summary>",
+        },
+        totalItemCount: 8,
+        includedItemCount: 3,
+        byteCount: 512,
+        truncated: true,
+        capturedCursor,
+        error: null,
+      },
+    });
+
+    expect(request.maxBytes).toBe(4096);
+    expect(response.payload).toMatchObject({
+      totalItemCount: 8,
+      includedItemCount: 3,
+      byteCount: 512,
+      truncated: true,
+      capturedCursor,
+      attachment: { contextKind: "chat_history" },
+    });
+    expect(
+      AgentTranscriptExportRequestMessageSchema.parse({
+        type: "agent.transcript.export.request",
+        agentId: "agent-2",
+        maxBytes: AGENT_TRANSCRIPT_EXPORT_MAX_BYTES + 1,
+        requestId: "future-policy",
+      }).maxBytes,
+    ).toBe(AGENT_TRANSCRIPT_EXPORT_MAX_BYTES + 1);
+    expect(
+      AgentTranscriptExportRequestMessageSchema.parse({
+        type: "agent.transcript.export.request",
+        agentId: "agent-2",
+        maxBytes: AGENT_TRANSCRIPT_EXPORT_MIN_BYTES - 1,
+        requestId: "smaller-policy",
+      }).maxBytes,
+    ).toBe(AGENT_TRANSCRIPT_EXPORT_MIN_BYTES - 1);
+    expect(() =>
+      AgentTranscriptExportRequestMessageSchema.parse({
+        type: "agent.transcript.export.request",
+        agentId: "agent-2",
+        maxBytes: 0,
+        requestId: "invalid-zero",
+      }),
+    ).toThrow();
   });
 
   it("keeps valid review attachments", () => {

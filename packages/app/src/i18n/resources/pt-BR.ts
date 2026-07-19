@@ -117,6 +117,8 @@ export const ptBR: TranslationResources = {
       element: "Elemento",
       openBrowserElement: "Abrir anexo de elemento do navegador",
       removeBrowserElement: "Remover anexo de elemento do navegador",
+      openChatHistory: "Abrir anexo do histórico da conversa",
+      removeChatHistory: "Remover anexo do histórico da conversa",
       openReview: "Abrir anexo de revisão",
       removeReview: "Remover anexo de revisão",
     },
@@ -275,6 +277,7 @@ export const ptBR: TranslationResources = {
       commentsOne: "1 comentário",
       commentsMany: "{{count}} comentários",
       textAttachment: "Anexo de texto",
+      previousConversation: "Conversa anterior",
       text: "Texto",
       file: "Arquivo",
     },
@@ -340,6 +343,43 @@ export const ptBR: TranslationResources = {
     row: {
       importing: "Importando...",
     },
+  },
+  addTranscripts: {
+    title: "Adicionar transcrições",
+    subtitle: "Adicione conversas anteriores como contexto para este novo agente",
+    searchPlaceholder: "Pesquisar transcrições...",
+    groups: {
+      thisWorkspace: "Este espaço de trabalho",
+      otherWorkspaces: "Outros espaços de trabalho neste projeto",
+      sameRepository: "Mesmo projeto Git",
+    },
+    status: {
+      loading: "Carregando transcrições...",
+      failedToLoad: "Não foi possível carregar as transcrições",
+      hostsUnavailable: "Alguns hosts estão indisponíveis: {{hosts}}",
+      noTranscripts: "Não há transcrições disponíveis para este projeto",
+      noMatches: "Nenhuma transcrição corresponde à sua busca",
+      runningSnapshot: "Em execução · captura até agora",
+      updateHost: "Atualize este host para exportar transcrições",
+      unavailable: "A transcrição não está mais disponível",
+      exportFailed: "Não foi possível exportar a transcrição",
+      maximumSelected: "Você pode adicionar até {{count}} transcrições",
+      totalTooLarge: "As transcrições selecionadas excedem o limite de tamanho do rascunho",
+    },
+    actions: {
+      add: "Adicionar transcrições",
+      adding: "Adicionando...",
+      loadMore: "Carregar mais",
+    },
+    selection: {
+      count: "{{count}} selecionadas",
+    },
+    attachmentSummary: {
+      capturedWhileRunning: "Capturada durante a execução",
+      truncated: "{{included}} itens recentes de {{total}}",
+      truncatedUnknown: "Trecho recente",
+    },
+    attachmentTitle: "Transcrição · {{title}}",
   },
   workspace: {
     route: {
