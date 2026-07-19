@@ -93,4 +93,22 @@ export const benchmarkTasks: BenchmarkTaskDefinition[] = [
     command: process.execPath,
     args: ["packages/app/scripts/audit-desktop-css-interactions.mjs"],
   },
+  {
+    id: "desktop-css-interactions",
+    description:
+      "Measure Desktop-web workspace-tab hover feedback, React commits, frames, DOM, and AX",
+    command: npxCommand,
+    args: [
+      "--no-install",
+      "cross-env",
+      "E2E_DESKTOP_RUNTIME=1",
+      "PASEO_DESKTOP_BENCHMARK=1",
+      "playwright",
+      "test",
+      "--config",
+      "packages/app/playwright.config.ts",
+      "--project=Desktop Chrome",
+      "desktop-css-interactions.benchmark.spec.ts",
+    ],
+  },
 ];
