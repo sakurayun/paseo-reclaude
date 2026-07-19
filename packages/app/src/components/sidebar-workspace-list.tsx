@@ -36,8 +36,6 @@ import * as Clipboard from "expo-clipboard";
 import { DiffStat } from "@/components/diff-stat";
 import {
   CircleAlert,
-  ChevronDown,
-  ChevronRight,
   ExternalLink,
   GitPullRequest,
   Settings,
@@ -129,6 +127,7 @@ import {
   getIsElectron,
 } from "@/constants/platform";
 import { getDesktopHost } from "@/desktop/host";
+import { installSidebarProjectRowInteractionStyles } from "@/components/sidebar/sidebar-project-row-interaction-styles";
 
 const workspaceKeyExtractor = (workspace: SidebarWorkspacePlacement) => workspace.workspaceKey;
 
@@ -139,6 +138,21 @@ const DEFAULT_STATUS_DOT_SIZE = 7;
 const EMPHASIZED_STATUS_DOT_SIZE = 9;
 const DEFAULT_STATUS_DOT_OFFSET = 0;
 const EMPHASIZED_STATUS_DOT_OFFSET = -1;
+const sidebarProjectLeadingVisualDataSet = { sidebarProjectLeadingVisual: "true" } as const;
+const sidebarProjectLeadingExpandDataSet = {
+  sidebarProjectLeadingVisual: "true",
+  sidebarProjectChevron: "expand",
+} as const;
+const sidebarProjectLeadingCollapseDataSet = {
+  sidebarProjectLeadingVisual: "true",
+  sidebarProjectChevron: "collapse",
+} as const;
+const sidebarProjectHoverActionDataSet = { sidebarProjectHoverAction: "true" } as const;
+const sidebarProjectRowDataSet = { sidebarProjectRow: "true", sidebarProjectDragging: "false" };
+const sidebarDraggingProjectRowDataSet = {
+  sidebarProjectRow: "true",
+  sidebarProjectDragging: "true",
+};
 const ThemedExternalLink = withUnistyles(ExternalLink);
 const ThemedGitPullRequest = withUnistyles(GitPullRequest);
 const ThemedActivityIndicator = withUnistyles(ActivityIndicator);
@@ -428,7 +442,6 @@ function ProjectLeadingVisual({
   workspace,
   projectKey,
   chevron = null,
-  showChevron = false,
   isArchiving = false,
 }: {
   displayName: string;
@@ -436,7 +449,6 @@ function ProjectLeadingVisual({
   workspace: SidebarWorkspaceEntry | null;
   projectKey: string;
   chevron?: "expand" | "collapse" | null;
-  showChevron?: boolean;
   isArchiving?: boolean;
 }) {
   const placeholderLabel = projectIconPlaceholderLabelFromDisplayName(displayName);
@@ -447,18 +459,16 @@ function ProjectLeadingVisual({
   const shouldShowSyncedLoader = activeWorkspace
     ? shouldRenderSyncedStatusLoader({ bucket: activeWorkspace.statusBucket })
     : false;
-
-  if (showChevron && chevron !== null) {
-    return (
-      <View style={styles.projectLeadingVisualSlot}>
-        <ProjectInlineChevron chevron={chevron} />
-      </View>
-    );
+  let leadingVisualDataSet: Readonly<Record<string, string>> = sidebarProjectLeadingVisualDataSet;
+  if (chevron === "expand") {
+    leadingVisualDataSet = sidebarProjectLeadingExpandDataSet;
+  } else if (chevron === "collapse") {
+    leadingVisualDataSet = sidebarProjectLeadingCollapseDataSet;
   }
 
   if (!shouldShowWorkspaceStatus || !activeWorkspace) {
     return (
-      <View style={styles.projectLeadingVisualSlot}>
+      <View dataSet={leadingVisualDataSet} style={styles.projectLeadingVisualSlot}>
         <ProjectIcon
           iconDataUri={iconDataUri}
           placeholderInitial={placeholderInitial}
@@ -470,6 +480,7 @@ function ProjectLeadingVisual({
 
   return (
     <ProjectLeadingVisualStatus
+      dataSet={leadingVisualDataSet}
       iconDataUri={iconDataUri}
       placeholderInitial={placeholderInitial}
       projectKey={projectKey}
@@ -484,7 +495,6 @@ function ProjectRowTrailingActions({
   project,
   displayName,
   worktreeTarget,
-  isHovered,
   isMobileBreakpoint,
   isProjectActive,
   onBeginWorkspaceSetup,
@@ -494,14 +504,14 @@ function ProjectRowTrailingActions({
   project: SidebarProjectEntry;
   displayName: string;
   worktreeTarget: SidebarProjectHostTarget | null;
-  isHovered: boolean;
   isMobileBreakpoint: boolean;
   isProjectActive: boolean;
   onBeginWorkspaceSetup: () => void;
   onRemoveProject?: () => void;
   removeProjectStatus: "idle" | "pending" | "success";
 }) {
-  const actionsVisible = isHovered || platformIsNative || isMobileBreakpoint;
+  const actionsVisible = platformIsNative || isMobileBreakpoint;
+  const revealWithDesktopCss = platformIsWeb && !actionsVisible;
   return (
     <View style={styles.projectTrailingActions}>
       {worktreeTarget ? (
@@ -509,14 +519,16 @@ function ProjectRowTrailingActions({
           displayName={displayName}
           onPress={onBeginWorkspaceSetup}
           visible={actionsVisible}
+          revealWithDesktopCss={revealWithDesktopCss}
           showShortcutHint={isProjectActive}
           testID={`sidebar-project-new-worktree-${project.projectKey}`}
         />
       ) : null}
       {onRemoveProject ? (
         <View
+          dataSet={revealWithDesktopCss ? sidebarProjectHoverActionDataSet : undefined}
           style={!actionsVisible && styles.projectKebabButtonHidden}
-          pointerEvents={actionsVisible ? "auto" : "none"}
+          pointerEvents={actionsVisible || revealWithDesktopCss ? "auto" : "none"}
         >
           <ProjectKebabMenu
             projectKey={project.projectKey}
@@ -727,6 +739,7 @@ function ProjectIcon({
 }
 
 function ProjectLeadingVisualStatus({
+  dataSet,
   iconDataUri,
   placeholderInitial,
   projectKey,
@@ -734,6 +747,7 @@ function ProjectLeadingVisualStatus({
   shouldShowSyncedLoader,
   activeWorkspace,
 }: {
+  dataSet: Readonly<Record<string, string>>;
   iconDataUri: string | null;
   placeholderInitial: string;
   projectKey: string;
@@ -743,7 +757,7 @@ function ProjectLeadingVisualStatus({
 }) {
   if (isArchiving) {
     return (
-      <View style={styles.projectLeadingVisualSlot}>
+      <View dataSet={dataSet} style={styles.projectLeadingVisualSlot}>
         <ThemedActivityIndicator size={8} uniProps={foregroundMutedColorMapping} />
       </View>
     );
@@ -751,7 +765,7 @@ function ProjectLeadingVisualStatus({
 
   if (shouldShowSyncedLoader) {
     return (
-      <View style={styles.projectLeadingVisualSlot}>
+      <View dataSet={dataSet} style={styles.projectLeadingVisualSlot}>
         <ThemedSyncedLoader size={11} uniProps={syncedLoaderColorMapping} />
       </View>
     );
@@ -759,7 +773,7 @@ function ProjectLeadingVisualStatus({
 
   if (activeWorkspace.statusBucket === "needs_input") {
     return (
-      <View style={styles.projectLeadingVisualSlot}>
+      <View dataSet={dataSet} style={styles.projectLeadingVisualSlot}>
         <ThemedCircleAlert size={14} uniProps={amberColorMapping} />
       </View>
     );
@@ -775,7 +789,7 @@ function ProjectLeadingVisualStatus({
       : DEFAULT_STATUS_DOT_OFFSET;
 
   return (
-    <View style={styles.projectLeadingVisualSlot}>
+    <View dataSet={dataSet} style={styles.projectLeadingVisualSlot}>
       <ProjectIcon
         iconDataUri={iconDataUri}
         placeholderInitial={placeholderInitial}
@@ -792,20 +806,11 @@ function ProjectLeadingVisualStatus({
   );
 }
 
-function ProjectInlineChevron({ chevron }: { chevron: "expand" | "collapse" | null }) {
-  if (chevron === null) {
-    return null;
-  }
-  if (chevron === "collapse") {
-    return <ChevronDown size={14} color="#9ca3af" />;
-  }
-  return <ChevronRight size={14} color="#9ca3af" />;
-}
-
 function NewWorktreeButton({
   displayName,
   onPress,
   visible,
+  revealWithDesktopCss = false,
   loading = false,
   testID,
   showShortcutHint = false,
@@ -813,6 +818,7 @@ function NewWorktreeButton({
   displayName: string;
   onPress: () => void;
   visible: boolean;
+  revealWithDesktopCss?: boolean;
   loading?: boolean;
   testID: string;
   showShortcutHint?: boolean;
@@ -838,10 +844,14 @@ function NewWorktreeButton({
   );
 
   return (
-    <View style={styles.projectTrailingControlSlot} pointerEvents={visible ? "auto" : "none"}>
+    <View
+      style={styles.projectTrailingControlSlot}
+      pointerEvents={visible || revealWithDesktopCss ? "auto" : "none"}
+    >
       <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
-        <TooltipTrigger asChild disabled={!visible}>
+        <TooltipTrigger asChild disabled={!visible && !revealWithDesktopCss}>
           <Pressable
+            dataSet={revealWithDesktopCss ? sidebarProjectHoverActionDataSet : undefined}
             style={pressableStyle}
             onPress={handlePress}
             disabled={loading}
@@ -967,7 +977,6 @@ function ProjectHeaderRow({
   removeProjectStatus = "idle",
   dragHandleProps,
 }: ProjectHeaderRowProps) {
-  const [isHovered, setIsHovered] = useState(false);
   const isMobileBreakpoint = useIsCompactFormFactor();
   const handleBeginWorkspaceSetup = useCallback(() => {
     if (!worktreeTarget) {
@@ -1002,19 +1011,22 @@ function ProjectHeaderRow({
     onPress();
   }, [interaction.didLongPressRef, onPress]);
 
-  const handlePointerEnter = useCallback(() => setIsHovered(true), []);
-  const handlePointerLeave = useCallback(() => setIsHovered(false), []);
-
-  const projectRowStyle = useCallback(
-    ({ pressed }: PressableStateCallbackType) => [
+  const projectRowBaseStyle = useMemo(
+    () => [
       styles.projectRow,
       isDragging && styles.projectRowDragging,
       selected && styles.sidebarRowSelected,
-      isHovered && styles.projectRowHovered,
+    ],
+    [isDragging, selected],
+  );
+  const projectRowNativeStyle = useCallback(
+    ({ pressed }: PressableStateCallbackType) => [
+      projectRowBaseStyle,
       pressed && styles.projectRowPressed,
     ],
-    [isDragging, selected, isHovered],
+    [projectRowBaseStyle],
   );
+  const projectRowStyle = platformIsWeb ? projectRowBaseStyle : projectRowNativeStyle;
 
   const rowChildren = (
     <>
@@ -1025,7 +1037,6 @@ function ProjectHeaderRow({
           workspace={workspace}
           projectKey={project.projectKey}
           chevron={chevron}
-          showChevron={isHovered && chevron !== null}
           isArchiving={isArchiving}
         />
 
@@ -1039,7 +1050,6 @@ function ProjectHeaderRow({
         project={project}
         displayName={displayName}
         worktreeTarget={worktreeTarget}
-        isHovered={isHovered}
         isMobileBreakpoint={isMobileBreakpoint}
         isProjectActive={isProjectActive}
         onBeginWorkspaceSetup={handleBeginWorkspaceSetup}
@@ -1060,10 +1070,9 @@ function ProjectHeaderRow({
         {...dragAttributes}
         {...dragHandleProps?.listeners}
         ref={dragHandleProps?.setActivatorNodeRef as unknown as Ref<View>}
-        onPointerEnter={handlePointerEnter}
-        onPointerLeave={handlePointerLeave}
       >
         <ContextMenuTrigger
+          dataSet={isDragging ? sidebarDraggingProjectRowDataSet : sidebarProjectRowDataSet}
           enabledOnMobile={false}
           accessibilityRole="button"
           style={projectRowStyle}
@@ -1084,10 +1093,9 @@ function ProjectHeaderRow({
       {...dragAttributes}
       {...dragHandleProps?.listeners}
       ref={dragHandleProps?.setActivatorNodeRef as unknown as Ref<View>}
-      onPointerEnter={handlePointerEnter}
-      onPointerLeave={handlePointerLeave}
     >
       <Pressable
+        dataSet={isDragging ? sidebarDraggingProjectRowDataSet : sidebarProjectRowDataSet}
         accessibilityRole="button"
         style={projectRowStyle}
         onPressIn={interaction.handlePressIn}
@@ -1918,6 +1926,7 @@ export function SidebarWorkspaceList({
   listHeaderComponent,
   parentGestureRef,
 }: SidebarWorkspaceListProps) {
+  useEffect(() => installSidebarProjectRowInteractionStyles(), []);
   const pathname = usePathname();
   const hosts = useHosts();
   const hostLabelByServerId = useMemo(() => {
