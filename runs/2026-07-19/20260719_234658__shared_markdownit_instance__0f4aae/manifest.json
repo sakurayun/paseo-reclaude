@@ -1,0 +1,333 @@
+{
+  "run_id": "20260719_234658__shared_markdownit_instance__0f4aae",
+  "experiment": "desktop_markdown_performance",
+  "variant": "shared_markdownit_instance",
+  "scale": "anchor",
+  "status": "success",
+  "parent_run_id": null,
+  "started_at": "2026-07-19T23:46:58+08:00",
+  "ended_at": "2026-07-19T23:47:53+08:00",
+  "command": "lab run experiments/2026-07-19_desktop_markdown_performance/plan.yaml variant=shared_markdownit_instance scale=anchor",
+  "entrypoint_command": "npm run benchmark -- desktop-markdown --output /Users/gary/workspace/paseo-markdown-p0/runs/2026-07-19/20260719_234658__shared_markdownit_instance__0f4aae/benchmark.json",
+  "config_hash": "0f4aae",
+  "config_file": "config.resolved.yaml",
+  "metrics_file": "benchmark.json",
+  "git_commit": "f8af15be675808525e2dcb68517ba05c838dba21",
+  "git_dirty": true,
+  "run_dir": "runs/2026-07-19/20260719_234658__shared_markdownit_instance__0f4aae",
+  "benchmark": {
+    "benchmark_id": "desktop_markdown_rendering",
+    "benchmark_version": "v4",
+    "split": "anchor",
+    "items_hash": "sha256:18a24f2fdbd20edc1a3d7030b9fed220499c728d2cea3fe8ec7e9a09ae8e877b",
+    "labels_hash": "sha256:b727028a4cf8b8f25f231c0259c8fe4018d0626cb0b815cbdd023afb2f75d2a7",
+    "rubric_version": "canonical_expanded_render_equivalence_v3",
+    "scorer_version": "desktop_markdown_metrics_v4"
+  },
+  "exit_code": 0,
+  "metrics": {
+    "schemaVersion": 1,
+    "generatedAt": "2026-07-19T15:47:53.540Z",
+    "source": {
+      "gitCommit": "f8af15be675808525e2dcb68517ba05c838dba21",
+      "gitDirty": true
+    },
+    "runtime": {
+      "nodeVersion": "v22.22.1",
+      "platform": "darwin",
+      "arch": "arm64"
+    },
+    "tasks": [
+      {
+        "schemaVersion": 1,
+        "taskId": "desktop-markdown",
+        "generatedAt": "2026-07-19T15:47:51.890Z",
+        "metadata": {
+          "runtime": "chromium-electron-overlay",
+          "measuredRuns": 5,
+          "chunkBytes": 512,
+          "feedbackTargetDelayMs": 25,
+          "feedbackSampleIntervalMs": 100,
+          "viewportWidth": 1440,
+          "viewportHeight": 900,
+          "benchmarkRelease": "desktop_markdown_rendering@v4",
+          "scorerVersion": "desktop_markdown_metrics_v4"
+        },
+        "cases": [
+          {
+            "id": "mixed_markdown-262144-bytes",
+            "dimensions": {
+              "workload": "mixed_markdown",
+              "messageBytes": 262144,
+              "chunkBytes": 512,
+              "providerChunkCount": 512,
+              "measuredRuns": 5,
+              "renderedTextHash": "f23a44521631546e6936b0c1d23776afcd7d1d70307e92a53ba480e2bb739e24",
+              "expandedRenderedTextHash": "b01ca4dfae6a89261803d19e9d75d3373ee046f291349f358745f0388d0ce739"
+            },
+            "metrics": {
+              "endToEnd": {
+                "unit": "ms",
+                "values": {
+                  "p50": 756.5999999940395,
+                  "p95": 854.8000000119209
+                },
+                "samples": [
+                  735.4000000059605, 750.8999999761581, 756.5999999940395, 766.7999999821186,
+                  854.8000000119209
+                ]
+              },
+              "reducerTotal": {
+                "unit": "ms",
+                "values": {
+                  "p50": 4.700000017881393,
+                  "p95": 5.399999976158142
+                },
+                "samples": [
+                  4.399999976158142, 4.499999970197678, 4.700000017881393, 4.700000017881393,
+                  5.399999976158142
+                ]
+              },
+              "reducerPerFlush": {
+                "unit": "ms",
+                "values": {
+                  "p50": 1,
+                  "p95": 1.5999999940395355
+                },
+                "samples": [
+                  0.7999999821186066, 0.7999999821186066, 0.800000011920929, 0.8999999761581421,
+                  0.8999999761581421, 0.9000000059604645, 0.9000000059604645, 0.9000000059604645, 1,
+                  1, 1, 1.0999999940395355, 1.100000023841858, 1.199999988079071, 1.399999976158142,
+                  1.4000000059604645, 1.4000000059604645, 1.4000000059604645, 1.5999999940395355,
+                  1.5999999940395355, 1.600000023841858
+                ]
+              },
+              "chunksPerFlush": {
+                "unit": "count",
+                "values": {
+                  "p50": 2,
+                  "p95": 4
+                },
+                "samples": [1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 3, 3, 3, 4, 4, 4, 4, 5]
+              },
+              "bytesPerFlush": {
+                "unit": "bytes",
+                "values": {
+                  "p50": 54272,
+                  "p95": 108032
+                },
+                "samples": [
+                  16384, 25600, 26624, 27136, 27136, 27136, 44544, 47104, 48128, 53760, 54272,
+                  55296, 55808, 79872, 80384, 82944, 106496, 107520, 108032, 108032, 128512
+                ]
+              },
+              "maxContiguousRunPerFlush": {
+                "unit": "count",
+                "values": {
+                  "p50": 2,
+                  "p95": 4
+                },
+                "samples": [1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 3, 3, 3, 4, 4, 4, 4, 5]
+              },
+              "flushCount": {
+                "unit": "count",
+                "values": {
+                  "p50": 4,
+                  "p95": 5
+                },
+                "samples": [4, 4, 4, 4, 5]
+              },
+              "clientChunkCount": {
+                "unit": "count",
+                "values": {
+                  "p50": 10,
+                  "p95": 10
+                },
+                "samples": [10, 10, 10, 10, 10]
+              },
+              "reactCommits": {
+                "unit": "count",
+                "values": {
+                  "p50": 14,
+                  "p95": 16
+                },
+                "samples": [14, 14, 14, 15, 16]
+              },
+              "reactDuration": {
+                "unit": "ms",
+                "values": {
+                  "p50": 2693.4000003039837,
+                  "p95": 2879.000000923872
+                },
+                "samples": [
+                  2559.2000003755093, 2594.6999997496605, 2693.4000003039837, 2693.999999701977,
+                  2879.000000923872
+                ]
+              },
+              "longTaskCount": {
+                "unit": "count",
+                "values": {
+                  "p50": 4,
+                  "p95": 5
+                },
+                "samples": [4, 4, 4, 4, 5]
+              },
+              "longTaskDuration": {
+                "unit": "ms",
+                "values": {
+                  "p50": 474,
+                  "p95": 514
+                },
+                "samples": [460, 473, 474, 479, 514]
+              },
+              "droppedFrames": {
+                "unit": "count",
+                "values": {
+                  "p50": 6,
+                  "p95": 7
+                },
+                "samples": [6, 6, 6, 6, 7]
+              },
+              "maxFrameGap": {
+                "unit": "ms",
+                "values": {
+                  "p50": 204.30000001192093,
+                  "p95": 274.2000000178814
+                },
+                "samples": [
+                  190.40000000596046, 197.40000000596046, 204.30000001192093, 207, 274.2000000178814
+                ]
+              },
+              "feedbackDelay": {
+                "unit": "ms",
+                "values": {
+                  "p50": 149,
+                  "p95": 215.60000002384186
+                },
+                "samples": [136.19999998807907, 142, 149, 149.59999999403954, 215.60000002384186]
+              },
+              "feedbackDelayMax": {
+                "unit": "ms",
+                "values": {
+                  "p50": 149,
+                  "p95": 215.60000002384186
+                },
+                "samples": [136.19999998807907, 142, 149, 149.59999999403954, 215.60000002384186]
+              },
+              "feedbackSamples": {
+                "unit": "count",
+                "values": {
+                  "p50": 5,
+                  "p95": 6
+                },
+                "samples": [5, 5, 5, 5, 6]
+              },
+              "heapDelta": {
+                "unit": "bytes",
+                "values": {
+                  "p50": 66391324,
+                  "p95": 73641295
+                },
+                "samples": [56614172, 65232519, 66391324, 70089678, 73641295]
+              },
+              "postGcHeap": {
+                "unit": "bytes",
+                "values": {
+                  "p50": 149590172,
+                  "p95": 161333045
+                },
+                "samples": [142352471, 145973310, 149590172, 153046400, 161333045]
+              },
+              "markdownBytes": {
+                "unit": "bytes",
+                "values": {
+                  "p50": 262144,
+                  "p95": 262144
+                },
+                "samples": [262144, 262144, 262144, 262144, 262144]
+              },
+              "markdownParseCalls": {
+                "unit": "count",
+                "values": {
+                  "p50": 352,
+                  "p95": 416
+                },
+                "samples": [352, 352, 352, 352, 416]
+              },
+              "markdownParseDuration": {
+                "unit": "ms",
+                "values": {
+                  "p50": 8.699999988079071,
+                  "p95": 9.899999916553497
+                },
+                "samples": [
+                  7.899999976158142, 8.399999797344208, 8.699999988079071, 9.70000010728836,
+                  9.899999916553497
+                ]
+              },
+              "highlightCalls": {
+                "unit": "count",
+                "values": {
+                  "p50": 69,
+                  "p95": 82
+                },
+                "samples": [68, 69, 69, 70, 82]
+              },
+              "highlightCacheHits": {
+                "unit": "count",
+                "values": {
+                  "p50": 68,
+                  "p95": 81
+                },
+                "samples": [67, 68, 68, 68, 81]
+              },
+              "highlightDuration": {
+                "unit": "ms",
+                "values": {
+                  "p50": 1.399999976158142,
+                  "p95": 1.7999999821186066
+                },
+                "samples": [
+                  1.199999988079071, 1.300000011920929, 1.399999976158142, 1.7000000476837158,
+                  1.7999999821186066
+                ]
+              },
+              "highlightedTokens": {
+                "unit": "count",
+                "values": {
+                  "p50": 552,
+                  "p95": 656
+                },
+                "samples": [544, 552, 552, 555, 656]
+              },
+              "assistantDomNodes": {
+                "unit": "count",
+                "values": {
+                  "p50": 2080,
+                  "p95": 2080
+                },
+                "samples": [2080, 2080, 2080, 2080, 2080]
+              },
+              "axNodes": {
+                "unit": "count",
+                "values": {
+                  "p50": 2756,
+                  "p95": 2756
+                },
+                "samples": [2744, 2756, 2756, 2756, 2756]
+              },
+              "axNonIgnoredNodes": {
+                "unit": "count",
+                "values": {
+                  "p50": 2695,
+                  "p95": 2695
+                },
+                "samples": [2685, 2695, 2695, 2695, 2695]
+              }
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

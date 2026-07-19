@@ -17,6 +17,7 @@ const STREAM_MESSAGE_SIZES_BYTES = [64 * 1024, 256 * 1024, 1024 * 1024] as const
 const CHUNK_BYTES = 512;
 const DEFAULT_MEASURED_RUNS = 5;
 const FEEDBACK_TARGET_DELAY_MS = 25;
+const FEEDBACK_SAMPLE_INTERVAL_MS = 100;
 const VIEWPORT = { width: 1440, height: 900 };
 const isMarkdownBenchmark = process.env.PASEO_MARKDOWN_BENCHMARK === "1";
 
@@ -110,7 +111,8 @@ interface HighlightProfileSample {
 interface StreamProbe {
   startedAt: number;
   feedbackTargetAt: number;
-  feedbackAt: number | null;
+  feedbackTimer: number;
+  feedbackDelays: number[];
   frameHandle: number;
   previousFrameAt: number;
   frameGaps: number[];
@@ -148,6 +150,8 @@ interface StreamRunSample {
   droppedFrameCount: number;
   maxFrameGapMs: number;
   feedbackDelayMs: number;
+  feedbackDelayMaxMs: number;
+  feedbackSamples: number;
   heapDeltaBytes: number;
   postGcHeapBytes: number;
   markdownBytes: number;
@@ -161,6 +165,7 @@ interface StreamRunSample {
   axNodes: number;
   axNonIgnoredNodes: number;
   renderedTextHash: string;
+  expandedRenderedTextHash: string;
 }
 
 function durationMetric(samples: number[]): BenchmarkMetricResult {
@@ -237,60 +242,69 @@ async function readHeap(page: Page): Promise<number> {
 }
 
 async function armStreamProbe(page: Page): Promise<void> {
-  await page.evaluate((feedbackTargetDelayMs) => {
-    const state = window as BenchmarkWindow;
-    state.__PASEO_AGENT_STREAM_FLUSH_PROFILE__ = [];
-    state.__PASEO_RESET_RENDER_PROFILE__?.();
-    state.__PASEO_MARKDOWN_PARSE_PROFILE__ = [];
-    state.__PASEO_HIGHLIGHT_PROFILE__ = [];
+  await page.evaluate(
+    ({ feedbackTargetDelayMs, feedbackSampleIntervalMs }) => {
+      const state = window as BenchmarkWindow;
+      state.__PASEO_AGENT_STREAM_FLUSH_PROFILE__ = [];
+      state.__PASEO_RESET_RENDER_PROFILE__?.();
+      state.__PASEO_MARKDOWN_PARSE_PROFILE__ = [];
+      state.__PASEO_HIGHLIGHT_PROFILE__ = [];
 
-    const startedAt = performance.now();
-    const longTasks: PerformanceEntry[] = [];
-    const observer =
-      typeof PerformanceObserver === "undefined"
-        ? null
-        : new PerformanceObserver((list) => longTasks.push(...list.getEntries()));
-    try {
-      observer?.observe({ type: "longtask" });
-    } catch {
-      observer?.disconnect();
-    }
+      const startedAt = performance.now();
+      const longTasks: PerformanceEntry[] = [];
+      const observer =
+        typeof PerformanceObserver === "undefined"
+          ? null
+          : new PerformanceObserver((list) => longTasks.push(...list.getEntries()));
+      try {
+        observer?.observe({ type: "longtask" });
+      } catch {
+        observer?.disconnect();
+      }
 
-    const feedbackButton = document.createElement("button");
-    feedbackButton.type = "button";
-    feedbackButton.style.cssText =
-      "position:fixed;left:-10000px;top:-10000px;width:1px;height:1px;pointer-events:none";
-    document.body.appendChild(feedbackButton);
+      const feedbackButton = document.createElement("button");
+      feedbackButton.type = "button";
+      feedbackButton.style.cssText =
+        "position:fixed;left:-10000px;top:-10000px;width:1px;height:1px;pointer-events:none";
+      document.body.appendChild(feedbackButton);
 
-    const probe: StreamProbe = {
-      startedAt,
-      feedbackTargetAt: startedAt + feedbackTargetDelayMs,
-      feedbackAt: null,
-      frameHandle: 0,
-      previousFrameAt: startedAt,
-      frameGaps: [],
-      longTasks,
-      observer,
-      feedbackButton,
-    };
-    feedbackButton.addEventListener(
-      "click",
-      () => {
-        probe.feedbackAt = performance.now();
-      },
-      { once: true },
-    );
-    window.setTimeout(() => feedbackButton.click(), feedbackTargetDelayMs);
+      const probe: StreamProbe = {
+        startedAt,
+        feedbackTargetAt: startedAt + feedbackTargetDelayMs,
+        feedbackTimer: 0,
+        feedbackDelays: [],
+        frameHandle: 0,
+        previousFrameAt: startedAt,
+        frameGaps: [],
+        longTasks,
+        observer,
+        feedbackButton,
+      };
+      feedbackButton.addEventListener("click", () => {
+        const now = performance.now();
+        probe.feedbackDelays.push(Math.max(0, now - probe.feedbackTargetAt));
+        probe.feedbackTargetAt = now + feedbackSampleIntervalMs;
+        probe.feedbackTimer = window.setTimeout(
+          () => feedbackButton.click(),
+          feedbackSampleIntervalMs,
+        );
+      });
+      probe.feedbackTimer = window.setTimeout(() => feedbackButton.click(), feedbackTargetDelayMs);
 
-    const recordFrame = () => {
-      const now = performance.now();
-      probe.frameGaps.push(now - probe.previousFrameAt);
-      probe.previousFrameAt = now;
+      const recordFrame = () => {
+        const now = performance.now();
+        probe.frameGaps.push(now - probe.previousFrameAt);
+        probe.previousFrameAt = now;
+        probe.frameHandle = window.requestAnimationFrame(recordFrame);
+      };
       probe.frameHandle = window.requestAnimationFrame(recordFrame);
-    };
-    probe.frameHandle = window.requestAnimationFrame(recordFrame);
-    state.__PASEO_STREAM_BENCHMARK_PROBE__ = probe;
-  }, FEEDBACK_TARGET_DELAY_MS);
+      state.__PASEO_STREAM_BENCHMARK_PROBE__ = probe;
+    },
+    {
+      feedbackTargetDelayMs: FEEDBACK_TARGET_DELAY_MS,
+      feedbackSampleIntervalMs: FEEDBACK_SAMPLE_INTERVAL_MS,
+    },
+  );
 }
 
 async function waitForAssistantBytes(page: Page, expectedBytes: number): Promise<void> {
@@ -323,6 +337,7 @@ async function finishStreamProbe(
       if (!probe) throw new Error("stream benchmark probe was not armed");
       probe.observer?.disconnect();
       window.cancelAnimationFrame(probe.frameHandle);
+      window.clearTimeout(probe.feedbackTimer);
       probe.feedbackButton.remove();
 
       const flushes = (state.__PASEO_AGENT_STREAM_FLUSH_PROFILE__ ?? []).filter(
@@ -333,7 +348,12 @@ async function finishStreamProbe(
         probe.startedAt,
         ...renderSamples.map((sample) => sample.commitTime),
       );
-      const feedbackAt = probe.feedbackAt ?? performance.now();
+      if (probe.feedbackDelays.length === 0) {
+        probe.feedbackDelays.push(Math.max(0, performance.now() - probe.feedbackTargetAt));
+      }
+      const sortedFeedbackDelays = [...probe.feedbackDelays].sort((left, right) => left - right);
+      const feedbackP95Index = Math.max(0, Math.ceil(sortedFeedbackDelays.length * 0.95) - 1);
+      const feedbackDelayP95 = sortedFeedbackDelays[feedbackP95Index] ?? 0;
       const assistantMessages = document.querySelectorAll<HTMLElement>(
         '[data-testid="assistant-message"]',
       );
@@ -352,7 +372,7 @@ async function finishStreamProbe(
 
       const renderedText = Array.from(assistantMessages)
         .map((element) => element.textContent ?? "")
-        .join("\n---assistant-message---\n");
+        .join("");
       const renderedBytes = new TextEncoder().encode(renderedText);
       const renderedDigest = await crypto.subtle.digest("SHA-256", renderedBytes);
       const renderedTextHash = Array.from(new Uint8Array(renderedDigest), (byte) =>
@@ -377,7 +397,9 @@ async function finishStreamProbe(
         longTaskDurationMs: probe.longTasks.reduce((sum, entry) => sum + entry.duration, 0),
         droppedFrameCount: probe.frameGaps.filter((gap) => gap > 20).length,
         maxFrameGapMs: Math.max(0, ...probe.frameGaps),
-        feedbackDelayMs: Math.max(0, feedbackAt - probe.feedbackTargetAt),
+        feedbackDelayMs: feedbackDelayP95,
+        feedbackDelayMaxMs: sortedFeedbackDelays.at(-1) ?? 0,
+        feedbackSamples: sortedFeedbackDelays.length,
         heapDeltaBytes: heapAfterValue - heapBefore,
         postGcHeapBytes: 0,
         markdownBytes,
@@ -397,6 +419,7 @@ async function finishStreamProbe(
         axNodes: 0,
         axNonIgnoredNodes: 0,
         renderedTextHash,
+        expandedRenderedTextHash: renderedTextHash,
       };
     },
     {
@@ -423,6 +446,38 @@ async function readAxNodeCounts(
   };
 }
 
+async function expandLongAssistantMessageAndReadHash(
+  page: Page,
+  collapsedHash: string,
+): Promise<string> {
+  const expandButton = page.getByTestId("assistant-message-expand").last();
+  if ((await expandButton.count()) === 0) {
+    return collapsedHash;
+  }
+
+  await expandButton.click({ timeout: 60_000 });
+  await expandButton.waitFor({ state: "detached", timeout: 60_000 });
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+      ),
+  );
+  return page.evaluate(async () => {
+    const assistantMessages = document.querySelectorAll<HTMLElement>(
+      '[data-testid="assistant-message"]',
+    );
+    const renderedText = Array.from(assistantMessages)
+      .map((element) => element.textContent ?? "")
+      .join("");
+    const renderedBytes = new TextEncoder().encode(renderedText);
+    const renderedDigest = await crypto.subtle.digest("SHA-256", renderedBytes);
+    return Array.from(new Uint8Array(renderedDigest), (byte) =>
+      byte.toString(16).padStart(2, "0"),
+    ).join("");
+  });
+}
+
 function buildCase(input: {
   workload: MarkdownWorkload;
   messageBytes: number;
@@ -437,6 +492,14 @@ function buildCase(input: {
   if (renderedTextHashes.size !== 1) {
     throw new Error(`${workload}:${messageBytes} produced inconsistent rendered text hashes`);
   }
+  const expandedRenderedTextHashes = new Set(
+    samples.map((sample) => sample.expandedRenderedTextHash),
+  );
+  if (expandedRenderedTextHashes.size !== 1) {
+    throw new Error(
+      `${workload}:${messageBytes} produced inconsistent expanded rendered text hashes`,
+    );
+  }
   return {
     id: `${workload}-${messageBytes}-bytes`,
     dimensions: {
@@ -446,6 +509,7 @@ function buildCase(input: {
       providerChunkCount: Math.ceil(messageBytes / CHUNK_BYTES),
       measuredRuns: samples.length,
       renderedTextHash: samples[0]?.renderedTextHash ?? "missing",
+      expandedRenderedTextHash: samples[0]?.expandedRenderedTextHash ?? "missing",
     },
     metrics: {
       endToEnd: durationMetric(samples.map((sample) => sample.endToEndMs)),
@@ -463,6 +527,8 @@ function buildCase(input: {
       droppedFrames: countMetric(samples.map((sample) => sample.droppedFrameCount)),
       maxFrameGap: durationMetric(samples.map((sample) => sample.maxFrameGapMs)),
       feedbackDelay: durationMetric(samples.map((sample) => sample.feedbackDelayMs)),
+      feedbackDelayMax: durationMetric(samples.map((sample) => sample.feedbackDelayMaxMs)),
+      feedbackSamples: countMetric(samples.map((sample) => sample.feedbackSamples)),
       heapDelta: bytesMetric(samples.map((sample) => sample.heapDeltaBytes)),
       postGcHeap: bytesMetric(samples.map((sample) => sample.postGcHeapBytes)),
       markdownBytes: bytesMetric(samples.map((sample) => sample.markdownBytes)),
@@ -531,10 +597,16 @@ test("benchmarks live assistant streaming through reducer, React, and Markdown",
         });
         const ax = await readAxNodeCounts(cdp);
         await cdp.send("HeapProfiler.collectGarbage");
+        const postGcHeapBytes = await readHeap(page);
+        const expandedRenderedTextHash = await expandLongAssistantMessageAndReadHash(
+          page,
+          sample.renderedTextHash,
+        );
         samples.push({
           ...sample,
           ...ax,
-          postGcHeapBytes: await readHeap(page),
+          postGcHeapBytes,
+          expandedRenderedTextHash,
         });
         await workspace.client.archiveAgent(created.id);
         await page.getByTestId(`workspace-tab-agent_${created.id}`).waitFor({
@@ -555,9 +627,11 @@ test("benchmarks live assistant streaming through reducer, React, and Markdown",
         measuredRuns: MEASURED_RUNS,
         chunkBytes: CHUNK_BYTES,
         feedbackTargetDelayMs: FEEDBACK_TARGET_DELAY_MS,
+        feedbackSampleIntervalMs: FEEDBACK_SAMPLE_INTERVAL_MS,
         viewportWidth: VIEWPORT.width,
         viewportHeight: VIEWPORT.height,
-        benchmarkRelease: isMarkdownBenchmark ? "desktop_markdown_rendering@v1" : null,
+        benchmarkRelease: isMarkdownBenchmark ? "desktop_markdown_rendering@v4" : null,
+        scorerVersion: isMarkdownBenchmark ? "desktop_markdown_metrics_v4" : null,
       },
       cases,
     } satisfies BenchmarkTaskResult;

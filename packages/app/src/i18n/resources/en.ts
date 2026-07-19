@@ -248,6 +248,7 @@ export const en = {
       copyCode: "Copy code",
       copyTurn: "Copy turn",
       copyMessage: "Copy message",
+      showFullResponse: "Show {{count}} hidden sections",
       forkMenu: "Fork chat",
       forkInNewTab: "Fork in a new tab",
       forkInNewWorkspace: "Fork in a new workspace",

@@ -3,6 +3,7 @@ import type { AgentAttachment, AgentStreamEventPayload } from "@getpaseo/protoco
 import type { AttachmentMetadata } from "@/attachments/types";
 import { extractTaskEntriesFromToolCall } from "../utils/tool-call-parsers";
 import { splitMarkdownBlocks } from "@/utils/split-markdown-blocks";
+import { MAX_PROMOTED_ASSISTANT_MARKDOWN_BLOCKS } from "@/utils/markdown-block-window";
 
 /**
  * Simple hash function for deterministic ID generation
@@ -1076,8 +1077,19 @@ function promoteCompletedAssistantBlocks(params: { tail: StreamItem[]; head: Str
 
   const blockGroupId = activeItem.blockGroupId ?? activeItem.id;
   const firstBlockIndex = activeItem.blockIndex ?? 0;
-  const completedBlocks = blocks.slice(0, -1);
-  const liveBlock = `${blocks[blocks.length - 1] ?? ""}${getTrailingNewlineSuffix(activeItem.text)}`;
+  const promotionBudget = Math.max(0, MAX_PROMOTED_ASSISTANT_MARKDOWN_BLOCKS - firstBlockIndex);
+  const completedBlockCount = Math.min(blocks.length - 1, promotionBudget);
+  if (completedBlockCount === 0) {
+    return {
+      tail: params.tail,
+      head: params.head,
+      changedTail: false,
+      changedHead: false,
+    };
+  }
+
+  const completedBlocks = blocks.slice(0, completedBlockCount);
+  const liveBlock = `${blocks.slice(completedBlockCount).join("\n\n")}${getTrailingNewlineSuffix(activeItem.text)}`;
   const promotedItems = completedBlocks.map<AssistantMessageItem>((block, offset) => ({
     kind: "assistant_message",
     id: createAssistantBlockId({

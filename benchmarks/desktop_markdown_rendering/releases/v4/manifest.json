@@ -1,0 +1,11 @@
+{
+  "benchmark_id": "desktop_markdown_rendering",
+  "version": "v4",
+  "status": "released",
+  "items_hash": "sha256:18a24f2fdbd20edc1a3d7030b9fed220499c728d2cea3fe8ec7e9a09ae8e877b",
+  "labels_hash": "sha256:b727028a4cf8b8f25f231c0259c8fe4018d0626cb0b815cbdd023afb2f75d2a7",
+  "rubric_version": "canonical_expanded_render_equivalence_v3",
+  "scorer_version": "desktop_markdown_metrics_v4",
+  "num_items": 18,
+  "created_at": "2026-07-19T23:34:05+08:00"
+}

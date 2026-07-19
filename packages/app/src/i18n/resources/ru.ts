@@ -251,6 +251,7 @@ export const ru: TranslationResources = {
       copyCode: "Скопировать код",
       copyTurn: "Копировать ход",
       copyMessage: "Копировать сообщение",
+      showFullResponse: "Показать скрытые разделы ({{count}})",
       forkMenu: "Форкнуть сообщение",
       forkInNewTab: "Форкнуть в новой вкладке",
       forkInNewWorkspace: "Форкнуть в новом рабочем пространстве",

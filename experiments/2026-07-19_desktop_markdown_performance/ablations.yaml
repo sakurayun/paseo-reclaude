@@ -9,34 +9,38 @@ runs:
   - variant: bounded_live_tail_renderer
     priority: P0
     scale: full
-    status: ready_after_baseline
+    status: rejected
     change: keep completed blocks stable and render only the growing final block through a bounded plain or deferred path
     primary_scope: one MiB mixed Markdown feedback, frame gaps, and Long Task time
     rollback: fully render the growing final block on every update
+    reason: one MiB Long Task p95 improved 52 percent, but end-to-end improved only 4 percent and frame-gap p95 regressed 26 percent
 
   - variant: incomplete_fence_plain_during_stream
     priority: P0
     scale: full
-    status: ready_after_baseline
+    status: rejected
     change: skip syntax highlighting only for an incomplete streaming fence; highlight on close or completion
     primary_scope: unclosed code feedback delay and Long Task time
     rollback: highlight every streaming prefix
+    reason: open-fence end-to-end p95 improved 25 percent and Long Task p95 improved 33 percent, but final token-span mounting still regressed feedback p95 8 percent and frame-gap p95 10 percent
 
-  - variant: completed_only_byte_bounded_highlight_cache
+  - variant: byte_bounded_highlight_cache
     priority: P0
     scale: full
-    status: queued
-    change: cache completed highlights only and evict by retained bytes rather than entry count alone
+    status: accepted
+    change: evict token trees by estimated retained bytes in addition to entry count
     primary_scope: long-session post-GC heap and cache retention
     rollback: restore the 200-entry content-keyed cache
+    reason: an 80-entry deterministic cache workload retained 14.60MB on the entry-only baseline and 8.99MB with the 8MiB weighted budget, a 38.4 percent measured heap reduction; candidate retained 48 entries and evicted 32
 
   - variant: shared_markdownit_instance
     priority: P0
     scale: full
-    status: queued
+    status: rejected_at_p0
     change: reuse one immutable configured MarkdownIt instance instead of one per assistant message
     primary_scope: history mount heap and switch latency
     rollback: restore per-message MarkdownIt construction
+    reason: on the bounded 256KiB mixed workload feedback p95 improved 9.9 percent and post-GC heap 4.3 percent, but end-to-end p95 regressed 0.4 percent and Long Task improved only 0.8 percent; it missed the 20 percent P0 promotion gate
 
   - variant: adaptive_visible_markdown_cadence
     priority: P1
@@ -71,12 +75,13 @@ runs:
     rollback: retain the current per-message and per-link observers
 
   - variant: bounded_code_rendering
-    priority: P1
+    priority: P0
     scale: full
-    status: design_required
-    change: cap mounted token or line nodes with Show more while preserving full copy content
+    status: accepted
+    change: render code above 16KiB as one complete plain monospace node instead of an unbounded syntax-token span tree
     primary_scope: 100KiB completed code DOM, AX, layout, and feedback delay
     rollback: mount every highlighted token span
+    reason: 64KiB code feedback p95 improved 96 percent, Long Task fell to zero, DOM fell from 29132 to 11, AX fell 95 percent, and post-GC heap fell 46 percent with identical final text
 
   - variant: offscreen_stream_ui_pause
     priority: P1
@@ -87,11 +92,13 @@ runs:
     rollback: retain the current frozen-array shell subscription behavior
 
   - variant: long_message_block_virtualization
-    priority: P2
+    priority: P0
     scale: full
-    status: deferred
-    change: virtualize blocks inside one exceptionally long message
-    reason: high scroll, selection, measurement, and accessibility risk
+    status: accepted
+    change: explicitly mount a bounded head and tail block window for exceptionally long messages, with user-controlled full expansion
+    reason: 256KiB mixed Markdown mounts 111358 DOM and 132619 non-ignored AX nodes, retains 2.37GB post-GC heap, and blocks feedback for 5.84s p95
+    rejected_candidate: CSS content-visibility auto failed cleanup because the archived tab remained attached beyond 30 seconds on run four
+    result: cap stable promoted rows at 32 and mount at most 96 blocks in the remainder; feedback p95 improved 95 percent, Long Task 89 percent, DOM 98 percent, AX 98 percent, and post-GC heap 93 percent; expanded text hash matches baseline
 
   - variant: streamdown_web_renderer
     priority: P2

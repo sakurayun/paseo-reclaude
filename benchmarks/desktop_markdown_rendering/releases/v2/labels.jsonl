@@ -1,0 +1,18 @@
+{"item_id":"plain_unbroken_65536","expected_bytes":65536,"final_render_must_match_baseline":true}
+{"item_id":"plain_unbroken_262144","expected_bytes":262144,"final_render_must_match_baseline":true}
+{"item_id":"plain_unbroken_1048576","expected_bytes":1048576,"final_render_must_match_baseline":true}
+{"item_id":"prose_blocks_65536","expected_bytes":65536,"required_marker":"Benchmark paragraph","final_render_must_match_baseline":true}
+{"item_id":"prose_blocks_262144","expected_bytes":262144,"required_marker":"Benchmark paragraph","final_render_must_match_baseline":true}
+{"item_id":"prose_blocks_1048576","expected_bytes":1048576,"required_marker":"Benchmark paragraph","final_render_must_match_baseline":true}
+{"item_id":"open_typescript_fence_65536","expected_bytes":65536,"required_marker":"const value = source.map","expected_open_fences":1,"final_render_must_match_baseline":true}
+{"item_id":"open_typescript_fence_262144","expected_bytes":262144,"required_marker":"const value = source.map","expected_open_fences":1,"final_render_must_match_baseline":true}
+{"item_id":"open_typescript_fence_1048576","expected_bytes":1048576,"required_marker":"const value = source.map","expected_open_fences":1,"final_render_must_match_baseline":true}
+{"item_id":"closed_typescript_fences_65536","expected_bytes":65536,"required_marker":"const value = 42","final_render_must_match_baseline":true}
+{"item_id":"closed_typescript_fences_262144","expected_bytes":262144,"required_marker":"const value = 42","final_render_must_match_baseline":true}
+{"item_id":"closed_typescript_fences_1048576","expected_bytes":1048576,"required_marker":"const value = 42","final_render_must_match_baseline":true}
+{"item_id":"mixed_markdown_65536","expected_bytes":65536,"required_marker":"Benchmark section","final_render_must_match_baseline":true}
+{"item_id":"mixed_markdown_262144","expected_bytes":262144,"required_marker":"Benchmark section","final_render_must_match_baseline":true}
+{"item_id":"mixed_markdown_1048576","expected_bytes":1048576,"required_marker":"Benchmark section","final_render_must_match_baseline":true}
+{"item_id":"link_table_dense_65536","expected_bytes":65536,"required_marker":"name value link","final_render_must_match_baseline":true}
+{"item_id":"link_table_dense_262144","expected_bytes":262144,"required_marker":"name value link","final_render_must_match_baseline":true}
+{"item_id":"link_table_dense_1048576","expected_bytes":1048576,"required_marker":"name value link","final_render_must_match_baseline":true}

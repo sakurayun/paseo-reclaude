@@ -18,6 +18,7 @@ import {
 import type { AgentProvider, ToolCallDetail } from "@getpaseo/protocol/agent-types";
 import type { AgentStreamEventPayload } from "@getpaseo/protocol/messages";
 import { buildToolCallDisplayModel } from "@getpaseo/protocol/tool-call-display";
+import { MAX_PROMOTED_ASSISTANT_MARKDOWN_BLOCKS } from "@/utils/markdown-block-window";
 
 type CanonicalToolStatus = "running" | "completed" | "failed" | "canceled";
 
@@ -511,6 +512,38 @@ describe("stream reducer canonical tool calls", () => {
       "After two.",
     ]);
     expect(new Set(messages.map((message) => message.id)).size).toBe(messages.length);
+  });
+
+  it("bounds promoted rows while preserving every block in a large assistant message", () => {
+    const sourceBlocks = Array.from(
+      { length: MAX_PROMOTED_ASSISTANT_MARKDOWN_BLOCKS + 100 },
+      (_, index) => `Paragraph ${index}.`,
+    );
+    let tail: StreamItem[] = [];
+    let head: StreamItem[] = [];
+
+    for (const event of [
+      assistantTimeline(sourceBlocks.join("\n\n"), "codex", "msg-large-markdown"),
+      { type: "turn_completed" as const, provider: "codex" as const },
+    ]) {
+      const result = applyStreamEvent({
+        tail,
+        head,
+        event,
+        timestamp: new Date("2025-01-01T10:03:00Z"),
+      });
+      tail = result.tail;
+      head = result.head;
+    }
+
+    const messages = tail.filter(
+      (item): item is Extract<StreamItem, { kind: "assistant_message" }> =>
+        item.kind === "assistant_message",
+    );
+    expect(head).toEqual([]);
+    expect(messages).toHaveLength(MAX_PROMOTED_ASSISTANT_MARKDOWN_BLOCKS + 1);
+    expect(messages.flatMap((message) => message.text.split("\n\n"))).toEqual(sourceBlocks);
+    expect(messages.map((message) => message.text).join("\n\n")).toBe(sourceBlocks.join("\n\n"));
   });
 
   it("preserves old assistant merge behavior when message ids are absent", () => {

@@ -1,5 +1,5 @@
 experiment: desktop_markdown_performance
-status: baseline_ready
+status: p0_complete
 defaults:
   variant: baseline
   scale: full
@@ -12,7 +12,7 @@ entrypoint:
   command: npm run benchmark -- desktop-markdown --output {run_dir}/benchmark.json
 benchmark:
   id: desktop_markdown_rendering
-  release: v1
+  release: v4
   status: released
   freeze_before_candidate_runs: true
   environments:
@@ -34,9 +34,9 @@ benchmark:
   repetitions: 5
 eval:
   benchmark: desktop_markdown_rendering
-  benchmark_version: v1
+  benchmark_version: v4
   split: anchor
-  scorer_version: desktop_markdown_metrics_v1
+  scorer_version: desktop_markdown_metrics_v4
 params:
   provider_chunk_bytes: 512
   provider_chunk_interval_ms: 1
@@ -77,7 +77,7 @@ gates:
     - post-GC heap does not regress by more than 10 percent
     - no correctness gate fails on Electron web, browser web, iOS, or Android
 execution_policy:
-  - freeze benchmark release v1 before promoting an implementation candidate
+  - freeze benchmark release v4 before promoting an implementation candidate
   - change one major variable per branch commit and benchmark run
   - preserve baseline, candidate, and rollback runs under runs/YYYY-MM-DD
   - use only an isolated daemon and isolated Metro/Electron ports
