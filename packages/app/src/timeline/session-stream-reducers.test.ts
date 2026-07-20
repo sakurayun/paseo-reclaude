@@ -2214,6 +2214,23 @@ describe("processAgentStreamEvents", () => {
     expect(result.sideEffects).toEqual([]);
   });
 
+  it("processes the first assistant chunk before coalescing its continuations", () => {
+    const result = processAgentStreamEvents({
+      events: [
+        makeStreamReducerEvent(makeTimelineEvent("  "), 1),
+        makeStreamReducerEvent(makeTimelineEvent("Hello"), 2),
+        makeStreamReducerEvent(makeTimelineEvent(" world"), 3),
+      ],
+      currentTail: [],
+      currentHead: [],
+      currentCursor: undefined,
+      currentAgent: null,
+    });
+
+    expect(getAssistantTexts(result.head)).toEqual(["Hello world"]);
+    expect(result.cursor).toEqual({ epoch: "epoch-1", startSeq: 1, endSeq: 3 });
+  });
+
   it("keeps matching assistant message ids in the live head", () => {
     const result = processAgentStreamEvents({
       events: [
@@ -2235,6 +2252,75 @@ describe("processAgentStreamEvents", () => {
       text: "Hello",
       messageId: "assistant-one",
     });
+  });
+
+  it("does not coalesce assistant chunks across providers", () => {
+    const first = makeStreamReducerEvent(
+      makeAssistantTimelineEvent("First paragraph\n\nSecond", "assistant-one"),
+      1,
+    );
+    const second = makeStreamReducerEvent(
+      {
+        ...makeAssistantTimelineEvent(" paragraph", "assistant-one"),
+        provider: "codex",
+      } as AgentStreamEventPayload,
+      2,
+    );
+    const result = processAgentStreamEvents({
+      events: [first, second],
+      currentTail: [],
+      currentHead: [],
+      currentCursor: undefined,
+      currentAgent: null,
+    });
+
+    expect(result.tail[0]).toMatchObject({
+      kind: "assistant_message",
+      text: "First paragraph",
+      timestamp: first.timestamp,
+    });
+    expect(getAssistantTexts(result.head)).toEqual(["Second paragraph"]);
+  });
+
+  it("preserves gap detection between assistant chunks", () => {
+    const result = processAgentStreamEvents({
+      events: [
+        makeStreamReducerEvent(makeAssistantTimelineEvent("accepted", "assistant-one"), 2),
+        makeStreamReducerEvent(makeAssistantTimelineEvent("dropped", "assistant-one"), 4),
+      ],
+      currentTail: [],
+      currentHead: [],
+      currentCursor: { epoch: "epoch-1", startSeq: 1, endSeq: 1 },
+      currentAgent: null,
+    });
+
+    expect(getAssistantTexts(result.head)).toEqual(["accepted"]);
+    expect(result.cursor).toEqual({ epoch: "epoch-1", startSeq: 1, endSeq: 2 });
+    expect(result.sideEffects).toEqual([
+      { type: "catch_up", cursor: { epoch: "epoch-1", endSeq: 2 } },
+    ]);
+  });
+
+  it("does not coalesce assistant chunks across timeline epochs", () => {
+    const nextEpoch = makeStreamReducerEvent(
+      makeAssistantTimelineEvent("new epoch", "assistant-one"),
+      1,
+    );
+    nextEpoch.epoch = "epoch-2";
+    const result = processAgentStreamEvents({
+      events: [
+        makeStreamReducerEvent(makeAssistantTimelineEvent("old epoch", "assistant-one"), 2),
+        nextEpoch,
+      ],
+      currentTail: [],
+      currentHead: [],
+      currentCursor: { epoch: "epoch-1", startSeq: 1, endSeq: 1 },
+      currentAgent: null,
+    });
+
+    expect(result.tail).toEqual([]);
+    expect(getAssistantTexts(result.head)).toEqual(["new epoch"]);
+    expect(result.cursor).toEqual({ epoch: "epoch-2", startSeq: 1, endSeq: 1 });
   });
 
   it("flushes the live assistant head before starting a different assistant message id", () => {
@@ -2677,6 +2763,41 @@ describe("createAgentStreamReducerQueue", () => {
       },
     ]);
     expect(scheduler.size).toBe(0);
+  });
+
+  it("profiles the actual assistant chunks observed in a scheduled flush when enabled", () => {
+    const scheduler = createManualScheduler();
+    globalThis.__PASEO_AGENT_STREAM_FLUSH_PROFILE__ = [];
+    try {
+      const queue = createAgentStreamReducerQueue({
+        getSnapshot: () => ({
+          currentTail: [],
+          currentHead: [],
+          currentCursor: undefined,
+          currentAgent: null,
+        }),
+        commit: () => {},
+        handleSideEffects: () => {},
+        scheduleFlush: scheduler.schedule,
+        cancelFlush: scheduler.cancel,
+      });
+
+      queue.enqueue("agent-1", makeStreamReducerEvent(makeTimelineEvent("Hello"), 1));
+      queue.enqueue("agent-1", makeStreamReducerEvent(makeTimelineEvent(" world"), 2));
+      scheduler.flushOne();
+
+      expect(globalThis.__PASEO_AGENT_STREAM_FLUSH_PROFILE__).toEqual([
+        expect.objectContaining({
+          agentId: "agent-1",
+          eventCount: 2,
+          assistantChunkCount: 2,
+          assistantBytes: 11,
+          maxContiguousAssistantRun: 2,
+        }),
+      ]);
+    } finally {
+      delete globalThis.__PASEO_AGENT_STREAM_FLUSH_PROFILE__;
+    }
   });
 
   it("flushes queued events synchronously for one agent before canonical history is applied", () => {

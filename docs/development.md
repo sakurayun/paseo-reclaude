@@ -467,6 +467,41 @@ npx expo-doctor
 
 Diagnoses version mismatches and native module issues.
 
+## Performance benchmarks
+
+Performance benchmarks use the root task registry in `scripts/benchmarks/tasks.ts`. The root
+runner executes every registered task by default and combines their results under one versioned
+JSON envelope with the Git commit, dirty-worktree flag, and Node runtime identity:
+
+```bash
+npm run benchmark                                      # Run all registered tasks
+npm run benchmark -- --list                            # List registered tasks
+npm run benchmark -- agent-stream-reducer              # Run one task
+npm run benchmark -- desktop-interaction               # Run isolated heavy-tab UI benchmark
+npm run benchmark -- desktop-streaming                 # Run live reducer-to-Markdown benchmark
+npm run benchmark -- --output /tmp/paseo-benchmark.json
+```
+
+Each task writes a `BenchmarkTaskResult` with stable task/case IDs, scalar dimensions, and named
+metrics. Add a benchmark by implementing that result contract and registering its command in
+`scripts/benchmarks/tasks.ts`. Keep workloads deterministic and make each task verify correctness
+before reporting timing data.
+
+The `desktop-interaction` task starts its own temporary daemon and Metro instance on random ports,
+uses the development mock provider to seed 50/100/176-item timelines, and runs the Electron web
+overlay in Chromium. It blocks all browser traffic to the production daemon port (`6767`). The task
+reports heavy-tab switch latency, title/body consistency, React commits, long tasks, frame gaps,
+DOM/AX size, and JavaScript heap. Long cases load and verify the oldest stored prompt before
+measurement. Heap results include both the pre-GC allocation level and post-GC live heap. Use a
+real-Electron CDP run when validating OS renderer RSS, physical footprint, swap/page-in, and
+GPU-process behavior; those are intentionally not inferred from the Chromium-overlay task.
+
+The `desktop-streaming` task drives exact 64KiB, 256KiB, and 1MiB assistant streams through the
+isolated daemon and visible Desktop-web UI. It records the real chunks-per-scheduled-flush
+distribution alongside reducer time, React commits, Markdown completion, long tasks, frame gaps,
+heap allocation, and a main-thread click-feedback probe. This complements the synthetic
+`agent-stream-reducer` benchmark, whose fixed chunks-per-flush value is a workload assumption.
+
 ## Typecheck
 
 Always run typecheck after changes:

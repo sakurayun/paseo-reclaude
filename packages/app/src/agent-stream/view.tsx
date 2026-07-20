@@ -442,6 +442,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     },
     ref,
   ) {
+    useEffect(() => installMessageInteractionStyles(), []);
     const { t } = useTranslation();
     const router = useRouter();
     const autoExpandReasoning = useSettings((settings) => settings.autoExpandReasoning);

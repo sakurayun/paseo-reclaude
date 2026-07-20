@@ -240,6 +240,119 @@ describe("MockLoadTestAgentClient", () => {
     expect(events).toHaveLength(eventCountAfterInterrupt);
   });
 
+  test("emits an exact byte-sized coalesced assistant stream for UI benchmarks", async () => {
+    vi.useFakeTimers();
+    const client = new MockLoadTestAgentClient();
+    const session = await client.createSession({
+      provider: "mock",
+      cwd: process.cwd(),
+      model: "ten-second-stream",
+    });
+    const events: AgentStreamEvent[] = [];
+    const unsubscribe = session.subscribe((event) => events.push(event));
+
+    const resultPromise = session.run(
+      "emit 65536 byte coalesced assistant stream in 512 byte chunks every 1 ms",
+    );
+    await vi.advanceTimersByTimeAsync(128);
+    await resultPromise;
+    unsubscribe();
+
+    const assistantChunks = events.flatMap((event) =>
+      event.type === "timeline" && event.item.type === "assistant_message" ? [event.item.text] : [],
+    );
+    expect(assistantChunks).toHaveLength(128);
+    expect(assistantChunks.join("")).toBe("x".repeat(65_536));
+  });
+
+  test.each([
+    ["plain_unbroken", "x"],
+    ["prose_blocks", "Benchmark paragraph"],
+    ["open_typescript_fence", "```ts\n"],
+    ["closed_typescript_fences", "```ts\n"],
+    ["mixed_markdown", "## Benchmark section"],
+    ["link_table_dense", "| name | value |"],
+  ] as const)("emits an exact %s Markdown benchmark workload", async (workload, marker) => {
+    vi.useFakeTimers();
+    const client = new MockLoadTestAgentClient();
+    const session = await client.createSession({
+      provider: "mock",
+      cwd: process.cwd(),
+      model: "ten-second-stream",
+    });
+    const events: AgentStreamEvent[] = [];
+    const unsubscribe = session.subscribe((event) => events.push(event));
+
+    const resultPromise = session.run(
+      `emit 4096 byte markdown benchmark ${workload} in 512 byte chunks every 1 ms`,
+    );
+    await vi.advanceTimersByTimeAsync(8);
+    await resultPromise;
+    unsubscribe();
+
+    const assistantChunks = events.flatMap((event) =>
+      event.type === "timeline" && event.item.type === "assistant_message" ? [event.item.text] : [],
+    );
+    const payload = assistantChunks.join("");
+    expect(assistantChunks).toHaveLength(8);
+    expect(Buffer.byteLength(payload)).toBe(4096);
+    expect(payload).toContain(marker);
+    if (workload === "open_typescript_fence") {
+      expect(payload.match(/^```/gm)).toHaveLength(1);
+    }
+  });
+
+  test("emits production-calibrated desktop history and provider subagents", async () => {
+    vi.useFakeTimers();
+    const client = new MockLoadTestAgentClient();
+
+    const profileA1 = await client.createSession({
+      provider: "mock",
+      cwd: process.cwd(),
+      model: "ten-second-stream",
+    });
+    const a1Events: AgentStreamEvent[] = [];
+    const unsubscribeA1 = profileA1.subscribe((event) => a1Events.push(event));
+    const a1Result = profileA1.run("emit production calibrated desktop fixture profile A1");
+    await vi.advanceTimersByTimeAsync(0);
+    await a1Result;
+    unsubscribeA1();
+
+    const a1Timeline = a1Events.flatMap((event) => (event.type === "timeline" ? [event.item] : []));
+    expect(a1Timeline).toHaveLength(70);
+    expect(a1Timeline.filter((item) => item.type === "assistant_message")).toHaveLength(67);
+    expect(a1Timeline.filter((item) => item.type === "tool_call")).toHaveLength(2);
+    expect(JSON.stringify(a1Timeline)).toContain("desktop-production-a1-last");
+
+    const profileA2 = await client.createSession({
+      provider: "mock",
+      cwd: process.cwd(),
+      model: "ten-second-stream",
+    });
+    const a2Events: AgentStreamEvent[] = [];
+    const unsubscribeA2 = profileA2.subscribe((event) => a2Events.push(event));
+    const a2Result = profileA2.run("emit production calibrated desktop fixture profile A2");
+    await vi.advanceTimersByTimeAsync(0);
+    await a2Result;
+    unsubscribeA2();
+
+    const a2Timeline = a2Events.flatMap((event) => (event.type === "timeline" ? [event.item] : []));
+    expect(a2Timeline).toHaveLength(2_071);
+    expect(a2Timeline.filter((item) => item.type === "assistant_message")).toHaveLength(1_216);
+    expect(a2Timeline.filter((item) => item.type === "tool_call")).toHaveLength(854);
+
+    const providerEvents = a2Events.flatMap((event) =>
+      event.type === "provider_subagent" ? [event.event] : [],
+    );
+    const descriptors = providerEvents.filter((event) => event.type === "upsert");
+    const providerTimeline = providerEvents.filter((event) => event.type === "timeline");
+    expect(descriptors).toHaveLength(108);
+    expect(
+      descriptors.filter((event) => event.type === "upsert" && event.status === "running"),
+    ).toHaveLength(10);
+    expect(providerTimeline).toHaveLength(660);
+  });
+
   test("emits a terminal failure without an assistant provider message", async () => {
     vi.useFakeTimers();
     const client = new MockLoadTestAgentClient();

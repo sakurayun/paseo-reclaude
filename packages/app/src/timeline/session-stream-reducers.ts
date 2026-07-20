@@ -14,6 +14,20 @@ import {
 
 const AGENT_STREAM_REDUCER_FLUSH_DELAY_MS = 16 * 3;
 
+export interface AgentStreamReducerFlushProfileSample {
+  agentId: string;
+  eventCount: number;
+  assistantChunkCount: number;
+  assistantBytes: number;
+  maxContiguousAssistantRun: number;
+  reducerDurationMs: number;
+  completedAt: number;
+}
+
+declare global {
+  var __PASEO_AGENT_STREAM_FLUSH_PROFILE__: AgentStreamReducerFlushProfileSample[] | undefined;
+}
+
 // ---------------------------------------------------------------------------
 // Shared cursor type
 // ---------------------------------------------------------------------------
@@ -1365,6 +1379,123 @@ export function processAgentStreamEvent(
   };
 }
 
+type AssistantTimelineReducerEvent = AgentStreamReducerEvent & {
+  event: Extract<AgentStreamEventPayload, { type: "timeline" }> & {
+    item: Extract<
+      Extract<AgentStreamEventPayload, { type: "timeline" }>["item"],
+      { type: "assistant_message" }
+    >;
+  };
+  seq: number;
+  epoch: string;
+};
+
+function isAssistantTimelineReducerEvent(
+  reducerEvent: AgentStreamReducerEvent | undefined,
+): reducerEvent is AssistantTimelineReducerEvent {
+  return (
+    reducerEvent !== undefined &&
+    reducerEvent.event.type === "timeline" &&
+    reducerEvent.event.item.type === "assistant_message" &&
+    typeof reducerEvent.seq === "number" &&
+    typeof reducerEvent.epoch === "string"
+  );
+}
+
+function canCoalesceAssistantEvents(
+  previous: AssistantTimelineReducerEvent,
+  next: AgentStreamReducerEvent | undefined,
+): next is AssistantTimelineReducerEvent {
+  return (
+    isAssistantTimelineReducerEvent(next) &&
+    next.seq === previous.seq + 1 &&
+    next.epoch === previous.epoch &&
+    next.event.provider === previous.event.provider &&
+    next.event.item.messageId === previous.event.item.messageId
+  );
+}
+
+function collectContiguousAssistantEvents(
+  events: AgentStreamReducerEvent[],
+  startIndex: number,
+): AssistantTimelineReducerEvent[] {
+  const first = events[startIndex];
+  if (!isAssistantTimelineReducerEvent(first)) {
+    return [];
+  }
+
+  const run = [first];
+  let previous = first;
+  for (let index = startIndex + 1; index < events.length; index += 1) {
+    const next = events[index];
+    if (!canCoalesceAssistantEvents(previous, next)) {
+      break;
+    }
+    run.push(next);
+    previous = next;
+  }
+  return run;
+}
+
+function processCoalescedAssistantEvents(input: {
+  events: AssistantTimelineReducerEvent[];
+  currentTail: StreamItem[];
+  currentHead: StreamItem[];
+  currentCursor: TimelineCursor | undefined;
+}): ProcessAgentStreamEventOutput | null {
+  let cursor = input.currentCursor;
+  let cursorChanged = false;
+  let resetLiveTimeline = false;
+
+  for (const reducerEvent of input.events) {
+    const sequencing = processTimelineSequencingGate({
+      event: reducerEvent.event,
+      seq: reducerEvent.seq,
+      epoch: reducerEvent.epoch,
+      currentCursor: cursor,
+    });
+    if (!sequencing.shouldApplyStreamEvent || sequencing.sideEffects.length > 0) {
+      return null;
+    }
+    if (sequencing.cursorChanged) {
+      cursor = sequencing.nextTimelineCursor ?? undefined;
+      cursorChanged = true;
+    }
+    resetLiveTimeline = resetLiveTimeline || sequencing.resetLiveTimeline;
+  }
+
+  const first = input.events[0];
+  const last = input.events.at(-1);
+  if (!first || !last) {
+    return null;
+  }
+
+  const event: AgentStreamEventPayload = {
+    ...first.event,
+    item: {
+      ...first.event.item,
+      text: input.events.map((entry) => entry.event.item.text).join(""),
+    },
+  };
+  const applied = applyStreamEvent({
+    tail: resetLiveTimeline ? [] : input.currentTail,
+    head: resetLiveTimeline ? [] : input.currentHead,
+    event,
+    timestamp: last.timestamp,
+    source: "live",
+    timelineCursor: { epoch: last.epoch, seq: last.seq },
+  });
+
+  return {
+    ...applied,
+    cursor: cursor ?? null,
+    cursorChanged,
+    agent: null,
+    agentChanged: false,
+    sideEffects: [],
+  };
+}
+
 export function processAgentStreamEvents(
   input: ProcessAgentStreamEventsInput,
 ): ProcessAgentStreamEventOutput {
@@ -1379,33 +1510,57 @@ export function processAgentStreamEvents(
   let agentChanged = false;
   const sideEffects: AgentStreamReducerSideEffect[] = [];
 
-  for (const reducerEvent of input.events) {
-    const result = processAgentStreamEvent({
-      event: reducerEvent.event,
-      seq: reducerEvent.seq,
-      epoch: reducerEvent.epoch,
-      currentTail: tail,
-      currentHead: head,
-      currentCursor: cursor,
-      currentAgent: agent,
-      timestamp: reducerEvent.timestamp,
-    });
+  for (let index = 0; index < input.events.length; ) {
+    const reducerEvent = input.events[index];
+    if (!reducerEvent) {
+      break;
+    }
 
-    tail = result.tail;
-    head = result.head;
-    changedTail = changedTail || result.changedTail;
-    changedHead = changedHead || result.changedHead;
-    sideEffects.push(...result.sideEffects);
+    const coalescedEvents = collectContiguousAssistantEvents(input.events, index);
+    const previousReducerEvent = input.events[index - 1];
+    // Keep the first chunk on the existing path so new-message identity and
+    // whitespace semantics are established before continuations are batched.
+    const continuesCurrentRun =
+      isAssistantTimelineReducerEvent(previousReducerEvent) &&
+      canCoalesceAssistantEvents(previousReducerEvent, reducerEvent);
+    const result =
+      continuesCurrentRun && coalescedEvents.length > 1
+        ? processCoalescedAssistantEvents({
+            events: coalescedEvents,
+            currentTail: tail,
+            currentHead: head,
+            currentCursor: cursor,
+          })
+        : null;
+    const processed =
+      result ??
+      processAgentStreamEvent({
+        event: reducerEvent.event,
+        seq: reducerEvent.seq,
+        epoch: reducerEvent.epoch,
+        currentTail: tail,
+        currentHead: head,
+        currentCursor: cursor,
+        currentAgent: agent,
+        timestamp: reducerEvent.timestamp,
+      });
+    index += result ? coalescedEvents.length : 1;
 
-    if (result.cursorChanged) {
-      cursor = result.cursor ?? undefined;
+    tail = processed.tail;
+    head = processed.head;
+    changedTail = changedTail || processed.changedTail;
+    changedHead = changedHead || processed.changedHead;
+    sideEffects.push(...processed.sideEffects);
+
+    if (processed.cursorChanged) {
+      cursor = processed.cursor ?? undefined;
       cursorChanged = true;
     }
 
-    if (result.agentChanged) {
-      agentPatch = result.agent;
+    if (processed.agentChanged) {
+      agentPatch = processed.agent;
       agentChanged = true;
-      agent = applyAgentPatch(agent, result.agent);
+      agent = applyAgentPatch(agent, processed.agent);
     }
   }
 
@@ -1446,10 +1601,44 @@ export function createAgentStreamReducerQueue(
       cancelScheduledFlush();
     }
 
+    const flushProfile = globalThis.__PASEO_AGENT_STREAM_FLUSH_PROFILE__;
+    const reducerStartedAt = flushProfile ? performance.now() : 0;
     const result = processAgentStreamEvents({
       events,
       ...input.getSnapshot(agentId),
     });
+    if (flushProfile) {
+      let assistantChunkCount = 0;
+      let assistantBytes = 0;
+      let currentAssistantRun = 0;
+      let maxContiguousAssistantRun = 0;
+      let previousAssistantEvent: AssistantTimelineReducerEvent | undefined;
+      for (const event of events) {
+        if (!isAssistantTimelineReducerEvent(event)) {
+          previousAssistantEvent = undefined;
+          currentAssistantRun = 0;
+          continue;
+        }
+        assistantChunkCount += 1;
+        assistantBytes += event.event.item.text.length;
+        currentAssistantRun =
+          previousAssistantEvent && canCoalesceAssistantEvents(previousAssistantEvent, event)
+            ? currentAssistantRun + 1
+            : 1;
+        maxContiguousAssistantRun = Math.max(maxContiguousAssistantRun, currentAssistantRun);
+        previousAssistantEvent = event;
+      }
+      const completedAt = performance.now();
+      flushProfile.push({
+        agentId,
+        eventCount: events.length,
+        assistantChunkCount,
+        assistantBytes,
+        maxContiguousAssistantRun,
+        reducerDurationMs: completedAt - reducerStartedAt,
+        completedAt,
+      });
+    }
 
     input.commit(agentId, result, events);
     if (result.sideEffects.length > 0) {

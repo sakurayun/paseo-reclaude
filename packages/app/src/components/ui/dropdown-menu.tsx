@@ -347,9 +347,9 @@ export function DropdownMenuTrigger({
       collapsable={false}
       disabled={disabled}
       onPress={handlePress}
-      style={pressableStyle}
+      style={typeof style === "function" ? pressableStyle : style}
     >
-      {renderChildren}
+      {typeof children === "function" ? renderChildren : children}
     </Pressable>
   );
 }

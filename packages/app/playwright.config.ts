@@ -20,6 +20,9 @@ export default defineConfig({
   reporter: [["list"]],
   use: {
     baseURL,
+    ...(process.env.PASEO_DESKTOP_BENCHMARK === "1"
+      ? { launchOptions: { args: ["--enable-precise-memory-info"] } }
+      : {}),
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
     video: process.env.E2E_RECORD_VIDEO === "1" ? "on" : "retain-on-failure",

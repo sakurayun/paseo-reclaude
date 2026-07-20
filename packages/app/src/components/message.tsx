@@ -73,6 +73,7 @@ import { markdownNodeContainsType } from "@/utils/markdown-ast";
 import { useStableEvent } from "@/hooks/use-stable-event";
 import { MarkdownFenceBlock } from "@/components/markdown/markdown-fence-block";
 import { splitMarkdownBlocks } from "@/utils/split-markdown-blocks";
+import { selectMarkdownBlockWindow } from "@/utils/markdown-block-window";
 import { formatDuration, formatMessageTimestamp } from "@/utils/time";
 import { writeMarkdownToRichClipboard } from "@/utils/rich-clipboard";
 import { getDefaultMarkdownClipboardEnvironment } from "@/utils/rich-clipboard-default-environment";
@@ -90,6 +91,10 @@ import {
   parseImageDataUrl,
 } from "@/attachments/utils";
 import { getAgentAttachmentPillContent } from "@/attachments/attachment-pill-content";
+import {
+  USER_MESSAGE_CONTENT_DATA_SET,
+  USER_MESSAGE_TRAILING_ROW_DATA_SET,
+} from "@/components/message-interaction-styles";
 import { PlanCard } from "./plan-card";
 import { useToolCallSheet } from "./tool-call-sheet";
 import { ToolCallDetailsContent } from "./tool-call-details";
@@ -598,22 +603,18 @@ export const UserMessage = memo(function UserMessage({
 }: UserMessageProps) {
   const isCompact = useIsCompactFormFactor();
   const { t } = useTranslation();
-  const [isHovered, setIsHovered] = useState(false);
   const [lightboxMetadata, setLightboxMetadata] = useState<UserMessageImageAttachment | null>(null);
   const handleLightboxClose = useCallback(() => setLightboxMetadata(null), []);
   const resolvedDisableOuterSpacing = useDisableOuterSpacing(disableOuterSpacing);
   const hasText = message.trim().length > 0;
   const hasImages = images.length > 0;
   const hasAttachments = attachments.length > 0;
-  const showTrailingRow = hasText && (isCompact || isNative || isHovered);
   const formattedTimestamp = useMemo(
     () => formatMessageTimestamp(new Date(timestamp)),
     [timestamp],
   );
   const rewindMutation = useRewindAgentMutation({ serverId, agentId, client, messageId });
 
-  const handlePointerEnter = useCallback(() => setIsHovered(true), []);
-  const handlePointerLeave = useCallback(() => setIsHovered(false), []);
   const getMessageContent = useCallback(() => message, [message]);
   const handleRewind = useCallback(
     (input: { mode: RewindMode; rewoundText: string }) => {
@@ -652,21 +653,14 @@ export const UserMessage = memo(function UserMessage({
     [hasText],
   );
   const trailingRowStyle = useMemo(
-    () => [
-      userMessageStylesheet.trailingRow,
-      showTrailingRow
-        ? userMessageStylesheet.trailingRowVisible
-        : userMessageStylesheet.trailingRowHidden,
-    ],
-    [showTrailingRow],
+    () => [userMessageStylesheet.trailingRow, userMessageStylesheet.trailingRowVisible],
+    [],
   );
-
   return (
     <View style={containerStyle} testID="user-message">
       <View
         style={userMessageStylesheet.content}
-        onPointerEnter={handlePointerEnter}
-        onPointerLeave={handlePointerLeave}
+        dataSet={!isCompact && !isNative ? USER_MESSAGE_CONTENT_DATA_SET : undefined}
       >
         <View style={userMessageStylesheet.bubble}>
           {hasImages ? (
@@ -935,6 +929,45 @@ interface AssistantMessageProps {
   findHighlights?: MessageFindHighlight[];
 }
 
+interface MarkdownParseProfileSample {
+  sourceChars: number;
+  durationMs: number;
+  tokens: number;
+}
+
+declare global {
+  var __PASEO_MARKDOWN_PARSE_PROFILE__: MarkdownParseProfileSample[] | undefined;
+}
+
+function createAssistantMarkdownParser(): ReturnType<typeof MarkdownIt> {
+  const parser = MarkdownIt({ typographer: true, linkify: true });
+  const defaultValidateLink = parser.validateLink.bind(parser);
+  parser.validateLink = (url: string) => {
+    if (url.trim().toLowerCase().startsWith("file://")) {
+      return true;
+    }
+
+    return defaultValidateLink(url);
+  };
+
+  const defaultParse = parser.parse.bind(parser);
+  parser.parse = (source: string, env: unknown) => {
+    const profile = globalThis.__PASEO_MARKDOWN_PARSE_PROFILE__;
+    if (!profile) {
+      return defaultParse(source, env);
+    }
+    const startedAt = performance.now();
+    const tokens = defaultParse(source, env);
+    profile.push({
+      sourceChars: source.length,
+      durationMs: performance.now() - startedAt,
+      tokens: tokens.length,
+    });
+    return tokens;
+  };
+  return parser;
+}
+
 export const assistantMessageStylesheet = StyleSheet.create((theme) => ({
   container: {
     paddingVertical: theme.spacing[3],
@@ -945,6 +978,24 @@ export const assistantMessageStylesheet = StyleSheet.create((theme) => ({
   },
   containerCompactBottom: {
     paddingBottom: 0,
+  },
+  blockWindowButton: {
+    alignSelf: "center",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[1],
+    minHeight: 32,
+    paddingHorizontal: theme.spacing[3],
+    paddingVertical: theme.spacing[1],
+    borderRadius: theme.borderRadius.full,
+    backgroundColor: theme.colors.surface2,
+  },
+  blockWindowButtonText: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.sm,
+  },
+  blockWindowButtonIcon: {
+    color: theme.colors.foregroundMuted,
   },
   imageFrame: {
     width: "100%",
@@ -1852,18 +1903,9 @@ export const AssistantMessage = memo(function AssistantMessage({
   spacing = "default",
   findHighlights,
 }: AssistantMessageProps) {
-  const markdownParser = useMemo(() => {
-    const parser = MarkdownIt({ typographer: true, linkify: true });
-    const defaultValidateLink = parser.validateLink.bind(parser);
-    parser.validateLink = (url: string) => {
-      if (url.trim().toLowerCase().startsWith("file://")) {
-        return true;
-      }
-
-      return defaultValidateLink(url);
-    };
-    return parser;
-  }, []);
+  const { t } = useTranslation();
+  const [isFullyExpanded, setIsFullyExpanded] = useState(false);
+  const markdownParser = useMemo(createAssistantMarkdownParser, []);
 
   const fileLinkActions = useAssistantFileLinkActions();
   const handleMarkdownLinkPress = useStableEvent((url: string) => {

@@ -109,6 +109,10 @@ import {
 } from "@/utils/diff-rendering";
 import { isWeb, isNative } from "@/constants/platform";
 import {
+  DIFF_REVIEW_LINE_DATASET,
+  installInlineReviewInteractionStyles,
+} from "@/review/inline-review-interaction-styles";
+import {
   buildWorkspaceAttachmentScopeKey,
   useWorkspaceAttachmentsStore,
 } from "@/attachments/workspace-attachments-store";
@@ -224,7 +228,6 @@ const DIFF_LINE_HOVER_STYLE = isWeb ? ({ cursor: "auto" } as const) : null;
 function LongPressableLine({
   reviewTarget,
   reviewActions,
-  onHoverChange,
   hoverTargetKey,
   onHoverTargetChange,
   style,
@@ -232,7 +235,6 @@ function LongPressableLine({
 }: {
   reviewTarget: ReviewableDiffTarget | null | undefined;
   reviewActions: InlineReviewActions | undefined;
-  onHoverChange?: (hovered: boolean) => void;
   hoverTargetKey?: string | null;
   onHoverTargetChange?: (key: string | null) => void;
   style: StyleProp<ViewStyle>;
@@ -246,29 +248,36 @@ function LongPressableLine({
   }, [reviewTarget, onStartComment]);
 
   const handleHoverIn = useCallback(() => {
-    onHoverChange?.(true);
     if (hoverTargetKey) {
       onHoverTargetChange?.(hoverTargetKey);
     }
-  }, [hoverTargetKey, onHoverChange, onHoverTargetChange]);
+  }, [hoverTargetKey, onHoverTargetChange]);
   const handleHoverOut = useCallback(() => {
-    onHoverChange?.(false);
     if (hoverTargetKey) {
       onHoverTargetChange?.(null);
     }
-  }, [hoverTargetKey, onHoverChange, onHoverTargetChange]);
+  }, [hoverTargetKey, onHoverTargetChange]);
   const hoverStyle = useMemo(() => [style, DIFF_LINE_HOVER_STYLE], [style]);
 
-  if (isWeb && (onHoverChange || onHoverTargetChange)) {
+  if (isWeb && onHoverTargetChange) {
     return (
-      <Pressable onHoverIn={handleHoverIn} onHoverOut={handleHoverOut} style={hoverStyle}>
+      <Pressable
+        onHoverIn={handleHoverIn}
+        onHoverOut={handleHoverOut}
+        style={hoverStyle}
+        dataSet={DIFF_REVIEW_LINE_DATASET}
+      >
         {children}
       </Pressable>
     );
   }
 
   if (!isNative || !reviewTarget || !onStartComment) {
-    return <View style={style}>{children}</View>;
+    return (
+      <View style={style} dataSet={DIFF_REVIEW_LINE_DATASET}>
+        {children}
+      </View>
+    );
   }
   return (
     <Pressable onPress={handlePress} style={style}>
@@ -364,7 +373,6 @@ function DiffTextLine({
   textMetricsStyle,
   reviewTarget,
   reviewActions,
-  onHoverChange,
   hoverTargetKey,
   onHoverTargetChange,
   textTestID,
@@ -374,7 +382,6 @@ function DiffTextLine({
   textMetricsStyle: TextStyle;
   reviewTarget?: ReviewableDiffTarget | null;
   reviewActions?: InlineReviewActions;
-  onHoverChange?: (hovered: boolean) => void;
   hoverTargetKey?: string | null;
   onHoverTargetChange?: (key: string | null) => void;
   textTestID?: string;
@@ -404,7 +411,6 @@ function DiffTextLine({
     <LongPressableLine
       reviewTarget={reviewTarget}
       reviewActions={reviewActions}
-      onHoverChange={onHoverChange}
       hoverTargetKey={hoverTargetKey}
       onHoverTargetChange={onHoverTargetChange}
       style={containerStyle}
@@ -430,7 +436,6 @@ function SplitTextLine({
   wrapLines,
   textMetricsStyle,
   reviewActions,
-  onHoverChange,
   hoverTargetKey,
   onHoverTargetChange,
 }: {
@@ -438,7 +443,6 @@ function SplitTextLine({
   wrapLines: boolean;
   textMetricsStyle: TextStyle;
   reviewActions?: InlineReviewActions;
-  onHoverChange?: (hovered: boolean) => void;
   hoverTargetKey?: string | null;
   onHoverTargetChange?: (key: string | null) => void;
 }) {
@@ -467,7 +471,6 @@ function SplitTextLine({
     <LongPressableLine
       reviewTarget={line?.reviewTarget}
       reviewActions={reviewActions}
-      onHoverChange={onHoverChange}
       hoverTargetKey={hoverTargetKey}
       onHoverTargetChange={onHoverTargetChange}
       style={containerStyle}
@@ -502,7 +505,6 @@ function DiffLineView({
   reviewTarget?: ReviewableDiffTarget | null;
   reviewActions?: InlineReviewActions;
 }) {
-  const [isLineHovered, setIsLineHovered] = useState(false);
   const visibleTokens = hasVisibleDiffTokens(line.tokens) ? line.tokens : null;
   const rowMetricsStyle = useDiffRowMetricsStyle(textMetricsStyle);
 
@@ -528,7 +530,6 @@ function DiffLineView({
     <LongPressableLine
       reviewTarget={reviewTarget}
       reviewActions={reviewActions}
-      onHoverChange={setIsLineHovered}
       style={containerStyle}
     >
       <DiffGutterCell
@@ -538,7 +539,6 @@ function DiffLineView({
         textMetricsStyle={textMetricsStyle}
         reviewTarget={reviewTarget}
         reviewActions={reviewActions}
-        isLineHovered={isLineHovered}
         style={styles.lineNumberGutter}
       />
       {line.type !== "header" && visibleTokens ? (
@@ -567,7 +567,6 @@ function SplitDiffLine({
   textMetricsStyle: TextStyle;
   reviewActions?: InlineReviewActions;
 }) {
-  const [isLineHovered, setIsLineHovered] = useState(false);
   const visibleTokens = line && hasVisibleDiffTokens(line.tokens) ? line.tokens : null;
   const rowMetricsStyle = useDiffRowMetricsStyle(textMetricsStyle);
 
@@ -593,7 +592,6 @@ function SplitDiffLine({
     <LongPressableLine
       reviewTarget={line?.reviewTarget}
       reviewActions={reviewActions}
-      onHoverChange={setIsLineHovered}
       style={containerStyle}
     >
       <DiffGutterCell
@@ -603,7 +601,6 @@ function SplitDiffLine({
         textMetricsStyle={textMetricsStyle}
         reviewTarget={line?.reviewTarget}
         reviewActions={reviewActions}
-        isLineHovered={isLineHovered}
         style={styles.lineNumberGutter}
       />
       {visibleTokens ? (
@@ -1815,6 +1812,7 @@ interface SharedDiffViewProps {
 }
 
 export function SharedDiffView({ files, displayPreferences, mode }: SharedDiffViewProps) {
+  useEffect(() => installInlineReviewInteractionStyles(), []);
   const { layout, wrapLines, codeFontSize, monoFontFamily } = displayPreferences;
   const diffBodyLineHeight = Math.round(codeFontSize * 1.5);
   const typographyKey = [monoFontFamily, codeFontSize, diffBodyLineHeight].join(":");

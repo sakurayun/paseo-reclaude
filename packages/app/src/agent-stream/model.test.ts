@@ -25,6 +25,41 @@ function assistantMessage(id: string, seed: number): StreamItem {
 }
 
 describe("buildAgentStreamRenderModel", () => {
+  it("starts partial virtualization only after the 50-item desktop web threshold", () => {
+    const atThreshold: StreamItem[] = [];
+    for (let index = 0; index < 25; index += 1) {
+      const seed = index * 2;
+      atThreshold.push(userMessage(`threshold-u${index}`, seed + 1));
+      atThreshold.push(assistantMessage(`threshold-a${index}`, seed + 2));
+    }
+    const overThreshold = [
+      ...atThreshold,
+      userMessage("over-threshold-u", 51),
+      assistantMessage("over-threshold-a", 52),
+    ];
+
+    const atThresholdModel = buildAgentStreamRenderModel({
+      agentStatus: "idle",
+      tail: atThreshold,
+      head: [],
+      platform: "web",
+      isMobileBreakpoint: false,
+    });
+    const overThresholdModel = buildAgentStreamRenderModel({
+      agentStatus: "idle",
+      tail: overThreshold,
+      head: [],
+      platform: "web",
+      isMobileBreakpoint: false,
+    });
+
+    expect(atThresholdModel.segments.historyVirtualized).toHaveLength(0);
+    expect(atThresholdModel.segments.historyMounted).toBe(atThreshold);
+    expect(overThresholdModel.segments.historyVirtualized).toHaveLength(32);
+    expect(overThresholdModel.segments.historyMounted).toHaveLength(20);
+    expect(overThresholdModel.segments.historyMounted[0]?.kind).toBe("user_message");
+  });
+
   it("keeps head separate from committed history on desktop web", () => {
     const tail: StreamItem[] = [];
     for (let index = 0; index < 60; index += 1) {

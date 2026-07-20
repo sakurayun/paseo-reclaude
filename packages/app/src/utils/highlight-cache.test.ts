@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  clearHighlightCacheForTests,
   extensionFromPath,
+  getHighlightCacheStats,
+  HIGHLIGHT_CACHE_MAX_RETAINED_BYTES,
   highlightToKeyedLines,
   MAX_HIGHLIGHT_CHARS,
   tokenizeToLines,
@@ -49,6 +52,22 @@ describe("tokenizeToLines", () => {
     const first = tokenizeToLines("const cached = true;", "ts");
     const second = tokenizeToLines("const cached = true;", "ts");
     expect(first).toBe(second);
+  });
+
+  it("evicts token trees before retained cache weight exceeds the byte budget", () => {
+    clearHighlightCacheForTests();
+    for (let index = 0; index < 80; index += 1) {
+      const code = Array.from(
+        { length: 120 },
+        (_, line) => `const value_${index}_${line} = source.map((item) => item.id);`,
+      ).join("\n");
+      tokenizeToLines(code, "ts");
+    }
+
+    const stats = getHighlightCacheStats();
+    expect(stats.estimatedRetainedBytes).toBeLessThanOrEqual(HIGHLIGHT_CACHE_MAX_RETAINED_BYTES);
+    expect(stats.evictions).toBeGreaterThan(0);
+    expect(stats.entries).toBeLessThan(80);
   });
 });
 

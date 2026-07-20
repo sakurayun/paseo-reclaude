@@ -1030,6 +1030,7 @@ function RootAppTree() {
 }
 
 export default function RootLayout() {
+  useEffect(() => installWebButtonInteractionStyles(), []);
   useEffect(() => installWebScrollbarStyles(), []);
   useEffect(() => {
     const subscription = AppState.addEventListener("change", (nextState) => {

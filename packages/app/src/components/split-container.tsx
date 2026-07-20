@@ -6,9 +6,7 @@ import {
   useMemo,
   useRef,
   useState,
-  type Dispatch,
   type ReactNode,
-  type SetStateAction,
 } from "react";
 import { useStableEvent } from "@/hooks/use-stable-event";
 import {
@@ -54,7 +52,11 @@ import {
   deriveWorkspacePaneState,
   getWorkspacePaneDescriptors,
 } from "@/screens/workspace/workspace-pane-state";
-import { useMountedTabSet } from "@/screens/workspace/use-mounted-tab-set";
+import {
+  deriveMountableWorkspaceTabIds,
+  shouldRetainInactiveAgentTimelines,
+  useMountedTabSet,
+} from "@/screens/workspace/use-mounted-tab-set";
 import {
   WorkspacePaneContent,
   type WorkspacePaneContentModel,
@@ -89,8 +91,6 @@ interface SplitContainerProps {
   normalizedWorkspaceId: string;
   isWorkspaceFocused: boolean;
   uiTabs: WorkspaceTab[];
-  hoveredCloseTabKey: string | null;
-  setHoveredCloseTabKey: Dispatch<SetStateAction<string | null>>;
   closingTabIds: Set<string>;
   onNavigateTab: (tabId: string) => void;
   onCloseTab: (tabId: string) => Promise<void> | void;
@@ -377,8 +377,6 @@ export function SplitContainer({
   normalizedWorkspaceId,
   isWorkspaceFocused,
   uiTabs,
-  hoveredCloseTabKey,
-  setHoveredCloseTabKey,
   closingTabIds,
   onNavigateTab,
   onCloseTab,
@@ -608,8 +606,6 @@ export function SplitContainer({
           normalizedServerId={normalizedServerId}
           normalizedWorkspaceId={normalizedWorkspaceId}
           isWorkspaceFocused={isWorkspaceFocused}
-          hoveredCloseTabKey={hoveredCloseTabKey}
-          setHoveredCloseTabKey={setHoveredCloseTabKey}
           closingTabIds={closingTabIds}
           onNavigateTab={onNavigateTab}
           onCloseTab={onCloseTab}
@@ -744,8 +740,6 @@ function SplitNodeView({
   normalizedServerId,
   normalizedWorkspaceId,
   isWorkspaceFocused,
-  hoveredCloseTabKey,
-  setHoveredCloseTabKey,
   closingTabIds,
   onNavigateTab,
   onCloseTab,
@@ -804,8 +798,6 @@ function SplitNodeView({
           normalizedServerId={normalizedServerId}
           normalizedWorkspaceId={normalizedWorkspaceId}
           isWorkspaceFocused={isWorkspaceFocused}
-          hoveredCloseTabKey={hoveredCloseTabKey}
-          setHoveredCloseTabKey={setHoveredCloseTabKey}
           closingTabIds={closingTabIds}
           onNavigateTab={onNavigateTab}
           onCloseTab={onCloseTab}
@@ -856,8 +848,6 @@ function SplitNodeView({
               normalizedServerId={normalizedServerId}
               normalizedWorkspaceId={normalizedWorkspaceId}
               isWorkspaceFocused={isWorkspaceFocused}
-              hoveredCloseTabKey={hoveredCloseTabKey}
-              setHoveredCloseTabKey={setHoveredCloseTabKey}
               closingTabIds={closingTabIds}
               onNavigateTab={onNavigateTab}
               onCloseTab={onCloseTab}
@@ -914,8 +904,6 @@ function SplitPaneView({
   normalizedServerId,
   normalizedWorkspaceId,
   isWorkspaceFocused,
-  hoveredCloseTabKey,
-  setHoveredCloseTabKey,
   closingTabIds,
   onNavigateTab,
   onCloseTab,
@@ -962,9 +950,19 @@ function SplitPaneView({
   const paneTabIds = useMemo(() => paneTabs.map((tab) => tab.tabId), [paneTabs]);
   const tabDescriptorMap = useStableTabDescriptorMap(paneTabs);
   const activeTabDescriptor = paneState.activeTab?.descriptor ?? null;
+  const mountablePaneTabIds = useMemo(
+    () =>
+      deriveMountableWorkspaceTabIds({
+        activeTabId: activeTabDescriptor?.tabId ?? null,
+        isWorkspaceFocused,
+        retainInactiveTimelineTabs: isNative || shouldRetainInactiveAgentTimelines(),
+        tabs: paneTabs,
+      }),
+    [activeTabDescriptor?.tabId, isWorkspaceFocused, paneTabs],
+  );
   const { mountedTabIds } = useMountedTabSet({
     activeTabId: activeTabDescriptor?.tabId ?? null,
-    allTabIds: paneTabIds,
+    allTabIds: mountablePaneTabIds,
     cap: 3,
   });
   const mountedPaneTabIds = useMemo(
@@ -1017,7 +1015,6 @@ function SplitPaneView({
         kind: "tab",
         tab,
         isActive: tab.key === activeTabDescriptor?.key,
-        isCloseHovered: hoveredCloseTabKey === tab.key,
         isClosingTab: closingTabIds.has(tab.tabId),
         groupId: segment.groupId,
         groupRole: segment.role,
@@ -1135,7 +1132,6 @@ function SplitPaneView({
             tabs={desktopTabRowItems}
             normalizedServerId={normalizedServerId}
             normalizedWorkspaceId={normalizedWorkspaceId}
-            setHoveredCloseTabKey={setHoveredCloseTabKey}
             onNavigateTab={onNavigateTab}
             onCloseTab={onCloseTab}
             onToggleGroupCollapsed={handleToggleGroupCollapsed}
