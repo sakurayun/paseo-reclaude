@@ -122,9 +122,12 @@ The flag must be present for both prebuild and Gradle because Gradle starts Metr
 
 Keep the excluded npm packages installed. Normal builds use them, while the F-Droid profile removes only their Android native modules and config plugins. Paseo always applies `expo-gradle-jvmargs` with `-Xmx4096m` and `-XX:MaxMetaspaceSize=1024m` so local Expo prebuilds have enough Gradle heap whether they use precompiled AARs or source-built Expo modules.
 
-Release builds compile the native ABIs and run Hermes bundling in the same Gradle invocation; a small EAS worker can exhaust its remaining memory and kill Hermes with exit code 137 even when Gradle's own heap is correctly sized. Prefer the free-tier default resource class on this fork (`eas.json` does not set `resourceClass: "large"` — that requires an Expo Production/Enterprise/On-Demand plan). To keep peak memory down without a paid worker:
+Release builds compile native ABIs and run Hermes bundling in the same Gradle invocation; a free-tier EAS worker can OOM-kill Hermes with exit code 137. This fork's `production-apk` profile is tuned for free-tier accounts (no `resourceClass: "large"`, which needs Expo Production/Enterprise/On-Demand):
 
-`packages/app/app.config.js` sets `expo-build-properties` `android.buildArchs` to device ABIs only (`armeabi-v7a`, `arm64-v8a`). That drops emulator-only `x86` / `x86_64` from Gradle's `reactNativeArchitectures`, so release APKs spend less peak memory and wall time. Local x86 emulators will not run these binaries; use an arm64 AVD (or a physical device) instead.
+- `PASEO_EAS_APK_LOW_MEM=1` → Gradle heap `-Xmx2048m` (leave RAM for `hermesc`) and `buildArchs: ["arm64-v8a"]` only
+- `gradleCommand` uses `--no-daemon --max-workers=1 -Dorg.gradle.parallel=false` so native compile and the JS/Hermes step do not pile up
+
+Other Android builds keep `armeabi-v7a` + `arm64-v8a` and the larger Gradle heap. The free-tier APK will not run on 32-bit-only phones or x86 emulators.
 
 ### React version lockstep
 

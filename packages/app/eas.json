@@ -25,9 +25,13 @@
     "production-apk": {
       "extends": "production",
       "distribution": "internal",
+      "env": {
+        "APP_VARIANT": "production",
+        "PASEO_EAS_APK_LOW_MEM": "1"
+      },
       "android": {
         "buildType": "apk",
-        "gradleCommand": ":app:assembleRelease -x lint -x lintVitalAnalyzeRelease -x lintVitalRelease -x generateReleaseLintModel -x generateReleaseLintVitalModel"
+        "gradleCommand": ":app:assembleRelease -x lint -x lintVitalAnalyzeRelease -x lintVitalRelease -x generateReleaseLintModel -x generateReleaseLintVitalModel --no-daemon --max-workers=1 -Dorg.gradle.parallel=false -Dorg.gradle.workers.max=1"
       }
     }
   },

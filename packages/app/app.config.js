@@ -4,6 +4,9 @@ const pkg = require("./package.json");
 const withFdroidAutolinking = require("./plugins/with-fdroid-autolinking");
 const appVariant = process.env.APP_VARIANT ?? "production";
 const isFdroidBuild = process.env.PASEO_FDROID_BUILD === "1";
+// Free-tier EAS APK workers OOM hermesc (exit 137) when Gradle holds a large heap
+// while native ABIs + Metro/Hermes run. Lower heap + arm64-only for that path.
+const isLowMemApkBuild = process.env.PASEO_EAS_APK_LOW_MEM === "1";
 
 const buildProfile = isFdroidBuild
   ? {
@@ -193,10 +196,16 @@ module.exports = {
       "expo-audio",
       [
         "expo-gradle-jvmargs",
-        {
-          xmx: "4096m",
-          maxMetaspace: "1024m",
-        },
+        isLowMemApkBuild
+          ? {
+              // Leave RAM for hermesc on free-tier EAS (Gradle heap is not hermesc).
+              xmx: "2048m",
+              maxMetaspace: "512m",
+            }
+          : {
+              xmx: "4096m",
+              maxMetaspace: "1024m",
+            },
       ],
       [
         "expo-build-properties",
@@ -204,9 +213,9 @@ module.exports = {
           android: {
             minSdkVersion: 29,
             kotlinVersion: "2.1.20",
-            // Device ABIs only — skip x86/x86_64 to cut release build memory and time.
-            // (Hermes + four ABIs has OOM-killed EAS workers with hermesc exit 137.)
-            buildArchs: ["armeabi-v7a", "arm64-v8a"],
+            // Free-tier APK: arm64 only. Local/other builds keep 32-bit arm too.
+            // (Hermes + multi-ABI native work OOM-kills hermesc with exit 137.)
+            buildArchs: isLowMemApkBuild ? ["arm64-v8a"] : ["armeabi-v7a", "arm64-v8a"],
             // Allow HTTP connections for local network hosts in release builds
             usesCleartextTraffic: true,
           },
