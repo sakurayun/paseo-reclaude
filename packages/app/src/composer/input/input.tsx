@@ -25,7 +25,6 @@ import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
 import { ICON_SIZE, type Theme } from "@/styles/theme";
 import { ArrowUp, Mic, MicOff, CornerDownLeft, Plus, Square } from "lucide-react-native";
-import Animated, { useSharedValue, useAnimatedStyle, withTiming } from "react-native-reanimated";
 import { useDictation } from "@/hooks/use-dictation";
 import { DictationOverlay } from "@/components/dictation-controls";
 import { RealtimeVoiceOverlay } from "@/components/realtime-voice-overlay";
@@ -69,6 +68,7 @@ import {
 } from "./labels";
 import {
   computeCanStartDictation,
+  resolveComposerSurfacePresentation,
   runAlternateSendAction,
   runDefaultSendAction,
   stopRealtimeVoice,
@@ -1281,9 +1281,8 @@ function extractErrorMessage(error: unknown): string | null {
 function useInputWrapperChrome(input: {
   isUltracodeActive: boolean;
   inputWrapperStyle: import("react-native").ViewStyle | undefined;
-  inputAnimatedStyle: ReturnType<typeof useAnimatedStyle>;
 }) {
-  const { isUltracodeActive, inputWrapperStyle, inputAnimatedStyle } = input;
+  const { isUltracodeActive, inputWrapperStyle } = input;
   useEffect(() => {
     if (isUltracodeActive) {
       ensureUltracodeGlowStyle();
@@ -1294,9 +1293,8 @@ function useInputWrapperChrome(input: {
       styles.inputWrapper,
       isUltracodeActive ? styles.inputWrapperUltracodeGlow : styles.inputWrapperShadow,
       inputWrapperStyle,
-      inputAnimatedStyle,
     ],
-    [inputWrapperStyle, inputAnimatedStyle, isUltracodeActive],
+    [inputWrapperStyle, isUltracodeActive],
   );
   return { style, dataSet: isUltracodeActive ? ULTRACODE_GLOW_DATASET : undefined };
 }
@@ -1391,7 +1389,6 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       getNativeElement: () => (isWeb ? getTextInputNativeElement(textInputRef.current) : null),
     }));
     const inputHeightRef = useRef(MIN_INPUT_HEIGHT);
-    const overlayTransition = useSharedValue(0);
     const sendAfterTranscriptRef = useRef(false);
     const valueRef = useRef(value);
     const serverInfo = useSessionStore(
@@ -1508,6 +1505,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
     );
     const showRealtimeOverlay = isRealtimeVoiceForCurrentAgent;
     const showOverlay = showDictationOverlay || showRealtimeOverlay;
+    const surfacePresentation = resolveComposerSurfacePresentation(showOverlay);
 
     useEffect(() => {
       if (isDictating || isDictationProcessing) {
@@ -1527,22 +1525,6 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
         }),
       [canStartDictation, dictationUnavailableMessage, startDictation, toast],
     );
-
-    // Animate overlay
-    useEffect(() => {
-      overlayTransition.value = withTiming(showOverlay ? 1 : 0, {
-        duration: 200,
-      });
-    }, [overlayTransition, showOverlay]);
-
-    const overlayAnimatedStyle = useAnimatedStyle(() => ({
-      opacity: overlayTransition.value,
-      pointerEvents: overlayTransition.value > 0.5 ? "auto" : "none",
-    }));
-
-    const inputAnimatedStyle = useAnimatedStyle(() => ({
-      opacity: 1 - overlayTransition.value,
-    }));
 
     const handleVoicePress = useCallback(
       () =>
@@ -1863,7 +1845,6 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
     const inputWrapperChrome = useInputWrapperChrome({
       isUltracodeActive,
       inputWrapperStyle,
-      inputAnimatedStyle,
     });
     const textInputStyle = useMemo(
       () => [styles.textInput, computeTextInputHeightStyle(inputHeight, maxInputHeight)],
@@ -1874,8 +1855,8 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       [isSendButtonDisabled],
     );
     const overlayContainerStyle = useMemo(
-      () => [styles.overlayContainer, overlayAnimatedStyle],
-      [overlayAnimatedStyle],
+      () => [styles.overlayContainer, { opacity: surfacePresentation.overlay.opacity }],
+      [surfacePresentation.overlay.opacity],
     );
 
     const renderAttachButtonIcon = useCallback(
@@ -1904,10 +1885,11 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
     return (
       <View ref={rootRef} style={styles.container} testID="message-input-root">
         {/* Regular input */}
-        <Animated.View
+        <View
           ref={inputWrapperRef}
-          style={inputWrapperChrome.style}
+          style={[inputWrapperChrome.style, { opacity: surfacePresentation.input.opacity }]}
           dataSet={inputWrapperChrome.dataSet}
+          pointerEvents={surfacePresentation.input.pointerEvents}
         >
           <GlassSurfaceBackdrop style={styles.inputBackdrop} />
           {attachmentSlot}
@@ -1996,9 +1978,12 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
             leftContent={leftContent}
             secondaryContent={secondaryContent}
           />
-        </Animated.View>
+        </View>
 
-        <Animated.View style={overlayContainerStyle}>
+        <View
+          style={overlayContainerStyle}
+          pointerEvents={surfacePresentation.overlay.pointerEvents}
+        >
           <MessageInputOverlay
             showDictationOverlay={showDictationOverlay}
             showRealtimeOverlay={showRealtimeOverlay}
@@ -2016,7 +2001,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
             onDiscardFailedRecording={handleDiscardFailedRecording}
             onRealtimeVoiceStop={handleRealtimeVoiceStop}
           />
-        </Animated.View>
+        </View>
       </View>
     );
   },

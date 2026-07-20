@@ -94,7 +94,10 @@ import {
 } from "./diagnostic-utils.js";
 import { appendOrReplaceGrowingAssistantMessage, runProviderTurn } from "./provider-runner.js";
 import { resolvePaseoHome } from "../../paseo-home.js";
-import { SETTING_APPLIES_NEXT_TURN_NOTICE } from "../provider-notices.js";
+import {
+  MODE_APPLIES_NEXT_TURN_NOTICE,
+  THINKING_APPLIES_NEXT_TURN_NOTICE,
+} from "../provider-notices.js";
 import type { WorkspaceGitService } from "../../workspace-git-service.js";
 
 function assertChildWithPipes(
@@ -3882,7 +3885,7 @@ export class CodexAppServerAgentSession implements AgentSession {
     rootRoutes: readonly PersistedSubAgentRoute[],
   ): Promise<void> {
     const queue = rootRoutes.map((route) => ({ route, parentCallId: null as string | null }));
-    const visitedThreadIds = new Set<string>();
+    const visitedThreadIds = new Set(this.currentThreadId ? [this.currentThreadId] : []);
     while (queue.length > 0 && visitedThreadIds.size < 100) {
       const next = queue.shift();
       if (!next || visitedThreadIds.has(next.route.childThreadId)) {
@@ -4334,7 +4337,7 @@ export class CodexAppServerAgentSession implements AgentSession {
     this.currentMode = modeId;
     this.cachedRuntimeInfo = null;
     if (this.activeForegroundTurnId) {
-      return SETTING_APPLIES_NEXT_TURN_NOTICE;
+      return MODE_APPLIES_NEXT_TURN_NOTICE;
     }
   }
 
@@ -4358,7 +4361,7 @@ export class CodexAppServerAgentSession implements AgentSession {
     this.refreshResolvedCollaborationMode();
     this.cachedRuntimeInfo = null;
     if (this.activeForegroundTurnId) {
-      return SETTING_APPLIES_NEXT_TURN_NOTICE;
+      return THINKING_APPLIES_NEXT_TURN_NOTICE;
     }
   }
 
@@ -5226,7 +5229,7 @@ export class CodexAppServerAgentSession implements AgentSession {
         : null;
     const childThreadIds = Array.from(
       new Set(agentThreadId ? [...receiverThreadIds, agentThreadId] : receiverThreadIds),
-    );
+    ).filter((threadId) => threadId !== this.currentThreadId);
     for (const receiverThreadId of childThreadIds) {
       this.subAgentCallIdByChildThreadId.set(receiverThreadId, timelineItem.callId);
       state.childThreadIds.add(receiverThreadId);
@@ -6790,8 +6793,21 @@ export class CodexAppServerAgentClient implements AgentClient {
   }
 
   async fetchCatalog(_options: FetchCatalogOptions): Promise<ProviderCatalog> {
-    const models = await this.fetchModelsFromAppServer();
-    return { models, modes: CODEX_MODES };
+    const [models, autoReviewEnabled] = await Promise.all([
+      this.fetchModelsFromAppServer(),
+      this.resolveAutoReviewEnabled(),
+    ]);
+    return {
+      models,
+      defaultModeId: autoReviewEnabled ? "auto-review" : DEFAULT_CODEX_MODE_ID,
+      modes: autoReviewEnabled
+        ? CODEX_MODES
+        : CODEX_MODES.filter((mode) => mode.id !== "auto-review"),
+    };
+  }
+
+  async resolveDefaultModeId(): Promise<string> {
+    return (await this.resolveAutoReviewEnabled()) ? "auto-review" : DEFAULT_CODEX_MODE_ID;
   }
 
   private async fetchModelsFromAppServer(): Promise<AgentModelDefinition[]> {

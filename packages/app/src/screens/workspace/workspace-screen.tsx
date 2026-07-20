@@ -2,6 +2,7 @@ import {
   memo,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -2142,7 +2143,7 @@ function WorkspaceScreenContent({
       }),
     [isFocusModeEnabled, isMobile, isRouteFocused, uiTabs, workspaceLayout],
   );
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!persistenceKey || !viewedTimelineSync) {
       return;
     }
@@ -3665,7 +3666,7 @@ function WorkspaceScreenContent({
     [t],
   );
 
-  const containerStyle = containerWithWorkspaceBackgroundStyle;
+  const containerStyle = [styles.container, styles.containerWorkspaceBackground];
 
   const menuNewAgentIcon = MENU_NEW_AGENT_ICON;
   const menuNewTerminalIcon = MENU_NEW_TERMINAL_ICON;
@@ -4479,10 +4480,5 @@ const styles = StyleSheet.create((theme) => ({
     textAlign: "center",
   },
 }));
-
-const containerWithWorkspaceBackgroundStyle = [
-  styles.container,
-  styles.containerWorkspaceBackground,
-];
 
 const EXPLORER_TOGGLE_KEYS: ShortcutKey[] = ["mod", "E"];

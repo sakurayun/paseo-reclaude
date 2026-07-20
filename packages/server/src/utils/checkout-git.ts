@@ -7,7 +7,7 @@ import type { Logger } from "pino";
 import type { ParsedDiffFile } from "../server/utils/diff-highlighter.js";
 import { parseAndHighlightDiff } from "../server/utils/diff-highlighter.js";
 import { parseGitHubRepoFromRemote } from "../server/workspace-git-metadata.js";
-import { GitHubCommandError, createGitHubService } from "../services/github-service.js";
+import { createGitHubService } from "../services/github-service.js";
 import type {
   CurrentPullRequestStatus,
   ForgeAuthState,
@@ -15,7 +15,11 @@ import type {
   ForgeSpecificStatusFacts,
   PullRequestMergeable,
 } from "../services/forge-service.js";
-import { ForgeAuthenticationError, ForgeCliMissingError } from "../services/forge-cli-command.js";
+import {
+  ForgeAuthenticationError,
+  ForgeCliMissingError,
+  ForgeCommandError,
+} from "../services/forge-cli-command.js";
 import { parseGitRevParsePath, resolveGitRevParsePath } from "./git-rev-parse-path.js";
 import { runGitCommand } from "./run-git-command.js";
 import { isPaseoOwnedWorktreeCwd, resolvePaseoWorktreesBaseRoot } from "./worktree.js";
@@ -68,6 +72,7 @@ interface CheckoutReadCacheOptions {
 
 interface PullRequestStatusLookupTarget {
   headRef: string;
+  headSha?: string;
   headRepositoryOwner?: string;
 }
 
@@ -117,8 +122,8 @@ function createShortstatCache(ttlMs: number) {
   });
 }
 
-function getPullRequestStatusCacheKey(cwd: string): string {
-  return resolve(cwd);
+function getPullRequestStatusCacheKey(cwd: string, headSha: string | null): string {
+  return `${resolve(cwd)}\u0000${headSha ?? ""}`;
 }
 
 function rememberPullRequestStatus(cacheKey: string, status: PullRequestStatusResult): void {
@@ -785,7 +790,7 @@ export interface MergeFromBaseOptions {
 export interface CheckoutContext {
   paseoHome?: string;
   worktreesRoot?: string;
-  logger?: Pick<Logger, "trace">;
+  logger?: Pick<Logger, "trace" | "warn">;
   facts?: CheckoutSnapshotFacts | null;
 }
 
@@ -810,13 +815,6 @@ export type CheckoutSnapshotFacts =
       pullRequestLookupTarget: PullRequestStatusLookupTarget | null;
     };
 
-function isNotGitRepositoryError(error: unknown): boolean {
-  if (!(error instanceof Error)) {
-    return false;
-  }
-  return /not a git repository \(or any of the parent directories\): \.git/i.test(error.message);
-}
-
 async function requireGitRepo(cwd: string): Promise<void> {
   try {
     await runGitCommand(["rev-parse", "--git-dir"], { cwd, envOverlay: READ_ONLY_GIT_ENV });
@@ -839,6 +837,38 @@ export async function getCurrentBranch(cwd: string): Promise<string | null> {
   } catch {
     return null;
   }
+}
+
+async function getCurrentHeadSha(cwd: string, context?: CheckoutContext): Promise<string | null> {
+  const knownSha = context?.facts?.isGit
+    ? context.facts.pullRequestLookupTarget?.headSha
+    : undefined;
+  if (knownSha) {
+    return knownSha;
+  }
+  try {
+    const { stdout } = await runGitCommand(["rev-parse", "HEAD"], {
+      cwd,
+      envOverlay: READ_ONLY_GIT_ENV,
+      logger: context?.logger,
+    });
+    const sha = stdout.trim();
+    return sha.length > 0 ? sha : null;
+  } catch {
+    return null;
+  }
+}
+
+async function addHeadShaToPullRequestLookupTarget(
+  cwd: string,
+  target: PullRequestStatusLookupTarget | null,
+  context?: CheckoutContext,
+): Promise<PullRequestStatusLookupTarget | null> {
+  if (!target) {
+    return null;
+  }
+  const headSha = await getCurrentHeadSha(cwd, context);
+  return headSha ? { ...target, headSha } : target;
 }
 
 async function getRebaseHeadBranch(cwd: string): Promise<string | null> {
@@ -872,10 +902,12 @@ async function getWorktreeRoot(cwd: string, context?: CheckoutContext): Promise<
     });
     return parseGitRevParsePath(stdout);
   } catch (error) {
-    if (isNotGitRepositoryError(error)) {
-      return null;
-    }
-    throw error;
+    // Git discovery is fail-open: keep the directory usable as non-Git and retain the diagnostic.
+    context?.logger?.warn(
+      { err: error, cwd },
+      "Git worktree discovery failed; treating directory as non-Git",
+    );
+    return null;
   }
 }
 
@@ -1040,7 +1072,7 @@ async function getPaseoWorktreeForCwd(
 
   return {
     isPaseoOwnedWorktree: true,
-    worktreeRoot: knownWorktreeRoot ?? (await getWorktreeRoot(cwd)) ?? cwd,
+    worktreeRoot: knownWorktreeRoot ?? (await getWorktreeRoot(cwd, context)) ?? cwd,
   };
 }
 
@@ -1771,6 +1803,11 @@ export async function getCheckoutSnapshotFacts(
         context,
       )) ?? pullRequestLookupTarget;
   }
+  pullRequestLookupTarget = await addHeadShaToPullRequestLookupTarget(
+    cwd,
+    pullRequestLookupTarget,
+    context,
+  );
 
   return {
     isGit: true,
@@ -3161,7 +3198,7 @@ export async function mergeToBase(
   }
   let normalizedBaseRef = baseRef;
   normalizedBaseRef = normalizeLocalBranchRefName(normalizedBaseRef);
-  const currentWorktreeRoot = (await getWorktreeRoot(cwd)) ?? cwd;
+  const currentWorktreeRoot = (await getWorktreeRoot(cwd, context)) ?? cwd;
   if (normalizedBaseRef === currentBranch) {
     return currentWorktreeRoot;
   }
@@ -3596,7 +3633,8 @@ export async function getPullRequestStatus(
   options?: CheckoutReadCacheOptions,
   context?: CheckoutContext,
 ): Promise<PullRequestStatusResult> {
-  const cacheKey = getPullRequestStatusCacheKey(cwd);
+  const headSha = await getCurrentHeadSha(cwd, context);
+  const cacheKey = getPullRequestStatusCacheKey(cwd, headSha);
   if (!options?.force) {
     const cached = pullRequestStatusCache.get(cacheKey);
     if (cached) {
@@ -3609,14 +3647,14 @@ export async function getPullRequestStatus(
     }
   }
 
-  const lookup = getPullRequestStatusUncached(cwd, forgeService, options, context)
+  const lookup = getPullRequestStatusUncached(cwd, forgeService, options, context, headSha)
     .then((status) => {
       pullRequestStatusCache.set(cacheKey, status);
       rememberPullRequestStatus(cacheKey, status);
       return status;
     })
     .catch((error) => {
-      if (!options?.force && error instanceof GitHubCommandError) {
+      if (!options?.force && error instanceof ForgeCommandError) {
         const stale = lastSuccessfulPullRequestStatus.get(cacheKey);
         if (stale) {
           return stale;
@@ -3637,6 +3675,7 @@ async function getPullRequestStatusUncached(
   forgeService: ForgeService,
   options?: CheckoutReadCacheOptions,
   context?: CheckoutContext,
+  headSha?: string | null,
 ): Promise<PullRequestStatusResult> {
   if (context?.facts?.isGit === false) {
     return buildPullRequestStatusResult(null, "no_remote");
@@ -3649,7 +3688,11 @@ async function getPullRequestStatusUncached(
     return buildPullRequestStatusResult(null, "no_remote");
   }
   try {
-    const lookupTarget = await resolvePullRequestStatusLookupTarget(cwd, head, context);
+    const resolvedLookupTarget = await resolvePullRequestStatusLookupTarget(cwd, head, context);
+    const lookupTarget =
+      headSha && !resolvedLookupTarget.headSha
+        ? { ...resolvedLookupTarget, headSha }
+        : resolvedLookupTarget;
     let status: CurrentPullRequestStatus | null;
     if (options?.force) {
       const reason = options.reason;

@@ -57,6 +57,7 @@ import { claudeQuery, type ClaudeOptions, type ClaudeQueryFactory } from "./quer
 import { realClaudeRewindSdk, revertClaudeConversation, revertClaudeFiles } from "./rewind.js";
 import { normalizeProviderReplayTimestamp } from "../../provider-history-timestamps.js";
 import { claudeProjectDirSync } from "./project-dir.js";
+import { THINKING_APPLIES_NEXT_TURN_NOTICE } from "../../provider-notices.js";
 import {
   isProviderImageMarkdown,
   materializeProviderImage,
@@ -67,6 +68,7 @@ import {
 import {
   getAgentStreamEventTurnId,
   type AgentPermissionAction,
+  type AgentProviderNotice,
   type AgentCapabilityFlags,
   type AgentClient,
   type AgentConfigurationUpdateResult,
@@ -99,6 +101,7 @@ import {
   type ProviderCatalog,
   type ResolveAgentCreateConfigInput,
   type ResolveAgentCreateConfigResult,
+  type ResolveAgentDefaultModeInput,
 } from "../../agent-sdk-types.js";
 import { resolveDefaultAgentCreateConfig } from "../../create-agent-mode.js";
 import { importSessionFromPersistence } from "../../provider-session-import.js";
@@ -1526,18 +1529,37 @@ export class ClaudeAgentClient implements AgentClient {
   async fetchCatalog(_options: FetchCatalogOptions): Promise<ProviderCatalog> {
     // Claude exposes a global catalog here; cwd/force are intentionally irrelevant.
     const staticModels = await getClaudeModelsWithSettings(this.logger, this.configDir);
+    const modes = detectIneligibleAutoModeTransport(
+      createProviderEnv({ baseEnv: process.env, runtimeSettings: this.runtimeSettings }),
+    )
+      ? DEFAULT_MODES.filter((mode) => mode.id !== "auto")
+      : DEFAULT_MODES;
+    const defaultModeId = modes.some((mode) => mode.id === "auto") ? "auto" : "default";
     let sdkModels: ModelInfo[];
     try {
       sdkModels = await this.discoverClaudeSdkModels();
     } catch (error) {
       this.logger.debug({ err: error }, "Failed to discover Claude SDK model effort levels");
-      return { models: staticModels, modes: DEFAULT_MODES };
+      return { models: staticModels, modes, defaultModeId };
     }
 
     return {
       models: decorateClaudeModelsWithSdkEfforts(staticModels, sdkModels),
-      modes: DEFAULT_MODES,
+      modes,
+      defaultModeId,
     };
+  }
+
+  async resolveDefaultModeId({
+    config,
+    env: launchEnv,
+  }: ResolveAgentDefaultModeInput): Promise<string> {
+    const env = createProviderEnv({
+      baseEnv: process.env,
+      runtimeSettings: this.runtimeSettings,
+      overlays: [config.extra?.claude?.env, launchEnv],
+    });
+    return detectIneligibleAutoModeTransport(env) ? "default" : "auto";
   }
 
   resolveCreateConfig(input: ResolveAgentCreateConfigInput): ResolveAgentCreateConfigResult {
@@ -2375,7 +2397,7 @@ class ClaudeAgentSession implements AgentSession {
 
   async setThinkingOption(
     thinkingOptionId: string | null,
-  ): Promise<AgentConfigurationUpdateResult | void> {
+  ): Promise<AgentConfigurationUpdateResult | AgentProviderNotice | void> {
     const normalizedThinkingOptionId =
       typeof thinkingOptionId === "string" && thinkingOptionId.trim().length > 0
         ? thinkingOptionId
@@ -2396,6 +2418,9 @@ class ClaudeAgentSession implements AgentSession {
     this.queryRestartNeeded = true;
     if (featureValues !== undefined) {
       return { featureValues };
+    }
+    if (this.activeForegroundTurnId || this.autonomousTurn) {
+      return THINKING_APPLIES_NEXT_TURN_NOTICE;
     }
   }
 

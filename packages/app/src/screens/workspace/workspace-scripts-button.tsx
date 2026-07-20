@@ -92,7 +92,9 @@ function ScriptActionButtonChildren({
     ) : (
       <ThemedPlay size={10} uniProps={colorMapping} {...playFillTransparent} />
     );
-  const labelStyle = hovered ? actionButtonLabelHoveredStyle : styles.actionButtonLabel;
+  const labelStyle = hovered
+    ? [styles.actionButtonLabel, styles.actionButtonLabelHovered]
+    : styles.actionButtonLabel;
   return (
     <>
       {iconElement}
@@ -160,7 +162,7 @@ function HostLinkChildren({ hovered, disabled, label }: HostLinkChildrenProps): 
   const showIcon = !disabled && (hovered || isNative);
   const isActive = Boolean(hovered) && !disabled;
   const colorMapping = isActive ? foregroundColorMapping : mutedColorMapping;
-  const hostLabelStyle = isActive ? hostLabelActiveStyle : styles.hostLabel;
+  const hostLabelStyle = isActive ? [styles.hostLabel, styles.hostLabelActive] : styles.hostLabel;
   return (
     <>
       <Text style={hostLabelStyle} numberOfLines={1}>
@@ -211,7 +213,8 @@ function HostLinkRow({ label, url, scriptName, onOpen }: HostLinkProps): ReactEl
 
 function ExitCodeBadge({ code }: { code: number }): ReactElement {
   const { t } = useTranslation();
-  const exitTextStyle = code === 0 ? styles.exitBadgeText : exitBadgeTextErrorStyle;
+  const exitTextStyle =
+    code === 0 ? styles.exitBadgeText : [styles.exitBadgeText, styles.exitBadgeTextError];
   return (
     <View style={styles.exitBadge}>
       <Text style={exitTextStyle}>{t("workspace.scripts.states.exitCode", { code })}</Text>
@@ -378,7 +381,7 @@ function ScriptRow({
   }, [onStartScript, script.scriptName]);
 
   const scriptNameStyle = useMemo(
-    () => (isRunning ? scriptNameActiveStyle : styles.scriptName),
+    () => (isRunning ? [styles.scriptName, styles.scriptNameActive] : styles.scriptName),
     [isRunning],
   );
 
@@ -710,8 +713,3 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.foreground,
   },
 }));
-
-const actionButtonLabelHoveredStyle = [styles.actionButtonLabel, styles.actionButtonLabelHovered];
-const hostLabelActiveStyle = [styles.hostLabel, styles.hostLabelActive];
-const scriptNameActiveStyle = [styles.scriptName, styles.scriptNameActive];
-const exitBadgeTextErrorStyle = [styles.exitBadgeText, styles.exitBadgeTextError];

@@ -222,7 +222,7 @@ export function ExplorerSidebar({
 
   return (
     <Animated.View style={desktopSidebarStyle}>
-      <View style={DESKTOP_SIDEBAR_BORDER_STYLE}>
+      <View style={[styles.desktopSidebarBorder, { flex: 1 }]}>
         <SidebarResizeHandle
           edge="left"
           gesture={resizeGesture}
@@ -590,5 +590,3 @@ const styles = StyleSheet.create((theme) => ({
     minHeight: 0,
   },
 }));
-
-const DESKTOP_SIDEBAR_BORDER_STYLE = [styles.desktopSidebarBorder, { flex: 1 }];

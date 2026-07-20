@@ -13,6 +13,7 @@ import type {
 import { parseDuration } from "../../utils/duration.js";
 import { hasFeatureValues, parseFeatureFlagValues } from "../../utils/provider-features.js";
 import { resolveProviderAndModel } from "../../utils/provider-model.js";
+import { everyMsToFiveFieldCron } from "@getpaseo/protocol/schedule/cadence";
 
 export interface ScheduleCommandOptions extends CommandOptions {
   host?: string;
@@ -46,6 +47,16 @@ export function toScheduleCommandError(code: string, action: string, error: unkn
     code,
     message: `Failed to ${action}: ${message}`,
   };
+}
+
+export async function requireNewAgentSchedule(
+  client: ScheduleDaemonClient,
+  id: string,
+): Promise<void> {
+  const payload = await client.scheduleInspect({ id });
+  if (payload.error || !payload.schedule || payload.schedule.target.type !== "new-agent") {
+    throw new Error(payload.error ?? `Schedule not found: ${id}`);
+  }
 }
 
 export function formatCadence(cadence: ScheduleCadence): string {
@@ -93,12 +104,7 @@ function resolveScheduleTarget(args: {
   createNewAgentTarget: () => ScheduleTarget;
 }): ScheduleTarget {
   const { targetValue, hasExplicitNewAgentOption, createNewAgentTarget } = args;
-  const currentAgentId = process.env.PASEO_AGENT_ID?.trim();
-
   if (!targetValue) {
-    if (currentAgentId && !hasExplicitNewAgentOption) {
-      return { type: "self", agentId: currentAgentId };
-    }
     return createNewAgentTarget();
   }
 
@@ -115,6 +121,9 @@ function resolveScheduleTarget(args: {
   }
 
   if (targetValue === "self") {
+    // COMPAT(scheduleSelfTarget): heartbeat creation moved to `paseo heartbeat create`.
+    // Added in v0.2.0; remove after 2027-01-17.
+    const currentAgentId = process.env.PASEO_AGENT_ID?.trim();
     if (!currentAgentId) {
       throw {
         code: "INVALID_TARGET",
@@ -216,23 +225,9 @@ export function parseScheduleCreateInput(options: {
 
 function resolveRunOnCreate(
   runNow: boolean | undefined,
-  cadenceType: ScheduleCadence["type"],
+  _cadenceType: ScheduleCadence["type"],
 ): boolean {
-  if (runNow === true && cadenceType === "every") {
-    throw {
-      code: "REDUNDANT_RUN_NOW",
-      message: "--run-now is redundant with --every (interval schedules already fire on creation)",
-      details: "Drop --run-now, or use --no-run-now to wait the full interval before the first run",
-    } satisfies CommandError;
-  }
-  if (runNow === false && cadenceType === "cron") {
-    throw {
-      code: "REDUNDANT_NO_RUN_NOW",
-      message: "--no-run-now is redundant with --cron (cron schedules never fire on creation)",
-      details: "Drop --no-run-now, or use --run-now to fire one immediate run on creation",
-    } satisfies CommandError;
-  }
-  return runNow ?? cadenceType === "every";
+  return runNow ?? false;
 }
 
 export interface ScheduleUpdateOptionsInput {
@@ -312,7 +307,7 @@ function parseCadenceFromFlags(
     } satisfies CommandError;
   }
   if (every !== undefined) {
-    return { type: "every", everyMs: parseDuration(every) };
+    return { type: "cron", expression: compileEveryPresetToCron(every) };
   }
   if (cron !== undefined) {
     return {
@@ -322,6 +317,20 @@ function parseCadenceFromFlags(
     };
   }
   return undefined;
+}
+
+export function compileEveryPresetToCron(value: string): string {
+  const durationMs = parseDuration(value);
+  const cron = everyMsToFiveFieldCron(durationMs);
+  if (cron) {
+    return cron;
+  }
+
+  throw {
+    code: "UNREPRESENTABLE_CADENCE",
+    message: `${value} cannot be represented faithfully by five-field cron`,
+    details: "Use --cron for calendar schedules",
+  } satisfies CommandError;
 }
 
 function parseTimeZoneFlag(timeZone: string | undefined): string | undefined {

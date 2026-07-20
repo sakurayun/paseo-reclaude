@@ -44,7 +44,7 @@ import {
   usePaneFind,
 } from "@/panels/pane-find";
 import { useRetainedPanelActive } from "@/components/retained-panel";
-import { useAppVisible } from "@/hooks/use-app-visible";
+import { useAppActivelyVisible } from "@/hooks/use-app-visible";
 import { isFileQueryEnabled } from "@/components/file-pane-enabled";
 
 interface CodeLineProps {
@@ -781,10 +781,10 @@ export function FilePane({
   );
 
   // Re-read the file when this pane becomes visible again (#445). `isActive`
-  // covers tab switches, `isAppVisible` the whole-app background/foreground; the
-  // gate itself lives in isFileQueryEnabled.
+  // covers tab switches; active app visibility covers backgrounding and returning
+  // from another window after an external edit. The gate lives in isFileQueryEnabled.
   const isActive = useRetainedPanelActive();
-  const isAppVisible = useAppVisible();
+  const isAppVisible = useAppActivelyVisible();
 
   const query = useQuery({
     queryKey: ["workspaceFile", serverId, readTarget?.cwd ?? null, readTarget?.path ?? null],

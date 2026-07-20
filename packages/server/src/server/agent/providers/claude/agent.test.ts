@@ -783,7 +783,10 @@ describe("ClaudeAgentSession features", () => {
       turnId: expect.stringMatching(/^foreground-turn-/),
     });
 
-    await expect(session.setThinkingOption?.("xhigh")).resolves.toBeUndefined();
+    await expect(session.setThinkingOption?.("xhigh")).resolves.toEqual({
+      type: "warning",
+      message: "Thinking level applies next turn",
+    });
 
     await session.close();
   });

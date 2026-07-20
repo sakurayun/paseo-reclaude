@@ -815,6 +815,8 @@ export class ProviderSnapshotManager {
 
       setEntry({
         ...base,
+        defaultModeId:
+          catalog.defaultModeId === undefined ? definition.defaultModeId : catalog.defaultModeId,
         status: "ready",
         enabled: true,
         models: catalog.models,
