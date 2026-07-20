@@ -5,6 +5,7 @@ import {
   buildDraftTranscriptAttachmentId,
   pruneFinalizedDraftRecords,
   removeDraftTranscriptAttachment,
+  haveDraftImageReferencesChanged,
   toDraftInputIfReady,
   upsertDraftTranscriptAttachment,
 } from "./state";

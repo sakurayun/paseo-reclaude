@@ -121,6 +121,7 @@ import type { WorkspaceDraftTabSetup, WorkspaceTabTarget } from "@/stores/worksp
 import { toErrorMessage } from "@/utils/error-messages";
 import { useWorkspaceDraftSubmissionStore } from "@/stores/workspace-draft-submission-store";
 import { CodexResetCard } from "@/provider-usage/codex-reset-card";
+import { installMessageInteractionStyles } from "@/components/message-interaction-styles";
 import { codexRateLimitKey, useCodexRateLimitStore } from "@/stores/codex-rate-limit-store";
 
 function renderLiveAuxiliaryNode(input: {

@@ -2643,6 +2643,7 @@ function WorkspaceScreenContent({
     handleOpenFileFromChat(request.location, { parentTabId });
   });
 
+  const [hoveredCloseTabKey, setHoveredCloseTabKey] = useState<string | null>(null);
   const { handleRenameTab, renamingTab, handleRenameModalSubmit, handleRenameModalClose } =
     useWorkspaceTabRename({
       client,
@@ -2918,6 +2919,7 @@ function WorkspaceScreenContent({
       tabId: string;
       target?: WorkspaceTabTarget | null;
     }) {
+      setHoveredCloseTabKey((current) => (current === input.tabId ? null : current));
       if (persistenceKey) {
         closeWorkspaceTabWithCleanup({ tabId: input.tabId, target: input.target });
       }
@@ -3138,6 +3140,9 @@ function WorkspaceScreenContent({
           console.warn(message, payload);
         },
       });
+
+      const closedKeys = new Set(tabsToClose.map((tab) => tab.key));
+      setHoveredCloseTabKey((current) => (current && closedKeys.has(current) ? null : current));
     },
     [
       bulkCloseConfirmationLabels,
@@ -3538,11 +3543,12 @@ function WorkspaceScreenContent({
         kind: "tab" as const,
         tab,
         isActive: tab.tabId === activeTabDescriptor?.tabId,
+        isCloseHovered: hoveredCloseTabKey === tab.key,
         isClosingTab: closingTabIds.has(tab.tabId),
         groupId: null,
         groupRole: "none" as const,
       })),
-    [activeTabDescriptor?.tabId, closingTabIds, tabs],
+    [activeTabDescriptor?.tabId, closingTabIds, hoveredCloseTabKey, tabs],
   );
 
   const handleFocusPane = useStableEvent(function handleFocusPane(paneId: string) {
@@ -3865,6 +3871,8 @@ function WorkspaceScreenContent({
         normalizedWorkspaceId={normalizedWorkspaceId}
         isWorkspaceFocused={isRouteFocused}
         uiTabs={uiTabs}
+        hoveredCloseTabKey={hoveredCloseTabKey}
+        setHoveredCloseTabKey={setHoveredCloseTabKey}
         closingTabIds={closingTabIds}
         onNavigateTab={navigateToTabId}
         onCloseTab={handleCloseTabById}
@@ -3903,6 +3911,7 @@ function WorkspaceScreenContent({
     normalizedWorkspaceId,
     isRouteFocused,
     uiTabs,
+    hoveredCloseTabKey,
     closingTabIds,
     navigateToTabId,
     handleCloseTabById,

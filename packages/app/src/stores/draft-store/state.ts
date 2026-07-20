@@ -6,6 +6,7 @@ import {
 } from "@/attachments/types";
 import { ForgeSearchItemSchema, GitHubSearchItemSchema } from "@getpaseo/protocol/messages";
 import { buildChatHistoryAttachmentId } from "@/attachments/chat-history-identity";
+import type { StreamItem } from "@/types/stream";
 
 export const DRAFT_STORE_VERSION = 6;
 export const FINALIZED_DRAFT_TTL_MS = 5 * 60 * 1000;
