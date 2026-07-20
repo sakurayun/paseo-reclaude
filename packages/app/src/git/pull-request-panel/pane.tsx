@@ -1,13 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
-import {
-  Image,
-  Pressable,
-  ScrollView,
-  Text,
-  View,
-  type GestureResponderEvent,
-  type ViewStyle,
-} from "react-native";
+import { Image, Pressable, ScrollView, Text, View, type ViewStyle } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import {
   CircleCheck,
@@ -26,7 +18,7 @@ import {
 import type { PressableStateCallbackType } from "react-native";
 import { useTranslation } from "react-i18next";
 import { openExternalUrl } from "@/utils/open-external-url";
-import { Button } from "@/components/ui/button";
+import { Button, type ButtonPressEvent } from "@/components/ui/button";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { StatusBadge } from "@/components/ui/status-badge";
 import {
@@ -687,7 +679,7 @@ function CheckRow({
     void openExternalUrl(check.url);
   }, [check.url]);
   const handleAddLogsToChat = useCallback(
-    (event: GestureResponderEvent) => {
+    (event: ButtonPressEvent) => {
       event.stopPropagation();
       void onAddLogsToChat(check);
     },

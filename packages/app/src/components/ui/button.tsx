@@ -21,12 +21,13 @@ import {
   createControlGeometry,
   type ButtonControlSize,
 } from "@/components/ui/control-geometry";
-import { ButtonHost } from "@/components/ui/button-host";
+import { ButtonHost, type ButtonHostProps } from "@/components/ui/button-host";
 import { isWeb } from "@/constants/platform";
 import type { Theme } from "@/styles/theme";
 
 type ButtonVariant = "default" | "secondary" | "outline" | "ghost" | "destructive";
 type ButtonSize = ButtonControlSize;
+export type ButtonPressEvent = Parameters<NonNullable<ButtonHostProps["onPress"]>>[0];
 
 type LeftIcon =
   | ReactElement
@@ -178,10 +179,11 @@ export function Button({
   dataSet: dataSetProp,
   ...props
 }: PropsWithChildren<
-  Omit<PressableProps, "style"> & {
+  Omit<PressableProps, "onPress" | "style"> & {
     variant?: ButtonVariant;
     size?: ButtonSize;
     leftIcon?: LeftIcon;
+    onPress?: (event: ButtonPressEvent) => void;
     trailing?: ReactNode;
     style?: StyleProp<ViewStyle>;
     textStyle?: StyleProp<TextStyle>;

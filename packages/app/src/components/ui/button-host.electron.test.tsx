@@ -28,6 +28,9 @@ describe("ButtonHost Electron fast path", () => {
     fireEvent.keyDown(button, { key: " " });
     fireEvent.keyUp(button, { key: " " });
     expect(onPress).toHaveBeenCalledTimes(3);
+    for (const [event] of onPress.mock.calls) {
+      expect(event.stopPropagation).toBeTypeOf("function");
+    }
   });
 
   it("keeps disabled buttons out of the tab order and blocks activation", () => {

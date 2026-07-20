@@ -1,8 +1,13 @@
 import React, { forwardRef, type ReactNode } from "react";
 import { Pressable, type PressableProps, type View } from "react-native";
 
-export interface ButtonHostProps extends Omit<PressableProps, "children" | "style"> {
+export interface ButtonPressEvent {
+  stopPropagation(): void;
+}
+
+export interface ButtonHostProps extends Omit<PressableProps, "children" | "onPress" | "style"> {
   children?: ReactNode;
+  onPress?: (event: ButtonPressEvent) => void;
   style?: PressableProps["style"];
 }
 

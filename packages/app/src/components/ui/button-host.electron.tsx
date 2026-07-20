@@ -7,17 +7,15 @@ import {
   type KeyboardEvent,
   type ReactNode,
 } from "react";
-import {
-  Pressable,
-  View,
-  type GestureResponderEvent,
-  type PressableProps,
-  type StyleProp,
-  type ViewStyle,
-} from "react-native";
+import { Pressable, View, type PressableProps, type StyleProp, type ViewStyle } from "react-native";
 
-export interface ButtonHostProps extends Omit<PressableProps, "children" | "style"> {
+export interface ButtonPressEvent {
+  stopPropagation(): void;
+}
+
+export interface ButtonHostProps extends Omit<PressableProps, "children" | "onPress" | "style"> {
   children?: ReactNode;
+  onPress?: (event: ButtonPressEvent) => void;
   style?: PressableProps["style"];
 }
 
@@ -78,7 +76,7 @@ function StaticButtonHost({
   );
 
   const handleClick = useCallback(
-    (event: GestureResponderEvent) => {
+    (event: ButtonPressEvent) => {
       if (!isDisabled) onPress?.(event);
     },
     [isDisabled, onPress],
@@ -88,7 +86,7 @@ function StaticButtonHost({
       if (event.defaultPrevented || isDisabled) return;
       if (event.key === "Enter") {
         event.preventDefault();
-        onPress?.(event as never);
+        onPress?.(event);
       } else if (event.key === " ") {
         event.preventDefault();
       }
@@ -99,7 +97,7 @@ function StaticButtonHost({
     (event: KeyboardEvent) => {
       if (event.defaultPrevented || isDisabled || event.key !== " ") return;
       event.preventDefault();
-      onPress?.(event as never);
+      onPress?.(event);
     },
     [isDisabled, onPress],
   );
