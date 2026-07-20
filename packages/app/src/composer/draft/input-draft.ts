@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { UserComposerAttachment } from "@/attachments/types";
+import type { ChatHistoryContextAttachment, UserComposerAttachment } from "@/attachments/types";
 import type { DraftAgentControlsProps } from "@/composer/agent-controls";
 import type { DraftCommandConfig } from "@/hooks/use-agent-commands-query";
 import {
@@ -10,6 +10,7 @@ import {
 import { useDraftAgentFeatures } from "@/hooks/use-draft-agent-features";
 import {
   areAttachmentsEqual,
+  areTranscriptAttachmentsEqual,
   buildDraftAgentControls,
   hasDraftContent,
   resolveDraftKey,
@@ -21,9 +22,12 @@ import {
   resolveEffectiveComposerThinkingOptionId,
   type ProviderSelectionState,
 } from "@/provider-selection/provider-selection";
-import { useDraftConflictStore } from "@/stores/draft-conflict-store";
-import { useDraftStore } from "@/stores/draft-store";
-import { toDraftInputIfReady } from "@/stores/draft-store/state";
+import {
+  removeDraftTranscriptAttachment,
+  upsertDraftTranscriptAttachment,
+  useDraftStore,
+  type DraftTranscriptSource,
+} from "@/stores/draft-store";
 
 type AttachmentUpdater =
   | UserComposerAttachment[]
@@ -57,15 +61,12 @@ export interface AgentInputDraft {
   setText: (text: string) => void;
   attachments: UserComposerAttachment[];
   setAttachments: (updater: AttachmentUpdater) => void;
+  transcriptAttachments: ChatHistoryContextAttachment[];
+  upsertTranscriptAttachment: (attachment: ChatHistoryContextAttachment) => void;
+  removeTranscriptAttachment: (source: DraftTranscriptSource) => void;
   clear: (lifecycle: "sent" | "abandoned") => void;
   isHydrated: boolean;
   composerState: DraftComposerState | null;
-  // Remote draft text that diverges from the local in-progress edit, surfaced so
-  // the composer can offer it in a drawer without touching the local input. null
-  // when there is no conflict.
-  remoteConflict: { text: string } | null;
-  // Overwrite the local input with the remote conflict text and dismiss the conflict.
-  acceptRemoteDraft: () => void;
 }
 
 export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDraft {
@@ -87,16 +88,12 @@ export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDr
   );
   const [text, setText] = useState("");
   const [attachments, setAttachmentsState] = useState<UserComposerAttachment[]>([]);
+  const [transcriptAttachments, setTranscriptAttachmentsState] = useState<
+    ChatHistoryContextAttachment[]
+  >([]);
   const [isHydrated, setIsHydrated] = useState(false);
   const draftGenerationRef = useRef(0);
   const hydratedGenerationRef = useRef(0);
-  const textRef = useRef(text);
-  textRef.current = text;
-  // Baseline for telling a local edit apart from a remote draft-sync update: the
-  // last store text we reflected into `text` (on hydrate or remote apply). Once
-  // `text` moves off this baseline the user is editing, so remote updates to this
-  // draft are held back instead of clobbering the in-progress text.
-  const lastReflectedTextRef = useRef("");
 
   const setAttachments = useCallback((updater: AttachmentUpdater) => {
     setAttachmentsState((previousAttachments) => {
@@ -105,6 +102,18 @@ export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDr
       }
       return updater;
     });
+  }, []);
+
+  const upsertTranscriptAttachment = useCallback((attachment: ChatHistoryContextAttachment) => {
+    setTranscriptAttachmentsState((current) =>
+      upsertDraftTranscriptAttachment({ attachments: current, attachment }),
+    );
+  }, []);
+
+  const removeTranscriptAttachment = useCallback((source: DraftTranscriptSource) => {
+    setTranscriptAttachmentsState((current) =>
+      removeDraftTranscriptAttachment({ attachments: current, source }),
+    );
   }, []);
 
   const clear = useCallback(
@@ -118,8 +127,8 @@ export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDr
 
       setText("");
       setAttachmentsState([]);
+      setTranscriptAttachmentsState([]);
       setIsHydrated(true);
-      lastReflectedTextRef.current = "";
     },
     [draftKey],
   );
@@ -132,8 +141,8 @@ export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDr
 
     setText("");
     setAttachmentsState([]);
+    setTranscriptAttachmentsState([]);
     setIsHydrated(false);
-    lastReflectedTextRef.current = "";
 
     let cancelled = false;
 
@@ -151,7 +160,7 @@ export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDr
       if (draft) {
         setText(draft.text);
         setAttachmentsState(draft.attachments);
-        lastReflectedTextRef.current = draft.text;
+        setTranscriptAttachmentsState(draft.transcriptAttachments);
       }
 
       hydratedGenerationRef.current = generation;
@@ -188,12 +197,16 @@ export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDr
       areAttachmentsEqual({
         left: existing.attachments,
         right: attachments,
+      }) &&
+      areTranscriptAttachmentsEqual({
+        left: existing.transcriptAttachments,
+        right: transcriptAttachments,
       });
     if (isSameDraft) {
       return;
     }
 
-    if (!hasDraftContent({ text, attachments })) {
+    if (!hasDraftContent({ text, attachments, transcriptAttachments })) {
       if (existing) {
         store.clearDraftInput({ draftKey, lifecycle: "abandoned" });
       }
@@ -205,33 +218,10 @@ export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDr
       draft: {
         text,
         attachments,
+        transcriptAttachments,
       },
     });
-  }, [attachments, draftKey, text]);
-
-  // Reflect remote draft-sync updates into the live composer text. The sync
-  // bridge only writes the store for drafts the user is NOT editing (it protects
-  // in-progress edits at the store layer); `lastReflectedTextRef` additionally
-  // guards the one-frame window where a local keystroke hasn't reached the store
-  // yet. Reflecting back into the store is a no-op (text already equal).
-  useEffect(() => {
-    const unsubscribe = useDraftStore.subscribe((state) => {
-      if (hydratedGenerationRef.current !== draftGenerationRef.current) {
-        return;
-      }
-      const storeText = toDraftInputIfReady(state.drafts[draftKey])?.text ?? "";
-      if (storeText === textRef.current) {
-        lastReflectedTextRef.current = storeText;
-        return;
-      }
-      if (textRef.current !== lastReflectedTextRef.current) {
-        return;
-      }
-      setText(storeText);
-      lastReflectedTextRef.current = storeText;
-    });
-    return unsubscribe;
-  }, [draftKey]);
+  }, [attachments, draftKey, text, transcriptAttachments]);
 
   const lockedWorkingDir = composerOptions?.lockedWorkingDir?.trim() ?? "";
   useEffect(() => {
@@ -339,34 +329,17 @@ export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDr
     workingDir,
   ]);
 
-  const remoteConflictText = useDraftConflictStore((state) => state.conflicts[draftKey]);
-  const remoteConflict = useMemo(
-    () => (remoteConflictText !== undefined ? { text: remoteConflictText } : null),
-    [remoteConflictText],
-  );
-  const acceptRemoteDraft = useCallback(() => {
-    const conflictText = useDraftConflictStore.getState().conflicts[draftKey];
-    if (conflictText === undefined) {
-      return;
-    }
-    // Overwrite local with the remote text; the save effect persists it and the
-    // sync bridge pushes it out. lastReflectedTextRef keeps the store-subscription
-    // effect from treating this as a fresh local edit.
-    setText(conflictText);
-    lastReflectedTextRef.current = conflictText;
-    useDraftConflictStore.getState().clearConflict(draftKey);
-  }, [draftKey]);
-
   return {
     text,
     setText,
     attachments,
     setAttachments,
+    transcriptAttachments,
+    upsertTranscriptAttachment,
+    removeTranscriptAttachment,
     clear,
     isHydrated,
     composerState,
-    remoteConflict,
-    acceptRemoteDraft,
   };
 }
 

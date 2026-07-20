@@ -164,7 +164,11 @@ describe("prepareWorkspaceTab", () => {
         },
       ],
       draftInputs: {
-        "draft:server-1:draft-with-input": { text: "hello", attachments: [] },
+        "draft:server-1:draft-with-input": {
+          text: "hello",
+          attachments: [],
+          transcriptAttachments: [],
+        },
       },
     });
 

@@ -12,7 +12,7 @@ function activeDraft(
   attachments: UserComposerAttachment[] = [],
 ): DraftRecord {
   return {
-    input: { text, attachments },
+    input: { text, attachments, transcriptAttachments: [] },
     lifecycle: "active",
     updatedAt,
     version: 1,
@@ -144,6 +144,7 @@ describe("draft-store migration", () => {
     expect(migrated.drafts["new-workspace"]?.input).toEqual({
       text: "keep the prompt",
       attachments: [issue],
+      transcriptAttachments: [],
     });
   });
 
@@ -189,6 +190,7 @@ describe("draft-store migration", () => {
           },
         },
       ],
+      transcriptAttachments: [],
     });
   });
 
@@ -239,6 +241,7 @@ describe("draft-store migration", () => {
           },
         },
       ],
+      transcriptAttachments: [],
     });
   });
 
@@ -262,5 +265,78 @@ describe("draft-store migration", () => {
     );
 
     expect(migrated.drafts["agent:server:agent"]?.input.attachments).toEqual([]);
+    expect(migrated.drafts["agent:server:agent"]?.input.transcriptAttachments).toEqual([]);
+  });
+
+  it("normalizes persisted transcript snapshots and drops malformed entries", async () => {
+    const migrated = await migratePersistedState(
+      {
+        drafts: {
+          "agent:server:agent": {
+            input: {
+              text: "",
+              attachments: [],
+              transcriptAttachments: [
+                {
+                  kind: "chat_history",
+                  id: "old-draft-local-id",
+                  attachment: {
+                    type: "text",
+                    mimeType: "text/plain",
+                    contextKind: "chat_history",
+                    title: "Previous conversation",
+                    text: "Use the existing API decisions.",
+                  },
+                  source: {
+                    serverId: "host-a",
+                    agentId: "agent-a",
+                    workspaceLabel: "  feature-worktree  ",
+                    serverLabel: "  Mac Studio  ",
+                    capturedWhileRunning: true,
+                    boundaryCursor: { epoch: "epoch-1", seq: 7 },
+                    itemCount: 24,
+                    includedItemCount: 12,
+                    byteCount: 1024,
+                    truncated: true,
+                  },
+                },
+                { kind: "chat_history", source: {} },
+              ],
+            },
+            lifecycle: "active",
+            updatedAt: 1700000000001,
+            version: 2,
+          },
+        },
+        createModalDraft: null,
+      },
+      { migrateLegacyImages: passThroughMigrateLegacyImages, nowMs: 1700000000002 },
+    );
+
+    expect(migrated.drafts["agent:server:agent"]?.input.transcriptAttachments).toEqual([
+      {
+        kind: "chat_history",
+        id: "chat_history:host-a:agent-a",
+        attachment: {
+          type: "text",
+          mimeType: "text/plain",
+          contextKind: "chat_history",
+          title: "Previous conversation",
+          text: "Use the existing API decisions.",
+        },
+        source: {
+          serverId: "host-a",
+          agentId: "agent-a",
+          workspaceLabel: "feature-worktree",
+          serverLabel: "Mac Studio",
+          capturedWhileRunning: true,
+          boundaryCursor: { epoch: "epoch-1", seq: 7 },
+          itemCount: 24,
+          includedItemCount: 12,
+          byteCount: 1024,
+          truncated: true,
+        },
+      },
+    ]);
   });
 });

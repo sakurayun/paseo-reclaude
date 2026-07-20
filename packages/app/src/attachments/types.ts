@@ -84,9 +84,21 @@ export interface ChatHistoryContextAttachment {
   source: {
     serverId: string;
     agentId: string;
+    /** Human-readable source labels captured with the immutable snapshot. */
+    workspaceLabel?: string;
+    serverLabel?: string;
+    /** Whether the source was still producing a turn when captured. */
+    capturedWhileRunning?: boolean;
     boundaryMessageId?: string | null;
     boundaryCursor?: { epoch: string; seq: number } | null;
+    /** Exact total curated entries, omitted when the bounded scan has older rows. */
     itemCount?: number;
+    /** Curated timeline entries retained in this bounded snapshot. */
+    includedItemCount?: number;
+    /** UTF-8 byte count of the retained transcript attachment. */
+    byteCount?: number;
+    /** Whether the snapshot omitted older curated entries. */
+    truncated?: boolean;
   };
 }
 

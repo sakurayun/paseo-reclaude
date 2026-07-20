@@ -32,7 +32,7 @@ export function openSeededDraftWindow(input: {
   const draftKey = buildDraftStoreKey({ serverId: input.serverId, agentId: "", draftId });
   useDraftStore.getState().saveDraftInput({
     draftKey,
-    draft: { text: input.text, attachments: [] },
+    draft: { text: input.text, attachments: [], transcriptAttachments: [] },
   });
 
   if (input.splitRight) {

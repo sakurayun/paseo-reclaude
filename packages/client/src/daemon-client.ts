@@ -30,6 +30,7 @@ import type {
   FileExplorerResponse,
   FetchAgentTimelineResponseMessage,
   AgentForkContextResponseMessage,
+  AgentTranscriptExportResponseMessage,
   GitSetupOptions,
   CheckoutStatusResponse,
   CheckoutCommit,
@@ -659,6 +660,7 @@ type ScheduleUpdatePayload = Extract<
 >["payload"];
 export type FetchAgentTimelinePayload = FetchAgentTimelineResponseMessage["payload"];
 export type AgentForkContextPayload = AgentForkContextResponseMessage["payload"];
+export type AgentTranscriptExportPayload = AgentTranscriptExportResponseMessage["payload"];
 
 export type FetchAgentTimelineDirection = FetchAgentTimelinePayload["direction"];
 export type FetchAgentTimelineProjection = FetchAgentTimelinePayload["projection"];
@@ -730,6 +732,12 @@ export interface AgentForkContextOptions {
 export interface ForkAgentOptions {
   boundaryMessageId?: string;
   workspaceId?: string;
+}
+
+export interface AgentTranscriptExportOptions {
+  agentId: string;
+  maxBytes?: number;
+  requestId?: string;
 }
 
 type AgentRefreshedStatusPayload = z.infer<typeof AgentRefreshedStatusPayloadSchema>;
@@ -3205,9 +3213,43 @@ export class DaemonClient {
     return payload.agent;
   }
 
-  // ============================================================================
+  async exportAgentTranscript(
+    options: AgentTranscriptExportOptions,
+  ): Promise<AgentTranscriptExportPayload> {
+    const resolvedRequestId = this.createRequestId(options.requestId);
+    const message = SessionInboundMessageSchema.parse({
+      type: "agent.transcript.export.request",
+      agentId: options.agentId,
+      requestId: resolvedRequestId,
+      ...(options.maxBytes !== undefined ? { maxBytes: options.maxBytes } : {}),
+    });
+
+    const payload = await this.sendRequest({
+      requestId: resolvedRequestId,
+      message,
+      timeout: 15000,
+      options: { skipQueue: true },
+      select: (msg) => {
+        if (msg.type !== "agent.transcript.export.response") {
+          return null;
+        }
+        if (msg.payload.requestId !== resolvedRequestId) {
+          return null;
+        }
+        return msg.payload;
+      },
+    });
+
+    if (payload.error) {
+      throw new Error(payload.error);
+    }
+
+    return payload;
+  }
+
+  // =========================================================================
   // Agent Interaction
-  // ============================================================================
+  // =========================================================================
 
   async sendAgentMessage(
     agentId: string,

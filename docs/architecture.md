@@ -104,6 +104,7 @@ Cross-platform React Native app that connects to one or more daemons.
 - Composer UI and submit/draft behavior live in `packages/app/src/composer/`; screens and panels should integrate it from there instead of dropping composer internals into `components/`, `hooks/`, or `screens/workspace/`
 - Timeline reducers in `timeline/session-stream-reducers.ts` handle compaction, gap detection, sequence-based deduplication
 - Timeline sync correctness is documented in [docs/timeline-sync.md](timeline-sync.md): live streams are for immediacy, `fetch_agent_timeline_request` is authoritative, and catch-up is paged but complete.
+- New Agent transcript context is destination-draft-owned: source daemons export bounded snapshots through `agent.transcript.export.*`, the app persists them, and the destination daemon receives ordinary text attachments. See [transcript-context.md](transcript-context.md).
 - Voice features: dictation (STT) and voice agent (realtime)
 
 The replica cache exists only to paint stale data immediately while the host connects. It does not
@@ -225,6 +226,7 @@ New session RPCs use dotted names with `.request` and `.response` suffixes, such
 - Terminal subscribe/input/capture commands
 - Voice/dictation streaming events (`dictation_stream_*`, `assistant_chunk`, `audio_output`, `transcription_result`)
 - Request/response pairs for fetch, list, create, etc., correlated by `requestId`; failures use `rpc_error`
+- `agent.transcript.export.request` / `.response` — capability-gated, byte-bounded portable context for a New Agent draft; the source daemon owns privacy curation
 
 `directory_suggestions_request` is one daemon-owned filesystem search capability. The daemon
 configures the same `searchDirectoryEntries` engine with a root, output format, path-query policy,

@@ -300,10 +300,11 @@ describe("useAgentInputDraft live contract", () => {
     expect(useDraftStore.getState().drafts["draft:legacy"]?.input).toEqual({
       text: "legacy text",
       attachments: [{ kind: "image", metadata: image }],
+      transcriptAttachments: [],
     });
   });
 
-  it("hydrates drafts saved by old builds with cwd", async () => {
+  it("migrates drafts saved by old builds with cwd", async () => {
     let latest: ReturnType<typeof useAgentInputDraft> | null = null;
     const githubIssue: ComposerAttachment = {
       kind: "github_issue",
@@ -371,7 +372,7 @@ describe("useAgentInputDraft live contract", () => {
     expect(useDraftStore.getState().drafts["draft:new-shape"]?.input).toEqual({
       text: "new text",
       attachments: [githubIssue],
-      cwd: "/persisted",
+      transcriptAttachments: [],
     });
   });
 
@@ -421,6 +422,7 @@ describe("useAgentInputDraft live contract", () => {
     expect(useDraftStore.getState().drafts["draft:attachments"]?.input).toEqual({
       text: "with attachment",
       attachments: [{ kind: "image", metadata: image }],
+      transcriptAttachments: [],
     });
   });
 
@@ -475,6 +477,7 @@ describe("useAgentInputDraft live contract", () => {
     expect(useDraftStore.getState().drafts["draft:clear"]?.input).toEqual({
       text: "",
       attachments: [],
+      transcriptAttachments: [],
     });
   });
 
@@ -528,7 +531,7 @@ describe("useAgentInputDraft live contract", () => {
     expect(getLatest().attachments).toEqual([]);
     expect(useDraftStore.getState().drafts["draft:lifecycle"]).toMatchObject({
       lifecycle: "sent",
-      input: { text: "", attachments: [] },
+      input: { text: "", attachments: [], transcriptAttachments: [] },
     });
 
     await act(async () => {
@@ -541,7 +544,7 @@ describe("useAgentInputDraft live contract", () => {
 
     expect(useDraftStore.getState().drafts["draft:lifecycle"]).toMatchObject({
       lifecycle: "abandoned",
-      input: { text: "", attachments: [] },
+      input: { text: "", attachments: [], transcriptAttachments: [] },
     });
   });
 });

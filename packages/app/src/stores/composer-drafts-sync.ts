@@ -165,7 +165,11 @@ function applyRemote(
         if (existing) {
           drafts[key] = {
             ...existing,
-            input: { text: "", attachments: existing.input.attachments },
+            input: {
+              text: "",
+              attachments: existing.input.attachments,
+              transcriptAttachments: existing.input.transcriptAttachments,
+            },
             lifecycle: "abandoned",
             updatedAt: applyTime,
             version: existing.version + 1,
@@ -174,7 +178,11 @@ function applyRemote(
         continue;
       }
       const record: DraftRecord = {
-        input: { text, attachments: existing?.input.attachments ?? [] },
+        input: {
+          text,
+          attachments: existing?.input.attachments ?? [],
+          transcriptAttachments: existing?.input.transcriptAttachments ?? [],
+        },
         lifecycle: "active",
         updatedAt: applyTime,
         version: (existing?.version ?? 0) + 1,

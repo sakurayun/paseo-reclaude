@@ -1,28 +1,32 @@
 import { useTranslation } from "react-i18next";
-import { Import as ImportIcon } from "lucide-react-native";
+import { MessagesSquare } from "lucide-react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { Button } from "@/components/ui/button";
 
-interface ComposerImportPillProps {
+interface ComposerAddTranscriptsPillProps {
   onPress: () => void;
   disabled?: boolean;
 }
 
-export function ComposerImportPill({ onPress, disabled = false }: ComposerImportPillProps) {
+/** Opens the destination-first transcript picker for a New Agent draft. */
+export function ComposerAddTranscriptsPill({
+  onPress,
+  disabled = false,
+}: ComposerAddTranscriptsPillProps) {
   const { t } = useTranslation();
   return (
     <Button
-      testID="composer-import-agent-pill"
-      accessibilityLabel={t("importSession.title")}
+      testID="composer-add-transcripts-pill"
+      accessibilityLabel={t("addTranscripts.title")}
       variant="outline"
       size="sm"
-      leftIcon={ImportIcon}
+      leftIcon={MessagesSquare}
       onPress={onPress}
       disabled={disabled}
       style={styles.button}
       textStyle={styles.label}
     >
-      {t("importSession.title")}
+      {t("addTranscripts.title")}
     </Button>
   );
 }

@@ -355,6 +355,7 @@ export function SheetHeaderView({
         {showCloseButton ? (
           <Pressable
             accessibilityLabel={t("common.actions.close")}
+            testID="sheet-header-close"
             style={styles.closeButton}
             onPress={onClose}
           >
@@ -449,6 +450,8 @@ export interface AdaptiveModalSheetProps {
   visible: boolean;
   onClose: () => void;
   onDismiss?: () => void;
+  /** Prevent every user-driven dismissal path while an owned operation is pending. */
+  dismissible?: boolean;
   children: ReactNode;
   /** Sticky footer rendered below the scrollable content. */
   footer?: ReactNode;
@@ -465,6 +468,7 @@ export function AdaptiveModalSheet({
   visible,
   onClose,
   onDismiss,
+  dismissible = true,
   children,
   footer,
   snapPoints,
@@ -520,10 +524,15 @@ export function AdaptiveModalSheet({
     () => ({ backgroundColor: theme.colors.palette.zinc[600] }),
     [theme.colors.palette.zinc],
   );
+  const handleCloseRequest = useCallback(() => {
+    if (dismissible) {
+      onClose();
+    }
+  }, [dismissible, onClose]);
   const { sheetRef, handleSheetChange, handleSheetDismiss } = useIsolatedBottomSheetVisibility({
     visible,
     isEnabled: isMobile,
-    onClose,
+    onClose: handleCloseRequest,
   });
   const [shouldRenderWeb, setShouldRenderWeb] = useState(visible);
   const [isWebClosing, setIsWebClosing] = useState(false);
@@ -542,9 +551,15 @@ export function AdaptiveModalSheet({
 
   const renderBackdrop = useCallback(
     (props: React.ComponentProps<typeof BottomSheetBackdrop>) => (
-      <BottomSheetBackdrop {...props} disappearsOnIndex={-1} appearsOnIndex={0} opacity={0.45} />
+      <BottomSheetBackdrop
+        {...props}
+        disappearsOnIndex={-1}
+        appearsOnIndex={0}
+        opacity={0.45}
+        pressBehavior={dismissible ? "close" : "none"}
+      />
     ),
-    [],
+    [dismissible],
   );
 
   const desktopCardStyle = useMemo(
@@ -565,9 +580,9 @@ export function AdaptiveModalSheet({
   );
 
   useEffect(() => {
-    if (!isWeb || isMobile || !visible) return;
-    return pushEscHandler(onClose);
-  }, [visible, isMobile, onClose]);
+    if (!isWeb || isMobile || !visible || !dismissible) return;
+    return pushEscHandler(handleCloseRequest);
+  }, [dismissible, handleCloseRequest, visible, isMobile]);
 
   useEffect(() => {
     if (visible) {
@@ -608,7 +623,7 @@ export function AdaptiveModalSheet({
         onChange={handleSheetChange}
         onDismiss={handleDismiss}
         backdropComponent={renderBackdrop}
-        enablePanDownToClose
+        enablePanDownToClose={dismissible}
         backgroundComponent={SheetBackground}
         handleIndicatorStyle={handleIndicatorStyle}
         keyboardBehavior="extend"
@@ -616,7 +631,12 @@ export function AdaptiveModalSheet({
         accessible={false}
         presentation={presentation}
       >
-        <SheetHeaderView header={header} onClose={onClose} testID={testID} />
+        <SheetHeaderView
+          header={header}
+          onClose={handleCloseRequest}
+          showCloseButton={dismissible}
+          testID={testID}
+        />
         {scrollable ? (
           <BottomSheetScrollView
             contentContainerStyle={bottomSheetContentStyle}
@@ -635,7 +655,7 @@ export function AdaptiveModalSheet({
 
   const cardInner = (
     <>
-      <SheetHeaderView header={header} onClose={onClose} />
+      <SheetHeaderView header={header} onClose={handleCloseRequest} showCloseButton={dismissible} />
       {scrollable ? (
         <View style={styles.desktopScrollContainer}>
           <ScrollView
@@ -659,7 +679,8 @@ export function AdaptiveModalSheet({
       <Pressable
         accessibilityLabel={t("common.actions.dismiss")}
         style={ABSOLUTE_FILL_STYLE}
-        onPress={onClose}
+        onPress={handleCloseRequest}
+        disabled={!dismissible}
       />
       <View style={desktopCardStyle}>{cardInner}</View>
     </View>
@@ -676,7 +697,7 @@ export function AdaptiveModalSheet({
       transparent
       animationType="fade"
       visible={visible}
-      onRequestClose={onClose}
+      onRequestClose={handleCloseRequest}
       onDismiss={notifyNativeModalDismiss}
       hardwareAccelerated
     >

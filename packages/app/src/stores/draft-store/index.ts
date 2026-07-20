@@ -18,6 +18,7 @@ import {
   isCanonicalDraftInput,
   isLegacyDraftImage,
   normalizeComposerAttachment,
+  normalizeDraftTranscriptAttachments,
   pruneFinalizedDraftRecords,
   toDraftInputIfReady,
   type DraftInput,
@@ -28,7 +29,12 @@ import {
 import { migrateDraftInput, migratePersistedState, type MigrateLegacyImages } from "./migration";
 import { createDraftPersistStorage } from "./persistence";
 
-export type { DraftInput, DraftLifecycleState } from "./state";
+export {
+  buildDraftTranscriptAttachmentId,
+  removeDraftTranscriptAttachment,
+  upsertDraftTranscriptAttachment,
+} from "./state";
+export type { DraftInput, DraftLifecycleState, DraftTranscriptSource } from "./state";
 
 interface DraftStoreActions {
   getDraftInput: (draftKey: string) => DraftInput | undefined;
@@ -67,6 +73,7 @@ function createDraftRecord(input: {
     input: {
       text: input.draft.text,
       attachments: input.draft.attachments.map(normalizeComposerAttachment),
+      transcriptAttachments: normalizeDraftTranscriptAttachments(input.draft.transcriptAttachments),
     },
     lifecycle: input.lifecycle,
     updatedAt: Date.now(),

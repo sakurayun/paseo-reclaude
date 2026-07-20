@@ -10,7 +10,6 @@ import React, {
   useState,
   useSyncExternalStore,
 } from "react";
-import type { LayoutChangeEvent } from "react-native";
 import { useTranslation } from "react-i18next";
 import { ActivityIndicator, Text, View } from "react-native";
 import ReanimatedAnimated from "react-native-reanimated";
@@ -54,7 +53,6 @@ import { useContainerWidthBelow } from "@/hooks/use-container-width";
 import { reconcileMissingAgentStateWithPresentAgent } from "@/panels/agent-panel-load-state";
 import { usePaneContext, usePaneFocus } from "@/panels/pane-context";
 import type { PanelDescriptor, PanelRegistration } from "@/panels/panel-registry";
-import { toErrorMessage } from "@/utils/error-messages";
 import { RenderProfile } from "@/utils/render-profiler";
 import { buildDraftPanelDescriptor } from "@/panels/draft-panel-descriptor";
 import {
@@ -76,10 +74,6 @@ import { usePanelStore } from "@/stores/panel-store";
 import { type Agent, useSessionStore } from "@/stores/session-store";
 import { useWorkspaceLayoutStore } from "@/stores/workspace-layout-store";
 import { buildWorkspaceTabPersistenceKey } from "@/stores/workspace-tabs-store";
-import { useCommitMessagePresetsStore } from "@/git/commit-message-presets-store";
-import { ChatSelectionBubble } from "@/agent-stream/selection/chat-selection-bubble";
-import { openSeededDraftWindow } from "@/agent-stream/selection/open-seeded-draft-window";
-import { useChatTextSelection } from "@/agent-stream/selection/use-chat-text-selection";
 import type { Theme } from "@/styles/theme";
 import {
   useHideFinishedProviderSubagents,
@@ -88,9 +82,6 @@ import {
   useSubagentsForParent,
 } from "@/subagents";
 import { SubagentsTrack } from "@/subagents/track";
-import { TodoTrack, useLatestAgentTodos } from "@/components/todo-track";
-import { RemoteDraftConflictDrawer } from "@/composer/draft/remote-draft-conflict-drawer";
-import { SidechainTrack, useCurrentRunSidechainCalls } from "@/components/sidechain-track";
 import type { PendingPermission } from "@/types/shared";
 import type { StreamItem } from "@/types/stream";
 import { getInitDeferred, getInitKey } from "@/utils/agent-initialization";
@@ -385,22 +376,9 @@ function DraftPanel() {
         next.set(agentSnapshot.id, agent);
         return next;
       });
-      // Prefer convertDraftToAgent so the tab takes the canonical agent_* id.
-      // Keeping the draft tab id (e.g. "new") after retarget lets a later
-      // openWorkspaceDraftTab("new") collide with that tab and can re-open a
-      // second "New Agent" draft beside the conversation.
-      const workspaceKey = buildWorkspaceTabPersistenceKey({ serverId, workspaceId });
-      if (workspaceKey) {
-        const converted = useWorkspaceLayoutStore
-          .getState()
-          .convertDraftToAgent(workspaceKey, tabId, agentSnapshot.id);
-        if (converted) {
-          return;
-        }
-      }
       retargetCurrentTab({ kind: "agent", agentId: agentSnapshot.id });
     },
-    [retargetCurrentTab, serverId, tabId, workspaceId],
+    [retargetCurrentTab, serverId],
   );
 
   return (
@@ -481,6 +459,13 @@ function findActiveCreateHandoff(input: {
       pending.serverId === input.serverId &&
       pending.agentId === input.agentId,
   );
+}
+
+function toErrorMessage(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  return String(error);
 }
 
 function isNotFoundErrorMessage(message: string): boolean {
@@ -1144,11 +1129,12 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
     setText,
     attachments,
     setAttachments,
+    transcriptAttachments,
+    upsertTranscriptAttachment,
+    removeTranscriptAttachment,
     clear,
     isHydrated,
     composerState,
-    remoteConflict,
-    acceptRemoteDraft,
   } = rawAgentInputDraft;
   const agentInputDraft = useMemo(
     (): AgentInputDraft => ({
@@ -1156,76 +1142,25 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
       setText,
       attachments,
       setAttachments,
+      transcriptAttachments,
+      upsertTranscriptAttachment,
+      removeTranscriptAttachment,
       clear,
       isHydrated,
       composerState,
-      remoteConflict,
-      acceptRemoteDraft,
     }),
     [
       text,
       setText,
       attachments,
       setAttachments,
+      transcriptAttachments,
+      upsertTranscriptAttachment,
+      removeTranscriptAttachment,
       clear,
       isHydrated,
       composerState,
-      remoteConflict,
-      acceptRemoteDraft,
     ],
-  );
-  // The composer floats over the stream on every form factor. The stream keeps
-  // enough bottom inset to scroll the final message clear of the glass surface,
-  // but the viewport itself still reaches the bottom behind it.
-  const isCompactFormFactor = useIsCompactFormFactor();
-
-  // Web-only selection bubble over the message stream: select text in any
-  // message, then ask / ask-in-new-window / save-as-preset from a floating
-  // bubble. Only the focused pane reacts to a selection.
-  const { workspaceId: selectionWorkspaceId } = usePaneContext();
-  const addPromptPreset = useCommitMessagePresetsStore((state) => state.addPreset);
-  const { selection: chatSelection, clear: clearChatSelection } =
-    useChatTextSelection(isPaneFocused);
-  const composerTextRef = useRef(text);
-  composerTextRef.current = text;
-  const handleSelectionAsk = useCallback(
-    (selected: string) => {
-      const current = composerTextRef.current;
-      setText(current.trim() ? `${current}\n${selected}` : selected);
-      clearChatSelection();
-    },
-    [setText, clearChatSelection],
-  );
-  const handleSelectionAskInNewWindow = useCallback(
-    (selected: string) => {
-      openSeededDraftWindow({
-        serverId,
-        workspaceId: selectionWorkspaceId,
-        text: selected,
-        splitRight: !isCompactFormFactor,
-      });
-      clearChatSelection();
-    },
-    [serverId, selectionWorkspaceId, isCompactFormFactor, clearChatSelection],
-  );
-  const handleSelectionSavePreset = useCallback(
-    (selected: string) => {
-      addPromptPreset(selected);
-      toastApi.show(t("composer.selection.savedPreset"), { variant: "success" });
-      clearChatSelection();
-    },
-    [addPromptPreset, toastApi, t, clearChatSelection],
-  );
-
-  const [composerOverlayHeight, setComposerOverlayHeight] = useState(0);
-  const handleComposerOverlayLayout = useCallback((event: LayoutChangeEvent) => {
-    const height = event.nativeEvent.layout.height;
-    setComposerOverlayHeight((current) => (Math.abs(current - height) > 0.5 ? height : current));
-  }, []);
-  const streamBottomInset = composerOverlayHeight > 0 ? Math.round(composerOverlayHeight * 1.1) : 0;
-  const composerOverlayStyle = useMemo(
-    () => [styles.composerOverlay, styles.composerOverlayFloating],
-    [],
   );
   const streamSection = (
     <RenderProfile id={`AgentStreamSection:${agentId}`}>
@@ -1238,7 +1173,6 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
         hasAppliedAuthoritativeHistory={hasAppliedAuthoritativeHistory}
         toast={toastApi}
         onOpenWorkspaceFile={onOpenWorkspaceFile}
-        bottomContentInset={streamBottomInset}
       />
     </RenderProfile>
   );
@@ -1279,26 +1213,13 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
             />
           ) : null}
 
-          <View
-            style={composerOverlayStyle}
-            pointerEvents="box-none"
-            onLayout={handleComposerOverlayLayout}
-          >
-            {composerSection}
-          </View>
+          {composerSection}
 
           {showHistorySyncOverlay ? (
             <View style={styles.historySyncOverlay} testID="agent-history-overlay">
               <ThemedActivityIndicator size="large" uniProps={foregroundMutedColorMapping} />
             </View>
           ) : null}
-
-          <ChatSelectionBubble
-            selection={chatSelection}
-            onAsk={handleSelectionAsk}
-            onAskInNewWindow={handleSelectionAskInNewWindow}
-            onSavePreset={handleSelectionSavePreset}
-          />
 
           <ToastViewport toast={toast} onDismiss={dismiss} placement="panel" />
         </FileDropZone>
@@ -1324,7 +1245,6 @@ const AgentStreamSection = memo(function AgentStreamSection({
   hasAppliedAuthoritativeHistory,
   toast,
   onOpenWorkspaceFile,
-  bottomContentInset,
 }: {
   streamViewRef: React.RefObject<AgentStreamViewHandle | null>;
   serverId: string;
@@ -1334,7 +1254,6 @@ const AgentStreamSection = memo(function AgentStreamSection({
   hasAppliedAuthoritativeHistory: boolean;
   toast: ReturnType<typeof useToastHost>["api"];
   onOpenWorkspaceFile?: (request: WorkspaceFileOpenRequest) => void;
-  bottomContentInset?: number;
 }) {
   const streamItemsRaw = useSessionStore((state) =>
     agentId ? state.sessions[serverId]?.agentStreamTail?.get(agentId) : undefined,
@@ -1379,7 +1298,6 @@ const AgentStreamSection = memo(function AgentStreamSection({
       isAuthoritativeHistoryReady={hasAppliedAuthoritativeHistory}
       toast={toast}
       onOpenWorkspaceFile={onOpenWorkspaceFile}
-      bottomContentInset={bottomContentInset}
     />
   );
 });
@@ -1476,8 +1394,6 @@ function ActiveAgentComposer({
     serverId,
     parentAgentId: agentId,
   });
-  const latestTodos = useLatestAgentTodos(serverId, agentId);
-  const sidechainCalls = useCurrentRunSidechainCalls(serverId, agentId);
   const canDetachSubagents = useSessionStore(
     (state) => state.sessions[serverId]?.serverInfo?.features?.agentDetach === true,
   );
@@ -1602,14 +1518,6 @@ function ActiveAgentComposer({
         onArchiveFinished={handleHideFinishedProviderSubagents}
         onDetachSubagent={canDetachSubagents ? handleDetachSubagent : undefined}
       />
-      <SidechainTrack calls={sidechainCalls} />
-      <TodoTrack items={latestTodos} />
-      {agentInputDraft.remoteConflict ? (
-        <RemoteDraftConflictDrawer
-          remoteText={agentInputDraft.remoteConflict.text}
-          onAccept={agentInputDraft.acceptRemoteDraft}
-        />
-      ) : null}
       <Composer
         agentId={agentId}
         serverId={serverId}
@@ -1632,7 +1540,6 @@ function ActiveAgentComposer({
         onClientSlashCommand={handleClientSlashCommand}
         footer={composerFooter}
         isCompactLayout={isCompactComposerLayout}
-        enablePromptPresets
       />
     </ReanimatedAnimated.View>
   );
@@ -1728,15 +1635,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   inputAreaWrapper: {
     width: "100%",
-  },
-  composerOverlay: {
-    width: "100%",
-  },
-  composerOverlayFloating: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    bottom: 0,
+    backgroundColor: theme.colors.surface0,
   },
   historySyncOverlay: {
     position: "absolute",

@@ -22,7 +22,7 @@ import { isSessionRpcAllowed, Session } from "./session.js";
 import { DownloadTokenStore } from "./file-download/token-store.js";
 import { StructuredAgentFallbackError } from "./agent/agent-response-loop.js";
 import type { StoredAgentRecord } from "./agent/agent-storage.js";
-import type { AgentManagerEvent } from "./agent/agent-manager.js";
+import type { AgentManagerEvent, ManagedAgent } from "./agent/agent-manager.js";
 import type { ProviderSnapshotManager } from "./agent/provider-snapshot-manager.js";
 import { createPersistedProjectRecord } from "./workspace-registry.js";
 import type { SessionOptions } from "./session.js";
@@ -1041,6 +1041,257 @@ function createStoredAgentRecord(
     archivedAt: overrides.archivedAt ?? null,
   };
 }
+
+test("does not reactivate an archived provider session for transcript export", async () => {
+  const agentId = "22222222-2222-4222-8222-222222222222";
+  const messages: SessionOutboundMessage[] = [];
+  const getAgent = vi.fn(() => null);
+  const fetchRetainedTimeline = vi.fn();
+  const session = createSessionForTest({
+    messages,
+    agentManager: {
+      getAgent,
+      fetchRetainedTimeline,
+    },
+    agentStorage: {
+      get: vi.fn(async () =>
+        createStoredAgentRecord({
+          id: agentId,
+          cwd: "/tmp/repo",
+          title: "Archived source",
+          archivedAt: "2026-07-18T11:00:00.000Z",
+        }),
+      ),
+    },
+  });
+
+  await session.handleMessage({
+    type: "agent.transcript.export.request",
+    agentId,
+    maxBytes: 1024,
+    requestId: "transcript-export-hydrated",
+  });
+
+  const [response] = messages;
+  if (response?.type !== "agent.transcript.export.response") {
+    throw new Error("expected an agent.transcript.export.response");
+  }
+  expect(response.payload).toMatchObject({
+    requestId: "transcript-export-hydrated",
+    agentId,
+    attachment: null,
+    totalItemCount: 0,
+    includedItemCount: 0,
+    byteCount: 0,
+    truncated: false,
+    capturedCursor: null,
+    error: "Transcript unavailable: archived history is not retained by this host.",
+  });
+  expect(getAgent).toHaveBeenCalledTimes(1);
+  expect(fetchRetainedTimeline).not.toHaveBeenCalled();
+});
+
+test("exports retained history for a closed agent without reactivating its provider session", async () => {
+  const agentId = "44444444-4444-4444-8444-444444444444";
+  const messages: SessionOutboundMessage[] = [];
+  const getAgent = vi.fn(() => null);
+  const fetchRetainedTimeline = vi.fn(() => ({
+    epoch: "timeline-4",
+    direction: "tail" as const,
+    reset: false,
+    staleCursor: false,
+    gap: false,
+    window: { minSeq: 1, maxSeq: 1, nextSeq: 2 },
+    hasOlder: false,
+    hasNewer: false,
+    rows: [
+      {
+        seq: 1,
+        timestamp: "2026-07-18T12:00:00.000Z",
+        item: { type: "assistant_message" as const, text: "Hydrated provider context." },
+      },
+    ],
+  }));
+  const session = createSessionForTest({
+    messages,
+    agentManager: {
+      getAgent,
+      fetchRetainedTimeline,
+    },
+    agentStorage: {
+      get: vi.fn(async () =>
+        createStoredAgentRecord({
+          id: agentId,
+          cwd: "/tmp/repo",
+          title: "Stored source",
+          persistence: { provider: "codex", sessionId: "provider-session-4" },
+        }),
+      ),
+    },
+  });
+
+  await session.handleMessage({
+    type: "agent.transcript.export.request",
+    agentId,
+    maxBytes: 1024,
+    requestId: "transcript-export-stored",
+  });
+
+  const [response] = messages;
+  if (response?.type !== "agent.transcript.export.response") {
+    throw new Error("expected an agent.transcript.export.response");
+  }
+  expect(response.payload.error).toBeNull();
+  expect(response.payload.attachment?.text).toContain("Hydrated provider context.");
+  expect(getAgent).toHaveBeenCalledTimes(1);
+  expect(fetchRetainedTimeline).toHaveBeenCalledWith(agentId, {
+    direction: "tail",
+    limit: 25_000,
+  });
+});
+
+test("does not resume a closed agent when its timeline is no longer retained", async () => {
+  const agentId = "66666666-6666-4666-8666-666666666666";
+  const messages: SessionOutboundMessage[] = [];
+  const fetchRetainedTimeline = vi.fn(() => null);
+  const session = createSessionForTest({
+    messages,
+    agentManager: {
+      getAgent: vi.fn(() => null),
+      fetchRetainedTimeline,
+    },
+    agentStorage: {
+      get: vi.fn(async () =>
+        createStoredAgentRecord({
+          id: agentId,
+          cwd: "/tmp/repo",
+          title: "Closed source",
+          persistence: { provider: "codex", sessionId: "provider-session-6" },
+        }),
+      ),
+    },
+  });
+
+  await session.handleMessage({
+    type: "agent.transcript.export.request",
+    agentId,
+    maxBytes: 1024,
+    requestId: "transcript-export-not-retained",
+  });
+
+  const [response] = messages;
+  if (response?.type !== "agent.transcript.export.response") {
+    throw new Error("expected an agent.transcript.export.response");
+  }
+  expect(response.payload).toMatchObject({
+    attachment: null,
+    error: "Transcript unavailable: open the source session on this host, then try again.",
+  });
+  expect(fetchRetainedTimeline).toHaveBeenCalledTimes(1);
+});
+
+test.each([
+  ["live", { liveInternal: true, storedInternal: false }],
+  ["stored", { liveInternal: false, storedInternal: true }],
+])("does not export a hidden %s agent", async (_kind, visibility) => {
+  const agentId = "55555555-5555-4555-8555-555555555555";
+  const messages: SessionOutboundMessage[] = [];
+  const liveAgent = visibility.liveInternal
+    ? ({ id: agentId, cwd: "/tmp/repo", internal: true } as ManagedAgent)
+    : null;
+  const session = createSessionForTest({
+    messages,
+    agentManager: {
+      getAgent: vi.fn(() => liveAgent),
+    },
+    agentStorage: {
+      get: vi.fn(async () =>
+        createStoredAgentRecord({
+          id: agentId,
+          cwd: "/tmp/repo",
+          internal: visibility.storedInternal,
+        }),
+      ),
+    },
+  });
+
+  await session.handleMessage({
+    type: "agent.transcript.export.request",
+    agentId,
+    maxBytes: 1024,
+    requestId: `transcript-export-internal-${_kind}`,
+  });
+
+  const [response] = messages;
+  if (response?.type !== "agent.transcript.export.response") {
+    throw new Error("expected an agent.transcript.export.response");
+  }
+  expect(response.payload).toMatchObject({
+    attachment: null,
+    error: `Agent not found: ${agentId}`,
+  });
+});
+
+test("exports a bounded window of live history", async () => {
+  const agentId = "33333333-3333-4333-8333-333333333333";
+  const liveAgent = { id: agentId, cwd: "/tmp/repo" } as ManagedAgent;
+  const messages: SessionOutboundMessage[] = [];
+  const getAgent = vi.fn(() => liveAgent);
+  const fetchRetainedTimeline = vi.fn(() => ({
+    epoch: "timeline-3",
+    direction: "tail" as const,
+    reset: false,
+    staleCursor: false,
+    gap: false,
+    window: { minSeq: 1, maxSeq: 1, nextSeq: 2 },
+    hasOlder: true,
+    hasNewer: false,
+    rows: [
+      {
+        seq: 1,
+        timestamp: "2026-07-18T12:00:00.000Z",
+        item: { type: "assistant_message" as const, text: "Live provider context." },
+      },
+    ],
+  }));
+  const session = createSessionForTest({
+    messages,
+    agentManager: {
+      getAgent,
+      fetchRetainedTimeline,
+    },
+    agentStorage: {
+      get: vi.fn(async () => null),
+    },
+  });
+
+  await session.handleMessage({
+    type: "agent.transcript.export.request",
+    agentId,
+    maxBytes: 1024,
+    requestId: "transcript-export-live",
+  });
+
+  const [response] = messages;
+  if (response?.type !== "agent.transcript.export.response") {
+    throw new Error("expected an agent.transcript.export.response");
+  }
+  expect(response.payload).toMatchObject({
+    requestId: "transcript-export-live",
+    agentId,
+    totalItemCount: null,
+    includedItemCount: 1,
+    truncated: true,
+    capturedCursor: { epoch: "timeline-3", seq: 1 },
+    error: null,
+  });
+  expect(response.payload.attachment?.text).toContain("Live provider context.");
+  expect(getAgent).toHaveBeenCalledTimes(1);
+  expect(fetchRetainedTimeline).toHaveBeenCalledWith(agentId, {
+    direction: "tail",
+    limit: 25_000,
+  });
+});
 
 describe("agent detach RPC", () => {
   test("detaches a stored subagent and emits the updated standalone agent", async () => {

@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { resolveDraftKey } from "./input-draft-core";
+import type { ChatHistoryContextAttachment } from "@/attachments/types";
+import {
+  areTranscriptAttachmentsEqual,
+  hasDraftContent,
+  resolveDraftKey,
+} from "./input-draft-core";
 import {
   buildDraftCommandConfig,
   resolveEffectiveComposerModelId,
@@ -23,6 +28,74 @@ describe("resolveDraftKey", () => {
         selectedServerId: "host-1",
       }),
     ).toBe("draft:host-1");
+  });
+});
+
+describe("hasDraftContent", () => {
+  it("keeps a transcript-only New Agent draft", () => {
+    const transcript: ChatHistoryContextAttachment = {
+      kind: "chat_history",
+      id: "chat_history:host-1:agent-1",
+      attachment: {
+        type: "text",
+        mimeType: "text/plain",
+        contextKind: "chat_history",
+        text: "Prior architecture decisions.",
+      },
+      source: {
+        serverId: "host-1",
+        agentId: "agent-1",
+      },
+    };
+
+    expect(
+      hasDraftContent({
+        text: "",
+        attachments: [],
+        transcriptAttachments: [transcript],
+      }),
+    ).toBe(true);
+  });
+});
+
+describe("areTranscriptAttachmentsEqual", () => {
+  const transcript: ChatHistoryContextAttachment = {
+    kind: "chat_history",
+    id: "chat_history:host-1:agent-1",
+    attachment: {
+      type: "text",
+      mimeType: "text/plain",
+      contextKind: "chat_history",
+      text: "Prior architecture decisions.",
+    },
+    source: {
+      serverId: "host-1",
+      agentId: "agent-1",
+      workspaceLabel: "main",
+      serverLabel: "Mac Studio",
+      capturedWhileRunning: true,
+    },
+  };
+
+  it("detects provenance-only snapshot refreshes so they are persisted", () => {
+    expect(
+      areTranscriptAttachmentsEqual({
+        left: [transcript],
+        right: [
+          {
+            ...transcript,
+            source: {
+              ...transcript.source,
+              workspaceLabel: "review-worktree",
+            },
+          },
+        ],
+      }),
+    ).toBe(false);
+  });
+
+  it("treats the same persisted snapshot as equal", () => {
+    expect(areTranscriptAttachmentsEqual({ left: [transcript], right: [transcript] })).toBe(true);
   });
 });
 

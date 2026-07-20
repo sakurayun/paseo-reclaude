@@ -19,6 +19,7 @@ const AGENT_HISTORY_ALL_HOSTS_FAILED_MESSAGE = "No connected hosts could load ag
 
 export interface AgentHistoryResult {
   agents: AggregatedAgent[];
+  unavailableHosts: AgentHistoryUnavailableHost[];
   isLoading: boolean;
   isInitialLoad: boolean;
   isRevalidating: boolean;
@@ -27,6 +28,12 @@ export interface AgentHistoryResult {
   isLoadingMore: boolean;
   refreshAll: () => Promise<void>;
   loadMore: () => void;
+}
+
+export interface AgentHistoryUnavailableHost {
+  serverId: string;
+  serverLabel: string;
+  reason: "disconnected" | "history_failed";
 }
 
 export interface AgentHistoryPage {
@@ -45,6 +52,7 @@ export interface AgentHistoryHost {
 interface AgentHistoryBatchPage {
   agents: AggregatedAgent[];
   pageInfoByServerId: Record<string, FetchAgentHistoryPageInfo>;
+  failedHostIds: string[];
 }
 
 type AgentHistoryCursorByServerId = Record<string, string | null>;
@@ -130,6 +138,13 @@ export async function fetchAgentHistoryBatch(input: {
   const pages = settledPages.flatMap((result) =>
     result.status === "fulfilled" ? [result.value] : [],
   );
+  const failedHostIds = settledPages.flatMap((result, index) => {
+    if (result.status === "fulfilled") {
+      return [];
+    }
+    const host = hostsToFetch[index];
+    return host ? [host.serverId] : [];
+  });
   if (pages.length === 0) {
     throw new Error(AGENT_HISTORY_ALL_HOSTS_FAILED_MESSAGE);
   }
@@ -144,6 +159,7 @@ export async function fetchAgentHistoryBatch(input: {
   return {
     agents: sortByLatestActivity(agents),
     pageInfoByServerId,
+    failedHostIds,
   };
 }
 
@@ -184,6 +200,23 @@ export function useAgentHistory(options: {
     }
 
     return hosts;
+  }, [daemons, runtime, runtimeVersion, serverId]);
+  const disconnectedHosts = useMemo<AgentHistoryUnavailableHost[]>(() => {
+    void runtimeVersion;
+    const targetDaemons = serverId
+      ? daemons.filter((daemon) => daemon.serverId === serverId)
+      : daemons;
+    return targetDaemons.flatMap((daemon) =>
+      isHostRuntimeConnected(runtime.getSnapshot(daemon.serverId))
+        ? []
+        : [
+            {
+              serverId: daemon.serverId,
+              serverLabel: daemon.label,
+              reason: "disconnected" as const,
+            },
+          ],
+    );
   }, [daemons, runtime, runtimeVersion, serverId]);
   const targetServerIds = useMemo(() => targetHosts.map((host) => host.serverId), [targetHosts]);
   const queryKey = useMemo(
@@ -251,11 +284,30 @@ export function useAgentHistory(options: {
     );
     return sortByLatestActivity(labelledAgents);
   }, [data?.pages, serverLabelById]);
+  const unavailableHosts = useMemo<AgentHistoryUnavailableHost[]>(() => {
+    const unavailableByServerId = new Map(
+      disconnectedHosts.map((host) => [host.serverId, host] as const),
+    );
+    for (const page of data?.pages ?? []) {
+      for (const failedServerId of page.failedHostIds) {
+        if (unavailableByServerId.has(failedServerId)) {
+          continue;
+        }
+        unavailableByServerId.set(failedServerId, {
+          serverId: failedServerId,
+          serverLabel: serverLabelById.get(failedServerId) ?? failedServerId,
+          reason: "history_failed",
+        });
+      }
+    }
+    return [...unavailableByServerId.values()];
+  }, [data?.pages, disconnectedHosts, serverLabelById]);
   const isInitialLoad = isLoading && agents.length === 0;
   const isRevalidating = isFetching && !isFetchingNextPage && agents.length > 0;
 
   return {
     agents,
+    unavailableHosts,
     isLoading,
     isInitialLoad,
     isRevalidating,

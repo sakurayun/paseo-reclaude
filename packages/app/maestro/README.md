@@ -69,3 +69,22 @@ PASEO_MAESTRO_DIRECT_ENDPOINT=127.0.0.1:6767
 PASEO_MAESTRO_DAEMON_WS_URL=ws://127.0.0.1:6767/ws
 PASEO_MAESTRO_PROJECT_PATH=/path/to/git/repo
 ```
+
+## Add Transcripts Smoke Flow
+
+`add-transcripts-ready-draft.yaml` exercises the shared iOS/Android picker,
+snapshot attachment, and preview. It intentionally starts from an already-open
+New Agent draft so a test harness can seed a source agent through the daemon
+without making the mobile UI depend on provider timing.
+
+Run it after preparing the draft and source:
+
+```bash
+PASEO_MAESTRO_APP_ID=sh.paseo.debug \
+PASEO_MAESTRO_SOURCE_SERVER_ID=<server-id> \
+PASEO_MAESTRO_SOURCE_AGENT_ID=<agent-id> \
+maestro test packages/app/maestro/add-transcripts-ready-draft.yaml
+```
+
+Do not add `launchApp` to this flow: restarting a development client discards
+the prepared navigation and can disrupt its host connection.
