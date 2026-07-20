@@ -50,7 +50,11 @@ export type KeyboardActionId =
   | "workspace.pin"
   | "view.toggle.focus"
   | "theme.cycle"
-  | "message-input.action";
+  | "message-input.action"
+  | "file-explorer.copy-path"
+  | "file-explorer.copy-relative-path"
+  | "file-explorer.rename"
+  | "file-explorer.delete";
 
 export type KeyboardShortcutPayload =
   | { index: number }
