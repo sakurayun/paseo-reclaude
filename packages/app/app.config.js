@@ -204,6 +204,9 @@ module.exports = {
           android: {
             minSdkVersion: 29,
             kotlinVersion: "2.1.20",
+            // Device ABIs only — skip x86/x86_64 to cut release build memory and time.
+            // (Hermes + four ABIs has OOM-killed EAS workers with hermesc exit 137.)
+            buildArchs: ["armeabi-v7a", "arm64-v8a"],
             // Allow HTTP connections for local network hosts in release builds
             usesCleartextTraffic: true,
           },
