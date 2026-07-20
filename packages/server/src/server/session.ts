@@ -84,7 +84,7 @@ import type { DaemonConfigStore } from "./daemon-config-store.js";
 import { listModelGatewayModels } from "./model-gateway-models.js";
 import { getErrorMessage, getErrorMessageOr } from "@getpaseo/protocol/error-utils";
 import { getAgentStatusPriority } from "@getpaseo/protocol/agent-state-bucket";
-import { getParentAgentIdFromLabels } from "@getpaseo/protocol/agent-labels";
+import { getParentAgentIdFromLabels, PARENT_AGENT_ID_LABEL } from "@getpaseo/protocol/agent-labels";
 import type { WorkspaceGitRuntimeSnapshot, WorkspaceGitService } from "./workspace-git-service.js";
 import type { ProjectUpdate } from "./workspace-reconciliation-service.js";
 import {
@@ -142,6 +142,7 @@ import { searchSessionContent, type SessionSearchAgent } from "./session-content
 import type { AgentStorage } from "./agent/agent-storage.js";
 import {
   ImportSessionsRequestError,
+  forkProviderSession,
   importProviderSession,
   listImportableProviderSessions,
   normalizeImportAgentRequest,
@@ -2114,6 +2115,8 @@ export class Session {
       }
       case "agent.fork_context.request":
         return this.handleAgentForkContextRequest(msg);
+      case "agent.fork.request":
+        return this.handleAgentForkRequest(msg);
       default:
         return undefined;
     }
@@ -7229,6 +7232,58 @@ export class Session {
           boundaryCursor: msg.boundaryCursor ?? null,
           boundaryMessageId: msg.boundaryMessageId ?? null,
           error: error instanceof Error ? error.message : String(error),
+        },
+      });
+    }
+  }
+
+  private async handleAgentForkRequest(
+    msg: Extract<SessionInboundMessage, { type: "agent.fork.request" }>,
+  ): Promise<void> {
+    try {
+      const source = await ensureAgentLoaded(msg.agentId, {
+        agentManager: this.agentManager,
+        agentStorage: this.agentStorage,
+        logger: this.sessionLogger,
+      });
+      const providerHandleId = source.persistence?.nativeHandle ?? source.persistence?.sessionId;
+      if (!providerHandleId) {
+        throw new Error("Source agent has no native provider session to fork");
+      }
+      const { snapshot, createdWorkspace } = await forkProviderSession({
+        provider: source.provider,
+        providerHandleId,
+        cwd: source.cwd,
+        ...(msg.boundaryMessageId ? { messageId: msg.boundaryMessageId } : {}),
+        ...(msg.workspaceId ? { workspaceId: msg.workspaceId } : {}),
+        labels: { [PARENT_AGENT_ID_LABEL]: msg.agentId },
+        workspaceProvisioning: this.workspaceProvisioning,
+        agentManager: this.agentManager,
+        logger: this.sessionLogger,
+      });
+      if (createdWorkspace) {
+        await this.registerWorkspaceForImportedAgent(createdWorkspace);
+      }
+      const agentPayload = await this.buildAgentPayload(snapshot);
+      this.emit({
+        type: "agent.fork.response",
+        payload: {
+          requestId: msg.requestId,
+          agentId: snapshot.id,
+          agent: agentPayload,
+          error: null,
+        },
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.sessionLogger.error({ err: error, agentId: msg.agentId }, "Failed to fork agent");
+      this.emit({
+        type: "agent.fork.response",
+        payload: {
+          requestId: msg.requestId,
+          agentId: msg.agentId,
+          agent: null,
+          error: message,
         },
       });
     }

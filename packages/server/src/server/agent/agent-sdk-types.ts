@@ -87,6 +87,12 @@ export interface AgentMode {
   description?: string;
   icon?: string;
   colorTier?: string;
+  /**
+   * Model bound to this mode/agent as `"providerID/modelID"`, if the provider
+   * binds one (e.g. OpenCode plugins binding `atlas`→`kimi`). Selecting the
+   * mode switches the effective model to this.
+   */
+  model?: string;
   isUnattended?: boolean;
 }
 
@@ -554,6 +560,36 @@ export interface ImportProviderSessionInput {
   cwd: string;
 }
 
+export interface ForkProviderSessionInput {
+  /** Native provider session id to fork from. */
+  providerHandleId: string;
+  cwd: string;
+  /**
+   * Native provider message id to fork at. When omitted, the provider forks
+   * from the tail of the session.
+   */
+  messageId?: string;
+}
+
+export interface ForkProviderSessionContext {
+  config: AgentSessionConfig;
+  storedConfig: AgentSessionConfig;
+  launchContext?: AgentLaunchContext;
+}
+
+/**
+ * A single changed file in a provider session's working-tree diff, as produced
+ * by providers that expose a native per-session diff endpoint (e.g. OpenCode's
+ * `session.diff()`). `path` is the file path relative to the workspace; the
+ * `additions`/`deletions` counts summarize the change size.
+ */
+export interface SessionChangedFile {
+  path: string;
+  additions: number;
+  deletions: number;
+  status?: "added" | "deleted" | "modified";
+}
+
 export interface ImportProviderSessionContext {
   config: AgentSessionConfig;
   storedConfig: AgentSessionConfig;
@@ -569,6 +605,11 @@ export interface ImportedProviderSession {
   session: AgentSession;
   config: AgentSessionConfig;
   persistence: AgentPersistenceHandle;
+  /**
+   * Native provider session id this session was forked from, when it is a real
+   * provider child session (native fork). Absent for plain imports.
+   */
+  parentSessionId?: string;
   timeline: ImportedTimelineEntry[];
   providerSubagentEvents?: Extract<AgentStreamEvent, { type: "provider_subagent" }>[];
 }
@@ -671,6 +712,13 @@ export interface AgentSession {
   revertFiles?(input: { messageId: string }): Promise<void>;
   revertBoth?(input: { messageId: string }): Promise<void>;
   /**
+   * Produce a per-session changed-files view for providers that expose a native
+   * session diff endpoint (e.g. OpenCode's `session.diff()`). Returns the list
+   * of files changed in the session's working tree with per-file add/delete
+   * counts. Providers without a native session diff do not implement this.
+   */
+  diffSession?(): Promise<SessionChangedFile[]>;
+  /**
    * Out-of-band prompt handler. When non-null, the manager runs the returned
    * handler instead of allocating a turn. The handler emits stream events
    * directly via the provided `emit` callback, which routes through the
@@ -738,6 +786,16 @@ export interface AgentClient {
   importSession?(
     input: ImportProviderSessionInput,
     context: ImportProviderSessionContext,
+  ): Promise<ImportedProviderSession>;
+  /**
+   * Fork an existing native provider session at a message point, returning a
+   * real provider child session that preserves provider-side history. Providers
+   * that expose a native fork endpoint implement this; others fall back to the
+   * generic client-side fork flow.
+   */
+  forkSession?(
+    input: ForkProviderSessionInput,
+    context: ForkProviderSessionContext,
   ): Promise<ImportedProviderSession>;
   /**
    * Check if this provider is available (CLI binary is installed).

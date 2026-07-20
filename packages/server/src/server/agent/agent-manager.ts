@@ -38,6 +38,7 @@ import {
   type AgentTimelineItem,
   type AgentUsage,
   type AgentRuntimeInfo,
+  type ImportedProviderSession,
   type ImportedTimelineEntry,
   type ImportableProviderSession,
   type ListImportableSessionsOptions,
@@ -1223,6 +1224,74 @@ export class AgentManager {
       },
       { config: providerLaunchConfig, storedConfig, launchContext },
     );
+    return this.registerImportedProviderSession(imported, resolvedAgentId, {
+      workspaceId: input.workspaceId,
+      labels: input.labels,
+    });
+  }
+
+  // Fork an existing native provider session at a message point via the
+  // provider's native fork endpoint (mirrors importProviderSession, but the
+  // resulting agent is a real provider child session tied to its parent).
+  forkProviderSession(input: {
+    provider: AgentProvider;
+    providerHandleId: string;
+    cwd: string;
+    workspaceId: string;
+    messageId?: string;
+    labels?: Record<string, string>;
+  }): Promise<ManagedAgent> {
+    return this.trackAgentRegistrationOperation(this.forkProviderSessionInternal(input));
+  }
+
+  private async forkProviderSessionInternal(input: {
+    provider: AgentProvider;
+    providerHandleId: string;
+    cwd: string;
+    workspaceId: string;
+    messageId?: string;
+    labels?: Record<string, string>;
+  }): Promise<ManagedAgent> {
+    this.assertAcceptingAgentRegistrations();
+    const resolvedAgentId = validateAgentId(this.idFactory(), "forkProviderSession");
+    this.requireEnabledProvider(input.provider);
+
+    const client = await this.requireAvailableClient({ provider: input.provider });
+    if (!client.forkSession) {
+      throw new Error(`Provider '${input.provider}' does not support native fork`);
+    }
+
+    const { storedConfig, launchConfig } = await this.prepareSessionConfig(
+      {
+        provider: input.provider,
+        cwd: input.cwd,
+      },
+      resolvedAgentId,
+    );
+    const launchContext = await this.buildLaunchContext(resolvedAgentId, client);
+    const providerLaunchConfig = this.resolveProviderLaunchConfig(launchConfig, launchContext);
+    const forked = await client.forkSession(
+      {
+        providerHandleId: input.providerHandleId,
+        cwd: input.cwd,
+        ...(input.messageId ? { messageId: input.messageId } : {}),
+      },
+      { config: providerLaunchConfig, storedConfig, launchContext },
+    );
+    return this.registerImportedProviderSession(forked, resolvedAgentId, {
+      workspaceId: input.workspaceId,
+      labels: input.labels,
+    });
+  }
+
+  // Shared registration for provider-imported/forked sessions: normalize the
+  // provider config, prime the timeline, register the agent, and replay any
+  // provider subagent events.
+  private async registerImportedProviderSession(
+    imported: ImportedProviderSession,
+    resolvedAgentId: string,
+    options: { workspaceId: string; labels?: Record<string, string> },
+  ): Promise<ManagedAgent> {
     let handedToRegistration = false;
     try {
       const importedConfig = await this.normalizeConfig(
@@ -1233,8 +1302,8 @@ export class AgentManager {
 
       handedToRegistration = true;
       const agent = await this.registerSession(imported.session, importedConfig, resolvedAgentId, {
-        labels: input.labels,
-        workspaceId: input.workspaceId,
+        labels: options.labels,
+        workspaceId: options.workspaceId,
         timelineRows,
         timelineNextSeq: timelineRows.length + 1,
         persistence: imported.persistence,
@@ -1634,9 +1703,14 @@ export class AgentManager {
     const currentMode = (await agent.session.getCurrentMode()) ?? modeId;
     agent.config.modeId = currentMode ?? undefined;
     agent.currentModeId = currentMode;
-    // Update runtimeInfo to reflect the new mode
+    // A mode switch may re-bind the effective model (e.g. OpenCode plugins
+    // binding an agent to a specific model). Read the session's resulting
+    // effective model and surface it so the client model picker updates.
+    const effectiveModel = (await agent.session.getRuntimeInfo()).model ?? null;
+    agent.config.model = effectiveModel ?? undefined;
+    // Update runtimeInfo to reflect the new mode and effective model
     if (agent.runtimeInfo) {
-      agent.runtimeInfo = { ...agent.runtimeInfo, modeId: currentMode };
+      agent.runtimeInfo = { ...agent.runtimeInfo, modeId: currentMode, model: effectiveModel };
     }
     this.touchUpdatedAt(agent);
     this.emitState(agent);

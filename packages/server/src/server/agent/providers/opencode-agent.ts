@@ -41,6 +41,8 @@ import {
   type AgentTimelineItem,
   type AgentUsage,
   type FetchCatalogOptions,
+  type ForkProviderSessionContext,
+  type ForkProviderSessionInput,
   type ImportableProviderSession,
   type ImportProviderSessionContext,
   type ImportProviderSessionInput,
@@ -49,6 +51,7 @@ import {
   type ResolveAgentCreateConfigResult,
   type McpServerConfig,
   type ProviderCatalog,
+  type SessionChangedFile,
   type ToolCallDetail,
   type ToolCallTimelineItem,
 } from "../agent-sdk-types.js";
@@ -244,6 +247,14 @@ function buildOpenCodePermissionActions(): AgentPermissionAction[] {
   ];
 }
 
+// OpenCode models permission persistence entirely through the `reply` field on
+// POST /permission/{id}/reply — there is no separate `remember` boolean in the
+// server API (verified against @opencode-ai/sdk v1.18.3 `PermissionReplyData`
+// and https://opencode.ai/docs/permissions). `"always"` is OpenCode's
+// server-side "remember" — it approves future requests matching the tool's
+// suggested patterns for the rest of the session, so an "Allow always" reply
+// persists provider-side rather than in Paseo-local memory. Do NOT add a
+// `remember` argument to `permission.reply`; it does not exist on the wire.
 function resolveOpenCodePermissionReply(
   response: AgentPermissionResponse,
 ): "once" | "always" | "reject" {
@@ -597,12 +608,32 @@ function readOpenCodeAgentHexColor(agent: { color?: unknown }): string | undefin
     : undefined;
 }
 
+function readOpenCodeAgentBoundModel(agent: { model?: unknown }): string | undefined {
+  const model = agent.model;
+  if (!model || typeof model !== "object") {
+    return undefined;
+  }
+  const providerID = (model as { providerID?: unknown }).providerID;
+  const modelID = (model as { modelID?: unknown }).modelID;
+  if (
+    typeof providerID !== "string" ||
+    providerID.trim().length === 0 ||
+    typeof modelID !== "string" ||
+    modelID.trim().length === 0
+  ) {
+    return undefined;
+  }
+  return buildOpenCodeModelLookupKey(providerID.trim(), modelID.trim());
+}
+
 function mapOpenCodeAgentToMode(agent: {
   name: string;
   description?: unknown;
   color?: unknown;
+  model?: unknown;
 }): AgentMode {
   const colorTier = readOpenCodeAgentHexColor(agent);
+  const model = readOpenCodeAgentBoundModel(agent);
   return {
     id: agent.name,
     label: agent.name.charAt(0).toUpperCase() + agent.name.slice(1),
@@ -612,6 +643,7 @@ function mapOpenCodeAgentToMode(agent: {
         ? agent.description.trim()
         : DEFAULT_MODES.find((mode) => mode.id === agent.name)?.description,
     ...(colorTier ? { colorTier } : {}),
+    ...(model ? { model } : {}),
   };
 }
 
@@ -1537,6 +1569,53 @@ export class OpenCodeAgentClient implements AgentClient {
       }
     } finally {
       await acquisition.release();
+    }
+  }
+
+  async forkSession(input: ForkProviderSessionInput, context: ForkProviderSessionContext) {
+    const acquisition = await this.serverManager.acquireCurrent();
+    const { url } = acquisition.server;
+    const client = this.createOpenCodeClient({
+      baseUrl: url,
+      directory: input.cwd,
+    });
+
+    try {
+      // Native fork: OpenCode creates a real child session that preserves the
+      // provider-side history up to the fork point, rather than Paseo
+      // re-importing a text transcript.
+      const forkResponse = await client.session.fork({
+        sessionID: input.providerHandleId,
+        directory: input.cwd,
+        ...(input.messageId ? { messageID: input.messageId } : {}),
+      });
+      if (forkResponse.error || !forkResponse.data) {
+        throw new Error(
+          `Failed to fork OpenCode session ${input.providerHandleId}: ${JSON.stringify(
+            forkResponse.error,
+          )}`,
+        );
+      }
+      const forkedSession = forkResponse.data;
+      const parentSessionId = readNonEmptyString(forkedSession.parentID) ?? input.providerHandleId;
+
+      const messages = await readOpenCodeSessionMessagesFromSdk(client, forkedSession);
+      const modeId = resolveOpenCodePersistedSessionModeId(forkedSession, messages);
+      const model = resolveOpenCodePersistedSessionModel(forkedSession, messages);
+      const imported = await importSessionFromPersistence({
+        provider: "opencode",
+        request: { providerHandleId: forkedSession.id, cwd: input.cwd },
+        context,
+        resumeSession: this.resumeSession.bind(this),
+        config: {
+          title: normalizeOpenCodeSessionTitle(forkedSession.title) ?? undefined,
+          ...(modeId ? { modeId } : {}),
+          ...(model ? { model } : {}),
+        },
+      });
+      return { ...imported, parentSessionId };
+    } finally {
+      acquisition.release();
     }
   }
 
@@ -2884,6 +2963,13 @@ class OpenCodeAgentSession implements AgentSession {
   private readonly logger: Logger;
   private readonly modelContextWindowsByModelKey: ReadonlyMap<string, number>;
   private currentMode: string | null = null;
+  /**
+   * The model bound to the currently selected OpenCode agent/mode (as
+   * `providerID/modelID`), if any. OpenCode plugins can bind an agent to a
+   * specific model (e.g. `atlas`→`kimi`); selecting that agent must switch the
+   * effective model like the OpenCode TUI does.
+   */
+  private agentBoundModel: string | undefined;
   private autoAcceptEnabled = false;
   private pendingPermissions = new Map<string, AgentPermissionRequest>();
   private abortController: AbortController | null = null;
@@ -2976,7 +3062,10 @@ class OpenCodeAgentSession implements AgentSession {
   async setModel(modelId: string | null): Promise<void> {
     const normalizedModelId =
       typeof modelId === "string" && modelId.trim().length > 0 ? modelId : null;
-    this.config.model = normalizedModelId ?? undefined;
+    // Explicit user choice wins over the current agent's bound model until the
+    // next setMode() starts a fresh selection. Clearing it reverts to the
+    // agent-bound model (if any).
+    this.config.model = normalizedModelId ?? this.agentBoundModel ?? undefined;
     this.selectedModelContextWindowMaxTokens = this.resolveConfiguredModelContextWindowMaxTokens(
       this.config.model,
     );
@@ -3032,6 +3121,37 @@ class OpenCodeAgentSession implements AgentSession {
       sessionId: this.sessionId,
       cwd: this.config.cwd,
       messageId: input.messageId,
+    });
+  }
+
+  async diffSession(): Promise<SessionChangedFile[]> {
+    // Native per-session diff: OpenCode returns the session's working-tree
+    // changes as a list of FileDiff entries. We map them to the provider-
+    // agnostic SessionChangedFile shape (path + add/delete counts).
+    const response = await this.client.session.diff({
+      sessionID: this.sessionId,
+      directory: this.config.cwd,
+    });
+    if (response.error || !response.data) {
+      throw new Error(
+        `Failed to diff OpenCode session ${this.sessionId}: ${JSON.stringify(response.error)}`,
+      );
+    }
+    return response.data.map((file) => {
+      if (!file.file) {
+        throw new Error(
+          `OpenCode session ${this.sessionId} returned a diff entry with no file path: ${JSON.stringify(file)}`,
+        );
+      }
+      const changed: SessionChangedFile = {
+        path: file.file,
+        additions: file.additions,
+        deletions: file.deletions,
+      };
+      if (file.status) {
+        changed.status = file.status;
+      }
+      return changed;
     });
   }
 
@@ -3802,13 +3922,42 @@ class OpenCodeAgentSession implements AgentSession {
   async setMode(modeId: string): Promise<void> {
     const normalizedModeId = normalizeOpenCodeModeId(modeId);
     if (normalizedModeId === OPENCODE_LEGACY_FULL_ACCESS_MODE_ID) {
+      await this.applyAgentBoundModelForModeSelection(OPENCODE_BUILD_MODE_ID);
       this.currentMode = OPENCODE_BUILD_MODE_ID;
       await this.setFeature(OPENCODE_AUTO_ACCEPT_FEATURE_ID, true);
       return;
     }
 
+    await this.applyAgentBoundModelForModeSelection(normalizedModeId);
     this.currentMode = normalizedModeId;
     this.config.modeId = normalizedModeId ?? undefined;
+  }
+
+  /**
+   * Resolves and applies the target agent's bound model as the effective
+   * prompt model. A mode selection is a fresh start: any prior explicit
+   * `setModel()` override does not persist across a mode switch (B4). If the
+   * newly selected agent has no bound model, the current model is left as-is.
+   */
+  private async applyAgentBoundModelForModeSelection(modeId: string | null): Promise<void> {
+    const boundModel = await this.resolveAgentBoundModel(modeId);
+    this.agentBoundModel = boundModel;
+    if (!boundModel) {
+      return;
+    }
+    this.config.model = boundModel;
+    this.selectedModelContextWindowMaxTokens =
+      this.resolveConfiguredModelContextWindowMaxTokens(boundModel);
+  }
+
+  private async resolveAgentBoundModel(modeId: string | null): Promise<string | undefined> {
+    if (modeId === null) {
+      return undefined;
+    }
+    const runtimeAgentId = resolveOpenCodeRuntimeAgentId(modeId);
+    const modes = await this.getAvailableModes();
+    const match = modes.find((mode) => mode.id === modeId || mode.id === runtimeAgentId);
+    return match?.model;
   }
 
   async setFeature(featureId: string, value: unknown): Promise<void> {

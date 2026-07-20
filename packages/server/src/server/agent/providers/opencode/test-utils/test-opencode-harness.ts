@@ -85,6 +85,8 @@ export class TestOpenCodeClient {
     sessionCommand: [] as unknown[],
     sessionCreate: [] as unknown[],
     sessionDelete: [] as unknown[],
+    sessionFork: [] as unknown[],
+    sessionDiff: [] as unknown[],
     sessionChildren: [] as unknown[],
     sessionGet: [] as unknown[],
     sessionMessages: [] as unknown[],
@@ -110,6 +112,8 @@ export class TestOpenCodeClient {
   sessionCommandResponse: OpenCodeResponse = {};
   sessionCreateResponse: OpenCodeResponse = { data: { id: "session-1" } };
   sessionDeleteResponse: OpenCodeResponse = {};
+  sessionForkResponse: OpenCodeResponse = { data: { id: "session-fork" } };
+  sessionDiffResponse: OpenCodeResponse = { data: [] };
   sessionChildrenResponses: OpenCodeResponse[] = [];
   sessionChildrenImplementation: ((parameters: unknown) => Promise<OpenCodeResponse>) | null = null;
   sessionGetResponse: OpenCodeResponse = {
@@ -224,6 +228,14 @@ export class TestOpenCodeClient {
         delete: async (parameters: unknown) => {
           this.calls.sessionDelete.push(parameters);
           return this.sessionDeleteResponse;
+        },
+        fork: async (parameters: unknown) => {
+          this.calls.sessionFork.push(parameters);
+          return this.sessionForkResponse;
+        },
+        diff: async (parameters: unknown) => {
+          this.calls.sessionDiff.push(parameters);
+          return this.sessionDiffResponse;
         },
         children: async (parameters: unknown) => {
           this.calls.sessionChildren.push(parameters);

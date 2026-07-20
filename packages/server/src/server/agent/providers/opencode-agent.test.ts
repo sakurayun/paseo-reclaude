@@ -753,6 +753,128 @@ describe("OpenCodeAgentClient adapter smoke tests", () => {
   }, 180_000);
 });
 
+describe("OpenCode adapter agent→model binding", () => {
+  const logger = createTestLogger();
+  const buildConfig = (cwd: string): AgentSessionConfig => ({
+    provider: "opencode",
+    cwd,
+    model: TEST_MODEL,
+  });
+
+  async function createBoundModelSession() {
+    const cwd = tmpCwd();
+    const runtime = new TestOpenCodeHarness();
+    const openCodeClient = new TestOpenCodeClient();
+    // Plugins like oh-my-openagent bind agents to specific models.
+    openCodeClient.appAgentsResponse = {
+      data: [
+        { name: "atlas", mode: "primary", model: { providerID: "moonshot", modelID: "kimi-k2" } },
+        {
+          name: "sisyphus",
+          mode: "primary",
+          model: { providerID: "anthropic", modelID: "claude-opus" },
+        },
+        { name: "plan", mode: "primary" },
+      ],
+    };
+    runtime.enqueueClient(openCodeClient);
+    const client = new OpenCodeAgentClient(logger, undefined, {
+      serverManager: runtime,
+      createClient: runtime.createClient,
+    });
+    const session = await client.createSession(buildConfig(cwd));
+    return { cwd, openCodeClient, session };
+  }
+
+  async function runTurnModel(
+    session: Awaited<ReturnType<typeof createBoundModelSession>>["session"],
+    openCodeClient: TestOpenCodeClient,
+  ): Promise<unknown> {
+    const before = openCodeClient.calls.sessionPromptAsync.length;
+    const turn = await collectTurnEvents(streamSession(session, "Hello"));
+    expect(turn.turnCompleted).toBe(true);
+    const lastCall = openCodeClient.calls.sessionPromptAsync[
+      openCodeClient.calls.sessionPromptAsync.length - 1
+    ] as { model?: unknown };
+    expect(openCodeClient.calls.sessionPromptAsync.length).toBe(before + 1);
+    return lastCall.model;
+  }
+
+  test("applies the selected agent's bound model as the effective prompt model (B2/B3)", async () => {
+    const { cwd, openCodeClient, session } = await createBoundModelSession();
+
+    await session.setMode("atlas");
+    expect(await runTurnModel(session, openCodeClient)).toEqual({
+      providerID: "moonshot",
+      modelID: "kimi-k2",
+    });
+
+    const runtimeInfo = await session.getRuntimeInfo();
+    expect(runtimeInfo.model).toBe("moonshot/kimi-k2");
+
+    await session.close();
+    rmSync(cwd, { recursive: true, force: true });
+  }, 60_000);
+
+  test("an explicit setModel override wins over the agent-bound model (B3)", async () => {
+    const { cwd, openCodeClient, session } = await createBoundModelSession();
+
+    await session.setMode("atlas");
+    await session.setModel("openai/gpt-5");
+
+    expect(await runTurnModel(session, openCodeClient)).toEqual({
+      providerID: "openai",
+      modelID: "gpt-5",
+    });
+
+    await session.close();
+    rmSync(cwd, { recursive: true, force: true });
+  }, 60_000);
+
+  test("switching agents re-applies the new agent's model and drops the override (B4)", async () => {
+    const { cwd, openCodeClient, session } = await createBoundModelSession();
+
+    // atlas → bound kimi
+    await session.setMode("atlas");
+    expect(await runTurnModel(session, openCodeClient)).toEqual({
+      providerID: "moonshot",
+      modelID: "kimi-k2",
+    });
+
+    // explicit override sticks only for this selection
+    await session.setModel("openai/gpt-5");
+    expect(await runTurnModel(session, openCodeClient)).toEqual({
+      providerID: "openai",
+      modelID: "gpt-5",
+    });
+
+    // switching to sisyphus re-applies its bound model; the override does not persist
+    await session.setMode("sisyphus");
+    expect(await runTurnModel(session, openCodeClient)).toEqual({
+      providerID: "anthropic",
+      modelID: "claude-opus",
+    });
+
+    await session.close();
+    rmSync(cwd, { recursive: true, force: true });
+  }, 60_000);
+
+  test("selecting an agent with no bound model leaves the current model unchanged (B2)", async () => {
+    const { cwd, openCodeClient, session } = await createBoundModelSession();
+
+    await session.setMode("atlas");
+    await session.setMode("plan");
+
+    expect(await runTurnModel(session, openCodeClient)).toEqual({
+      providerID: "moonshot",
+      modelID: "kimi-k2",
+    });
+
+    await session.close();
+    rmSync(cwd, { recursive: true, force: true });
+  }, 60_000);
+});
+
 describe("OpenCode adapter context-window normalization", () => {
   test("builds OpenCode file parts for image prompt blocks", () => {
     expect(
@@ -1015,6 +1137,39 @@ describe("OpenCode adapter context-window normalization", () => {
         color: "#fff",
       }),
     ).not.toHaveProperty("colorTier");
+  });
+
+  test("carries an OpenCode agent's bound model as providerID/modelID (B1)", () => {
+    expect(
+      __openCodeInternals.mapOpenCodeAgentToMode({
+        name: "atlas",
+        model: { providerID: "moonshot", modelID: "kimi-k2" },
+      }),
+    ).toMatchObject({
+      id: "atlas",
+      label: "Atlas",
+      model: "moonshot/kimi-k2",
+    });
+  });
+
+  test("omits the model field for agents without a bound model (B1)", () => {
+    expect(__openCodeInternals.mapOpenCodeAgentToMode({ name: "plan" })).not.toHaveProperty(
+      "model",
+    );
+
+    expect(
+      __openCodeInternals.mapOpenCodeAgentToMode({
+        name: "broken",
+        model: { providerID: "", modelID: "kimi-k2" },
+      }),
+    ).not.toHaveProperty("model");
+
+    expect(
+      __openCodeInternals.mapOpenCodeAgentToMode({
+        name: "broken",
+        model: { providerID: "moonshot" },
+      }),
+    ).not.toHaveProperty("model");
   });
 });
 
@@ -2281,6 +2436,143 @@ describe("OpenCode persisted sessions", () => {
       { sessionID: "ses_selected", directory: cwd },
     ]);
   });
+
+  test("forkSession forks natively and returns a child session tied to the parent", async () => {
+    const runtime = new TestOpenCodeHarness();
+    const forkClient = new TestOpenCodeClient();
+    const resumedClient = new TestOpenCodeClient();
+    const cwd = "/workspace/repo";
+    const forkedSession = {
+      id: "ses_fork",
+      parentID: "ses_parent",
+      directory: cwd,
+      title: "Forked session",
+      time: { created: 2000, updated: 3000 },
+    };
+    const messages = [
+      {
+        info: {
+          id: "msg_user",
+          sessionID: "ses_fork",
+          role: "user",
+          time: { created: 2100 },
+          agent: "build",
+          model: { providerID: "opencode", modelID: "big-pickle" },
+        },
+        parts: [
+          {
+            id: "prt_user",
+            sessionID: "ses_fork",
+            messageID: "msg_user",
+            type: "text",
+            text: "history preserved across the fork",
+            time: { start: 2100 },
+          },
+        ],
+      },
+    ];
+    forkClient.sessionForkResponse = { data: forkedSession };
+    forkClient.sessionMessagesResponse = { data: messages };
+    resumedClient.sessionGetResponse = { data: forkedSession };
+    resumedClient.sessionMessagesResponse = { data: messages };
+    runtime.enqueueClient(forkClient);
+    runtime.enqueueClient(resumedClient);
+
+    const client = new OpenCodeAgentClient(createTestLogger(), undefined, {
+      serverManager: runtime,
+      createClient: runtime.createClient,
+    });
+    const forked = await client.forkSession(
+      { providerHandleId: "ses_parent", cwd, messageId: "msg_boundary" },
+      {
+        config: { provider: "opencode", cwd },
+        storedConfig: { provider: "opencode", cwd },
+      },
+    );
+
+    // Native fork endpoint is called with the source session + message point.
+    expect(forkClient.calls.sessionFork).toEqual([
+      { sessionID: "ses_parent", directory: cwd, messageID: "msg_boundary" },
+    ]);
+    // The returned session is the real provider child session, not a re-import
+    // of the parent under a new id.
+    expect(forked.session.id).toBe("ses_fork");
+    expect(forked.persistence).toMatchObject({
+      provider: "opencode",
+      sessionId: "ses_fork",
+      nativeHandle: "ses_fork",
+    });
+    // Child session is tied to the parent it was forked from.
+    expect(forked.parentSessionId).toBe("ses_parent");
+    // Provider-side history is preserved (hydrated from the forked session,
+    // not rebuilt from a text transcript).
+    expect(forked.timeline.map((entry) => entry.item)).toEqual([
+      { type: "user_message", text: "history preserved across the fork", messageId: "msg_user" },
+    ]);
+    expect(forked.config).toMatchObject({
+      provider: "opencode",
+      cwd,
+      title: "Forked session",
+      modeId: "build",
+      model: "opencode/big-pickle",
+    });
+  });
+
+  test("diffSession maps the native session diff to a changed-files view", async () => {
+    const cwd = tmpCwd();
+    const runtime = new TestOpenCodeHarness();
+    const openCodeClient = new TestOpenCodeClient();
+    openCodeClient.sessionCreateResponse = { data: { id: "ses_diff" } };
+    openCodeClient.sessionDiffResponse = {
+      data: [
+        { file: "src/added.ts", patch: "@@", additions: 12, deletions: 0, status: "added" },
+        { file: "src/edited.ts", patch: "@@", additions: 3, deletions: 4, status: "modified" },
+        { file: "src/removed.ts", patch: "@@", additions: 0, deletions: 9, status: "deleted" },
+      ],
+    };
+    runtime.enqueueClient(openCodeClient);
+
+    const client = new OpenCodeAgentClient(createTestLogger(), undefined, {
+      serverManager: runtime,
+      createClient: runtime.createClient,
+    });
+    const session = await client.createSession({ provider: "opencode", cwd, model: TEST_MODEL });
+
+    const changed = await session.diffSession?.();
+
+    // Native session.diff endpoint is called with the session + workspace dir.
+    expect(openCodeClient.calls.sessionDiff).toEqual([{ sessionID: "ses_diff", directory: cwd }]);
+    // FileDiff entries are mapped to the provider-agnostic changed-files shape
+    // (path + add/delete counts + status), preserving order.
+    expect(changed).toEqual([
+      { path: "src/added.ts", additions: 12, deletions: 0, status: "added" },
+      { path: "src/edited.ts", additions: 3, deletions: 4, status: "modified" },
+      { path: "src/removed.ts", additions: 0, deletions: 9, status: "deleted" },
+    ]);
+
+    await session.close();
+    rmSync(cwd, { recursive: true, force: true });
+  }, 60_000);
+
+  test("diffSession throws when the native session diff endpoint errors", async () => {
+    const cwd = tmpCwd();
+    const runtime = new TestOpenCodeHarness();
+    const openCodeClient = new TestOpenCodeClient();
+    openCodeClient.sessionCreateResponse = { data: { id: "ses_diff_err" } };
+    openCodeClient.sessionDiffResponse = { error: { message: "boom" } };
+    runtime.enqueueClient(openCodeClient);
+
+    const client = new OpenCodeAgentClient(createTestLogger(), undefined, {
+      serverManager: runtime,
+      createClient: runtime.createClient,
+    });
+    const session = await client.createSession({ provider: "opencode", cwd, model: TEST_MODEL });
+
+    await expect(session.diffSession?.()).rejects.toThrow(/Failed to diff OpenCode session/);
+
+    await session.close();
+    rmSync(cwd, { recursive: true, force: true });
+  }, 60_000);
 
   test("listImportableSessions matches Windows cwd paths with forward slashes", async () => {
     const runtime = new TestOpenCodeHarness();

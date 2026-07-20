@@ -34,6 +34,7 @@ import type {
   AgentSlashCommand,
   AgentStreamEvent,
   AgentTimelineItem,
+  ForkProviderSessionInput,
   ImportProviderSessionInput,
   ResolveAgentDefaultModeInput,
 } from "./agent-sdk-types.js";
@@ -2639,6 +2640,84 @@ test("importProviderSession imports the selected session without listing and pub
   expect((await storage.get(imported.id))?.title).toBe("Trace provider imports");
 });
 
+test("forkProviderSession forks natively and registers a child agent tied to the parent", async () => {
+  const workdir = mkdtempSync(join(tmpdir(), "agent-manager-fork-session-"));
+  const storagePath = join(workdir, "agents");
+  const storage = new AgentStorage(storagePath, logger);
+  const forkedSession = new TestAgentSession({ provider: "codex", cwd: workdir });
+
+  class ForkClient extends TestAgentClient {
+    importCalls = 0;
+    forkInput: ForkProviderSessionInput | null = null;
+
+    override async importSession(): Promise<never> {
+      this.importCalls += 1;
+      throw new Error("fork path must not re-import the parent transcript");
+    }
+
+    async forkSession(input: ForkProviderSessionInput) {
+      this.forkInput = input;
+      return {
+        session: forkedSession,
+        config: { provider: "codex" as const, cwd: workdir },
+        persistence: {
+          provider: "codex" as const,
+          sessionId: "ses_fork",
+          nativeHandle: "ses_fork",
+          metadata: { provider: "codex", cwd: workdir },
+        },
+        parentSessionId: input.providerHandleId,
+        timeline: [
+          {
+            item: { type: "user_message" as const, text: "history preserved across the fork" },
+            timestamp: "2026-01-03T00:00:00.000Z",
+          },
+        ],
+      };
+    }
+  }
+
+  const client = new ForkClient();
+  const manager = new AgentManager({
+    clients: {
+      codex: client,
+    },
+    registry: storage,
+    logger,
+  });
+
+  const forked = await manager.forkProviderSession({
+    provider: "codex",
+    providerHandleId: "ses_parent",
+    cwd: workdir,
+    workspaceId: "ws-forked",
+    messageId: "msg_boundary",
+    labels: { [PARENT_AGENT_ID_LABEL]: "agent-parent" },
+  });
+
+  // Native fork endpoint is invoked with the source session + message point;
+  // the generic re-import path is never used.
+  expect(client.importCalls).toBe(0);
+  expect(client.forkInput).toEqual({
+    providerHandleId: "ses_parent",
+    cwd: workdir,
+    messageId: "msg_boundary",
+  });
+  // A real provider child session is registered as a new managed agent tied to
+  // the parent via the parent-agent label, with provider-side history primed.
+  expect(forked.lifecycle).toBe("idle");
+  expect(forked.historyPrimed).toBe(true);
+  expect(forked.labels[PARENT_AGENT_ID_LABEL]).toBe("agent-parent");
+  expect(forked.persistence).toMatchObject({
+    provider: "codex",
+    sessionId: "ses_fork",
+    nativeHandle: "ses_fork",
+  });
+  expect(manager.getTimeline(forked.id)).toEqual([
+    { type: "user_message", text: "history preserved across the fork" },
+  ]);
+});
+
 test("reloadAgentSession passes daemon launch env through the provider launch context", async () => {
   const workdir = mkdtempSync(join(tmpdir(), "agent-manager-reload-context-"));
   const storagePath = join(workdir, "agents");
@@ -3101,6 +3180,117 @@ test("persists live mode, model, and thinking changes without an external snapsh
   expect(persisted?.config?.thinkingOptionId).toBe("high");
   expect(persisted?.runtimeInfo?.modeId).toBe("build");
   expect(persisted?.runtimeInfo?.model).toBe("gpt-5.4");
+});
+
+test("setAgentMode surfaces the agent-bound model into runtimeInfo on a mode switch", async () => {
+  const workdir = mkdtempSync(join(tmpdir(), "agent-manager-mode-bound-model-"));
+  const storagePath = join(workdir, "agents");
+  const storage = new AgentStorage(storagePath, logger);
+
+  // A session whose bound model follows the selected mode/agent, mirroring
+  // OpenCode plugins that bind e.g. atlas→kimi. Selecting the mode must switch
+  // the effective model, which setAgentMode reads via getRuntimeInfo().
+  const MODEL_BY_MODE: Record<string, string> = {
+    atlas: "moonshot/kimi",
+    sisyphus: "anthropic/claude",
+  };
+
+  class BoundModelSession implements AgentSession {
+    readonly provider = "codex" as const;
+    readonly capabilities = TEST_CAPABILITIES;
+    readonly id = randomUUID();
+    private currentMode: string | null;
+    private effectiveModel: string | null;
+
+    constructor(private readonly config: AgentSessionConfig) {
+      this.currentMode = config.modeId ?? null;
+      this.effectiveModel = config.model ?? null;
+    }
+
+    async run(): Promise<AgentRunResult> {
+      return { sessionId: this.id, finalText: "", timeline: [] };
+    }
+
+    async startTurn(): Promise<{ turnId: string }> {
+      return { turnId: "turn-1" };
+    }
+
+    subscribe(): () => void {
+      return () => {};
+    }
+
+    async *streamHistory(): AsyncGenerator<AgentStreamEvent> {}
+
+    async getRuntimeInfo() {
+      return {
+        provider: this.provider,
+        sessionId: this.id,
+        model: this.effectiveModel,
+        modeId: this.currentMode,
+      };
+    }
+
+    async getAvailableModes() {
+      return [];
+    }
+
+    async getCurrentMode() {
+      return this.currentMode;
+    }
+
+    async setMode(modeId: string): Promise<void> {
+      this.currentMode = modeId;
+      const bound = MODEL_BY_MODE[modeId];
+      if (bound) {
+        this.effectiveModel = bound;
+      }
+    }
+
+    getPendingPermissions() {
+      return [];
+    }
+
+    async respondToPermission(): Promise<void> {}
+
+    describePersistence() {
+      return { provider: this.provider, sessionId: this.id };
+    }
+
+    async interrupt(): Promise<void> {}
+    async close(): Promise<void> {}
+  }
+
+  class BoundModelClient extends TestAgentClient {
+    override async createSession(config: AgentSessionConfig): Promise<AgentSession> {
+      return new BoundModelSession(config);
+    }
+  }
+
+  const manager = new AgentManager({
+    clients: {
+      codex: new BoundModelClient(),
+    },
+    registry: storage,
+    logger,
+    idFactory: () => "00000000-0000-4000-8000-000000000401",
+  });
+
+  const snapshot = await manager.createAgent(
+    {
+      provider: "codex",
+      cwd: workdir,
+      modeId: "sisyphus",
+    },
+    undefined,
+    { workspaceId: undefined },
+  );
+
+  await manager.setAgentMode(snapshot.id, "atlas");
+
+  const agent = manager.getAgent(snapshot.id);
+  expect(agent?.currentModeId).toBe("atlas");
+  expect(agent?.runtimeInfo?.model).toBe("moonshot/kimi");
+  expect(agent?.config.model).toBe("moonshot/kimi");
 });
 
 test("session config drift events update state through the stream channel", async () => {
