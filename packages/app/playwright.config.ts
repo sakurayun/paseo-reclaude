@@ -30,7 +30,10 @@ export default defineConfig({
   projects: [
     {
       name: "Desktop Chrome",
-      testIgnore: ["**/*.real.spec.ts"],
+      testIgnore: [
+        "**/*.real.spec.ts",
+        ...(process.env.PASEO_DESKTOP_BENCHMARK === "1" ? [] : ["**/*.benchmark.spec.ts"]),
+      ],
       use: { ...devices["Desktop Chrome"] },
     },
     {

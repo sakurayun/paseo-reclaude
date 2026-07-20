@@ -484,23 +484,21 @@ Diagnoses version mismatches and native module issues.
 
 ## Performance benchmarks
 
-Performance benchmarks use the root task registry in `scripts/benchmarks/tasks.ts`. The root
-runner executes every registered task by default and combines their results under one versioned
-JSON envelope with the Git commit, dirty-worktree flag, and Node runtime identity:
+App performance benchmarks have explicit package scripts. Run only the workload you need:
 
 ```bash
-npm run benchmark                                      # Run all registered tasks
-npm run benchmark -- --list                            # List registered tasks
-npm run benchmark -- agent-stream-reducer              # Run one task
-npm run benchmark -- desktop-interaction               # Run isolated heavy-tab UI benchmark
-npm run benchmark -- desktop-streaming                 # Run live reducer-to-Markdown benchmark
-npm run benchmark -- --output /tmp/paseo-benchmark.json
+npm run benchmark:agent-stream --workspace=@getpaseo/app
+npm run benchmark:draft-attachment-gc --workspace=@getpaseo/app
+npm run benchmark:desktop-interaction --workspace=@getpaseo/app
+npm run benchmark:desktop-streaming --workspace=@getpaseo/app
+npm run benchmark:desktop-markdown --workspace=@getpaseo/app
+npm run benchmark:desktop-css-interactions --workspace=@getpaseo/app
+npm run benchmark:desktop-css-audit --workspace=@getpaseo/app
 ```
 
-Each task writes a `BenchmarkTaskResult` with stable task/case IDs, scalar dimensions, and named
-metrics. Add a benchmark by implementing that result contract and registering its command in
-`scripts/benchmarks/tasks.ts`. Keep workloads deterministic and make each task verify correctness
-before reporting timing data.
+Benchmarks print JSON results to stdout. Set `PASEO_BENCHMARK_OUTPUT` when a standalone JSON file is
+needed. Keep workloads deterministic and make each benchmark verify correctness before reporting
+timing data.
 
 The `desktop-interaction` task starts its own temporary daemon and Metro instance on random ports,
 uses the development mock provider to seed 50/100/176-item timelines, and runs the Electron web

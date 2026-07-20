@@ -533,7 +533,6 @@ function ProjectRowTrailingActions({
       {onRemoveProject ? (
         <View
           dataSet={revealWithDesktopCss ? sidebarProjectHoverActionDataSet : undefined}
-          style={!actionsVisible && styles.projectKebabButtonHidden}
           pointerEvents={actionsVisible || revealWithDesktopCss ? "auto" : "none"}
         >
           <ProjectKebabMenu
@@ -841,10 +840,9 @@ function NewWorktreeButton({
   const pressableStyle = useCallback(
     ({ hovered, pressed }: PressableStateCallbackType & { hovered?: boolean }) => [
       styles.projectIconActionButton,
-      !visible && styles.projectIconActionButtonHidden,
       (Boolean(hovered) || pressed) && !loading && styles.projectIconActionButtonHovered,
     ],
-    [visible, loading],
+    [loading],
   );
 
   const handlePress = useCallback(
@@ -2621,9 +2619,6 @@ const styles = StyleSheet.create((theme) => ({
   projectIconActionButtonHovered: {
     backgroundColor: theme.colors.surfaceSidebarHover,
   },
-  projectIconActionButtonHidden: {
-    opacity: 0,
-  },
   projectTrailingActions: {
     flexDirection: "row",
     alignItems: "center",
@@ -2637,9 +2632,6 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     justifyContent: "center",
     flexShrink: 0,
-  },
-  projectKebabButtonHidden: {
-    opacity: 0,
   },
   projectKebabButtonHovered: {
     backgroundColor: theme.colors.surface2,

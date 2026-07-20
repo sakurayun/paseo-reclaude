@@ -1,3 +1,25 @@
+export type BenchmarkProperty = string | number | boolean | null;
+
+export interface BenchmarkMetricResult {
+  unit: string;
+  values: Record<string, number>;
+  samples?: number[];
+}
+
+export interface BenchmarkCaseResult {
+  id: string;
+  dimensions: Record<string, BenchmarkProperty>;
+  metrics: Record<string, BenchmarkMetricResult>;
+}
+
+export interface BenchmarkTaskResult {
+  schemaVersion: 1;
+  taskId: string;
+  generatedAt: string;
+  metadata?: Record<string, BenchmarkProperty>;
+  cases: BenchmarkCaseResult[];
+}
+
 export interface SampleSummary {
   p50: number;
   p95: number;

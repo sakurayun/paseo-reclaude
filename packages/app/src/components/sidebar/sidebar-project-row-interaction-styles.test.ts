@@ -23,6 +23,9 @@ describe("sidebar project row interaction styles", () => {
     expect(css).toContain("[data-sidebar-project-hover-action]");
     expect(css).toContain("visibility: hidden");
     expect(css).toContain("pointer-events: auto !important");
+    expect(css).toContain("var(--colors-surface-sidebar-hover)");
+    expect(css).toContain("var(--colors-foreground-muted)");
+    expect(css).not.toMatch(/var\(--colors-[^)]*[A-Z]/);
 
     cleanup();
     expect(document.getElementById(SIDEBAR_PROJECT_ROW_STYLE_ID)).toBeNull();

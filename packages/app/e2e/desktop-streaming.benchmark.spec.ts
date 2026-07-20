@@ -1,11 +1,11 @@
 import { writeFile } from "node:fs/promises";
 import type { BrowserContext, CDPSession, Page } from "@playwright/test";
-import { summarizeSamples } from "../../../scripts/benchmarks/stats";
 import type {
   BenchmarkCaseResult,
   BenchmarkMetricResult,
   BenchmarkTaskResult,
-} from "../../../scripts/benchmarks/types";
+} from "../scripts/benchmark-support";
+import { summarizeSamples } from "../scripts/benchmark-support";
 import { test } from "./fixtures";
 import { buildCreateAgentPreferences, buildSeededHost } from "./helpers/daemon-registry";
 import { getE2EDaemonPort } from "./helpers/daemon-port";
@@ -54,7 +54,7 @@ function isMarkdownWorkload(value: string): value is MarkdownWorkload {
 }
 
 function parseMarkdownCases(): StreamBenchmarkCase[] {
-  const configured = process.env.PASEO_MARKDOWN_BENCHMARK_CASES;
+  const configured: string | undefined = process.env.PASEO_MARKDOWN_BENCHMARK_CASES;
   if (!configured) {
     return DEFAULT_MARKDOWN_CASES;
   }
@@ -637,8 +637,7 @@ test("benchmarks live assistant streaming through reducer, React, and Markdown",
     } satisfies BenchmarkTaskResult;
     const serialized = `${JSON.stringify(result, null, 2)}\n`;
     const outputPath = process.env.PASEO_BENCHMARK_OUTPUT;
-    if (!outputPath) throw new Error("PASEO_BENCHMARK_OUTPUT is required");
-    await writeFile(outputPath, serialized);
+    if (outputPath) await writeFile(outputPath, serialized);
     if (process.env.PASEO_BENCHMARK_QUIET !== "1") process.stdout.write(serialized);
   } finally {
     await context.close();

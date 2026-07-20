@@ -8,12 +8,12 @@ import { seedWorkspace, type SeededWorkspace } from "./helpers/seed-client";
 import { scrollTimelineUntilOlderHistoryIsReachable } from "./helpers/timeline-pagination";
 import { buildHostWorkspaceOpenRoute } from "../src/utils/host-routes";
 import { test } from "./fixtures";
-import { summarizeSamples } from "../../../scripts/benchmarks/stats";
 import type {
   BenchmarkCaseResult,
   BenchmarkMetricResult,
   BenchmarkTaskResult,
-} from "../../../scripts/benchmarks/types";
+} from "../scripts/benchmark-support";
+import { summarizeSamples } from "../scripts/benchmark-support";
 
 const HISTORY_TURN_COUNTS = [25, 50, 88] as const;
 const HEAVY_TAB_COUNTS = [1, 4, 8] as const;
@@ -688,10 +688,7 @@ test("benchmarks Desktop interaction under retained heavy timelines", async ({ b
     } satisfies BenchmarkTaskResult;
     const serialized = `${JSON.stringify(result, null, 2)}\n`;
     const outputPath = process.env.PASEO_BENCHMARK_OUTPUT;
-    if (!outputPath) {
-      throw new Error("PASEO_BENCHMARK_OUTPUT is required");
-    }
-    await writeFile(outputPath, serialized);
+    if (outputPath) await writeFile(outputPath, serialized);
     if (process.env.PASEO_BENCHMARK_QUIET !== "1") {
       process.stdout.write(serialized);
     }

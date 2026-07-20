@@ -5,7 +5,7 @@ export const SIDEBAR_PROJECT_ROW_STYLE_ID = "paseo-sidebar-project-row-interacti
 export const SIDEBAR_PROJECT_ROW_CSS = `
 @media (hover: hover) and (pointer: fine) {
   [data-sidebar-project-row]:not([data-sidebar-project-dragging="true"]):hover {
-    background-color: var(--colors-surfaceSidebarHover) !important;
+    background-color: var(--colors-surface-sidebar-hover) !important;
   }
 
   [data-sidebar-project-row]:not([data-sidebar-project-dragging="true"]):active {
@@ -25,8 +25,8 @@ export const SIDEBAR_PROJECT_ROW_CSS = `
     top: 50%;
     width: 6px;
     height: 6px;
-    border-right: 1.5px solid var(--colors-foregroundMuted);
-    border-bottom: 1.5px solid var(--colors-foregroundMuted);
+    border-right: 1.5px solid var(--colors-foreground-muted);
+    border-bottom: 1.5px solid var(--colors-foreground-muted);
     opacity: 0;
     visibility: hidden;
   }

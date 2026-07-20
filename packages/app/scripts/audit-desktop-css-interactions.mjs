@@ -1,8 +1,10 @@
 import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import ts from "typescript";
 
-const APP_SOURCE_ROOT = path.resolve("packages/app/src");
+const APP_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const APP_SOURCE_ROOT = path.join(APP_ROOT, "src");
 const EVENT_NAMES = [
   "onHoverIn",
   "onHoverOut",
@@ -161,7 +163,7 @@ for (const filePath of sourceFiles) {
     true,
     filePath.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
   );
-  const relativePath = path.relative(process.cwd(), filePath);
+  const relativePath = path.relative(APP_ROOT, filePath);
 
   function visit(node) {
     if (ts.isJsxAttribute(node) && EVENT_NAMES.includes(node.name.text)) {

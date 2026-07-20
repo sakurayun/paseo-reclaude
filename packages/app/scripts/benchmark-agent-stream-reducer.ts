@@ -1,8 +1,7 @@
 import { writeFileSync } from "node:fs";
 import { performance } from "node:perf_hooks";
 import type { AgentStreamEventPayload } from "@getpaseo/protocol/messages";
-import { summarizeSamples } from "../../../scripts/benchmarks/stats";
-import type { BenchmarkTaskResult } from "../../../scripts/benchmarks/types";
+import { summarizeSamples, type BenchmarkTaskResult } from "./benchmark-support";
 import {
   processAgentStreamEvents,
   type AgentStreamReducerEvent,

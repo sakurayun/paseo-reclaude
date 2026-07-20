@@ -3,12 +3,12 @@ import type { CDPSession, Page } from "@playwright/test";
 import { buildAgentRoute } from "./helpers/mock-agent";
 import { seedWorkspace, type SeededWorkspace } from "./helpers/seed-client";
 import { test } from "./fixtures";
-import { summarizeSamples } from "../../../scripts/benchmarks/stats";
 import type {
   BenchmarkCaseResult,
   BenchmarkMetricResult,
   BenchmarkTaskResult,
-} from "../../../scripts/benchmarks/types";
+} from "../scripts/benchmark-support";
+import { summarizeSamples } from "../scripts/benchmark-support";
 
 const TAB_COUNTS = [1, 8, 20] as const;
 const HOVER_CYCLES = 100;
@@ -270,6 +270,7 @@ test("benchmarks Desktop CSS tab hover feedback", async ({ page }) => {
     cases,
   } satisfies BenchmarkTaskResult;
   const outputPath = process.env.PASEO_BENCHMARK_OUTPUT;
-  if (!outputPath) throw new Error("PASEO_BENCHMARK_OUTPUT is required");
-  await writeFile(outputPath, `${JSON.stringify(result, null, 2)}\n`);
+  const serialized = `${JSON.stringify(result, null, 2)}\n`;
+  if (outputPath) await writeFile(outputPath, serialized);
+  if (process.env.PASEO_BENCHMARK_QUIET !== "1") process.stdout.write(serialized);
 });
