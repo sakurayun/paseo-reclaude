@@ -42,8 +42,16 @@ import { parsePartialJsonObject } from "./partial-json.js";
 import { ClaudeSidechainTracker } from "./sidechain-tracker.js";
 import {
   buildClaudeFeatures,
+  CLAUDE_ADVISOR_EXPERIMENTAL_ENV,
+  CLAUDE_ADVISOR_FEATURE_ID,
+  CLAUDE_ADVISOR_OFF_OPTION_ID,
+  claudeModelSupportsAdvisor,
   claudeModelSupportsFastMode,
   claudeModelSupportsUltracode,
+  isClaudeAdvisorFeatureEnabled,
+  isClaudeAdvisorPairingValid,
+  normalizeClaudeAdvisorFeatureValue,
+  type ClaudeAdvisorFeatureValue,
 } from "./feature-definitions.js";
 import {
   buildBinaryDiagnosticRows,
@@ -1633,6 +1641,7 @@ export class ClaudeAgentClient implements AgentClient {
       modelId: claudeConfig.model,
       fastModeEnabled: claudeConfig.featureValues?.fast_mode === true,
       ultracodeEnabled: claudeConfig.featureValues?.ultracode === true,
+      advisorModel: claudeConfig.featureValues?.[CLAUDE_ADVISOR_FEATURE_ID],
     });
   }
 
@@ -2155,6 +2164,7 @@ class ClaudeAgentSession implements AgentSession {
       modelId: this.config.model,
       fastModeEnabled: this.config.featureValues?.fast_mode === true,
       ultracodeEnabled: this.config.featureValues?.ultracode === true,
+      advisorModel: this.config.featureValues?.[CLAUDE_ADVISOR_FEATURE_ID],
     });
   }
 
@@ -2371,14 +2381,7 @@ class ClaudeAgentSession implements AgentSession {
       this.config.thinkingOptionId = undefined;
       thinkingOptionId = null;
     }
-    if (!claudeModelSupportsFastMode(this.config.model) && this.config.featureValues?.fast_mode) {
-      await this.applyFastModeFeature(false, activeQuery);
-      featureValues = this.config.featureValues;
-    }
-    if (!claudeModelSupportsUltracode(this.config.model) && this.config.featureValues?.ultracode) {
-      await this.applyUltracodeFeature(false, activeQuery);
-      featureValues = this.config.featureValues;
-    }
+    featureValues = await this.clearIncompatibleFeaturesForModel(activeQuery);
     this.contextUsage.setInitialContextWindowMaxTokens(
       this.resolveSelectedModelContextWindowMaxTokens(),
     );
@@ -2428,9 +2431,9 @@ class ClaudeAgentSession implements AgentSession {
     featureId: string,
     value: unknown,
   ): Promise<AgentConfigurationUpdateResult | void> {
-    const enabled = assertClaudeFeatureToggleValue(featureId, value);
     switch (featureId) {
-      case "fast_mode":
+      case "fast_mode": {
+        const enabled = assertClaudeFeatureToggleValue(featureId, value);
         if (enabled && !claudeModelSupportsFastMode(this.config.model)) {
           throw new Error(
             `Claude fast mode is not available for model '${this.config.model ?? "default"}'`,
@@ -2438,16 +2441,49 @@ class ClaudeAgentSession implements AgentSession {
         }
         await this.applyFastModeFeature(enabled);
         return;
-      case "ultracode":
+      }
+      case "ultracode": {
+        const enabled = assertClaudeFeatureToggleValue(featureId, value);
         if (enabled && !claudeModelSupportsUltracode(this.config.model)) {
           throw new Error(
             `Claude Ultracode is not available for model '${this.config.model ?? "default"}'`,
           );
         }
         return await this.applyUltracodeFeature(enabled);
+      }
+      case CLAUDE_ADVISOR_FEATURE_ID:
+        return await this.applyAdvisorFeature(value);
       default:
         throw new Error(`Unknown Claude feature: ${featureId}`);
     }
+  }
+
+  private async clearIncompatibleFeaturesForModel(
+    activeQuery: Query,
+  ): Promise<Record<string, unknown> | undefined> {
+    let featureValues: Record<string, unknown> | undefined;
+    if (!claudeModelSupportsFastMode(this.config.model) && this.config.featureValues?.fast_mode) {
+      await this.applyFastModeFeature(false, activeQuery);
+      featureValues = this.config.featureValues;
+    }
+    if (!claudeModelSupportsUltracode(this.config.model) && this.config.featureValues?.ultracode) {
+      await this.applyUltracodeFeature(false, activeQuery);
+      featureValues = this.config.featureValues;
+    }
+    const advisorValue = this.config.featureValues?.[CLAUDE_ADVISOR_FEATURE_ID];
+    const advisorModelId = typeof advisorValue === "string" ? advisorValue : null;
+    if (
+      isClaudeAdvisorFeatureEnabled(advisorValue) &&
+      (!claudeModelSupportsAdvisor(this.config.model) ||
+        !isClaudeAdvisorPairingValid({
+          baseModelId: this.config.model,
+          advisorModelId,
+        }))
+    ) {
+      await this.applyAdvisorFeature(CLAUDE_ADVISOR_OFF_OPTION_ID, activeQuery);
+      featureValues = this.config.featureValues;
+    }
+    return featureValues;
   }
 
   private async applyFastModeFeature(enabled: boolean, query?: Query): Promise<void> {
@@ -2489,6 +2525,61 @@ class ClaudeAgentSession implements AgentSession {
       ...(!enabled && clearImpliedThinkingOption ? { thinkingOptionId: null } : {}),
       featureValues: this.config.featureValues,
     };
+  }
+
+  private async applyAdvisorFeature(
+    value: unknown,
+    query?: Query,
+  ): Promise<AgentConfigurationUpdateResult> {
+    const advisorModel = normalizeClaudeAdvisorFeatureValue(value);
+    if (!advisorModel) {
+      throw new Error(
+        `Claude feature '${CLAUDE_ADVISOR_FEATURE_ID}' expects one of: off, sonnet, opus, fable`,
+      );
+    }
+    if (advisorModel !== CLAUDE_ADVISOR_OFF_OPTION_ID) {
+      if (!claudeModelSupportsAdvisor(this.config.model)) {
+        throw new Error(
+          `Claude Advisor is not available for model '${this.config.model ?? "default"}'`,
+        );
+      }
+      if (
+        !isClaudeAdvisorPairingValid({
+          baseModelId: this.config.model,
+          advisorModelId: advisorModel,
+        })
+      ) {
+        throw new Error(
+          `Claude Advisor model '${advisorModel}' is less capable than base model '${this.config.model ?? "default"}'`,
+        );
+      }
+    }
+
+    const previous = normalizeClaudeAdvisorFeatureValue(
+      this.config.featureValues?.[CLAUDE_ADVISOR_FEATURE_ID],
+    );
+    const previousEnabled = isClaudeAdvisorFeatureEnabled(previous);
+    const nextEnabled = isClaudeAdvisorFeatureEnabled(advisorModel);
+
+    this.config.featureValues = {
+      ...this.config.featureValues,
+      [CLAUDE_ADVISOR_FEATURE_ID]: advisorModel,
+    };
+
+    // Experimental advisor tool needs an env flag on the Claude CLI process.
+    // Changing on/off requires restarting the query so the env is reapplied.
+    if (previousEnabled !== nextEnabled) {
+      this.queryRestartNeeded = true;
+    }
+
+    const activeQuery = query ?? this.query;
+    if (activeQuery && !this.queryRestartNeeded) {
+      await activeQuery.applyFlagSettings({
+        advisorModel: nextEnabled ? advisorModel : null,
+      });
+    }
+    this.cachedRuntimeInfo = null;
+    return { featureValues: this.config.featureValues };
   }
 
   getPendingPermissions(): AgentPermissionRequest[] {
@@ -3146,6 +3237,7 @@ class ClaudeAgentSession implements AgentSession {
   }
 
   private buildSdkEnv(extraClaudeOptions: Partial<ClaudeOptions> | undefined): NodeJS.ProcessEnv {
+    const advisorEnabled = isClaudeAdvisorFeatureEnabled(this.resolveAdvisorFeatureValue());
     return createProviderEnv({
       baseEnv: process.env,
       runtimeSettings: this.runtimeSettings,
@@ -3155,6 +3247,7 @@ class ClaudeAgentSession implements AgentSession {
           // Increase MCP timeouts for long-running tool calls (10 minutes)
           MCP_TIMEOUT: "600000",
           MCP_TOOL_TIMEOUT: "600000",
+          ...(advisorEnabled ? { [CLAUDE_ADVISOR_EXPERIMENTAL_ENV]: "1" } : {}),
         },
         this.launchEnv,
       ],
@@ -3263,6 +3356,10 @@ class ClaudeAgentSession implements AgentSession {
     if (ultracode !== null) {
       settings.ultracode = ultracode;
     }
+    const advisorModel = this.resolveAdvisorModelSetting();
+    if (advisorModel !== undefined) {
+      settings.advisorModel = advisorModel;
+    }
     return Object.keys(settings).length > 0 ? settings : null;
   }
 
@@ -3278,6 +3375,34 @@ class ClaudeAgentSession implements AgentSession {
       return null;
     }
     return this.config.featureValues?.ultracode === true;
+  }
+
+  private resolveAdvisorModelSetting(): string | undefined {
+    if (!claudeModelSupportsAdvisor(this.config.model)) {
+      return undefined;
+    }
+    const advisorModel = normalizeClaudeAdvisorFeatureValue(
+      this.config.featureValues?.[CLAUDE_ADVISOR_FEATURE_ID],
+    );
+    if (!advisorModel || advisorModel === CLAUDE_ADVISOR_OFF_OPTION_ID) {
+      return undefined;
+    }
+    if (
+      !isClaudeAdvisorPairingValid({
+        baseModelId: this.config.model,
+        advisorModelId: advisorModel,
+      })
+    ) {
+      return undefined;
+    }
+    return advisorModel;
+  }
+
+  private resolveAdvisorFeatureValue(): ClaudeAdvisorFeatureValue {
+    return (
+      normalizeClaudeAdvisorFeatureValue(this.config.featureValues?.[CLAUDE_ADVISOR_FEATURE_ID]) ??
+      CLAUDE_ADVISOR_OFF_OPTION_ID
+    );
   }
 
   private normalizeMcpServers(

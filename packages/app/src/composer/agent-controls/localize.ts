@@ -8,7 +8,7 @@ import { formatThinkingOptionLabel } from "./utils";
  * For the well-known IDs we override label/description/tooltip with localized
  * strings; unknown IDs fall back to whatever the daemon sent.
  */
-const KNOWN_FEATURE_IDS = ["fast_mode", "ultracode"] as const;
+const KNOWN_FEATURE_IDS = ["fast_mode", "ultracode", "advisor"] as const;
 type KnownFeatureId = (typeof KNOWN_FEATURE_IDS)[number];
 
 function isKnownFeatureId(id: string): id is KnownFeatureId {
@@ -19,6 +19,25 @@ export function localizeAgentFeature(t: TFunction, feature: AgentFeature): Agent
   if (!isKnownFeatureId(feature.id)) {
     return feature;
   }
+
+  if (feature.type === "select" && feature.id === "advisor") {
+    return {
+      ...feature,
+      label: t(`agentControls.features.known.${feature.id}.label`),
+      description: t(`agentControls.features.known.${feature.id}.description`),
+      tooltip: t(`agentControls.features.known.${feature.id}.tooltip`),
+      options: feature.options.map((option) => {
+        const optionKey = `agentControls.features.known.advisor.options.${option.id}`;
+        const translated = t(optionKey);
+        return {
+          ...option,
+          // Fall back to the server label when a locale is missing a specific option key.
+          label: translated === optionKey ? option.label : translated,
+        };
+      }),
+    };
+  }
+
   return {
     ...feature,
     label: t(`agentControls.features.known.${feature.id}.label`),

@@ -226,6 +226,18 @@ export const es: TranslationResources = {
             "Usa un esfuerzo muy alto con la orquestación dinámica de flujos de trabajo de Claude",
           tooltip: "Alternar Ultracode",
         },
+        advisor: {
+          label: "Advisor",
+          description:
+            "Activa la herramienta experimental Advisor del servidor de Claude (usa un segundo modelo)",
+          tooltip: "Elegir modelo de Advisor",
+          options: {
+            off: "Desactivado",
+            sonnet: "Sonnet",
+            opus: "Opus",
+            fable: "Fable",
+          },
+        },
       },
     },
     mode: {

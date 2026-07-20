@@ -226,6 +226,18 @@ export const ru: TranslationResources = {
             "Использует сверхвысокий уровень усилий с динамической оркестрацией рабочих процессов Claude",
           tooltip: "Переключить Ultracode",
         },
+        advisor: {
+          label: "Advisor",
+          description:
+            "Включает экспериментальный server-side Advisor tool Claude (второй модель даёт советы)",
+          tooltip: "Выбрать модель Advisor",
+          options: {
+            off: "Выкл.",
+            sonnet: "Sonnet",
+            opus: "Opus",
+            fable: "Fable",
+          },
+        },
       },
     },
     mode: {

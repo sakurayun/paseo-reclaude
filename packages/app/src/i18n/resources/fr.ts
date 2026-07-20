@@ -228,6 +228,18 @@ export const fr: TranslationResources = {
             "Utilise un effort très élevé avec l'orchestration dynamique des flux de travail de Claude",
           tooltip: "Activer/désactiver Ultracode",
         },
+        advisor: {
+          label: "Advisor",
+          description:
+            "Active l'outil Advisor expérimental côté serveur de Claude (second modèle de conseil)",
+          tooltip: "Choisir le modèle Advisor",
+          options: {
+            off: "Désactivé",
+            sonnet: "Sonnet",
+            opus: "Opus",
+            fable: "Fable",
+          },
+        },
       },
     },
     mode: {

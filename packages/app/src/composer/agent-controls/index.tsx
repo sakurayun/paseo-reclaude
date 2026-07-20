@@ -26,6 +26,7 @@ import {
   ChevronDown,
   Code2,
   ListTodo,
+  MessageCircleQuestion,
   Route,
   Settings2,
   ShieldCheck,
@@ -202,8 +203,21 @@ function getFeatureIcon(featureId: string, icon?: string) {
   if (featureId === "ultracode") {
     return Code2;
   }
+  if (featureId === "advisor") {
+    return MessageCircleQuestion;
+  }
 
   return (icon && FEATURE_ICONS[icon]) || Settings2;
+}
+
+function isFeatureVisuallyEnabled(feature: AgentFeature): boolean {
+  if (feature.type === "toggle") {
+    return feature.value;
+  }
+  if (feature.type === "select") {
+    return Boolean(feature.value && feature.value !== "off");
+  }
+  return false;
 }
 
 function getFeatureIconColor(
@@ -1639,6 +1653,7 @@ function DesktopFeatureItem({
   if (feature.type === "select") {
     const FeatureIcon = getFeatureIcon(feature.id, feature.icon);
     const selectedOption = feature.options.find((o) => o.id === feature.value);
+    const selectEnabled = isFeatureVisuallyEnabled(feature);
     return (
       <DropdownMenu open={openSelector === featureSelector} onOpenChange={handleFeatureOpenChange}>
         <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
@@ -1650,8 +1665,18 @@ function DesktopFeatureItem({
               accessibilityLabel={getFeatureTooltip(feature)}
               testID={`agent-feature-${feature.id}`}
             >
-              <FeatureIcon size={theme.iconSize.md} color={theme.colors.foregroundMuted} />
-              <Text style={styles.modeBadgeText}>{selectedOption?.label ?? feature.label}</Text>
+              <FeatureIcon
+                size={theme.iconSize.md}
+                color={getFeatureIconColor(feature.id, selectEnabled, theme.colors)}
+              />
+              <Text
+                style={[
+                  styles.modeBadgeText,
+                  selectEnabled && feature.id === "advisor" ? styles.advisorBadgeText : null,
+                ]}
+              >
+                {selectedOption?.label ?? feature.label}
+              </Text>
             </DropdownTrigger>
           </TooltipTrigger>
           <TooltipContent side="top" align="center" offset={8}>
@@ -1746,7 +1771,9 @@ function SheetFeatureItem({
   }
 
   if (feature.type === "select") {
+    const FeatureIcon = getFeatureIcon(feature.id, feature.icon);
     const selectedOption = feature.options.find((o) => o.id === feature.value);
+    const selectEnabled = isFeatureVisuallyEnabled(feature);
     return (
       <View style={styles.sheetSection}>
         <DropdownMenu
@@ -1760,7 +1787,19 @@ function SheetFeatureItem({
             accessibilityLabel={getFeatureTooltip(feature)}
             testID={`agent-feature-${feature.id}`}
           >
-            <Text style={styles.sheetSelectText}>{selectedOption?.label ?? feature.label}</Text>
+            <FeatureIcon
+              size={theme.iconSize.md}
+              color={getFeatureIconColor(feature.id, selectEnabled, theme.colors)}
+            />
+            <Text style={styles.sheetSelectText}>{feature.label}</Text>
+            <Text
+              style={[
+                styles.modeBadgeText,
+                selectEnabled && feature.id === "advisor" ? styles.advisorBadgeText : null,
+              ]}
+            >
+              {selectedOption?.label ?? feature.label}
+            </Text>
           </DropdownTrigger>
           <DropdownMenuContent side="top" align="start">
             {feature.options.map((option) => (
@@ -2301,6 +2340,9 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.sm,
     fontWeight: theme.fontWeight.normal,
+  },
+  advisorBadgeText: {
+    color: theme.colors.palette.blue[400],
   },
   tooltipText: {
     color: theme.colors.foreground,

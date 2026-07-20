@@ -225,6 +225,17 @@ export const ar: TranslationResources = {
           description: "استخدام جهد فائق مع تنسيق سير العمل الديناميكي من Claude",
           tooltip: "تبديل Ultracode",
         },
+        advisor: {
+          label: "Advisor",
+          description: "تفعيل أداة Advisor التجريبية من Claude على الخادم (نموذج ثانٍ للتوجيه)",
+          tooltip: "اختر نموذج Advisor",
+          options: {
+            off: "إيقاف",
+            sonnet: "Sonnet",
+            opus: "Opus",
+            fable: "Fable",
+          },
+        },
       },
     },
     mode: {

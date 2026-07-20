@@ -225,6 +225,17 @@ export const ja: TranslationResources = {
           description: "Claude の動的ワークフロー編成で超高強度の処理を実行します",
           tooltip: "Ultracode を切り替え",
         },
+        advisor: {
+          label: "Advisor",
+          description: "Claude の実験的なサーバーサイド Advisor ツールを有効化（別モデルが助言）",
+          tooltip: "Advisor モデルを選択",
+          options: {
+            off: "オフ",
+            sonnet: "Sonnet",
+            opus: "Opus",
+            fable: "Fable",
+          },
+        },
       },
     },
     mode: {

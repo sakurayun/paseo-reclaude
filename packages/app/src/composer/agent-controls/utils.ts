@@ -52,6 +52,8 @@ export function getFeatureHighlightColor(featureId: string): FeatureHighlightCol
       return "yellow";
     case CLAUDE_ULTRACODE_FEATURE_ID:
       return "purple";
+    case "advisor":
+      return "blue";
     case "auto_accept":
       return "green";
     case "plan_mode":

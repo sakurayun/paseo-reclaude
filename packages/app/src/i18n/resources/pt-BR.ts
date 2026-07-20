@@ -225,6 +225,18 @@ export const ptBR: TranslationResources = {
           description: "Usar esforço extra alto com a orquestração dinâmica do Claude",
           tooltip: "Alternar Ultracode",
         },
+        advisor: {
+          label: "Advisor",
+          description:
+            "Ativa a ferramenta experimental Advisor do Claude no servidor (usa um segundo modelo)",
+          tooltip: "Escolher modelo do Advisor",
+          options: {
+            off: "Desligado",
+            sonnet: "Sonnet",
+            opus: "Opus",
+            fable: "Fable",
+          },
+        },
       },
     },
     mode: {

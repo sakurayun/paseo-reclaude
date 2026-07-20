@@ -225,6 +225,17 @@ export const zhCN: TranslationResources = {
           description: "以超高思考强度启用 Claude 的动态工作流编排",
           tooltip: "切换 Ultracode",
         },
+        advisor: {
+          label: "Advisor",
+          description: "启用 Claude 实验性服务端 Advisor 工具（用第二个模型提供建议）",
+          tooltip: "选择 Advisor 模型",
+          options: {
+            off: "关闭",
+            sonnet: "Sonnet",
+            opus: "Opus",
+            fable: "Fable",
+          },
+        },
       },
     },
     mode: {

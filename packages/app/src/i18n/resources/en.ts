@@ -223,6 +223,18 @@ export const en = {
           description: "Use extra-high effort with Claude's dynamic workflow orchestration",
           tooltip: "Toggle Ultracode",
         },
+        advisor: {
+          label: "Advisor",
+          description:
+            "Enable Claude's experimental server-side advisor tool (uses a second model for guidance)",
+          tooltip: "Choose advisor model",
+          options: {
+            off: "Off",
+            sonnet: "Sonnet",
+            opus: "Opus",
+            fable: "Fable",
+          },
+        },
       },
     },
     mode: {
