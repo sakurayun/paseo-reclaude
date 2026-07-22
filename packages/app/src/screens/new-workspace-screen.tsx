@@ -70,7 +70,7 @@ import {
   useHostProjects,
   type HostProjectListItem,
 } from "@/projects/host-projects";
-import { useProjectIconDataByProjectKey } from "@/projects/project-icons";
+import { useProjectIcons } from "@/projects/icons";
 import { ICON_SIZE, type Theme } from "@/styles/theme";
 import type { ComposerAttachment } from "@/attachments/types";
 import { useDraftWorkspaceAttachmentScopeKey } from "@/attachments/workspace-attachments-store";
@@ -1615,7 +1615,7 @@ export function NewWorkspaceScreen({
     [projects, selectedServerId],
   );
 
-  const projectIconDataByProjectKey = useProjectIconDataByProjectKey({
+  const projectIconDataByProjectKey = useProjectIcons({
     projects: projectIconTargets,
   });
   const draftKey = buildNewWorkspaceDraftKey(draftId);

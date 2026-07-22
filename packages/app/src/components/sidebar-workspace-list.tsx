@@ -57,7 +57,7 @@ import {
 import { useSidebarCollapsedSectionsStore } from "@/stores/sidebar-collapsed-sections-store";
 import { useHostFeatureMap } from "@/runtime/host-features";
 import { useIsCompactFormFactor } from "@/constants/layout";
-import { useProjectIconDataByProjectKey } from "@/projects/project-icons";
+import { useProjectIcons } from "@/projects/icons";
 import {
   buildNewWorkspaceRoute,
   buildProjectSettingsRoute,
@@ -2129,7 +2129,7 @@ function ProjectModeList({
     [parentGestureRef],
   );
 
-  const projectIconByProjectKey = useProjectIconDataByProjectKey({
+  const projectIconByProjectKey = useProjectIcons({
     projects: projectIconTargets,
   });
 

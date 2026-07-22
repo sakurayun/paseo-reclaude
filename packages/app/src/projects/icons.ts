@@ -1,25 +1,36 @@
 import { useMemo, useRef } from "react";
-import { useQueries } from "@tanstack/react-query";
-import type { ProjectAppearance } from "@getpaseo/protocol/messages";
-import { getHostRuntimeStore, isHostRuntimeConnected } from "@/runtime/host-runtime";
+import { useTranslation } from "react-i18next";
+import { useQueries, useQuery } from "@tanstack/react-query";
+import type { ProjectAppearance, ProjectIcon } from "@getpaseo/protocol/messages";
 import { useHostFeatureMap } from "@/runtime/host-features";
 import {
-  projectIconQueryKey,
-  projectIconToDataUri,
-  resolvedProjectIconQueryKey,
-} from "@/hooks/use-project-icon-query";
+  getHostRuntimeStore,
+  isHostRuntimeConnected,
+  useHostRuntimeClient,
+  useHostRuntimeIsConnected,
+} from "@/runtime/host-runtime";
 
-export interface ProjectIconRequestTarget {
+interface ProjectIconTarget {
   serverId: string;
   projectKey: string;
   iconWorkingDir: string;
   projectAppearance?: ProjectAppearance | null;
 }
 
-function useStableProjectIconData(
-  data: (string | null)[],
-  signature: string,
-): readonly (string | null)[] {
+function legacyIconQueryKey(serverId: string, cwd: string) {
+  return ["projectIcon", serverId, "legacy", cwd] as const;
+}
+
+function iconQueryKey(serverId: string, projectId: string, revision: string) {
+  return ["projectIcon", serverId, projectId, revision] as const;
+}
+
+function iconDataUri(icon: ProjectIcon | null): string | null {
+  if (!icon) return null;
+  return `data:${icon.mimeType};base64,${icon.data}`;
+}
+
+function useStableIconData(data: (string | null)[], signature: string): readonly (string | null)[] {
   const stableRef = useRef<{ signature: string; data: (string | null)[] } | null>(null);
   if (stableRef.current?.signature !== signature) {
     stableRef.current = { signature, data };
@@ -27,8 +38,37 @@ function useStableProjectIconData(
   return stableRef.current.data;
 }
 
-export function useProjectIconDataByProjectKey(input: {
-  projects: readonly ProjectIconRequestTarget[];
+export function useProjectIcon({ serverId, cwd }: { serverId: string; cwd: string }) {
+  const { t } = useTranslation();
+  const client = useHostRuntimeClient(serverId);
+  const isConnected = useHostRuntimeIsConnected(serverId);
+
+  const query = useQuery({
+    queryKey: legacyIconQueryKey(serverId, cwd),
+    queryFn: async (): Promise<ProjectIcon | null> => {
+      if (!client) {
+        throw new Error(t("common.errors.daemonClientUnavailable"));
+      }
+      const result = await client.requestProjectIcon(cwd);
+      return result.icon;
+    },
+    enabled: Boolean(client && isConnected && cwd),
+    staleTime: Infinity,
+    gcTime: 1000 * 60 * 60,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+  });
+
+  return {
+    icon: query.data ?? null,
+    isLoading: query.isLoading,
+    isError: query.isError,
+  };
+}
+
+export function useProjectIcons(input: {
+  projects: readonly ProjectIconTarget[];
 }): Map<string, string | null> {
   const serverIds = useMemo(
     () => [...new Set(input.projects.map((project) => project.serverId))],
@@ -36,7 +76,7 @@ export function useProjectIconDataByProjectKey(input: {
   );
   const supportsAppearance = useHostFeatureMap(serverIds, "projectAppearance");
   const requests = useMemo(() => {
-    const unique = new Map<string, ProjectIconRequestTarget>();
+    const unique = new Map<string, ProjectIconTarget>();
     for (const project of input.projects) {
       if (!project.serverId || !project.projectKey || !project.iconWorkingDir.trim()) continue;
       unique.set(`${project.serverId}:${project.projectKey}`, project);
@@ -50,8 +90,8 @@ export function useProjectIconDataByProjectKey(input: {
       const revision = request.projectAppearance?.revision ?? "automatic";
       return {
         queryKey: supports
-          ? resolvedProjectIconQueryKey(request.serverId, request.projectKey, revision)
-          : projectIconQueryKey(request.serverId, request.iconWorkingDir),
+          ? iconQueryKey(request.serverId, request.projectKey, revision)
+          : legacyIconQueryKey(request.serverId, request.iconWorkingDir),
         queryFn: async () => {
           const client = getHostRuntimeStore().getClient(request.serverId);
           if (!client) return null;
@@ -60,7 +100,7 @@ export function useProjectIconDataByProjectKey(input: {
             : await client.requestProjectIcon(request.iconWorkingDir);
           return result.icon;
         },
-        select: projectIconToDataUri,
+        select: iconDataUri,
         enabled: Boolean(
           request.projectAppearance?.icon.type !== "custom" &&
           getHostRuntimeStore().getClient(request.serverId) &&
@@ -76,7 +116,7 @@ export function useProjectIconDataByProjectKey(input: {
   });
 
   const signature = queries.map((query) => query.data ?? "").join("\u0000");
-  const data = useStableProjectIconData(
+  const data = useStableIconData(
     queries.map((query) => query.data ?? null),
     signature,
   );

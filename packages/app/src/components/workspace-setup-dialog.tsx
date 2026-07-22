@@ -9,7 +9,7 @@ import { Composer } from "@/composer";
 import { DraftAgentModeControl } from "@/composer/agent-controls/mode-control";
 import { useToast } from "@/contexts/toast-context";
 import { useAgentInputDraft } from "@/composer/draft/input-draft";
-import { useProjectIconQuery } from "@/hooks/use-project-icon-query";
+import { useProjectIcon } from "@/projects/icons";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
 import { normalizeWorkspaceDescriptor, useSessionStore } from "@/stores/session-store";
@@ -197,7 +197,7 @@ export function WorkspaceSetupDialog() {
     throw new Error(t("workspaceSetup.errors.composerStateRequired"));
   }
 
-  const { icon: projectIcon } = useProjectIconQuery({
+  const { icon: projectIcon } = useProjectIcon({
     serverId,
     cwd: sourceDirectory,
   });
