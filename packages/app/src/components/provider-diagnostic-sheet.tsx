@@ -330,7 +330,7 @@ function EditProviderCommandSubSheet({
           autoCorrect={false}
           returnKeyType="done"
           // @ts-expect-error - outlineStyle is web-only
-          style={FORM_INPUT_STYLE}
+          style={[sheetStyles.formInput, isWeb && { outlineStyle: "none" }]}
         />
         <Text style={sheetStyles.mutedText}>{t("settings.providers.command.hint")}</Text>
         {error ? <Text style={sheetStyles.errorText}>{error}</Text> : null}
