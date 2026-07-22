@@ -102,6 +102,9 @@ export async function invalidateSourceControlDataQueries(
       predicate: checkoutQueryPredicate("checkoutPrStatus", identity),
     }),
     queryClient.invalidateQueries({
+      queryKey: checkoutCommitsQueryKey(identity.serverId, identity.cwd),
+    }),
+    queryClient.invalidateQueries({
       predicate: checkoutQueryPredicate(prPaneTimelineQueryKind, identity),
     }),
     queryClient.invalidateQueries({
@@ -135,6 +138,7 @@ export async function invalidateCheckoutGitQueriesForServer(
   const kinds = [
     "checkoutStatus",
     "checkoutPrStatus",
+    "checkoutCommits",
     prPaneTimelineQueryKind,
     prPanePipelineQueryKind,
   ];

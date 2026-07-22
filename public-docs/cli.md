@@ -32,13 +32,15 @@ paseo run "implement user authentication"
 paseo run --provider codex "refactor the API layer"
 paseo run --provider claude/opus --feature ultracode "audit the auth flow"
 paseo run --background "run the focused test suite"
-paseo run --isolation worktree --base main "implement feature X"
+paseo run --new-workspace worktree --worktree-mode branch-off --new-branch feature/x --base main "implement feature X"
 paseo run --workspace <workspace-id> "review the current diff"
 paseo run --output-schema schema.json "extract release notes"
 paseo run --output-schema '{"type":"object","properties":{"summary":{"type":"string"}},"required":["summary"]}' "summarize release notes"
 ```
 
-From a human shell, a bare `paseo run` creates a new local workspace for the current directory. Use `--workspace <id>` to add the agent to an existing workspace, or `--isolation worktree` to create a new workspace backed by an isolated git worktree.
+From a human shell, a bare `paseo run` creates a new local workspace for the current directory. Use `--workspace <id>` to add the agent to an existing workspace, or `--new-workspace local|worktree` to explicitly create a separate workspace for the run.
+
+Worktree creation accepts `--worktree-mode branch-off|checkout-branch|checkout-pr` plus the matching `--new-branch`/`--base`, `--branch`, or `--pr-number`/`--forge` options. Use `--worktree-slug` to choose the managed directory slug.
 
 Use `--feature <id[=value]>` for provider-specific features advertised by the selected provider/model. Toggle features can use shorthand (`--feature ultracode`) or explicit booleans (`--feature ultracode=true`). Claude Ultracode is a feature, not a thinking option: it enables Claude Code's Ultracode setting and pins the session to `xhigh` effort.
 

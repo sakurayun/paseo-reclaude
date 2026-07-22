@@ -515,6 +515,13 @@ export const en = {
       copyBranchName: "Copy branch name",
       copied: "Copied",
     },
+    fileActions: {
+      openFile: "Open file",
+      copyPath: "Copy path",
+      download: "Download",
+      addToChat: "Add to chat…",
+      moreActions: "More actions",
+    },
     fileExplorer: {
       sort: {
         name: "Name",
@@ -650,6 +657,7 @@ export const en = {
     },
     tabs: {
       loading: "Loading...",
+      modified: "Unsaved changes",
       loadingAgentTitle: "Loading agent title",
       emptyPane: "No tabs in this pane.",
       fallback: {
@@ -753,6 +761,12 @@ export const en = {
         close: "Close",
         cancel: "Cancel",
         archive: "Archive",
+        unsavedTitle: "Unsaved changes",
+        unsavedMessage:
+          "This tab has changes that have not been saved. Closing it will discard the draft.",
+        closeWithoutSaving: "Close without saving",
+        closePaneTitle: "Close pane?",
+        bulkUnsaved: "{{count}} tab(s) have unsaved changes. Closing will discard those drafts.",
         closeTerminalTitle: "Close terminal?",
         closeTerminalMessage: "Any running process in this terminal will be stopped immediately.",
         archiveRunningAgentTitle: "Archive running agent?",
@@ -817,19 +831,34 @@ export const en = {
     scripts: {
       title: "Scripts",
       actions: {
+        chooseUrl: "Choose URL",
+        copyUrl: "Copy URL",
+        openService: "View service",
+        restart: "Restart",
         run: "Run",
-        view: "View",
+        stop: "Stop",
+        view: "View terminal",
       },
       accessibility: {
         trigger: "Workspace scripts",
-        openAt: "Open {{scriptName}} at {{label}}",
+        openService: "View {{scriptName}} service",
         viewTerminal: "View {{scriptName}} terminal",
         runScript: "Run {{scriptName}} script",
+        stopScript: "Stop {{scriptName}}",
+        restartScript: "Restart {{scriptName}}",
+        copyUrl: "Copy {{scriptName}} URL",
+        chooseUrl: "Choose URL for {{scriptName}}",
         script: "{{scriptName}} script",
+      },
+      routes: {
+        public: "Reverse proxy",
+        paseo: "Memorable",
+        direct: "Direct",
       },
       states: {
         exitCode: "exit {{code}}",
         startFailed: "Failed to start {{scriptName}}",
+        stopFailed: "Failed to stop {{scriptName}}",
       },
     },
     sourceControl: {
@@ -1170,14 +1199,12 @@ export const en = {
         deletedFile: "Deleted",
         commits: {
           title: "Commits",
-          legendLocal: "local",
-          legendRemote: "on remote",
-          countLabel: "{{count}} commits ahead of base",
+          countLabel: "{{count}} recent commits",
           fileDiffEmpty: "No changes to display",
           fileDiffError: "Failed to load file diff",
           loading: "Loading commits…",
           loadError: "Failed to load commits",
-          empty: "No commits ahead of base",
+          empty: "No commits yet",
         },
       },
       openInEditor: {
@@ -1346,6 +1373,8 @@ export const en = {
       actions: {
         menu: "Workspace actions",
         newWorkspace: "New workspace",
+        showMore: "Show more",
+        showLess: "Show less",
         createWorkspaceFor: "Create a new workspace for {{projectName}}",
         copyPath: "Copy path",
         copyBranchName: "Copy branch name",
@@ -1405,9 +1434,6 @@ export const en = {
     refPicker: {
       startingRef: "Starting ref",
       chooseStart: "Choose where to start from",
-      checkoutHint: "Check out {{noun}} {{numberPrefix}}{{number}}?",
-      checkoutPr: "Check out {{noun}} {{numberPrefix}}{{number}}",
-      dismissCheckoutHint: "Dismiss {{noun}} {{numberPrefix}}{{number}} checkout hint",
       intoBase: "into {{baseRef}}",
       searching: "Searching...",
       noMatchingRefs: "No matching refs.",
@@ -1917,6 +1943,25 @@ export const en = {
       binaryPreviewUnavailable: "Binary preview unavailable",
       failedToLoad: "Failed to load file",
       failedToLoadPreview: "Failed to load file preview",
+      editor: {
+        fileSize: "File size {{size}}",
+        lines: "{{count}} lines",
+        editorStatus: "Editor status {{status}}",
+        unsavedChanges: "Unsaved changes",
+        saving: "Saving...",
+        saveFailed: "Save failed",
+        changedOnDisk: "Changed on disk",
+        vimMode: "Vim mode {{mode}}",
+        cursor: "Line {{line}}, column {{column}}",
+        preview: "Preview",
+        source: "Source",
+        unavailableTitle: "File unavailable on disk",
+        conflictDescription: "The local buffer was preserved. Choose which version to keep.",
+        overwrite: "Overwrite",
+        reload: "Reload",
+        reloadTitle: "Reload from disk?",
+        reloadMessage: "Your local changes will be lost.",
+      },
     },
     diff: {
       changesLabel: "Changes",
@@ -2201,6 +2246,7 @@ export const en = {
     sections: {
       general: "General",
       appearance: "Appearance",
+      editor: "Editor",
       shortcuts: "Shortcuts",
       integrations: "Integrations",
       permissions: "Permissions",
@@ -2261,6 +2307,11 @@ export const en = {
         editAccessibilityLabel: "Edit {{label}}",
         removeAccessibilityLabel: "Remove {{label}}",
       },
+    },
+    editor: {
+      title: "Editor",
+      vimKeybindings: "Vim keybindings",
+      vimHint: "Applies to source files on web and desktop.",
     },
     hostSections: {
       schedules: "Schedules",

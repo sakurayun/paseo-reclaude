@@ -5,6 +5,7 @@ import { getActiveLocale, useLocale } from "@/i18n/use-locale";
 interface DiffStatProps {
   additions: number;
   deletions: number;
+  testID?: string;
 }
 
 // Locale-keyed compact formatters so "1.2k" follows the active language.
@@ -25,11 +26,11 @@ export function formatDiffCount(value: number): string {
   return getCompactFormatter(getActiveLocale()).format(value).toLowerCase();
 }
 
-export function DiffStat({ additions, deletions }: DiffStatProps) {
+export function DiffStat({ additions, deletions, testID }: DiffStatProps) {
   // Subscribe to language changes so the compact counts re-render in the active locale.
   useLocale();
   return (
-    <View style={styles.row}>
+    <View style={styles.row} testID={testID}>
       <Text style={styles.additions}>+{formatDiffCount(additions)}</Text>
       <Text style={styles.deletions}>-{formatDiffCount(deletions)}</Text>
     </View>

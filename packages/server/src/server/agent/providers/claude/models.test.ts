@@ -8,6 +8,11 @@ import { createTestLogger } from "../../../../test-utils/test-logger.js";
 import { ClaudeAgentClient } from "./agent.js";
 import type { ClaudeQueryFactory, ClaudeQueryInput } from "./query.js";
 import {
+  CLAUDE_DISABLED_THINKING_OPTION_ID,
+  CLAUDE_ULTRACODE_THINKING_OPTION_ID,
+  resolveClaudeDisabledThinkingForModel,
+} from "./model-manifest.js";
+import {
   decorateClaudeModelsWithSdkEfforts,
   getClaudeModels,
   normalizeClaudeRuntimeModelId,
@@ -161,47 +166,59 @@ describe("getClaudeModels", () => {
     }
   });
 
-  it("gives fable models the extended thinking options including xhigh", () => {
-    const models = getClaudeModels();
-    const fable = models.find((m) => m.id === "claude-fable-5");
-    const fable1m = models.find((m) => m.id === "claude-fable-5[1m]");
-    expect(fable?.thinkingOptions?.map((option) => option.id)).toEqual([
+  it("derives thinking options from model effort capabilities", () => {
+    const models = new Map(getClaudeModels().map((model) => [model.id, model]));
+
+    expect(models.get("claude-sonnet-5")?.thinkingOptions?.map((option) => option.id)).toEqual([
+      CLAUDE_DISABLED_THINKING_OPTION_ID,
       "low",
       "medium",
       "high",
       "xhigh",
       "max",
     ]);
-    expect(fable1m?.thinkingOptions?.map((option) => option.id)).toEqual([
+    expect(
+      models
+        .get("claude-sonnet-5")
+        ?.thinkingOptions?.find((option) => option.id === CLAUDE_ULTRACODE_THINKING_OPTION_ID)
+        ?.label,
+    ).toBe("Ultra Code");
+    expect(models.get("claude-sonnet-5")?.defaultThinkingOptionId).toBe("low");
+
+    expect(models.get("claude-opus-4-7")?.thinkingOptions?.map((option) => option.id)).toEqual([
+      CLAUDE_DISABLED_THINKING_OPTION_ID,
       "low",
       "medium",
       "high",
       "xhigh",
       "max",
     ]);
+    expect(models.get("claude-sonnet-4-6")?.thinkingOptions?.map((option) => option.id)).toEqual([
+      CLAUDE_DISABLED_THINKING_OPTION_ID,
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max",
+    ]);
+    expect(models.get("claude-fable-5")?.thinkingOptions?.map((option) => option.id)).not.toContain(
+      CLAUDE_DISABLED_THINKING_OPTION_ID,
+    );
+    expect(models.get("claude-haiku-4-5")?.thinkingOptions).toBeUndefined();
   });
 
-  it("gives Sonnet 5 the extended thinking options including xhigh", () => {
-    const models = getClaudeModels();
-    const sonnet5 = models.find((m) => m.id === "claude-sonnet-5");
-    const sonnet5With1m = models.find((m) => m.id === "claude-sonnet-5[1m]");
-    expect(sonnet5?.thinkingOptions?.map((option) => option.id)).toEqual([
-      "low",
-      "medium",
-      "high",
-      "xhigh",
-      "max",
-    ]);
-    expect(sonnet5With1m?.thinkingOptions?.map((option) => option.id)).toEqual([
-      "low",
-      "medium",
-      "high",
-      "xhigh",
-      "max",
-    ]);
-    // Sonnet 4.6 stays on the base options without xhigh.
-    const sonnet46 = models.find((m) => m.id === "claude-sonnet-4-6");
-    expect(sonnet46?.thinkingOptions?.map((option) => option.id)).not.toContain("xhigh");
+  it.each([
+    ["claude-sonnet-5", true, "low"],
+    ["claude-sonnet-5-20260101", true, "low"],
+    ["claude-fable-5", false, "low"],
+    ["claude-haiku-4-5", false, undefined],
+    ["openrouter/anthropic/claude-opus-4-8", false, undefined],
+    [null, false, undefined],
+  ])("resolves disabled thinking for model %s", (modelId, supported, fallbackThinkingOptionId) => {
+    expect(resolveClaudeDisabledThinkingForModel(modelId)).toEqual({
+      supported,
+      fallbackThinkingOptionId,
+    });
   });
 
   it("returns fresh copies each call", () => {

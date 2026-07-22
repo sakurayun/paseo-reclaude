@@ -104,6 +104,7 @@ paseo workspace create --isolation worktree --mode branch-off --new-branch fix-x
 paseo workspace create --isolation worktree --mode checkout-branch --branch existing-work
 paseo workspace create --isolation worktree --mode checkout-pr --pr-number 42
 paseo run --provider codex/gpt-5.4 --mode full-access --workspace <workspace-id> "<prompt>"
+paseo run --provider codex/gpt-5.4 --mode full-access --new-workspace worktree --worktree-mode branch-off --new-branch fix-x --base main "<prompt>"
 paseo run --provider codex/gpt-5.4 --mode full-access --worktree feat/x "<prompt>"
 paseo run --provider claude/opus --feature ultracode "<prompt>"
 paseo schedule create --every 30m --provider claude/opus --feature ultracode "<prompt>"

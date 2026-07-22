@@ -28,6 +28,8 @@ import type {
   FileUploadResponse,
   FileExplorerEntry,
   FileExplorerResponse,
+  FileVersion,
+  FileWriteResult,
   FetchAgentTimelineResponseMessage,
   AgentForkContextResponseMessage,
   AgentTranscriptExportResponseMessage,
@@ -493,6 +495,7 @@ export interface FileReadResult {
   path: string;
   kind: LegacyFileExplorerFilePayload["kind"];
   modifiedAt: string;
+  revision?: string;
 }
 export interface FileUploadInput {
   fileName: string;
@@ -997,6 +1000,7 @@ interface BinaryFileTransferState extends PendingBinaryFileRead {
     { opcode: typeof FileTransferOpcode.FileBegin }
   >["metadata"]["encoding"];
   modifiedAt: string;
+  revision?: string;
   chunks: Uint8Array[];
 }
 
@@ -1117,6 +1121,7 @@ function legacyExplorerFileToBytes(file: LegacyFileExplorerFilePayload): FileRea
     path: file.path,
     kind: file.kind,
     modifiedAt: file.modifiedAt,
+    revision: file.revision,
   };
 }
 
@@ -1220,6 +1225,10 @@ export class DaemonClient {
     }
   >();
   private terminalDirectorySubscriptions = new Map<string, { cwd: string; workspaceId?: string }>();
+  private fileSubscriptions = new Map<
+    string,
+    { cwd: string; path: string; onUpdate: (version: FileVersion) => void }
+  >();
   private readonly terminalStreams = new TerminalStreamRouter();
   private readonly tunnelFrameListeners = new Set<(frame: TunnelStreamFrame) => void>();
   private pendingBinaryFileReads = new Map<string, PendingBinaryFileRead>();
@@ -1501,6 +1510,7 @@ export class DaemonClient {
     this.rejectPendingSendQueue(new Error("Daemon client closed"));
     this.rejectPingProbe(new Error("Daemon client closed"));
     this.terminalStreams.clearSlots();
+    this.fileSubscriptions.clear();
     this.lastServerInfoMessage = null;
     if (this.runtimeMetricsInterval) {
       clearInterval(this.runtimeMetricsInterval);
@@ -2663,6 +2673,22 @@ export class DaemonClient {
           ? { workspaceId: subscription.workspaceId }
           : {}),
       });
+    }
+  }
+
+  private resubscribeFileSubscriptions(): void {
+    for (const [subscriptionId, subscription] of this.fileSubscriptions) {
+      void this.sendCorrelatedSessionRequest({
+        message: {
+          type: "fs.file.subscribe.request",
+          cwd: subscription.cwd,
+          path: subscription.path,
+          subscriptionId,
+        },
+        responseType: "fs.file.subscribe.response",
+      })
+        .then((payload) => subscription.onUpdate(payload.initial))
+        .catch(() => undefined);
     }
   }
 
@@ -4794,6 +4820,52 @@ export class DaemonClient {
     }
   }
 
+  async subscribeFile(
+    input: { cwd: string; path: string },
+    onUpdate: (version: FileVersion) => void,
+  ): Promise<{ initial: FileVersion; unsubscribe: () => void }> {
+    const subscriptionId = this.createRequestId();
+    this.fileSubscriptions.set(subscriptionId, { ...input, onUpdate });
+    try {
+      const payload = await this.sendCorrelatedSessionRequest({
+        message: {
+          type: "fs.file.subscribe.request",
+          cwd: input.cwd,
+          path: input.path,
+          subscriptionId,
+        },
+        responseType: "fs.file.subscribe.response",
+      });
+      return {
+        initial: payload.initial,
+        unsubscribe: () => {
+          if (!this.fileSubscriptions.delete(subscriptionId)) return;
+          void this.sendCorrelatedSessionRequest({
+            message: { type: "fs.file.unsubscribe.request", subscriptionId },
+            responseType: "fs.file.unsubscribe.response",
+          }).catch(() => undefined);
+        },
+      };
+    } catch (error) {
+      this.fileSubscriptions.delete(subscriptionId);
+      throw error;
+    }
+  }
+
+  async writeFile(input: {
+    cwd: string;
+    path: string;
+    content: string;
+    expectedModifiedAt: string;
+    expectedRevision?: string;
+  }): Promise<FileWriteResult> {
+    const payload = await this.sendCorrelatedSessionRequest({
+      message: { type: "fs.file.write.request", ...input },
+      responseType: "fs.file.write.response",
+    });
+    return payload.result;
+  }
+
   async uploadFile(input: FileUploadInput): Promise<FileUploadResult> {
     const bytes = asUint8Array(input.bytes);
     if (!bytes) {
@@ -6886,6 +6958,7 @@ export class DaemonClient {
         size: frame.metadata.size,
         encoding: frame.metadata.encoding,
         modifiedAt: frame.metadata.modifiedAt,
+        revision: frame.metadata.revision,
         chunks: [],
       });
       return;
@@ -6910,6 +6983,7 @@ export class DaemonClient {
       path: transfer.path,
       kind: binaryFileKind(transfer.mime, transfer.encoding),
       modifiedAt: transfer.modifiedAt,
+      revision: transfer.revision,
     });
     this.handleSessionMessage({
       type: "file_explorer_response",
@@ -7089,6 +7163,7 @@ export class DaemonClient {
           this.startLivenessHeartbeat();
           this.resubscribeCheckoutDiffSubscriptions();
           this.resubscribeTerminalDirectorySubscriptions();
+          this.resubscribeFileSubscriptions();
           this.flushPendingSendQueue();
           this.resolveConnect();
         }
@@ -7097,6 +7172,12 @@ export class DaemonClient {
 
     if (consumerMessage.type === "terminal_stream_exit") {
       this.terminalStreams.removeTerminal(consumerMessage.payload.terminalId);
+    }
+
+    if (consumerMessage.type === "fs.file.update") {
+      this.fileSubscriptions
+        .get(consumerMessage.payload.subscriptionId)
+        ?.onUpdate(consumerMessage.payload.version);
     }
 
     if (this.rawMessageListeners.size > 0) {

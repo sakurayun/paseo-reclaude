@@ -4,6 +4,46 @@ import {
 } from "@/attachments/types";
 import type { PickerItem } from "./new-workspace-picker-item";
 
+export interface PickerSelectionState {
+  selectedItem: PickerItem | null;
+  allowAutoPrSelection: boolean;
+}
+
+export type PickerSelectionEvent =
+  | { type: "pr-detected" }
+  | { type: "pr-added"; item: Extract<PickerItem, { kind: "github-pr" }> }
+  | { type: "picker-selected"; item: PickerItem }
+  | { type: "target-changed" };
+
+export const initialPickerSelectionState: PickerSelectionState = {
+  selectedItem: null,
+  allowAutoPrSelection: false,
+};
+
+export function reducePickerSelection(
+  state: PickerSelectionState,
+  event: PickerSelectionEvent,
+): PickerSelectionState {
+  switch (event.type) {
+    case "pr-detected":
+      return { ...state, allowAutoPrSelection: true };
+    case "pr-added":
+      return state.allowAutoPrSelection
+        ? { selectedItem: event.item, allowAutoPrSelection: false }
+        : state;
+    case "picker-selected":
+      return { selectedItem: event.item, allowAutoPrSelection: false };
+    case "target-changed":
+      return initialPickerSelectionState;
+  }
+}
+
+function isPrAttachment(
+  attachment: UserComposerAttachment,
+): attachment is Extract<UserComposerAttachment, { kind: "forge_change_request" | "github_pr" }> {
+  return attachment.kind === "forge_change_request" || attachment.kind === "github_pr";
+}
+
 function isPickerOwnedPrAttachment(attachment: UserComposerAttachment): attachment is Extract<
   UserComposerAttachment,
   { kind: "github_pr" }
@@ -28,8 +68,7 @@ export function syncPickerPrAttachment(input: {
   if (input.item?.kind === "github-pr") {
     const selectedPr = input.item.item;
     const hasExistingPrAttachment = nextAttachments.some(
-      (attachment) =>
-        attachment.kind === "github_pr" && attachment.item.number === selectedPr.number,
+      (attachment) => isPrAttachment(attachment) && attachment.item.number === selectedPr.number,
     );
     if (!hasExistingPrAttachment) {
       return [
@@ -54,7 +93,7 @@ export function clearPickerPrAttachmentForTargetChange(input: {
   if (input.currentTargetId === input.nextTargetId) {
     return input.attachments;
   }
-  return syncPickerPrAttachment({ attachments: input.attachments, item: null });
+  return input.attachments.filter((attachment) => !isPrAttachment(attachment));
 }
 
 export function findCheckoutHintPrAttachment(input: {

@@ -3,11 +3,14 @@ import { Pressable, ScrollView, Text, View, type PressableStateCallbackType } fr
 import { useTranslation } from "react-i18next";
 import { Archive, ChevronDown, ChevronRight, Unlink } from "lucide-react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
-import { GlassSurface } from "@/components/ui/glass-surface";
-import { SessionStatusIcon } from "@/components/sidebar/session-status-icon";
+import { getProviderIcon } from "@/components/provider-icons";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useIsCompactFormFactor, MAX_CONTENT_WIDTH } from "@/constants/layout";
 import { isNative } from "@/constants/platform";
+import {
+  WorkspaceTabIcon,
+  type WorkspaceTabPresentation,
+} from "@/screens/workspace/workspace-tab-presentation";
 import type { Theme } from "@/styles/theme";
 import type { SubagentRow } from "./select";
 import {
@@ -37,6 +40,16 @@ export interface SubagentsTrackProps {
 
 const SUBAGENTS_LIST_MAX_HEIGHT = 200;
 
+function buildRowPresentation(row: SubagentRow): WorkspaceTabPresentation {
+  const data = buildSubagentRowPresentationData(row);
+  return {
+    ...data,
+    tooltip: data.label,
+    modified: false,
+    icon: getProviderIcon(row.provider),
+  };
+}
+
 export function SubagentsTrack({
   rows,
   onOpenSubagent,
@@ -65,7 +78,7 @@ export function SubagentsTrack({
     [],
   );
   const headerContainerStyle = useMemo(
-    () => [styles.header, !expanded && styles.headerCollapsed],
+    () => [styles.header, expanded ? styles.headerDivider : styles.headerCollapsed],
     [expanded],
   );
 
@@ -79,7 +92,7 @@ export function SubagentsTrack({
   return (
     <View style={styles.outer} testID="subagents-track">
       <View style={styles.track}>
-        <GlassSurface backdropStyle={styles.surfaceBackdrop} style={surfaceStyle}>
+        <View style={surfaceStyle}>
           <View style={headerContainerStyle}>
             <Pressable
               accessibilityRole="button"
@@ -129,7 +142,7 @@ export function SubagentsTrack({
               ))}
             </ScrollView>
           ) : null}
-        </GlassSurface>
+        </View>
       </View>
     </View>
   );
@@ -153,19 +166,9 @@ function SubagentsTrackRow({
   const { t } = useTranslation();
   const isCompact = useIsCompactFormFactor();
   const [hovered, setHovered] = useState(false);
-  const presentation = useMemo(() => buildSubagentRowPresentationData(row), [row]);
+  const presentation = useMemo(() => buildRowPresentation(row), [row]);
   const displayLabel =
     presentation.titleState === "loading" ? t("common.states.loading") : presentation.label;
-  // Tint the label by lifecycle state so failed/needs-input rows stand out,
-  // matching the sidebar workspace sessions.
-  const labelStyle = useMemo(
-    () => [
-      styles.rowLabel,
-      presentation.statusBucket === "failed" && styles.rowLabelFailed,
-      presentation.statusBucket === "needs_input" && styles.rowLabelNeedsInput,
-    ],
-    [presentation.statusBucket],
-  );
   const handlePress = useCallback(() => {
     if (row.kind === "provider") {
       onOpenProviderSubagent(row.parentAgentId, row.id);
@@ -197,12 +200,8 @@ function SubagentsTrackRow({
       >
         {({ pressed }) => (
           <View style={hovered || pressed ? styles.rowActive : styles.row}>
-            <SessionStatusIcon
-              provider={row.provider}
-              stateBucket={presentation.statusBucket}
-              size={14}
-            />
-            <Text style={labelStyle} numberOfLines={1}>
+            <WorkspaceTabIcon presentation={presentation} />
+            <Text style={styles.rowLabel} numberOfLines={1}>
               {displayLabel}
             </Text>
             {row.kind === "paseo" ? (
@@ -321,15 +320,10 @@ const styles = StyleSheet.create((theme) => ({
   },
   surface: {
     alignSelf: "stretch",
-    borderTopLeftRadius: theme.borderRadius["2xl"],
-    borderTopRightRadius: theme.borderRadius["2xl"],
-    overflow: "hidden",
-  },
-  surfaceBackdrop: {
-    top: 0,
-    right: 0,
-    bottom: 0,
-    left: 0,
+    backgroundColor: theme.colors.surface1,
+    borderWidth: theme.borderWidth[1],
+    borderColor: theme.colors.borderAccent,
+    borderBottomWidth: 0,
     borderTopLeftRadius: theme.borderRadius["2xl"],
     borderTopRightRadius: theme.borderRadius["2xl"],
     overflow: "hidden",
@@ -359,6 +353,10 @@ const styles = StyleSheet.create((theme) => ({
   },
   headerActive: {
     backgroundColor: theme.colors.surface2,
+  },
+  headerDivider: {
+    borderBottomWidth: theme.borderWidth[1],
+    borderBottomColor: theme.colors.border,
   },
   headerLabel: {
     flexShrink: 1,
@@ -392,12 +390,6 @@ const styles = StyleSheet.create((theme) => ({
     minWidth: 0,
     fontSize: theme.fontSize.sm,
     color: theme.colors.foreground,
-  },
-  rowLabelFailed: {
-    color: theme.colors.palette.red[500],
-  },
-  rowLabelNeedsInput: {
-    color: theme.colors.palette.amber[500],
   },
   actionClusterVisible: {
     flexDirection: "row",

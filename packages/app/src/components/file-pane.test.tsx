@@ -6,7 +6,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ExplorerFile } from "@/stores/session-store";
-import { FilePane } from "@/components/file-pane";
+import { FilePane } from "@/file-pane/pane";
 import {
   PaneFocusProvider,
   PaneProvider,
@@ -268,7 +268,12 @@ function renderFilePane(location: { path: string } = { path: "src/example.ts" })
     root?.render(
       <PaneProvider value={paneContext}>
         <PaneFocusProvider value={paneFocus}>
-          <FilePane serverId="server" workspaceRoot="/repo" location={location} />
+          <FilePane
+            serverId="server"
+            workspaceRoot="/repo"
+            location={location}
+            navigationRevision={0}
+          />
         </PaneFocusProvider>
       </PaneProvider>,
     );

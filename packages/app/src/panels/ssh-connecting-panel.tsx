@@ -37,6 +37,7 @@ function useSshConnectingPanelDescriptor(target: {
 
   return {
     label: state?.label ?? t("ssh.connect.tabLabel"),
+    tooltip: state?.label ?? t("ssh.connect.tabLabel"),
     subtitle: t("ssh.connect.tabLabel"),
     titleState: "ready",
     icon,

@@ -9,6 +9,7 @@ export interface PaneContextValue {
   paneInstanceId: string | null;
   tabId: string;
   target: WorkspaceTabTarget;
+  fileNavigationRevision?: number;
   openTab: (target: WorkspaceTabTarget) => void;
   closeCurrentTab: () => void;
   retargetCurrentTab: (target: WorkspaceTabTarget) => void;

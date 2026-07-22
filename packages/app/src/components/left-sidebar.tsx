@@ -548,6 +548,64 @@ function FooterIconButton({
   );
 }
 
+function footerAddProjectButtonStyle({
+  hovered,
+}: PressableStateCallbackType & { hovered?: boolean }) {
+  return [styles.footerAddProjectButton, Boolean(hovered) && styles.footerAddProjectButtonHovered];
+}
+
+function FooterAddProjectButton({
+  onPress,
+  label,
+  shortcutKeys,
+  theme,
+}: {
+  onPress: () => void;
+  label: string;
+  shortcutKeys: ReturnType<typeof useShortcutKeys>;
+  theme: SidebarTheme;
+}) {
+  return (
+    <Tooltip delayDuration={300}>
+      <TooltipTrigger asChild>
+        <Pressable
+          style={footerAddProjectButtonStyle}
+          testID="sidebar-add-project"
+          nativeID="sidebar-add-project"
+          accessible
+          accessibilityLabel={label}
+          accessibilityRole="button"
+          onPress={onPress}
+        >
+          {({ hovered }) => {
+            const isHovered = Boolean(hovered);
+            return (
+              <>
+                <FolderPlus
+                  size={theme.iconSize.sm}
+                  color={isHovered ? theme.colors.foreground : theme.colors.foregroundMuted}
+                />
+                <Text
+                  numberOfLines={1}
+                  style={[
+                    styles.footerAddProjectLabel,
+                    isHovered && styles.footerAddProjectLabelHovered,
+                  ]}
+                >
+                  {label}
+                </Text>
+              </>
+            );
+          }}
+        </Pressable>
+      </TooltipTrigger>
+      <TooltipContent side="top" align="center" offset={8}>
+        <IconTooltipContent label={label} shortcutKeys={shortcutKeys} />
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
 function SidebarHostPicker({
   theme,
   label,
@@ -616,16 +674,6 @@ function IconTooltipContent({
       {shortcutKeys ? <Shortcut chord={shortcutKeys} /> : null}
     </View>
   );
-}
-
-function AddProjectTooltipContent({
-  newAgentKeys,
-  label,
-}: {
-  newAgentKeys: ReturnType<typeof useShortcutKeys>;
-  label: string;
-}) {
-  return <IconTooltipContent label={label} shortcutKeys={newAgentKeys} />;
 }
 
 const SidebarNewWorkspaceHeaderRow = memo(function SidebarNewWorkspaceHeaderRow({
@@ -713,6 +761,14 @@ function SidebarFooter({
 
   return (
     <View style={isNewThemeSidebar ? styles.sidebarFooterFlat : styles.sidebarFooter}>
+      {!isNewThemeSidebar ? (
+        <FooterAddProjectButton
+          onPress={handleOpenProject}
+          label={labels.addProject}
+          shortcutKeys={newAgentKeys}
+          theme={theme}
+        />
+      ) : null}
       <View style={styles.footerIconRow}>
         <SidebarHostPicker
           theme={theme}
@@ -721,29 +777,13 @@ function SidebarFooter({
           onOpenHostSettings={handleOpenHostSettings}
         />
         {!isNewThemeSidebar ? (
-          <>
-            <Tooltip delayDuration={300}>
-              <TooltipTrigger asChild>
-                <FooterIconButton
-                  onPress={handleOpenProject}
-                  testID="sidebar-add-project"
-                  label={labels.addProject}
-                  icon={FolderPlus}
-                  theme={theme}
-                />
-              </TooltipTrigger>
-              <TooltipContent side="top" align="center" offset={8}>
-                <AddProjectTooltipContent newAgentKeys={newAgentKeys} label={labels.addProject} />
-              </TooltipContent>
-            </Tooltip>
-            <FooterIconButton
-              onPress={handleHome}
-              testID="sidebar-home"
-              label={labels.home}
-              icon={Home}
-              theme={theme}
-            />
-          </>
+          <FooterIconButton
+            onPress={handleHome}
+            testID="sidebar-home"
+            label={labels.home}
+            icon={Home}
+            theme={theme}
+          />
         ) : null}
         <SidebarHelpMenu />
         <FooterIconButton
@@ -1420,9 +1460,6 @@ const styles = StyleSheet.create((theme) => ({
   sidebarHeaderGroup: {
     paddingTop: theme.spacing[2],
     gap: 2,
-    // Distance from History's bottom edge to the divider. WorkspacesSectionHeader
-    // uses a slightly smaller paddingTop to balance the action buttons' centering
-    // offset so the divider reads as visually centered between the two.
     paddingBottom: theme.spacing[1.5],
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.border,
@@ -1532,8 +1569,8 @@ const styles = StyleSheet.create((theme) => ({
   sidebarFooter: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "flex-start",
-    paddingHorizontal: theme.spacing[4],
+    gap: theme.spacing[2],
+    paddingHorizontal: theme.spacing[2],
     paddingVertical: theme.spacing[3],
     borderTopWidth: 1,
     borderTopColor: theme.colors.border,
@@ -1550,6 +1587,30 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     gap: theme.spacing[2],
     flexShrink: 0,
+  },
+  footerAddProjectButton: {
+    minWidth: 0,
+    minHeight: 32,
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[2],
+    paddingVertical: theme.spacing[1.5],
+    paddingHorizontal: theme.spacing[2],
+    borderRadius: theme.borderRadius.lg,
+  },
+  footerAddProjectButtonHovered: {
+    backgroundColor: theme.colors.surfaceSidebarHover,
+  },
+  footerAddProjectLabel: {
+    minWidth: 0,
+    flexShrink: 1,
+    fontSize: theme.fontSize.sm,
+    fontWeight: theme.fontWeight.normal,
+    color: theme.colors.foregroundMuted,
+  },
+  footerAddProjectLabelHovered: {
+    color: theme.colors.foreground,
   },
   footerIconButton: {
     width: 28,

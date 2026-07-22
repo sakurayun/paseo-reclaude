@@ -128,6 +128,10 @@ export interface DesktopEventsBridge {
   on?: (event: string, handler: (payload: unknown) => void) => Promise<() => void> | (() => void);
 }
 
+export interface DesktopAgentNavigationBridge {
+  ready?: () => Promise<{ serverId: string; agentId: string } | null>;
+}
+
 export type DesktopBrowserShortcutEvent =
   | { browserId?: string; action: "focus-url" }
   | { browserId: string; action: "new-tab" };
@@ -199,6 +203,7 @@ export interface DesktopHostBridge {
   platform?: string;
   invoke?: DesktopInvokeBridge["invoke"];
   getPendingOpenProject?: () => Promise<string | null>;
+  agentNavigation?: DesktopAgentNavigationBridge;
   events?: DesktopEventsBridge;
   window?: DesktopWindowModuleBridge;
   dialog?: DesktopDialogBridge;

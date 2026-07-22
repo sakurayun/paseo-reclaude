@@ -33,6 +33,7 @@ function usePortForwardsPanelDescriptor(
   const { t } = useTranslation();
   return {
     label: t("workspace.portForwards.title"),
+    tooltip: t("workspace.portForwards.title"),
     subtitle: t("workspace.portForwards.subtitle"),
     titleState: "ready",
     icon: Cable,

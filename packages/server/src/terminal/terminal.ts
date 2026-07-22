@@ -433,6 +433,11 @@ export function resolvePaseoCliBinDir(): string | null {
 }
 
 export function resolvePaseoCliExecutablePath(): string | null {
+  const configuredCli = process.env.PASEO_CLI?.trim();
+  if (configuredCli) {
+    return resolvePath(configuredCli);
+  }
+
   const cliEntrypoint = resolvePaseoCliBinEntrypoint();
   if (!cliEntrypoint) {
     return null;

@@ -1611,13 +1611,13 @@ export class ACPAgentSession implements AgentSession, ACPClient {
     }
 
     const turnId = randomUUID();
-    const messageId = options?.messageId ?? randomUUID();
+    const messageId = options?.clientMessageId ?? randomUUID();
     this.activeForegroundTurnId = turnId;
     this.fallbackAssistantMessageId = null;
     this.activeSubmittedUserMessage = null;
     this.emitBootstrapThreadEvent();
     this.pushEvent({ type: "turn_started", provider: this.provider, turnId });
-    this.emitSubmittedUserMessage(prompt, messageId, turnId);
+    this.emitSubmittedUserMessage(prompt, messageId, turnId, options?.clientMessageId);
 
     void this.connection
       .prompt({
@@ -2911,6 +2911,7 @@ export class ACPAgentSession implements AgentSession, ACPClient {
     prompt: AgentPromptInput,
     messageId: string,
     turnId: string,
+    clientMessageId?: string,
   ): void {
     const text = extractPromptText(prompt);
     if (text.trim().length === 0) {
@@ -2922,7 +2923,12 @@ export class ACPAgentSession implements AgentSession, ACPClient {
       type: "timeline",
       provider: this.provider,
       turnId,
-      item: { type: "user_message", text, messageId },
+      item: {
+        type: "user_message",
+        text,
+        messageId,
+        ...(clientMessageId ? { clientMessageId } : {}),
+      },
     });
   }
 

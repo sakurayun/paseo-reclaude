@@ -521,6 +521,13 @@ export const fr: TranslationResources = {
       copyBranchName: "Copier le nom de la branche",
       copied: "Copié",
     },
+    fileActions: {
+      openFile: "Ouvrir le fichier",
+      copyPath: "Copier le chemin",
+      download: "Télécharger",
+      addToChat: "Ajouter au chat…",
+      moreActions: "Plus de propositions",
+    },
     fileExplorer: {
       sort: {
         name: "Nom",
@@ -657,6 +664,7 @@ export const fr: TranslationResources = {
     },
     tabs: {
       loading: "Chargement...",
+      modified: "Modifications non enregistrées",
       loadingAgentTitle: "Titre d'agent de chargement",
       emptyPane: "Aucun onglet dans ce volet.",
       fallback: {
@@ -741,6 +749,13 @@ export const fr: TranslationResources = {
           "Arrête le terminal et le retire de la liste de l'espace de travail. Vous pourrez le retrouver dans l'historique des sessions.",
       },
       confirmations: {
+        unsavedTitle: "Modifications non enregistrées",
+        unsavedMessage:
+          "Cet onglet contient des modifications non enregistrées. Le fermer supprimera le brouillon.",
+        closeWithoutSaving: "Fermer sans enregistrer",
+        closePaneTitle: "Fermer le volet?",
+        bulkUnsaved:
+          "{{count}} onglet(s) contiennent des modifications non enregistrées. Les fermer supprimera ces brouillons.",
         close: "Fermer",
         cancel: "Annuler",
         archive: "Archiver",
@@ -829,19 +844,34 @@ export const fr: TranslationResources = {
     scripts: {
       title: "Scripts",
       actions: {
+        chooseUrl: "Choisir l’URL",
+        copyUrl: "Copier l’URL",
+        openService: "Voir le service",
+        restart: "Redémarrer",
         run: "Courir",
-        view: "Voir",
+        stop: "Arrêter",
+        view: "Voir le terminal",
       },
       accessibility: {
         trigger: "ScriptsWorkspace",
-        openAt: "Ouvrir{{scriptName}}à{{label}}",
+        openService: "Voir le service {{scriptName}}",
         viewTerminal: "Voir le terminal{{scriptName}}",
         runScript: "Exécuter le script{{scriptName}}",
+        stopScript: "Arrêter{{scriptName}}",
+        restartScript: "Redémarrer{{scriptName}}",
+        copyUrl: "Copier l'URL de{{scriptName}}",
+        chooseUrl: "Choisir l’URL pour {{scriptName}}",
         script: "Script{{scriptName}}",
+      },
+      routes: {
+        public: "Proxy inverse",
+        paseo: "Memorable",
+        direct: "Directe",
       },
       states: {
         exitCode: "quitter{{code}}",
         startFailed: "Échec du démarrage de{{scriptName}}",
+        stopFailed: "Échec de l'arrêt de{{scriptName}}",
       },
     },
     sourceControl: {
@@ -1195,14 +1225,12 @@ export const fr: TranslationResources = {
         deletedFile: "Supprimé",
         commits: {
           title: "Commits",
-          legendLocal: "local",
-          legendRemote: "sur le distant",
-          countLabel: "{{count}} commits en avance sur la base",
+          countLabel: "{{count}} commits récents",
           fileDiffEmpty: "Aucune modification à afficher",
           fileDiffError: "Échec du chargement du diff du fichier",
           loading: "Chargement des commits…",
           loadError: "Échec du chargement des commits",
-          empty: "Aucun commit en avance sur la base",
+          empty: "Aucun commit pour le moment",
         },
       },
       openInEditor: {
@@ -1371,6 +1399,8 @@ export const fr: TranslationResources = {
       actions: {
         menu: "ActionsWorkspace",
         newWorkspace: "Nouvel espace de travail",
+        showMore: "Afficher plus",
+        showLess: "Afficher moins",
         createWorkspaceFor: "Créer un nouvel espace de travail pour{{projectName}}",
         copyPath: "Copier le chemin",
         copyBranchName: "Copier le nom de la branche",
@@ -1430,9 +1460,6 @@ export const fr: TranslationResources = {
     refPicker: {
       startingRef: "Réf de départ",
       chooseStart: "Choisissez par où commencer",
-      checkoutHint: "Découvrez {{noun}} {{numberPrefix}}{{number}} ?",
-      checkoutPr: "Découvrez {{noun}} {{numberPrefix}}{{number}}",
-      dismissCheckoutHint: "Ignorer l'indice de paiement {{noun}} {{numberPrefix}}{{number}}",
       intoBase: "dans {{baseRef}}",
       searching: "Recherche...",
       noMatchingRefs: "Aucune référence correspondante.",
@@ -1957,6 +1984,25 @@ export const fr: TranslationResources = {
       binaryPreviewUnavailable: "Aperçu binaire indisponible",
       failedToLoad: "Échec du chargement du fichier",
       failedToLoadPreview: "Échec du chargement de l'aperçu du fichier",
+      editor: {
+        fileSize: "Taille {{size}}",
+        lines: "{{count}} lignes",
+        editorStatus: "État de l’éditeur : {{status}}",
+        unsavedChanges: "Modifications non enregistrées",
+        saving: "Enregistrement...",
+        saveFailed: "Échec de l’enregistrement",
+        changedOnDisk: "Modifié sur le disque",
+        vimMode: "Mode Vim {{mode}}",
+        cursor: "Ligne {{line}}, colonne {{column}}",
+        preview: "Aperçu",
+        source: "Source",
+        unavailableTitle: "Fichier indisponible sur le disque",
+        conflictDescription: "Le contenu local a été conservé. Choisissez la version à garder.",
+        overwrite: "Écraser",
+        reload: "Recharger",
+        reloadTitle: "Recharger depuis le disque ?",
+        reloadMessage: "Vos modifications locales seront perdues.",
+      },
     },
     diff: {
       changesLabel: "Modifications",
@@ -2245,6 +2291,7 @@ export const fr: TranslationResources = {
     sections: {
       general: "Général",
       appearance: "Apparence",
+      editor: "Éditeur",
       shortcuts: "Raccourcis",
       integrations: "Intégrations",
       permissions: "Autorisations",
@@ -2308,6 +2355,11 @@ export const fr: TranslationResources = {
         editAccessibilityLabel: "Modifier {{label}}",
         removeAccessibilityLabel: "Supprimer {{label}}",
       },
+    },
+    editor: {
+      title: "Éditeur",
+      vimKeybindings: "Raccourcis Vim",
+      vimHint: "S’applique aux fichiers source sur le web et le bureau.",
     },
     hostSections: {
       schedules: "Schedules",

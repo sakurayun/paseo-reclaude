@@ -3477,6 +3477,7 @@ export class CodexAppServerAgentSession implements AgentSession {
   private readonly subscribers = new Set<(event: AgentStreamEvent) => void>();
   private nextTurnOrdinal = 0;
   private activeForegroundTurnId: string | null = null;
+  private activeClientMessageId: string | null = null;
   private cachedRuntimeInfo: AgentRuntimeInfo | null = null;
   private serviceTier: "fast" | null = null;
   private planModeEnabled = false;
@@ -4203,6 +4204,7 @@ export class CodexAppServerAgentSession implements AgentSession {
 
     const turnId = this.createTurnId();
     this.activeForegroundTurnId = turnId;
+    this.activeClientMessageId = options?.clientMessageId ?? null;
     this.currentTurnId = null;
 
     try {
@@ -4218,6 +4220,7 @@ export class CodexAppServerAgentSession implements AgentSession {
       await this.client.request("turn/start", turnStart.params, TURN_START_TIMEOUT_MS);
     } catch (error) {
       this.activeForegroundTurnId = null;
+      this.activeClientMessageId = null;
       throw error;
     }
 
@@ -4635,6 +4638,7 @@ export class CodexAppServerAgentSession implements AgentSession {
     this.pendingSubAgentNotificationsByThreadId.clear();
     this.subscribers.clear();
     this.activeForegroundTurnId = null;
+    this.activeClientMessageId = null;
     if (this.client) {
       await this.client.dispose();
     }
@@ -5686,6 +5690,7 @@ export class CodexAppServerAgentSession implements AgentSession {
       });
     }
     this.activeForegroundTurnId = null;
+    this.activeClientMessageId = null;
     this.pendingSubAgentNotificationsByThreadId.clear();
     this.resetTurnTrackingState();
   }
@@ -6224,7 +6229,11 @@ export class CodexAppServerAgentSession implements AgentSession {
     if (!this.rememberCodexUserMessageTurn(timelineItem.messageId)) {
       return;
     }
-    this.emitEvent({ type: "timeline", provider: CODEX_PROVIDER, item: timelineItem });
+    const item = this.activeClientMessageId
+      ? { ...timelineItem, clientMessageId: this.activeClientMessageId }
+      : timelineItem;
+    this.activeClientMessageId = null;
+    this.emitEvent({ type: "timeline", provider: CODEX_PROVIDER, item });
   }
 
   private warnUnknownNotificationMethod(method: string, params: unknown): void {

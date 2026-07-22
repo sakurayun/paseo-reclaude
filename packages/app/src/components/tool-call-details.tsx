@@ -42,6 +42,7 @@ interface ToolCallDetailsContentProps {
   maxHeight?: number;
   fillAvailableHeight?: boolean;
   showLoadingSkeleton?: boolean;
+  followContentEnd?: boolean;
   /** Find highlights keyed by detail segment (shell.command, shell.output, …). */
   findHighlights?: Map<string, MessageFindHighlight[]>;
 }
@@ -634,14 +635,31 @@ function FetchDetailSection({ url, result, ds }: FetchDetailProps) {
   );
 }
 
-function ScrollablePlainTextSection({ text, ds }: { text: string; ds: DetailStyles }) {
+function ScrollablePlainTextSection({
+  text,
+  ds,
+  followContentEnd = false,
+}: {
+  text: string;
+  ds: DetailStyles;
+  followContentEnd?: boolean;
+}) {
+  const scrollRef = React.useRef<React.ElementRef<typeof ScrollView>>(null);
+  const handleContentSizeChange = React.useCallback(() => {
+    if (followContentEnd) {
+      scrollRef.current?.scrollToEnd({ animated: false });
+    }
+  }, [followContentEnd]);
+
   return (
     <View style={styles.section}>
       <ScrollView
+        ref={scrollRef}
         style={ds.scrollAreaStyle}
         contentContainerStyle={styles.scrollContent}
         nestedScrollEnabled
         showsVerticalScrollIndicator
+        onContentSizeChange={handleContentSizeChange}
       >
         <Text selectable style={styles.plainText}>
           {text}
@@ -725,12 +743,24 @@ const UNKNOWN_SECTION_TITLE_KEY = {
   output: "toolCallDetails.output",
 } as const;
 
-function buildUnknownSections(detail: UnknownDetail, ds: DetailStyles, t: TFunction): ReactNode[] {
+function buildUnknownSections(
+  detail: UnknownDetail,
+  ds: DetailStyles,
+  t: TFunction,
+  followContentEnd: boolean,
+): ReactNode[] {
   const plainInputText =
     typeof detail.input === "string" && detail.output === null ? detail.input : null;
 
   if (plainInputText !== null) {
-    return [<ScrollablePlainTextSection key="unknown-plain-text" text={plainInputText} ds={ds} />];
+    return [
+      <ScrollablePlainTextSection
+        key="unknown-plain-text"
+        text={plainInputText}
+        ds={ds}
+        followContentEnd={followContentEnd}
+      />,
+    ];
   }
 
   const sectionsFromTopLevel = [
@@ -774,6 +804,7 @@ function buildDetailSections(
   ds: DetailStyles,
   t: TFunction,
   findHighlights: Map<string, MessageFindHighlight[]> | undefined,
+  followContentEnd: boolean,
 ): ReactNode[] {
   if (!detail) return [];
   if (detail.type === "shell") {
@@ -847,10 +878,17 @@ function buildDetailSections(
   }
   if (detail.type === "plain_text") {
     if (!detail.text) return [];
-    return [<ScrollablePlainTextSection key="plain-text" text={detail.text} ds={ds} />];
+    return [
+      <ScrollablePlainTextSection
+        key="plain-text"
+        text={detail.text}
+        ds={ds}
+        followContentEnd={followContentEnd}
+      />,
+    ];
   }
   if (detail.type === "unknown") {
-    return buildUnknownSections(detail, ds, t);
+    return buildUnknownSections(detail, ds, t, followContentEnd);
   }
   return [];
 }
@@ -893,6 +931,7 @@ function ToolCallDetailsContentInner({
   maxHeight,
   fillAvailableHeight = false,
   showLoadingSkeleton = false,
+  followContentEnd = false,
   findHighlights,
 }: ToolCallDetailsContentProps) {
   const { t } = useTranslation();
@@ -900,7 +939,14 @@ function ToolCallDetailsContentInner({
   const ds = useDetailStyles(detail, resolvedMaxHeight, fillAvailableHeight);
   const diffLines = useDiffLines(detail);
 
-  const sections: ReactNode[] = buildDetailSections(detail, diffLines, ds, t, findHighlights);
+  const sections: ReactNode[] = buildDetailSections(
+    detail,
+    diffLines,
+    ds,
+    t,
+    findHighlights,
+    followContentEnd,
+  );
 
   if (errorText) {
     sections.push(<ErrorSection key="error" errorText={errorText} ds={ds} />);

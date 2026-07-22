@@ -18,6 +18,7 @@ function useFileDiffPanelDescriptor(target: { kind: "file-diff"; path: string })
   const fileName = target.path.split("/").findLast(Boolean) ?? target.path;
   return {
     label: fileName,
+    tooltip: fileName,
     subtitle: target.path,
     titleState: "ready" as const,
     icon: GitCompareArrows,

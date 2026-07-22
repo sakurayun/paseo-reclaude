@@ -3,6 +3,7 @@ import {
   Pressable,
   Text,
   ActivityIndicator,
+  StyleSheet as RNStyleSheet,
   type PressableStateCallbackType,
 } from "react-native";
 import type { TFunction } from "i18next";
@@ -103,6 +104,7 @@ import type {
   AttachmentMetadata,
   ComposerAttachment,
   UserComposerAttachment,
+  WorkspaceFileComposerAttachment,
   WorkspaceComposerAttachment,
 } from "@/attachments/types";
 import type { PickedFile } from "@/attachments/picked-file";
@@ -129,6 +131,15 @@ import { useComposerGithubAutoAttach } from "./github/auto-attach";
 import { resolveClientSlashCommand, type ClientSlashCommand } from "@/client-slash-commands";
 import { ComposerPresetsMenu } from "@/composer/prompt-presets-menu";
 import { useCommitMessagePresetsStore } from "@/git/commit-message-presets-store";
+import {
+  appendWorkspaceFileAttachment,
+  getWorkspaceFileAttachmentKey,
+  getWorkspaceFileAttachmentSubtitle,
+} from "@/attachments/workspace-file";
+import {
+  resolveWorkspaceFileDrop,
+  type WorkspaceFileDragPayload,
+} from "@/attachments/workspace-file-drag";
 
 type QueuedMessage = QueuedComposerMessage;
 
@@ -401,6 +412,18 @@ function renderComposerAttachmentPill(args: RenderComposerAttachmentPillArgs): R
     return (
       <FileAttachmentPill
         key={attachment.attachment.id}
+        attachment={attachment}
+        index={index}
+        disabled={disabled}
+        onRemove={onRemove}
+        removeLabel={labels.removeFile}
+      />
+    );
+  }
+  if (attachment.kind === "workspace_file") {
+    return (
+      <WorkspaceFileAttachmentPill
+        key={`workspace-file:${getWorkspaceFileAttachmentKey(attachment)}`}
         attachment={attachment}
         index={index}
         disabled={disabled}
@@ -722,6 +745,43 @@ function FileAttachmentPill({
   );
 }
 
+interface WorkspaceFileAttachmentPillProps {
+  attachment: WorkspaceFileComposerAttachment;
+  index: number;
+  disabled: boolean;
+  onRemove: (index: number) => void;
+  removeLabel: string;
+}
+
+function WorkspaceFileAttachmentPill({
+  attachment,
+  index,
+  disabled,
+  onRemove,
+  removeLabel,
+}: WorkspaceFileAttachmentPillProps) {
+  const handleRemove = useCallback(() => {
+    onRemove(index);
+  }, [index, onRemove]);
+  const fileName = attachment.path.split("/").pop() ?? attachment.path;
+  return (
+    <AttachmentPill
+      testID="composer-workspace-file-attachment-pill"
+      onOpen={noopCallback}
+      onRemove={handleRemove}
+      openAccessibilityLabel={fileName}
+      removeAccessibilityLabel={removeLabel}
+      disabled={disabled}
+    >
+      <AttachmentLabel
+        icon={filePillIcon}
+        title={fileName}
+        subtitle={getWorkspaceFileAttachmentSubtitle(attachment)}
+      />
+    </AttachmentPill>
+  );
+}
+
 interface GithubPickerOptionProps {
   label: string;
   testID: string;
@@ -766,6 +826,7 @@ function GithubPickerOption({
 interface ComposerProps {
   agentId: string;
   serverId: string;
+  workspaceId?: string | null;
   isPaneFocused: boolean;
   onSubmitMessage?: (payload: MessagePayload) => Promise<void>;
   onClientSlashCommand?: (command: ClientSlashCommand) => Promise<void>;
@@ -780,6 +841,8 @@ interface ComposerProps {
   submitIcon?: "arrow" | "return";
   /** Externally controlled loading state. When true, disables the submit button. */
   isSubmitLoading?: boolean;
+  /** When true, waits for pasted GitHub links to resolve before enabling submit. */
+  waitForGithubAutoAttachOnSubmit?: boolean;
   submitBehavior?: "clear" | "preserve-and-lock";
   /** When true, blurs the input immediately when submitting. */
   blurOnSubmit?: boolean;
@@ -795,10 +858,14 @@ interface ComposerProps {
   /** Called before removing a workspace attachment from the transient scope store. */
   onRemoveWorkspaceAttachment?: (attachment: WorkspaceComposerAttachment) => boolean;
   onChangeAttachments: (updater: AttachmentListUpdater) => void;
+  onGithubPrDetected?: () => void;
+  onGithubPrAutoAttach?: (item: ForgeSearchItem) => void;
   cwd: string;
   clearDraft: (lifecycle: "sent" | "abandoned") => void;
   /** When true, auto-focuses the text input on web. */
   autoFocus?: boolean;
+  /** Changing this value requests focus again while autoFocus remains true. */
+  autoFocusKey?: string;
   /** Callback to expose a focus function to parent components (desktop only). */
   onFocusInput?: (focus: () => void) => void;
   /** Optional draft context for listing commands before an agent exists. */
@@ -993,6 +1060,7 @@ function ComposerVoiceModeButton({
 export function Composer({
   agentId,
   serverId,
+  workspaceId,
   isPaneFocused,
   onSubmitMessage,
   onClientSlashCommand,
@@ -1002,6 +1070,7 @@ export function Composer({
   submitButtonTestID,
   submitIcon = "arrow",
   isSubmitLoading = false,
+  waitForGithubAutoAttachOnSubmit = false,
   submitBehavior = "clear",
   blurOnSubmit = false,
   value,
@@ -1013,9 +1082,12 @@ export function Composer({
   canOpenWorkspaceAttachment,
   onRemoveWorkspaceAttachment,
   onChangeAttachments,
+  onGithubPrDetected,
+  onGithubPrAutoAttach,
   cwd,
   clearDraft,
   autoFocus = false,
+  autoFocusKey,
   onFocusInput,
   commandDraftConfig,
   onMessageSent,
@@ -1106,6 +1178,8 @@ export function Composer({
     cwd,
     supportsForgeSearch,
     setAttachments: setSelectedAttachments,
+    onPullRequestDetected: onGithubPrDetected,
+    onPullRequestAdded: onGithubPrAutoAttach,
   });
   const [cursorIndex, setCursorIndex] = useState(0);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -1236,6 +1310,21 @@ export function Composer({
       },
     });
   }, []);
+
+  const handleWorkspaceFileDropped = useCallback(
+    (payload: WorkspaceFileDragPayload) => {
+      if (!workspaceId) {
+        return;
+      }
+      const attachment = resolveWorkspaceFileDrop({ payload, serverId, workspaceId });
+      if (!attachment) {
+        return;
+      }
+      setSelectedAttachments((current) => appendWorkspaceFileAttachment(current, attachment));
+      focusInput();
+    },
+    [focusInput, serverId, setSelectedAttachments, workspaceId],
+  );
 
   useEffect(() => {
     onFocusInput?.(focusInput);
@@ -2020,7 +2109,7 @@ export function Composer({
   );
 
   const composerContainerStyle = useMemo(
-    () => [styles.container, keyboardAnimatedStyle],
+    () => [animatedStaticStyles.container, keyboardAnimatedStyle],
     [keyboardAnimatedStyle],
   );
   const inputAreaContainerStyle = useMemo(
@@ -2070,13 +2159,21 @@ export function Composer({
 
   const messageInputContainerRef = useRef<View>(null);
 
-  const isSubmitBusy = isProcessing || isSubmitLoading || isUploadingFile;
+  const isSubmitBusy =
+    isProcessing ||
+    isSubmitLoading ||
+    isUploadingFile ||
+    (waitForGithubAutoAttachOnSubmit && githubAutoAttach.isResolving);
 
   // Disable drops while submitting/uploading: the submit path clears and restores attachments,
   // so a drop in that window would be lost or land on a locked draft. `disabled` hides the
   // backdrop and rejects the drop atomically, instead of accepting a drop with no feedback.
   useFileDrop(
-    { onFiles: addImages, onGenericFiles: handleGenericFilesDropped },
+    {
+      onFiles: addImages,
+      onGenericFiles: handleGenericFilesDropped,
+      onWorkspaceFile: handleWorkspaceFileDropped,
+    },
     { disabled: isSubmitBusy },
   );
 
@@ -2156,7 +2253,7 @@ export function Composer({
                 isReadyForDictation={isDictationReady}
                 placeholder={messagePlaceholder}
                 autoFocus={messageInputAutoFocus}
-                autoFocusKey={`${serverId}:${agentId}`}
+                autoFocusKey={`${serverId}:${agentId}:${autoFocusKey ?? ""}`}
                 disabled={isSubmitLoading}
                 isPaneFocused={isPaneFocused}
                 isCompactLayout={isCompactLayout}
@@ -2206,11 +2303,14 @@ export function Composer({
   );
 }
 
-const styles = StyleSheet.create((theme: Theme) => ({
+const animatedStaticStyles = RNStyleSheet.create({
   container: {
     flexDirection: "column",
     position: "relative",
   },
+});
+
+const styles = StyleSheet.create((theme: Theme) => ({
   borderSeparator: {
     height: theme.borderWidth[1],
     backgroundColor: theme.colors.border,

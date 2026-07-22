@@ -66,6 +66,7 @@ export interface AgentInputDraft {
   removeTranscriptAttachment: (source: DraftTranscriptSource) => void;
   clear: (lifecycle: "sent" | "abandoned") => void;
   isHydrated: boolean;
+  attachmentFocusRequestId: number;
   composerState: DraftComposerState | null;
 }
 
@@ -92,6 +93,9 @@ export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDr
     ChatHistoryContextAttachment[]
   >([]);
   const [isHydrated, setIsHydrated] = useState(false);
+  const attachmentFocusRequestId = useDraftStore(
+    (state) => state.attachmentFocusRequestByDraftKey[draftKey] ?? 0,
+  );
   const draftGenerationRef = useRef(0);
   const hydratedGenerationRef = useRef(0);
 
@@ -339,6 +343,7 @@ export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDr
     removeTranscriptAttachment,
     clear,
     isHydrated,
+    attachmentFocusRequestId,
     composerState,
   };
 }

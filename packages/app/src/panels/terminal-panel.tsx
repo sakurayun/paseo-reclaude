@@ -67,6 +67,9 @@ function useTerminalPanelDescriptor(
   );
   const terminal =
     terminalsQuery.data?.terminals.find((entry) => entry.id === target.terminalId) ?? null;
+  const label =
+    trimNonEmpty(terminal?.title ?? terminal?.name ?? null) ??
+    t("workspace.tabs.fallback.terminal");
 
   // SSH terminals show the remote host's OS brand badge; the tab row's mono
   // color is intentionally ignored — the badge is the host's identity.
@@ -87,6 +90,7 @@ function useTerminalPanelDescriptor(
       trimNonEmpty(terminal?.title ?? terminal?.name ?? null) ??
       t("workspace.tabs.fallback.terminal"),
     subtitle: t("workspace.tabs.fallback.terminal"),
+    tooltip: label,
     titleState: "ready",
     icon,
     statusBucket: deriveTerminalActivityStatusBucket(terminal?.activity),

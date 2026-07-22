@@ -77,6 +77,7 @@ export interface AppSettings {
   newThemeEnabled: boolean; // standalone redesigned "new theme", independent of `theme`
   autoExpandReasoning: boolean;
   toolCallDetailLevel: ToolCallDetailLevel;
+  vimKeybindings: boolean;
 }
 
 export interface Settings extends AppSettings {
@@ -110,6 +111,7 @@ export const DEFAULT_CLIENT_SETTINGS: AppSettings = {
   newThemeEnabled: DEFAULT_NEW_THEME_ENABLED,
   autoExpandReasoning: false,
   toolCallDetailLevel: "detailed",
+  vimKeybindings: false,
 };
 
 export const DEFAULT_APP_SETTINGS: Settings = {
@@ -245,6 +247,12 @@ function parseWorkspaceTitleSource(value: unknown): WorkspaceTitleSource | null 
 // pickAppSettings to keep its cyclomatic complexity under the lint ceiling.
 function pickMiscAppSettings(stored: Partial<AppSettings>): Partial<AppSettings> {
   const result: Partial<AppSettings> = {};
+  if (typeof stored.terminalLigaturesEnabled === "boolean") {
+    result.terminalLigaturesEnabled = stored.terminalLigaturesEnabled;
+  }
+  if (typeof stored.vimKeybindings === "boolean") {
+    result.vimKeybindings = stored.vimKeybindings;
+  }
   const workspaceTitleSource = parseWorkspaceTitleSource(stored.workspaceTitleSource);
   if (workspaceTitleSource !== null) {
     result.workspaceTitleSource = workspaceTitleSource;
@@ -326,9 +334,6 @@ function pickAppSettings(stored: StoredAppSettings): Partial<AppSettings> {
   }
   if (typeof stored.syntaxTheme === "string" && isSyntaxThemeId(stored.syntaxTheme)) {
     result.syntaxTheme = stored.syntaxTheme;
-  }
-  if (typeof stored.terminalLigaturesEnabled === "boolean") {
-    result.terminalLigaturesEnabled = stored.terminalLigaturesEnabled;
   }
   Object.assign(result, pickTerminalShellSettings(stored));
   const paddingFields = [

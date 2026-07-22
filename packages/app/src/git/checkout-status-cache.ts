@@ -2,6 +2,7 @@ import type { QueryClient } from "@tanstack/react-query";
 import type { CheckoutStatusResponse, CheckoutStatusUpdate } from "@getpaseo/protocol/messages";
 import equal from "fast-deep-equal/es6";
 import {
+  checkoutCommitsQueryKey,
   checkoutPrStatusQueryKey,
   checkoutStatusQueryKey,
   invalidatePrPaneTimelineForCheckout,
@@ -65,6 +66,9 @@ export function applyCheckoutStatusUpdateFromEvent({
   const queryKey = checkoutStatusQueryKey(serverId, payload.cwd);
   const previous = queryClient.getQueryData<CheckoutStatusPayload>(queryKey);
   queryClient.setQueryData(queryKey, cachePayload);
+  void queryClient.invalidateQueries({
+    queryKey: checkoutCommitsQueryKey(serverId, payload.cwd),
+  });
   expireStaleDiffModeOverrides({
     serverId,
     cwd: payload.cwd,

@@ -4,7 +4,12 @@ import {
   type ChatHistoryContextAttachment,
   type UserComposerAttachment,
 } from "@/attachments/types";
-import { ForgeSearchItemSchema, GitHubSearchItemSchema } from "@getpaseo/protocol/messages";
+import { isWorkspaceFileComposerAttachment } from "@/attachments/workspace-file";
+import {
+  ForgeSearchItemSchema,
+  GitHubSearchItemSchema,
+  UploadedFileAttachmentSchema,
+} from "@getpaseo/protocol/messages";
 import { buildChatHistoryAttachmentId } from "@/attachments/chat-history-identity";
 import type { StreamItem } from "@/types/stream";
 
@@ -92,6 +97,12 @@ export function isUserComposerAttachment(value: unknown): value is UserComposerA
     const metadata = record.metadata;
     return isAttachmentMetadata(metadata);
   }
+  if (record.kind === "workspace_file") {
+    return isWorkspaceFileComposerAttachment(value);
+  }
+  if (record.kind === "file") {
+    return UploadedFileAttachmentSchema.safeParse(record.attachment).success;
+  }
   if (
     record.kind !== "forge_issue" &&
     record.kind !== "forge_change_request" &&
@@ -120,6 +131,13 @@ export function normalizeComposerAttachment(
     return {
       kind: "image",
       metadata: normalizeAttachmentMetadata(attachment.metadata),
+    };
+  }
+  if (attachment.kind === "workspace_file") {
+    return {
+      kind: "workspace_file",
+      path: attachment.path.trim().replace(/^\.\//, ""),
+      selection: attachment.selection,
     };
   }
   if (attachment.kind === "github_pr") {

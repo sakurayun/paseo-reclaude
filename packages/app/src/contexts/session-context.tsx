@@ -398,8 +398,6 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
   const toast = useToast();
 
   // Zustand store actions
-  const initializeSession = useSessionStore((state) => state.initializeSession);
-  const clearSession = useSessionStore((state) => state.clearSession);
   const setIsPlayingAudio = useSessionStore((state) => state.setIsPlayingAudio);
   const setMessages = useSessionStore((state) => state.setMessages);
   const setCurrentAssistantMessage = useSessionStore((state) => state.setCurrentAssistantMessage);
@@ -421,12 +419,10 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
   const setWorkspaces = useSessionStore((state) => state.setWorkspaces);
   const flushAgentLastActivity = useSessionStore((state) => state.flushAgentLastActivity);
   const setPendingPermissions = useSessionStore((state) => state.setPendingPermissions);
-  const updateSessionClient = useSessionStore((state) => state.updateSessionClient);
   const updateSessionServerInfo = useSessionStore((state) => state.updateSessionServerInfo);
   const setProviderQuota = useSessionStore((state) => state.setProviderQuota);
   const setViewedTimelineSync = useSessionStore((state) => state.setViewedTimelineSync);
   const upsertWorkspaceSetupProgress = useWorkspaceSetupStore((state) => state.upsertProgress);
-  const clearWorkspaceSetupServer = useWorkspaceSetupStore((state) => state.clearServer);
 
   // Track focused agent for heartbeat
   const focusedAgentId = useSessionStore(
@@ -577,17 +573,6 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
     },
     [serverId],
   );
-
-  // Initialize session in store
-  useEffect(() => {
-    const generation = getHostRuntimeStore().getSnapshot(serverId)?.clientGeneration ?? 0;
-    initializeSession(serverId, client, generation);
-  }, [serverId, client, initializeSession]);
-
-  useEffect(() => {
-    const generation = getHostRuntimeStore().getSnapshot(serverId)?.clientGeneration ?? 0;
-    updateSessionClient(serverId, client, generation);
-  }, [serverId, client, updateSessionClient]);
 
   useEffect(() => {
     const serverInfo = client.getLastServerInfoMessage();
@@ -1419,14 +1404,6 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
     },
     [client],
   );
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      clearWorkspaceSetupServer(serverId);
-      clearSession(serverId);
-    };
-  }, [clearSession, clearWorkspaceSetupServer, serverId]);
 
   return children;
 }

@@ -33,6 +33,7 @@ function useSessionsPanelDescriptor(
   const { t } = useTranslation();
   return {
     label: t("sessions.title"),
+    tooltip: t("sessions.title"),
     subtitle: t("sessions.workspacePanel.tabSubtitle"),
     titleState: "ready",
     icon: History,
