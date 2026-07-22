@@ -3,6 +3,7 @@ import type { SidebarProjectEntry } from "@/hooks/use-sidebar-workspaces-list";
 export interface SidebarProjectHostTarget {
   serverId: string;
   iconWorkingDir: string;
+  projectAppearance?: SidebarProjectEntry["hosts"][number]["projectAppearance"];
 }
 
 export type SidebarProjectTrailingAction =
@@ -22,12 +23,13 @@ const EMPTY_MULTIPLICITY_MAP: ReadonlyMap<string, boolean> = new Map();
 function hostTarget(input: {
   serverId: string;
   iconWorkingDir: string;
+  projectAppearance?: SidebarProjectEntry["hosts"][number]["projectAppearance"];
 }): SidebarProjectHostTarget | null {
   const iconWorkingDir = input.iconWorkingDir.trim();
   if (!input.serverId || !iconWorkingDir) {
     return null;
   }
-  return { serverId: input.serverId, iconWorkingDir };
+  return { serverId: input.serverId, iconWorkingDir, projectAppearance: input.projectAppearance };
 }
 
 export function resolveSidebarProjectIconTarget(

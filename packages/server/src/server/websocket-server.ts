@@ -227,6 +227,7 @@ function createNoopProjectRegistry(): ProjectRegistry {
       kind: input.kind,
       displayName: input.displayName,
       customName: null,
+      appearance: null,
       createdAt: input.timestamp,
       updatedAt: input.timestamp,
       archivedAt: null,
@@ -1418,6 +1419,8 @@ export class VoiceAssistantWebSocketServer {
         selectiveAgentTimeline: true,
         // COMPAT(stableProjectIdentity): added in v0.1.109, remove gate after 2027-01-15.
         stableProjectIdentity: true,
+        // COMPAT(projectAppearance): added in v0.2.0, remove after 2027-01-20.
+        projectAppearance: true,
       },
     };
   }

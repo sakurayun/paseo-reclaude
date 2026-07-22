@@ -44,6 +44,7 @@ function applyProjectDelta(
       ...workspace,
       projectDisplayName: project.projectDisplayName,
       projectCustomName: project.projectCustomName,
+      projectAppearance: project.projectAppearance,
       projectRootPath: project.projectRootPath,
       projectKind: project.projectKind,
     });

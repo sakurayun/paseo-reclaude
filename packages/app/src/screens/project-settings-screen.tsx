@@ -11,10 +11,13 @@ import { HostPicker as SharedHostPicker, HostStatusDotSlot } from "@/components/
 import type {
   PaseoConfigRaw,
   PaseoConfigRevision,
+  ProjectAppearance,
   ProjectConfigRpcError,
 } from "@getpaseo/protocol/messages";
 import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
 import { Button } from "@/components/ui/button";
+import { Field, FormTextInput } from "@/components/ui/form-field";
+import { SelectField } from "@/components/ui/select-field";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -33,6 +36,7 @@ import { settingsStyles } from "@/styles/settings";
 import { useProjects } from "@/hooks/use-projects";
 import { useProjectIconDataByProjectKey } from "@/projects/project-icons";
 import { useHostRuntimeClient, useHostRuntimeSnapshot } from "@/runtime/host-runtime";
+import { useHostFeature } from "@/runtime/host-features";
 import { useToast } from "@/contexts/toast-context";
 import { confirmDialog } from "@/utils/confirm-dialog";
 import {
@@ -46,6 +50,7 @@ import {
 } from "@/utils/project-config-form";
 import { buildProjectsSettingsRoute } from "@/utils/host-routes";
 import type { ProjectHostEntry, ProjectSummary } from "@/utils/projects";
+import { PROJECT_ICON_COLORS } from "@/utils/project-icon-color";
 
 const SCRIPT_SERVICE_TYPE = "service";
 
@@ -206,15 +211,43 @@ function ProjectSettingsBody({
   });
 
   const data = readQuery.data;
+  const supportsAppearance = useHostFeature(selectedHost.serverId, "projectAppearance");
+  const appearanceKey = `${selectedHost.serverId}:${selectedHost.projectAppearance?.revision ?? "automatic"}`;
+  const [colorPreview, setColorPreview] = useState<{
+    appearanceKey: string;
+    color: string | null;
+  } | null>(null);
+  const previewColor =
+    colorPreview?.appearanceKey === appearanceKey
+      ? colorPreview.color
+      : (selectedHost.projectAppearance?.color ?? null);
+  const previewAppearance = useMemo<ProjectAppearance>(
+    () => ({
+      icon: selectedHost.projectAppearance?.icon ?? { type: "automatic" },
+      color: previewColor,
+      revision: selectedHost.projectAppearance?.revision ?? "preview",
+    }),
+    [previewColor, selectedHost.projectAppearance],
+  );
+  const handleColorPreview = useCallback(
+    (color: string | null) => setColorPreview({ appearanceKey, color }),
+    [appearanceKey],
+  );
   const projectIconTargets = useMemo(
     () => [
       {
         serverId: selectedHost.serverId,
         projectKey: project.projectKey,
         iconWorkingDir: selectedHost.repoRoot,
+        projectAppearance: selectedHost.projectAppearance,
       },
     ],
-    [project.projectKey, selectedHost.repoRoot, selectedHost.serverId],
+    [
+      project.projectKey,
+      selectedHost.projectAppearance,
+      selectedHost.repoRoot,
+      selectedHost.serverId,
+    ],
   );
   const projectIconDataByKey = useProjectIconDataByProjectKey({
     projects: projectIconTargets,
@@ -240,11 +273,22 @@ function ProjectSettingsBody({
             iconDataUri={projectIconDataUri}
             projectName={project.projectName}
             projectKey={project.projectKey}
+            appearance={previewAppearance}
           />
           <ProjectNameEditor project={project} client={client} />
         </View>
         <HostContext hosts={hosts} selectedHost={selectedHost} onSelectHost={onSelectHost} />
       </View>
+
+      {supportsAppearance ? (
+        <ProjectAppearanceSettings
+          key={`${selectedHost.serverId}:${selectedHost.projectAppearance?.revision ?? "automatic"}`}
+          project={project}
+          host={selectedHost}
+          client={client}
+          onColorPreview={handleColorPreview}
+        />
+      ) : null}
 
       {renderContent({
         readQuery,
@@ -912,10 +956,12 @@ function ProjectTitleIcon({
   iconDataUri,
   projectName,
   projectKey,
+  appearance,
 }: {
   iconDataUri: string | null;
   projectName: string;
   projectKey: string;
+  appearance: ProjectHostEntry["projectAppearance"];
 }) {
   const initial = projectName.trim().charAt(0).toUpperCase() || "?";
   return (
@@ -923,10 +969,239 @@ function ProjectTitleIcon({
       iconDataUri={iconDataUri}
       initial={initial}
       projectKey={projectKey}
+      appearance={appearance}
       imageStyle={styles.titleIcon}
       fallbackStyle={styles.titleIconFallback}
       textStyle={styles.titleIconFallbackText}
     />
+  );
+}
+
+type ProjectIconMode = ProjectAppearance["icon"]["type"];
+
+function projectAppearanceValueError(
+  mode: ProjectIconMode,
+  faviconUrl: string,
+  customText: string,
+  t: TFunction,
+): string | null {
+  if (mode === "favicon" && !faviconUrl.trim()) {
+    return t("settings.project.appearance.urlRequired");
+  }
+  if (mode === "custom" && (!customText.trim() || Array.from(customText.trim()).length > 8)) {
+    return t("settings.project.appearance.customRequired");
+  }
+  return null;
+}
+
+function buildProjectAppearanceIcon(
+  mode: ProjectIconMode,
+  faviconUrl: string,
+  customText: string,
+): ProjectAppearance["icon"] {
+  if (mode === "favicon") return { type: "favicon", url: faviconUrl.trim() };
+  if (mode === "custom") return { type: "custom", text: customText.trim() };
+  return { type: "automatic" };
+}
+
+function ProjectColorSwatch({
+  color,
+  selected,
+  onChange,
+}: {
+  color: string;
+  selected: boolean;
+  onChange: (color: string) => void;
+}) {
+  const handlePress = useCallback(() => onChange(color), [color, onChange]);
+  const accessibilityState = useMemo(() => ({ selected }), [selected]);
+  const swatchStyle = useMemo(
+    () => [styles.colorSwatch, { backgroundColor: color }, selected && styles.colorSwatchSelected],
+    [color, selected],
+  );
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={color}
+      accessibilityState={accessibilityState}
+      onPress={handlePress}
+      style={styles.colorSwatchPressable}
+    >
+      <View style={swatchStyle} />
+    </Pressable>
+  );
+}
+
+function ProjectColorPicker({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (color: string) => void;
+}) {
+  const { t } = useTranslation();
+  const handleAutomatic = useCallback(() => onChange(""), [onChange]);
+  const handleTransparent = useCallback(() => onChange("transparent"), [onChange]);
+  return (
+    <Field label={t("settings.project.appearance.color")}>
+      <View style={styles.colorPickerRow}>
+        <Button variant={value ? "ghost" : "secondary"} size="xs" onPress={handleAutomatic}>
+          {t("settings.project.appearance.automatic")}
+        </Button>
+        <Button
+          variant={value === "transparent" ? "secondary" : "ghost"}
+          size="xs"
+          onPress={handleTransparent}
+        >
+          {t("settings.project.appearance.transparent")}
+        </Button>
+        {PROJECT_ICON_COLORS.map((color) => (
+          <ProjectColorSwatch
+            key={color}
+            color={color}
+            selected={value === color}
+            onChange={onChange}
+          />
+        ))}
+      </View>
+    </Field>
+  );
+}
+
+function ProjectAppearanceSettings({
+  project,
+  host,
+  client,
+  onColorPreview,
+}: {
+  project: ProjectSummary;
+  host: ProjectHostEntry;
+  client: DaemonClient;
+  onColorPreview: (color: string | null) => void;
+}) {
+  const { t } = useTranslation();
+  const queryClient = useQueryClient();
+  const toast = useToast();
+  const appearance = host.projectAppearance;
+  const [mode, setMode] = useState<ProjectIconMode>(appearance?.icon.type ?? "automatic");
+  const [faviconUrl, setFaviconUrl] = useState(
+    appearance?.icon.type === "favicon" ? appearance.icon.url : "",
+  );
+  const [customText, setCustomText] = useState(
+    appearance?.icon.type === "custom" ? appearance.icon.text : "",
+  );
+  const [color, setColor] = useState(appearance?.color ?? "");
+
+  const options = useMemo(
+    () => [
+      {
+        id: "automatic",
+        value: "automatic" as const,
+        label: t("settings.project.appearance.automatic"),
+      },
+      {
+        id: "favicon",
+        value: "favicon" as const,
+        label: t("settings.project.appearance.favicon"),
+      },
+      {
+        id: "custom",
+        value: "custom" as const,
+        label: t("settings.project.appearance.custom"),
+      },
+    ],
+    [t],
+  );
+  const selectedDisplay = useMemo(
+    () => ({ label: options.find((option) => option.value === mode)?.label ?? mode }),
+    [mode, options],
+  );
+
+  const trimmedColor = color.trim().toLowerCase();
+  const valueError = projectAppearanceValueError(mode, faviconUrl, customText, t);
+
+  const mutation = useMutation({
+    mutationFn: () => {
+      return client.setProjectAppearance(project.projectKey, {
+        icon: buildProjectAppearanceIcon(mode, faviconUrl, customText),
+        color: trimmedColor || null,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["projectIcon", host.serverId] });
+      toast.show(t("settings.project.appearance.saved"), { variant: "success" });
+    },
+  });
+
+  const handleSave = useCallback(() => mutation.mutate(), [mutation]);
+  const handleColorChange = useCallback(
+    (nextColor: string) => {
+      setColor(nextColor);
+      onColorPreview(nextColor || null);
+    },
+    [onColorPreview],
+  );
+
+  return (
+    <SettingsGroup title={t("settings.project.appearance.title")} testID="appearance-group">
+      <View style={[settingsStyles.card, styles.appearanceCard]}>
+        <SelectField
+          label={t("settings.project.appearance.icon")}
+          value={mode}
+          selectedDisplay={selectedDisplay}
+          options={options}
+          onChange={setMode}
+          placeholder={t("settings.project.appearance.automatic")}
+          emptyText=""
+          searchable={false}
+          size="sm"
+          testID="project-icon-mode"
+        />
+        {mode === "favicon" ? (
+          <Field label={t("settings.project.appearance.url")} error={valueError}>
+            <FormTextInput
+              value={faviconUrl}
+              onChangeText={setFaviconUrl}
+              autoCapitalize="none"
+              autoCorrect={false}
+              placeholder="https://example.com/favicon.ico"
+              size="sm"
+              testID="project-icon-url"
+            />
+          </Field>
+        ) : null}
+        {mode === "custom" ? (
+          <Field label={t("settings.project.appearance.text")} error={valueError}>
+            <FormTextInput
+              value={customText}
+              onChangeText={setCustomText}
+              placeholder="🚀"
+              size="sm"
+              testID="project-icon-text"
+            />
+          </Field>
+        ) : null}
+        <ProjectColorPicker value={color} onChange={handleColorChange} />
+        {mutation.isError ? (
+          <Alert
+            variant="error"
+            title={t("settings.project.appearance.saveFailed")}
+            description={errorToDetail(mutation.error) ?? undefined}
+          />
+        ) : null}
+        <Button
+          variant="outline"
+          size="sm"
+          loading={mutation.isPending}
+          disabled={Boolean(valueError)}
+          onPress={handleSave}
+          style={styles.appearanceSave}
+          testID="project-icon-save"
+        >
+          {t("settings.project.appearance.save")}
+        </Button>
+      </View>
+    </SettingsGroup>
   );
 }
 
@@ -1345,6 +1620,32 @@ const styles = StyleSheet.create((theme) => ({
   },
   errorBlock: {
     marginTop: theme.spacing[2],
+  },
+  appearanceCard: {
+    padding: theme.spacing[4],
+    gap: theme.spacing[3],
+  },
+  appearanceSave: {
+    alignSelf: "flex-end",
+  },
+  colorPickerRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: theme.spacing[1],
+  },
+  colorSwatchPressable: {
+    padding: theme.spacing[1],
+    borderRadius: theme.borderRadius.full,
+  },
+  colorSwatch: {
+    width: 24,
+    height: 24,
+    borderRadius: theme.borderRadius.full,
+  },
+  colorSwatchSelected: {
+    borderWidth: 2,
+    borderColor: theme.colors.foreground,
   },
   emptyScripts: {
     color: theme.colors.foregroundMuted,
