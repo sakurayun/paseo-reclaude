@@ -134,7 +134,11 @@ import {
 import { wrapSpokenInput } from "./voice-config.js";
 import { isVoicePermissionAllowed } from "./voice-permission-policy.js";
 import { getProjectIcon } from "../utils/project-icon.js";
-import { cacheProjectFavicon, readCachedProjectFavicon } from "../utils/project-appearance.js";
+import {
+  cacheProjectFavicon,
+  readCachedProjectFavicon,
+  removeCachedProjectFavicon,
+} from "../utils/project-appearance.js";
 import { VoiceSession } from "./session/voice/voice-session.js";
 import { CheckoutSession } from "./session/checkout/checkout-session.js";
 import {
@@ -2529,8 +2533,24 @@ export class Session {
       }
 
       const appearance = { icon, color, revision: new Date().toISOString() };
-      const updated = { ...existing, appearance, updatedAt: appearance.revision };
-      await this.projectRegistry.upsert(updated);
+      const updated = await this.projectRegistry.update(projectId, (current) => ({
+        ...current,
+        appearance,
+        updatedAt: appearance.revision,
+      }));
+      if (!updated) {
+        if (icon.type === "favicon") {
+          await removeCachedProjectFavicon({ paseoHome: this.paseoHome, projectId }).catch(
+            (error) => {
+              this.sessionLogger.warn(
+                { err: error, projectId },
+                "Failed to clean up favicon for removed project",
+              );
+            },
+          );
+        }
+        throw new Error("Project not found");
+      }
 
       this.emit({
         type: "project.appearance.set.response",
@@ -2622,6 +2642,14 @@ export class Session {
         }
 
         await this.projectRegistry.remove(projectId);
+        await removeCachedProjectFavicon({ paseoHome: this.paseoHome, projectId }).catch(
+          (error) => {
+            this.sessionLogger.warn(
+              { err: error, projectId },
+              "Failed to clean up removed project favicon",
+            );
+          },
+        );
       } finally {
         if (activeWorkspaceIds.length > 0) {
           this.clearWorkspaceArchiving(activeWorkspaceIds);

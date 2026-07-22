@@ -233,6 +233,7 @@ function createNoopProjectRegistry(): ProjectRegistry {
       archivedAt: null,
     }),
     upsert: async () => {},
+    update: async () => null,
     archive: async () => {},
     remove: async () => {},
   };
