@@ -106,7 +106,7 @@ import { applyAppearance } from "@/screens/settings/appearance/apply-appearance"
 import { selectIsAgentListOpen, usePanelStore } from "@/stores/panel-store";
 import { flushDraftPersistStorage } from "@/stores/draft-store";
 import { installWebButtonInteractionStyles } from "@/styles/install-web-button-interaction-styles";
-import { resolveNewThemeUnistylesKey, THEME_TO_UNISTYLES, type ThemeName } from "@/styles/theme";
+import { resolveNewThemeUnistylesKey, type ThemeName } from "@/styles/theme";
 import { installWebScrollbarStyles } from "@/styles/install-web-scrollbar-styles";
 import type { HostProfile } from "@/types/host-connection";
 import { toggleDesktopSidebarsWithCheckoutIntent } from "@/utils/desktop-sidebar-toggle";
@@ -632,35 +632,26 @@ function ProvidersWrapper({ children }: { children: ReactNode }) {
   const { settings, isLoading: settingsLoading } = useAppSettings();
   const { upsertConnectionFromOfferUrl } = useHostMutations();
 
-  // Apply theme setting on mount and when it changes
+  // Apply theme setting on mount and when it changes.
+  // Only the redesigned floating UI is supported — every ThemeName maps to a
+  // dedicated newTheme* palette. Auto follows system light/dark with the
+  // neutral pair. Classic adaptiveThemes is no longer used.
   useEffect(() => {
     if (settingsLoading) return;
-    // New theme keeps floating UI (shell.floating); every ThemeName maps to a
-    // dedicated newTheme* palette (Paseo/Zinc/Midnight/Claude/Ghostty + light).
-    // Auto follows system light/dark with the neutral pair. Classic
-    // adaptiveThemes only knows light/dark, so we drive new-theme keys by hand.
-    if (settings.newThemeEnabled) {
-      UnistylesRuntime.setAdaptiveThemes(false);
-      const applyNewTheme = (systemScheme: "light" | "dark" | null | undefined) => {
-        const scheme = systemScheme === "light" ? "light" : "dark";
-        UnistylesRuntime.setTheme(resolveNewThemeUnistylesKey(settings.theme, scheme));
-      };
-      applyNewTheme(Appearance.getColorScheme());
-      if (settings.theme !== "auto") {
-        return;
-      }
-      const subscription = Appearance.addChangeListener(({ colorScheme }) => {
-        applyNewTheme(colorScheme);
-      });
-      return () => subscription.remove();
+    UnistylesRuntime.setAdaptiveThemes(false);
+    const applyNewTheme = (systemScheme: "light" | "dark" | null | undefined) => {
+      const scheme = systemScheme === "light" ? "light" : "dark";
+      UnistylesRuntime.setTheme(resolveNewThemeUnistylesKey(settings.theme, scheme));
+    };
+    applyNewTheme(Appearance.getColorScheme());
+    if (settings.theme !== "auto") {
+      return;
     }
-    if (settings.theme === "auto") {
-      UnistylesRuntime.setAdaptiveThemes(true);
-    } else {
-      UnistylesRuntime.setAdaptiveThemes(false);
-      UnistylesRuntime.setTheme(THEME_TO_UNISTYLES[settings.theme]);
-    }
-  }, [settingsLoading, settings.theme, settings.newThemeEnabled]);
+    const subscription = Appearance.addChangeListener(({ colorScheme }) => {
+      applyNewTheme(colorScheme);
+    });
+    return () => subscription.remove();
+  }, [settingsLoading, settings.theme]);
 
   // Apply font / size / syntax appearance settings on mount and when they change.
   // Sibling to the theme effect above; order is irrelevant because both patch all

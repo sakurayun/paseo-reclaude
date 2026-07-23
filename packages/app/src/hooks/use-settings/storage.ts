@@ -49,8 +49,8 @@ export const MAX_TERMINAL_LETTER_SPACING = 10;
 // daemon on every non-Windows host.
 export const DEFAULT_WINDOWS_PREFER_POWERSHELL7 = true;
 export const DEFAULT_WINDOWS_LAUNCH_AS_ADMIN = true;
-// The standalone "new theme" ships on by default — new and existing installs
-// alike start on the redesigned look (the toggle lets a user opt back out).
+// The redesigned floating UI is the only look — classic chrome is retired.
+// Kept as a constant for defaults / COMPAT reads; load always forces true.
 export const DEFAULT_NEW_THEME_ENABLED = true;
 
 export interface AppSettings {
@@ -74,7 +74,8 @@ export interface AppSettings {
   windowsPreferPowerShell7: boolean; // Windows: prefer pwsh7 for default terminals
   windowsLaunchAsAdmin: boolean; // Windows: launch default terminals elevated via gsudo
   workspaceTitleSource: WorkspaceTitleSource;
-  newThemeEnabled: boolean; // standalone redesigned "new theme", independent of `theme`
+  // Always true: classic chrome is retired; field kept for storage COMPAT.
+  newThemeEnabled: boolean;
   autoExpandReasoning: boolean;
   toolCallDetailLevel: ToolCallDetailLevel;
   vimKeybindings: boolean;
@@ -148,7 +149,8 @@ export async function saveAppSettings(input: {
     input.queryClient.getQueryData<AppSettings>(APP_SETTINGS_QUERY_KEY) ??
     (await loadAppSettingsFromStorage(input.deps));
   const current = normalizeAppSettings(storedCurrent);
-  const next = { ...current, ...input.updates };
+  // Classic chrome is retired — never persist newThemeEnabled: false.
+  const next = { ...current, ...input.updates, newThemeEnabled: true };
   input.queryClient.setQueryData<AppSettings>(APP_SETTINGS_QUERY_KEY, next);
   await input.deps.storage.setItem(APP_SETTINGS_KEY, JSON.stringify(next));
 }
@@ -243,8 +245,8 @@ function parseWorkspaceTitleSource(value: unknown): WorkspaceTitleSource | null 
   return null;
 }
 
-// Workspace title source + the device-local new-theme toggle, factored out of
-// pickAppSettings to keep its cyclomatic complexity under the lint ceiling.
+// Workspace title source + always-on new theme, factored out of pickAppSettings
+// to keep its cyclomatic complexity under the lint ceiling.
 function pickMiscAppSettings(stored: Partial<AppSettings>): Partial<AppSettings> {
   const result: Partial<AppSettings> = {};
   if (typeof stored.terminalLigaturesEnabled === "boolean") {
@@ -257,11 +259,9 @@ function pickMiscAppSettings(stored: Partial<AppSettings>): Partial<AppSettings>
   if (workspaceTitleSource !== null) {
     result.workspaceTitleSource = workspaceTitleSource;
   }
-  // Device-local: deliberately NOT part of extractSyncedAppearance, so toggling
-  // the new theme on one device does not propagate to others.
-  if (typeof stored.newThemeEnabled === "boolean") {
-    result.newThemeEnabled = stored.newThemeEnabled;
-  }
+  // Classic chrome is retired — always force the redesigned floating UI on,
+  // even when an older install persisted newThemeEnabled: false.
+  result.newThemeEnabled = true;
   if (typeof stored.autoExpandReasoning === "boolean") {
     result.autoExpandReasoning = stored.autoExpandReasoning;
   }

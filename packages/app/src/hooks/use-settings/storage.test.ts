@@ -405,13 +405,13 @@ describe("appearance settings", () => {
     expect((await loadAppSettingsFromStorage(bogus)).windowsLaunchAsAdmin).toBe(true);
   });
 
-  it("reads the new-theme toggle and ignores non-booleans (defaults on)", async () => {
+  it("always forces newThemeEnabled on (classic chrome is retired)", async () => {
     const off = makeDeps({
       storage: createInMemoryKeyValueStorage({
         [APP_SETTINGS_KEY]: JSON.stringify({ newThemeEnabled: false }),
       }),
     });
-    expect((await loadAppSettingsFromStorage(off)).newThemeEnabled).toBe(false);
+    expect((await loadAppSettingsFromStorage(off)).newThemeEnabled).toBe(true);
 
     const bogus = makeDeps({
       storage: createInMemoryKeyValueStorage({
@@ -419,6 +419,13 @@ describe("appearance settings", () => {
       }),
     });
     expect((await loadAppSettingsFromStorage(bogus)).newThemeEnabled).toBe(true);
+
+    const empty = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({}),
+      }),
+    });
+    expect((await loadAppSettingsFromStorage(empty)).newThemeEnabled).toBe(true);
   });
 
   it("clamps the UI font size into range and rejects non-numeric values", async () => {

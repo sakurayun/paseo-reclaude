@@ -341,7 +341,7 @@ const claudeLightSemanticColors = {
   },
 } as const;
 
-// New theme — standalone redesign toggled via `settings.newThemeEnabled`.
+// New theme — redesigned floating UI (always on; classic chrome retired).
 // Light + dark variants share the same shell layout tokens (floating card,
 // no chrome dividers, borderless controls); only the palette differs.
 // Derived from classic light/zinc-dark so every token inherits by default —

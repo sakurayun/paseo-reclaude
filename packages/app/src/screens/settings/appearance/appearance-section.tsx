@@ -729,13 +729,6 @@ export function AppearanceSection() {
     [updateSettings],
   );
 
-  const handleNewThemeEnabledChange = useCallback(
-    (newThemeEnabled: boolean) => {
-      void updateSettings({ newThemeEnabled });
-    },
-    [updateSettings],
-  );
-
   const handleSyntaxThemeChange = useCallback(
     (syntaxTheme: SyntaxThemeId) => {
       void updateSettings({ syntaxTheme });
@@ -874,21 +867,6 @@ export function AppearanceSection() {
 
   return (
     <View>
-      <SettingsSection title={t("settings.appearance.newTheme.title")}>
-        <View style={settingsStyles.card}>
-          <View style={settingsStyles.row}>
-            <View style={settingsStyles.rowContent}>
-              <Text style={settingsStyles.rowTitle}>{t("settings.appearance.newTheme.label")}</Text>
-              <Text style={settingsStyles.rowHint}>{t("settings.appearance.newTheme.hint")}</Text>
-            </View>
-            <Switch
-              value={settings.newThemeEnabled}
-              onValueChange={handleNewThemeEnabledChange}
-              accessibilityLabel={t("settings.appearance.newTheme.accessibilityLabel")}
-            />
-          </View>
-        </View>
-      </SettingsSection>
       <SettingsSection title={t("settings.appearance.theme.title")}>
         <View style={settingsStyles.card}>
           <ThemeRow value={settings.theme} onChange={handleThemeChange} />

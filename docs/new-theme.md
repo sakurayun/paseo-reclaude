@@ -21,10 +21,9 @@ gone, rounded 12px hovers, PR/Git activity cards floating as borderless cards
 
 ## What the user sees
 
-Settings → Appearance → **New theme** switch (the first section, above the theme
-dropdown). Default **on** — new and existing installs alike boot into the new
-theme until a user turns it off. When on, the **floating UI stays active** and the theme dropdown picks which
-new-theme **palette** to use:
+Settings → Appearance → theme dropdown only. The redesigned floating UI is
+**always on** — classic chrome is retired and there is no switch to turn the new
+theme off. The theme dropdown picks which new-theme **palette** to use:
 
 | Theme dropdown       | New-theme Unistyles key       | Notes                            |
 | -------------------- | ----------------------------- | -------------------------------- |
@@ -43,7 +42,7 @@ new-theme **palette** to use:
 
 Every dropdown option keeps its brand colors under the floating shell. All dark
 floating palettes share pure-black chrome, an elevated tinted panel, and pure-black
-nested settings cards. Turning the toggle off restores classic mapping.
+nested settings cards. There is no path back to classic chrome.
 
 On desktop: the workspace header sits on the shell backdrop; below it the tabs
 and message panes float as one rounded content card, inset on the left/right/bottom
@@ -54,12 +53,12 @@ no pinned sidebars there, so no card.
 ## How it works
 
 - **Setting** — `newThemeEnabled: boolean` on `AppSettings`
-  (`packages/app/src/hooks/use-settings/storage.ts`), default
-  `DEFAULT_NEW_THEME_ENABLED = true`. Parsed in `pickMiscAppSettings`.
-  **Device-local on purpose**: deliberately _not_ in `extractSyncedAppearance` /
-  `pickSyncedAppearance`, so toggling it on one device does not sync to others
-  (unlike `theme` / `syntaxTheme` / `terminalColorScheme`).
-- **Theme** — seven floating Unistyles keys in
+  (`packages/app/src/hooks/use-settings/storage.ts`) is **always forced `true`**
+  in `pickMiscAppSettings` (classic chrome retired; older installs that stored
+  `false` are upgraded on load). Field kept for storage COMPAT; not exposed in
+  Settings UI. Still **device-local** (not in `extractSyncedAppearance` /
+  `pickSyncedAppearance`).
+- **Theme** — floating Unistyles keys in
   `packages/app/src/styles/unistyles.ts`, all sharing `newThemeShell`
   (`floating: true`, zero chrome/control borders):
   - Light: `newTheme`, `newThemeClaude`
@@ -68,11 +67,11 @@ no pinned sidebars there, so no card.
     Dark tints share `buildNewThemeDarkFloatingSemantic` (chrome / panel / card
     layering). **Grow colors on semantic objects; grow layout on `newThemeShell`.**
     None of these keys is a dropdown `ThemeName`.
-- **Switch** — `_layout.tsx` `ProvidersWrapper` theme effect: when
-  `settings.newThemeEnabled` is true it disables adaptive themes and calls
+- **Apply** — `_layout.tsx` `ProvidersWrapper` theme effect always disables
+  adaptive themes and calls
   `setTheme(resolveNewThemeUnistylesKey(settings.theme, systemScheme))`. For
   `settings.theme === "auto"` it also listens to `Appearance` so system flips
-  update the key. When off, the existing dropdown/auto logic runs.
+  update the key.
 - **Font/size/syntax** — every `newTheme*` key is in `ALL_THEME_KEYS`
   (`apply-appearance.ts`) so `applyAppearance` patches fonts, sizes, and syntax
   colors like every other theme.
