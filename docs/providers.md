@@ -8,7 +8,9 @@ This guide walks through adding a new agent provider end-to-end. There are two i
 
 Extend `ACPAgentClient` from `packages/server/src/server/agent/providers/acp-agent.ts`. The base class handles process spawning, stdio transport, session lifecycle, streaming, permissions, and model discovery. You provide configuration (command, modes, capabilities) and optionally override `isAvailable()` for auth checks.
 
-The only built-in ACP provider today is `copilot` (`copilot-acp-agent.ts`). `GenericACPAgentClient` (`generic-acp-agent.ts`) is also ACP-based but is used for user-defined custom providers configured via `extends: "acp"` overrides — see [docs/custom-providers.md](custom-providers.md).
+Built-in ACP providers include `copilot` (`copilot-acp-agent.ts`) and `grok` (`grok-acp-agent.ts`). `GenericACPAgentClient` (`generic-acp-agent.ts`) is also ACP-based and is used for user-defined custom providers configured via `extends: "acp"` overrides — see [docs/custom-providers.md](custom-providers.md).
+
+Grok-specific ACP behavior stays in the Grok adapter (and small adjacent modules such as `grok-background-tasks.ts`): mode mapping for Always Approve (`bypassPermissions` id + launch `--always-approve`; do not use a blocking ACP `prompt` for `/always-approve` during setMode — that freezes create_agent / draft send), suppression of `user_message_chunk` when `_meta.hideFromScrollback === true`, and structured `_x.ai/session/update` task events rendered as synthetic `tool_call` timeline items. Shared ACP only exposes narrow hooks (`shouldSuppressUserMessageChunk`, `extensionNotificationHandler`) so other providers remain unaffected.
 
 Tool cards use `kind` as the display name when it is a concrete ACP kind; when `kind` is missing or `other`, the base class prefers the tool `title` so cards are not labeled "Other".
 

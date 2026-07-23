@@ -8,6 +8,14 @@ import type {
   SessionStateResponse,
 } from "./acp-agent.js";
 import { GenericACPAgentClient } from "./generic-acp-agent.js";
+import {
+  isGrokHiddenFromScrollbackUserChunk,
+  mapGrokExtensionNotificationToTimelineItems,
+} from "./grok-background-tasks.js";
+import {
+  getGrokLocalContextWindows,
+  resolveGrokContextWindowMaxTokens,
+} from "./grok-model-context.js";
 
 interface GrokACPAgentClientOptions {
   logger: Logger;
@@ -23,15 +31,25 @@ export const GROK_DEFAULT_MODE_ID = "default";
 /**
  * Skip permission prompts (Grok always-approve / YOLO).
  * Matches Claude's bypassPermissions id so unattended flows stay consistent.
+ *
+ * Upstream getpaseo/paseo#2177 uses id `always-approve` / label "Always Approve".
+ * This fork keeps `bypassPermissions` for Claude-style unattended inheritance while
+ * driving the same Grok native launch path (`--always-approve`).
  */
 export const GROK_BYPASS_MODE_ID = "bypassPermissions";
+
+/** Alias used in docs / upstream PR naming (same runtime mode as Bypass). */
+export const GROK_ALWAYS_APPROVE_MODE_ID = GROK_BYPASS_MODE_ID;
+/** Alias used in docs / upstream PR naming (same runtime mode as Always Ask). */
+export const GROK_ASK_MODE_ID = GROK_DEFAULT_MODE_ID;
 
 /**
  * Paseo-facing permission modes for Grok Build.
  *
  * Grok ACP also uses `session/set_mode` for reasoning effort (high/medium/low);
  * those are handled via thinking options, not this list. Permission modes are
- * enforced by Paseo (auto-approve + launch `--always-approve`).
+ * enforced by Paseo (launch `--always-approve` for new sessions, local mode
+ * state, and unattended auto-approve fallback).
  */
 export const GROK_MODES: AgentMode[] = [
   {
@@ -43,9 +61,10 @@ export const GROK_MODES: AgentMode[] = [
   },
   {
     id: GROK_BYPASS_MODE_ID,
-    label: "Bypass",
-    description: "Skip all permission prompts (use with caution)",
-    icon: "ShieldAlert",
+    label: "Always Approve",
+    description:
+      "Auto-approve all tool executions for this session via Grok's native always-approve mode. Allows potentially destructive shell commands and file operations.",
+    icon: "ShieldOff",
     colorTier: "dangerous",
     isUnattended: true,
   },
@@ -59,7 +78,15 @@ export const GROK_MODES: AgentMode[] = [
  * - Reasoning effort via `session/set_mode` with ids `high` | `medium` | `low`
  *   (not `session/set_config_option` / thought_level)
  * - Auth via `authenticate` with `cached_token` (or grok.com) before session/new
- * - Permission bypass via CLI `--always-approve` / Paseo auto-approve (not ACP set_mode)
+ * - Permission modes via:
+ *   - `grok agent --always-approve stdio` (session launch when Always Approve)
+ *   - Paseo-local mode state (providerModeWriter does not send a slash prompt —
+ *     a blocking `connection.prompt` freezes create_agent / draft send)
+ *   - Paseo unattended auto-approve fallback if Grok still emits request_permission
+ *
+ * Background-task UX (upstream #2182 / #2198): suppress model-only wake-up chunks
+ * marked `_meta.hideFromScrollback === true`, and map `_x.ai/session/update` task
+ * events to synthetic `tool_call` timeline items keyed by `task_id`.
  *
  * Docs: https://docs.x.ai/build/overview and local `~/.grok/docs/user-guide/15-agent-mode.md`.
  */
@@ -82,6 +109,8 @@ export class GrokACPAgentClient extends GenericACPAgentClient {
       modeIdTransformer: transformGrokModeId,
       providerModeWriter: writeGrokProviderMode,
       launchArgsTransformer: transformGrokLaunchArgs,
+      shouldSuppressUserMessageChunk: isGrokHiddenFromScrollbackUserChunk,
+      extensionNotificationHandler: mapGrokExtensionNotificationToTimelineItems,
       providerParams: {
         supportsMcpServers: true,
         clientCapabilities: {
@@ -169,7 +198,7 @@ export function transformGrokSessionResponse(response: SessionStateResponse): Se
 
 /**
  * Ignore Grok effort-level ids when they arrive as current_mode_update so they
- * do not overwrite Always Ask / Bypass in Paseo's mode picker.
+ * do not overwrite Always Ask / Always Approve in Paseo's mode picker.
  */
 export function transformGrokModeId(modeId: string): string | null {
   if (modeId === GROK_DEFAULT_MODE_ID || modeId === GROK_BYPASS_MODE_ID) {
@@ -179,8 +208,24 @@ export function transformGrokModeId(modeId: string): string | null {
 }
 
 /**
- * Permission modes are local to Paseo for Grok. Do not call session/set_mode
- * (reserved for reasoning effort via thinkingOptionWriter).
+ * Permission modes are local to Paseo for Grok.
+ *
+ * Native always-approve is applied only at process launch via
+ * `transformGrokLaunchArgs` (`--always-approve`). Do **not** call
+ * `connection.prompt("/always-approve …")` here:
+ *
+ * - ACP `prompt()` starts a full agent turn and only resolves when that turn
+ *   finishes.
+ * - Session create runs `applyConfiguredOverrides` → `setMode` before the
+ *   create_agent response returns. A blocking slash-command turn freezes the
+ *   workspace draft composer (send on new conversation appears stuck).
+ * - After session/new, `transformGrokSessionResponse` maps Grok effort ids to
+ *   Always Ask even when the process already launched with `--always-approve`,
+ *   so bootstrap always looks like "switch to Bypass" and would re-prompt.
+ *
+ * Mid-session Always Approve still sets `isUnattended` so Paseo auto-approves
+ * `request_permission`. Do not use ACP `setSessionMode` for permission modes
+ * either — that path is reserved for reasoning effort via thinkingOptionWriter.
  */
 export async function writeGrokProviderMode(
   context: ACPProviderModeWriterContext,
@@ -194,14 +239,20 @@ export async function writeGrokProviderMode(
       currentModeId: context.requestedModeId,
     };
   }
+
   return { handled: false };
 }
 
 /**
  * Map Grok model `_meta.reasoningEfforts` into Paseo thinking options so the
  * composer effort control appears under the input box (same UX as Claude).
+ *
+ * Context windows are resolved from config.toml first, then ACP `_meta`,
+ * models_cache.json, then known-model defaults — see
+ * `resolveGrokContextWindowMaxTokens`.
  */
 export function transformGrokModels(models: AgentModelDefinition[]): AgentModelDefinition[] {
+  const localWindows = getGrokLocalContextWindows();
   return models.map((model) => {
     const meta = isRecord(model.metadata) ? model.metadata : null;
     const rawEfforts = Array.isArray(meta?.reasoningEfforts)
@@ -224,10 +275,12 @@ export function transformGrokModels(models: AgentModelDefinition[]): AgentModelD
           .filter((option): option is AgentSelectOption => option !== null)
       : (model.thinkingOptions ?? undefined);
 
-    const contextWindowMaxTokens =
-      typeof meta?.totalContextTokens === "number" && Number.isFinite(meta.totalContextTokens)
-        ? meta.totalContextTokens
-        : model.contextWindowMaxTokens;
+    const contextWindowMaxTokens = resolveGrokContextWindowMaxTokens({
+      modelId: model.id,
+      meta,
+      existing: model.contextWindowMaxTokens,
+      localWindows,
+    });
 
     const defaultThinkingOptionId =
       thinkingOptions?.find((option) => option.isDefault)?.id ??

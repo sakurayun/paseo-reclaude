@@ -11,8 +11,10 @@ import {
   type ACPConfigFeatureOption,
   DEFAULT_ACP_CAPABILITIES,
   type ACPExtensionCommandsParser,
+  type ACPExtensionNotificationHandler,
   type ACPProviderModeWriteResult,
   type ACPProviderModeWriterContext,
+  type ACPUserMessageChunkFilter,
   type SessionStateResponse,
 } from "./acp-agent.js";
 import {
@@ -76,6 +78,8 @@ interface GenericACPAgentClientOptions {
    * Used e.g. by Grok to inject `--always-approve` for bypass mode.
    */
   launchArgsTransformer?: (args: string[], modeId: string | null) => string[];
+  shouldSuppressUserMessageChunk?: ACPUserMessageChunkFilter;
+  extensionNotificationHandler?: ACPExtensionNotificationHandler;
 }
 
 export class GenericACPAgentClient extends ACPAgentClient {
@@ -110,6 +114,8 @@ export class GenericACPAgentClient extends ACPAgentClient {
       beforeModeWriter: options.beforeModeWriter,
       thinkingOptionWriter: options.thinkingOptionWriter,
       launchArgsTransformer: options.launchArgsTransformer,
+      shouldSuppressUserMessageChunk: options.shouldSuppressUserMessageChunk,
+      extensionNotificationHandler: options.extensionNotificationHandler,
     });
 
     this.command = options.command;

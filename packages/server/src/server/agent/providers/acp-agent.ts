@@ -7,6 +7,7 @@ import { Readable, Writable } from "node:stream";
 
 import { terminateWithTreeKill } from "../../../utils/tree-kill.js";
 import type { ProcessTerminator } from "../../../utils/tree-kill.js";
+import { resolveGrokContextWindowMaxTokens } from "./grok-model-context.js";
 import type {
   ReadableStream as NodeReadableStream,
   WritableStream as NodeWritableStream,
@@ -366,6 +367,32 @@ export type ACPExtensionCommandsParser = (
   params: Record<string, unknown>,
 ) => AgentSlashCommand[] | null;
 
+/**
+ * Provider-owned display policy for ACP `user_message_chunk` updates.
+ * Return true to drop the chunk before message assembly or timeline emission
+ * (e.g. Grok `_meta.hideFromScrollback === true`). Generic ACP keeps false.
+ */
+export type ACPUserMessageChunkFilter = (
+  update: Extract<SessionUpdate, { sessionUpdate: "user_message_chunk" }>,
+) => boolean;
+
+export interface ACPExtensionNotificationContext {
+  sessionId: string | null;
+}
+
+/**
+ * Provider-owned ACP extension notification → timeline items.
+ * Return null when the method is not owned by this handler. Return an empty
+ * array when owned but ignored (wrong session, malformed payload). Returned
+ * timeline items take the same live-stream vs history-replay path as
+ * `session/update` events.
+ */
+export type ACPExtensionNotificationHandler = (
+  method: string,
+  params: Record<string, unknown>,
+  context: ACPExtensionNotificationContext,
+) => AgentTimelineItem[] | null;
+
 interface ACPAgentClientOptions {
   provider: string;
   logger: Logger;
@@ -399,6 +426,8 @@ interface ACPAgentClientOptions {
   launchArgsTransformer?: (args: string[], modeId: string | null) => string[];
   capabilities?: AgentCapabilityFlags;
   extensionCommandsParser?: ACPExtensionCommandsParser;
+  shouldSuppressUserMessageChunk?: ACPUserMessageChunkFilter;
+  extensionNotificationHandler?: ACPExtensionNotificationHandler;
   waitForInitialCommands?: boolean;
   initialCommandsWaitTimeoutMs?: number;
   terminateProcess?: ProcessTerminator;
@@ -431,6 +460,8 @@ interface ACPAgentSessionOptions {
   launchArgsTransformer?: (args: string[], modeId: string | null) => string[];
   capabilities: AgentCapabilityFlags;
   extensionCommandsParser?: ACPExtensionCommandsParser;
+  shouldSuppressUserMessageChunk?: ACPUserMessageChunkFilter;
+  extensionNotificationHandler?: ACPExtensionNotificationHandler;
   handle?: AgentPersistenceHandle;
   agentId?: string;
   launchEnv?: Record<string, string>;
@@ -619,6 +650,45 @@ function asFiniteNumber(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
+const ACP_CONTEXT_WINDOW_META_KEYS = [
+  "totalContextTokens",
+  "contextWindowTokens",
+  "context_window_tokens",
+  "contextWindow",
+  "context_window",
+  "contextWindowMaxTokens",
+] as const;
+
+function asPositiveContextWindow(value: unknown): number | undefined {
+  const numeric = asFiniteNumber(value);
+  if (numeric !== undefined && numeric > 0) {
+    return Math.floor(numeric);
+  }
+  if (typeof value === "string") {
+    const parsed = Number(value.trim());
+    if (Number.isFinite(parsed) && parsed > 0) {
+      return Math.floor(parsed);
+    }
+  }
+  return undefined;
+}
+
+/** Read a positive finite context-window size from vendor ACP `_meta` aliases. */
+export function extractContextWindowFromRecord(
+  meta: Record<string, unknown> | null | undefined,
+): number | undefined {
+  if (!meta) {
+    return undefined;
+  }
+  for (const key of ACP_CONTEXT_WINDOW_META_KEYS) {
+    const value = asPositiveContextWindow(meta[key]);
+    if (value !== undefined) {
+      return value;
+    }
+  }
+  return undefined;
+}
+
 function resolveDefaultAuthMethodId(initialize: InitializeResponse): string | null {
   const meta =
     initialize._meta && typeof initialize._meta === "object" && !Array.isArray(initialize._meta)
@@ -744,10 +814,9 @@ export function deriveModelDefinitionsFromACP(
         model._meta && typeof model._meta === "object" && !Array.isArray(model._meta)
           ? (model._meta as Record<string, unknown>)
           : undefined;
-      const totalContextTokens =
-        typeof meta?.totalContextTokens === "number" && Number.isFinite(meta.totalContextTokens)
-          ? meta.totalContextTokens
-          : undefined;
+      // Accept common vendor aliases (Grok ships totalContextTokens; some
+      // builds also expose context_window / contextWindowTokens on `_meta`).
+      const totalContextTokens = extractContextWindowFromRecord(meta);
       return {
         provider,
         id: model.modelId,
@@ -836,6 +905,8 @@ export class ACPAgentClient implements AgentClient {
   private readonly waitForInitialCommands: boolean;
   private readonly initialCommandsWaitTimeoutMs: number;
   private readonly extensionCommandsParser?: ACPExtensionCommandsParser;
+  private readonly shouldSuppressUserMessageChunk?: ACPUserMessageChunkFilter;
+  private readonly extensionNotificationHandler?: ACPExtensionNotificationHandler;
   protected readonly terminateProcess: ProcessTerminator;
 
   constructor(options: ACPAgentClientOptions) {
@@ -865,6 +936,8 @@ export class ACPAgentClient implements AgentClient {
     this.waitForInitialCommands = options.waitForInitialCommands ?? false;
     this.initialCommandsWaitTimeoutMs = options.initialCommandsWaitTimeoutMs ?? 1500;
     this.extensionCommandsParser = options.extensionCommandsParser;
+    this.shouldSuppressUserMessageChunk = options.shouldSuppressUserMessageChunk;
+    this.extensionNotificationHandler = options.extensionNotificationHandler;
   }
 
   async createSession(
@@ -897,6 +970,8 @@ export class ACPAgentClient implements AgentClient {
         agentId: launchContext?.agentId,
         launchEnv: launchContext?.env,
         extensionCommandsParser: this.extensionCommandsParser,
+        shouldSuppressUserMessageChunk: this.shouldSuppressUserMessageChunk,
+        extensionNotificationHandler: this.extensionNotificationHandler,
         waitForInitialCommands: this.waitForInitialCommands,
         initialCommandsWaitTimeoutMs: this.initialCommandsWaitTimeoutMs,
       },
@@ -950,6 +1025,8 @@ export class ACPAgentClient implements AgentClient {
       agentId: launchContext?.agentId,
       launchEnv: launchContext?.env,
       extensionCommandsParser: this.extensionCommandsParser,
+      shouldSuppressUserMessageChunk: this.shouldSuppressUserMessageChunk,
+      extensionNotificationHandler: this.extensionNotificationHandler,
       waitForInitialCommands: this.waitForInitialCommands,
       initialCommandsWaitTimeoutMs: this.initialCommandsWaitTimeoutMs,
     });
@@ -1464,6 +1541,8 @@ export class ACPAgentSession implements AgentSession, ACPClient {
   private waitForInitialCommands: boolean;
   private initialCommandsWaitTimeoutMs: number;
   private readonly extensionCommandsParser?: ACPExtensionCommandsParser;
+  private readonly shouldSuppressUserMessageChunk?: ACPUserMessageChunkFilter;
+  private readonly extensionNotificationHandler?: ACPExtensionNotificationHandler;
   private currentTurnUsage: AgentUsage | undefined;
   private activeForegroundTurnId: string | null = null;
   private fallbackAssistantMessageId: string | null = null;
@@ -1506,6 +1585,8 @@ export class ACPAgentSession implements AgentSession, ACPClient {
     this.waitForInitialCommands = options.waitForInitialCommands ?? false;
     this.initialCommandsWaitTimeoutMs = options.initialCommandsWaitTimeoutMs ?? 1500;
     this.extensionCommandsParser = options.extensionCommandsParser;
+    this.shouldSuppressUserMessageChunk = options.shouldSuppressUserMessageChunk;
+    this.extensionNotificationHandler = options.extensionNotificationHandler;
   }
 
   get id(): string | null {
@@ -2280,18 +2361,7 @@ export class ACPAgentSession implements AgentSession, ACPClient {
       },
       "provider.acp.parsed_event",
     );
-    if (this.replayingHistory) {
-      for (const event of events) {
-        if (event.type === "timeline") {
-          this.persistedHistory.push(event.item);
-        }
-      }
-      return;
-    }
-
-    for (const event of events) {
-      this.pushEvent(event);
-    }
+    this.deliverStreamEvents(events);
   }
 
   async extNotification(method: string, params: Record<string, unknown>): Promise<void> {
@@ -2311,6 +2381,34 @@ export class ACPAgentSession implements AgentSession, ACPClient {
       this.applyResolvedCommands(parsedCommands, {
         sessionId: typeof params.sessionId === "string" ? params.sessionId : undefined,
       });
+    }
+
+    const timelineItems = this.extensionNotificationHandler?.(method, params, {
+      sessionId: this.sessionId,
+    });
+    if (!timelineItems) {
+      return;
+    }
+    this.deliverStreamEvents(timelineItems.map((item) => this.wrapTimeline(item)));
+  }
+
+  /**
+   * Live stream vs history replay delivery for timeline-bearing ACP events.
+   * History load uses `replayingHistory` so items land in `persistedHistory`
+   * instead of broadcasting mid-load.
+   */
+  private deliverStreamEvents(events: AgentStreamEvent[]): void {
+    if (this.replayingHistory) {
+      for (const event of events) {
+        if (event.type === "timeline") {
+          this.persistedHistory.push(event.item);
+        }
+      }
+      return;
+    }
+
+    for (const event of events) {
+      this.pushEvent(event);
     }
   }
 
@@ -2616,6 +2714,11 @@ export class ACPAgentSession implements AgentSession, ACPClient {
   private translateSessionUpdate(update: SessionUpdate): AgentStreamEvent[] {
     switch (update.sessionUpdate) {
       case "user_message_chunk": {
+        // Provider filter runs before assembly so hidden chunks cannot contaminate
+        // fallback message-ID state used by a later visible user message.
+        if (this.shouldSuppressUserMessageChunk?.(update)) {
+          return [];
+        }
         this.fallbackAssistantMessageId = null;
         const item = this.createMessageTimelineItem("user_message", update);
         if (!item) {
@@ -2841,7 +2944,16 @@ export class ACPAgentSession implements AgentSession, ACPClient {
       current?._meta && typeof current._meta === "object" && !Array.isArray(current._meta)
         ? (current._meta as Record<string, unknown>)
         : null;
-    const max = asFiniteNumber(meta?.totalContextTokens);
+    const max =
+      extractContextWindowFromRecord(meta) ??
+      // Grok (and some other ACP agents) may omit totalContextTokens on `_meta`
+      // while still advertising the window via models_cache / config.toml.
+      (this.provider === "grok"
+        ? resolveGrokContextWindowMaxTokens({
+            modelId: this.currentModel,
+            meta,
+          })
+        : undefined);
     if (max === undefined) {
       return usage;
     }

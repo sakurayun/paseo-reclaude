@@ -563,7 +563,7 @@ function createRegistryEntry(
             profileModelsAreAdditive: resolved.profileModelsAreAdditive,
           },
         ),
-        // Static provider modes (e.g. Grok Always Ask / Bypass) win over runtime
+        // Static provider modes (e.g. Grok Always Ask / Always Approve) win over runtime
         // session modes so permission UX is not overwritten by effort-level modes.
         modes: hasStaticModes
           ? decorateModes(resolved.definition.modes)
@@ -659,7 +659,7 @@ function addDerivedProviders(
       }
       // Capture command in const for closure - TypeScript can't track type refinement inside closures
       const command = override.command;
-      // Grok ships static permission modes (Always Ask / Bypass). Other ACP
+      // Grok ships static permission modes (Always Ask / Always Approve). Other ACP
       // agents default to empty modes and discover them at runtime.
       const acpBaseDefinition =
         providerId === "grok"
