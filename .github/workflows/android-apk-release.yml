@@ -90,6 +90,23 @@ jobs:
             "$AGENT_TOOLSDIRECTORY" || true
           df -h
 
+      # Standard GHA runners (~7–16GB RAM) get SIGTERM mid assembleRelease once
+      # Metro/hermesc + native compile peak together; swap absorbs the spike so the
+      # job reports a real error instead of "The operation was canceled."
+      - name: Enable swap
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! swapon --show | grep -q .; then
+            sudo fallocate -l 12G /swapfile || sudo dd if=/dev/zero of=/swapfile bs=1M count=12288
+            sudo chmod 600 /swapfile
+            sudo mkswap /swapfile
+            sudo swapon /swapfile
+          fi
+          sudo sysctl -w vm.swappiness=10
+          free -h
+          swapon --show
+
       - name: Setup Node
         uses: actions/setup-node@v5
         with:
@@ -145,8 +162,18 @@ jobs:
           ANDROID_APK_OUTPUT_DIR: ${{ runner.temp }}/android-apk
           ANDROID_APK_OUTPUT_NAME: paseo-${{ env.RELEASE_TAG }}-android.apk
           ANDROID_APK_PATH_FILE: ${{ runner.temp }}/android-apk/path.txt
+          # Cap concurrent native/JS work on the runner.
+          ORG_GRADLE_PROJECT_reactNativeArchitectures: arm64-v8a
+          GRADLE_OPTS: >-
+            -Dorg.gradle.daemon=false
+            -Dorg.gradle.workers.max=1
+            -Dorg.gradle.parallel=false
+            -Dkotlin.compiler.execution.strategy=in-process
+          NODE_OPTIONS: --max-old-space-size=4096
         run: |
           set -euo pipefail
+          free -h
+          df -h
           mkdir -p "$ANDROID_APK_OUTPUT_DIR"
           node scripts/build-github-android-apk.mjs
           apk_path="$(tr -d '\r\n' < "$ANDROID_APK_PATH_FILE")"
@@ -158,6 +185,7 @@ jobs:
           echo "asset_path=$apk_path" >> "$GITHUB_OUTPUT"
           echo "asset_name=$(basename "$apk_path")" >> "$GITHUB_OUTPUT"
           ls -lh "$apk_path"
+          free -h
 
       - name: Upload APK workflow artifact
         uses: actions/upload-artifact@v4

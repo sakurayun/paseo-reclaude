@@ -185,6 +185,8 @@ function main() {
 
   console.log("==> Gradle assembleRelease");
   const gradlew = process.platform === "win32" ? "gradlew.bat" : "./gradlew";
+  // Single-worker assemble: Metro/hermesc + native compile peak together; more
+  // workers on GHA runners commonly get the job SIGTERM'd ("operation canceled").
   run(
     gradlew,
     [
@@ -200,9 +202,10 @@ function main() {
       "-x",
       "generateReleaseLintVitalModel",
       "--no-daemon",
-      "--max-workers=2",
+      "--max-workers=1",
       "-Dorg.gradle.parallel=false",
-      "-Dorg.gradle.workers.max=2",
+      "-Dorg.gradle.workers.max=1",
+      "-PreactNativeArchitectures=arm64-v8a",
     ],
     {
       cwd: androidDir,
@@ -211,6 +214,8 @@ function main() {
         // Metro/Hermes for the release JS bundle.
         NODE_ENV: "production",
         CI: "true",
+        ORG_GRADLE_PROJECT_reactNativeArchitectures:
+          process.env.ORG_GRADLE_PROJECT_reactNativeArchitectures ?? "arm64-v8a",
       },
     },
   );
