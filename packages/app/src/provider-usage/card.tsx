@@ -122,8 +122,18 @@ export function ProviderUsageCard({
   const status = statusText(localized, t);
   const footer = footerText(localized, t);
   const balances = localized.balances ?? [];
-  const details = localized.details ?? [];
-
+  const details = useMemo(() => {
+    const all = localized.details ?? [];
+    if (!compact) return all;
+    // Compact tooltip: keep the high-signal rows (plan + reset) and drop long
+    // absolute timestamps so weekly/monthly bars stay primary.
+    return all.filter(
+      (detail) =>
+        detail.id === "subscription" ||
+        detail.id === "current_period" ||
+        detail.id === "previous_cycle",
+    );
+  }, [compact, localized.details]);
   const containerStyle = useMemo(
     () => [styles.container, compact ? styles.containerCompact : styles.containerPadded],
     [compact],
@@ -161,7 +171,6 @@ export function ProviderUsageCard({
           </View>
         ) : null}
       </View>
-
       {showSourceTabs && selectedKind ? (
         <ProviderUsageSourceTabs
           sources={sources}
@@ -169,13 +178,11 @@ export function ProviderUsageCard({
           onSelect={handleSelectSource}
         />
       ) : null}
-
       {localized.error ? (
         <Text style={styles.error} numberOfLines={4}>
           {localized.error}
         </Text>
       ) : null}
-
       {localized.windows.length > 0 || balances.length > 0 ? (
         <View style={styles.bars}>
           {localized.windows.map((window) => (
@@ -186,7 +193,6 @@ export function ProviderUsageCard({
           ))}
         </View>
       ) : null}
-
       {details.length > 0 ? (
         <View style={styles.details}>
           {details.map((detail) => (
@@ -197,8 +203,7 @@ export function ProviderUsageCard({
           ))}
         </View>
       ) : null}
-
-      {footer ? <Text style={styles.footer}>{footer}</Text> : null}
+      {footer ? <Text style={styles.footer}>{footer}</Text> : null}{" "}
     </View>
   );
 }

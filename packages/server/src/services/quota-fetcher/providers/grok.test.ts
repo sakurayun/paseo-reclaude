@@ -20,6 +20,9 @@ function createLogger(): Logger {
   } as unknown as Logger;
 }
 
+const BILLING_URL = "https://cli-chat-proxy.grok.com/v1/billing";
+const BILLING_CREDITS_URL = `${BILLING_URL}?format=credits`;
+
 describe("extractGrokTokenFromAuthJson", () => {
   it("reads legacy flat access_token", () => {
     expect(extractGrokTokenFromAuthJson({ access_token: "legacy-token" })).toBe("legacy-token");
@@ -79,7 +82,7 @@ describe("GrokQuotaProvider", () => {
     }
   });
 
-  it("parses live billing payload with config.used and period bounds", async () => {
+  it("parses SuperGrok weekly credits-format payload and merges monthly absolute credits", async () => {
     homeDir = mkdtempSync(join(tmpdir(), "grok-usage-"));
     mkdirSync(join(homeDir, ".grok"), { recursive: true });
     writeFileSync(
@@ -92,23 +95,46 @@ describe("GrokQuotaProvider", () => {
       }),
     );
 
-    const fetchApi = vi.fn(async () =>
-      Response.json({
-        config: {
-          monthlyLimit: { val: 15000 },
-          used: { val: 251 },
-          onDemandCap: { val: 0 },
-          billingPeriodStart: "2026-07-01T00:00:00+00:00",
-          billingPeriodEnd: "2026-08-01T00:00:00+00:00",
-          history: [
-            {
-              billingCycle: { year: 2026, month: 6 },
-              totalUsed: { val: 1200 },
+    const fetchApi = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === BILLING_CREDITS_URL) {
+        return Response.json({
+          config: {
+            creditUsagePercent: 64,
+            currentPeriod: {
+              type: "USAGE_PERIOD_TYPE_WEEKLY",
+              start: "2026-07-17T10:06:21.036918+00:00",
+              end: "2026-07-24T10:06:21.036918+00:00",
             },
-          ],
-        },
-      }),
-    );
+            onDemandCap: { val: 0 },
+            onDemandUsed: { val: 0 },
+            prepaidBalance: { val: 0 },
+            isUnifiedBillingUser: true,
+            billingPeriodStart: "2026-07-17T10:06:21.036918+00:00",
+            billingPeriodEnd: "2026-07-24T10:06:21.036918+00:00",
+          },
+          subscriptionTier: "SuperGrok",
+        });
+      }
+      if (url === BILLING_URL) {
+        return Response.json({
+          config: {
+            monthlyLimit: { val: 15000 },
+            used: { val: 7904 },
+            onDemandCap: { val: 0 },
+            billingPeriodStart: "2026-07-01T00:00:00+00:00",
+            billingPeriodEnd: "2026-08-01T00:00:00+00:00",
+            history: [
+              {
+                billingCycle: { year: 2026, month: 6 },
+                totalUsed: { val: 1200 },
+              },
+            ],
+          },
+        });
+      }
+      throw new Error(`Unexpected url ${url}`);
+    });
 
     const provider = new GrokQuotaProvider({
       logger: createLogger(),
@@ -122,6 +148,95 @@ describe("GrokQuotaProvider", () => {
       providerId: "grok",
       displayName: "Grok Build",
       status: "available",
+      planLabel: "SuperGrok",
+      windows: [
+        expect.objectContaining({
+          id: "weekly",
+          label: "Weekly",
+          usedPct: 64,
+          fullCountdown: true,
+          resetsAt: "2026-07-24T10:06:21.036918+00:00",
+        }),
+        expect.objectContaining({
+          id: "monthly",
+          label: "Monthly",
+          resetsAt: "2026-08-01T00:00:00+00:00",
+        }),
+      ],
+      balances: [
+        expect.objectContaining({
+          id: "monthly_credits",
+          used: 7904,
+          remaining: 7096,
+          limit: 15000,
+          unit: "credits",
+        }),
+      ],
+    });
+    expect(usage.details?.some((row) => row.id === "subscription")).toBe(true);
+    expect(
+      usage.details?.some((row) => row.id === "current_period" && row.value === "Weekly"),
+    ).toBe(true);
+    expect(fetchApi).toHaveBeenCalledWith(
+      BILLING_CREDITS_URL,
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: "Bearer session-token",
+          "X-XAI-Token-Auth": "xai-grok-cli",
+        }),
+      }),
+    );
+    expect(fetchApi).toHaveBeenCalledWith(
+      BILLING_URL,
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: "Bearer session-token",
+        }),
+      }),
+    );
+  });
+
+  it("parses live monthly absolute payload when credits-format is unavailable", async () => {
+    homeDir = mkdtempSync(join(tmpdir(), "grok-usage-monthly-"));
+    mkdirSync(join(homeDir, ".grok"), { recursive: true });
+    writeFileSync(
+      join(homeDir, ".grok", "auth.json"),
+      JSON.stringify({
+        "https://auth.x.ai::client": {
+          key: "session-token",
+          expires_at: "2099-01-01T00:00:00Z",
+        },
+      }),
+    );
+
+    const fetchApi = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === BILLING_CREDITS_URL) {
+        return new Response(null, { status: 404 });
+      }
+      if (url === BILLING_URL) {
+        return Response.json({
+          config: {
+            monthlyLimit: { val: 15000 },
+            used: { val: 251 },
+            onDemandCap: { val: 0 },
+            billingPeriodStart: "2026-07-01T00:00:00+00:00",
+            billingPeriodEnd: "2026-08-01T00:00:00+00:00",
+          },
+        });
+      }
+      throw new Error(`Unexpected url ${url}`);
+    });
+
+    const provider = new GrokQuotaProvider({
+      logger: createLogger(),
+      fetch: fetchApi as unknown as typeof fetch,
+      homeDir,
+    });
+
+    const usage = await provider.fetchUsage();
+    expect(usage).toMatchObject({
+      status: "available",
       planLabel: "Grok Build",
       balances: [
         expect.objectContaining({
@@ -129,7 +244,6 @@ describe("GrokQuotaProvider", () => {
           used: 251,
           remaining: 14749,
           limit: 15000,
-          unit: "credits",
         }),
       ],
       windows: [
@@ -140,16 +254,6 @@ describe("GrokQuotaProvider", () => {
         }),
       ],
     });
-    expect(usage.details?.some((row) => row.id === "period_end")).toBe(true);
-    expect(fetchApi).toHaveBeenCalledWith(
-      "https://cli-chat-proxy.grok.com/v1/billing",
-      expect.objectContaining({
-        headers: expect.objectContaining({
-          Authorization: "Bearer session-token",
-          "X-XAI-Token-Auth": "xai-grok-cli",
-        }),
-      }),
-    );
   });
 
   it("accepts legacy usage.creditUsage payloads", async () => {
@@ -159,11 +263,16 @@ describe("GrokQuotaProvider", () => {
     const provider = new GrokQuotaProvider({
       logger: createLogger(),
       homeDir,
-      fetch: (async () =>
-        Response.json({
+      fetch: (async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes("format=credits")) {
+          return new Response(null, { status: 404 });
+        }
+        return Response.json({
           config: { monthlyLimit: { val: 0 } },
           usage: { creditUsage: 0 },
-        })) as unknown as typeof fetch,
+        });
+      }) as unknown as typeof fetch,
     });
 
     const usage = await provider.fetchUsage();
@@ -226,6 +335,18 @@ describe("GrokQuotaProvider", () => {
         const header = headers?.Authorization ?? "";
         // Early refresh should run before billing because expires_at is past.
         if (header.includes("fresh-jwt")) {
+          if (url.includes("format=credits")) {
+            return Response.json({
+              config: {
+                creditUsagePercent: 10,
+                currentPeriod: {
+                  type: "USAGE_PERIOD_TYPE_WEEKLY",
+                  end: "2026-07-24T00:00:00Z",
+                },
+              },
+              subscriptionTier: "SuperGrok",
+            });
+          }
           return Response.json({
             config: { monthlyLimit: { val: 100 }, used: { val: 10 } },
           });
@@ -242,6 +363,8 @@ describe("GrokQuotaProvider", () => {
     });
     const usage = await provider.fetchUsage();
     expect(usage.status).toBe("available");
+    expect(usage.windows.some((window) => window.id === "weekly")).toBe(true);
     expect(usage.balances?.[0]).toMatchObject({ used: 10, limit: 100, remaining: 90 });
+    expect(usage.planLabel).toBe("SuperGrok");
   });
 });

@@ -625,16 +625,14 @@ describe("real provider usage fetchers", () => {
 
   it("fetches Grok usage and preserves zero values", async () => {
     process.env["GROK_API_KEY"] = "grok_test_token";
+    const zeroBody = {
+      config: { monthlyLimit: { val: 0 } },
+      usage: { creditUsage: 0 },
+    };
     fetchApi = mockFetch(
       new Map([
-        [
-          "https://cli-chat-proxy.grok.com/v1/billing",
-          () =>
-            jsonResponse({
-              config: { monthlyLimit: { val: 0 } },
-              usage: { creditUsage: 0 },
-            }),
-        ],
+        ["https://cli-chat-proxy.grok.com/v1/billing", () => jsonResponse(zeroBody)],
+        ["https://cli-chat-proxy.grok.com/v1/billing?format=credits", () => jsonResponse(zeroBody)],
       ]),
     );
 
@@ -656,18 +654,19 @@ describe("real provider usage fetchers", () => {
 
   it("fetches Grok usage from the live config.used billing shape", async () => {
     process.env["XAI_API_KEY"] = "xai_test_token";
+    const monthlyBody = {
+      config: {
+        monthlyLimit: { val: 15000 },
+        used: { val: 251 },
+        billingPeriodEnd: "2026-08-01T00:00:00+00:00",
+      },
+    };
     fetchApi = mockFetch(
       new Map([
+        ["https://cli-chat-proxy.grok.com/v1/billing", () => jsonResponse(monthlyBody)],
         [
-          "https://cli-chat-proxy.grok.com/v1/billing",
-          () =>
-            jsonResponse({
-              config: {
-                monthlyLimit: { val: 15000 },
-                used: { val: 251 },
-                billingPeriodEnd: "2026-08-01T00:00:00+00:00",
-              },
-            }),
+          "https://cli-chat-proxy.grok.com/v1/billing?format=credits",
+          () => jsonResponse(monthlyBody),
         ],
       ]),
     );

@@ -119,9 +119,12 @@ Keep the protocol shape provider-agnostic. Do not add provider-specific renderer
 
 Kimi Code usage follows the CLI-managed credential file at `KIMI_CODE_HOME` or `~/.kimi-code/credentials/kimi-code.json`; do not probe the legacy `~/.kimi` path as the primary source for current Kimi Code installs.
 
-Grok Build usage reads credentials from `~/.grok/auth.json` (OIDC session tokens under `issuer::clientId` → `{ key, expires_at, … }`, plus the legacy flat `access_token` shape) and falls back to `XAI_API_KEY` / `GROK_API_KEY` / `GROK_TOKEN`. Billing is `GET https://cli-chat-proxy.grok.com/v1/billing` with `Authorization: Bearer <token>` and `X-XAI-Token-Auth: xai-grok-cli`. Normalize `config.monthlyLimit.val` + `config.used.val` (and the older `usage.creditUsage`) into generic monthly windows/balances — do not add Grok-specific UI branches.
+Grok Build usage reads credentials from `~/.grok/auth.json` (OIDC session tokens under `issuer::clientId` → `{ key, expires_at, … }`, plus the legacy flat `access_token` shape) and falls back to `XAI_API_KEY` / `GROK_API_KEY` / `GROK_TOKEN`. Billing is dual-fetched with `Authorization: Bearer <token>` and `X-XAI-Token-Auth: xai-grok-cli`:
 
----
+1. `GET https://cli-chat-proxy.grok.com/v1/billing?format=credits` — what Grok CLI `/usage` uses. SuperGrok rate limits arrive as `config.creditUsagePercent` + `config.currentPeriod` (`USAGE_PERIOD_TYPE_WEEKLY` or `…_MONTHLY`, with `start`/`end`) and optional `subscriptionTier` (e.g. `SuperGrok`).
+2. `GET https://cli-chat-proxy.grok.com/v1/billing` — absolute monthly included credits via `config.monthlyLimit.val` + `config.used.val` (and the older `usage.creditUsage`).
+
+## Normalize into generic windows/balances: a **Weekly** (or Monthly) window from the credits-format period percent, plus a **Monthly** credits balance/window from absolute numbers when present. Do not add Grok-specific UI branches — labels and generic bars carry the UI.
 
 ## ACP Provider Checklist
 

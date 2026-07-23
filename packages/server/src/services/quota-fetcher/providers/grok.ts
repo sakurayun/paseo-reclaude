@@ -14,11 +14,18 @@ import {
   ApiNumberSchema,
   balanceToneFromRemaining,
   fetchProviderApi,
+  toneFromUsedPct,
   unavailableUsage,
   windowFromUsedPct,
 } from "../usage.js";
 
+/** Plain monthly absolute-credits endpoint (older / non-unified payloads). */
 const GROK_BILLING_URL = "https://cli-chat-proxy.grok.com/v1/billing";
+/**
+ * What Grok CLI `/usage` actually hits. SuperGrok rate limits surface here as a
+ * rolling `currentPeriod` (WEEKLY or MONTHLY) + `creditUsagePercent`.
+ */
+const GROK_BILLING_CREDITS_URL = `${GROK_BILLING_URL}?format=credits`;
 const GROK_CLI_TOKEN_AUTH = "xai-grok-cli";
 /** Match Grok CLI: refresh a few minutes before wall-clock expiry. */
 const GROK_AUTH_EARLY_REFRESH_MS = 5 * 60 * 1000;
@@ -31,18 +38,41 @@ const GrokValSchema = z
   .nullish();
 
 /**
+ * Rolling usage window on the credits-format payload.
+ * SuperGrok accounts report `USAGE_PERIOD_TYPE_WEEKLY`; some plans are monthly.
+ */
+const GrokUsagePeriodSchema = z
+  .object({
+    type: z.string().nullish(),
+    start: z.string().nullish(),
+    end: z.string().nullish(),
+  })
+  .nullish();
+
+/**
  * Live Grok Build billing shape (2026-07+).
  *
- * The CLI chat proxy returns monthly included credits under `config.used`, with
- * optional on-demand cap and billing-period bounds. Older payloads put usage under
- * `usage.creditUsage` — both are accepted so caches and mocks keep working.
+ * Two wire shapes share this schema:
+ * 1. `GET /v1/billing?format=credits` (CLI `/usage`) — SuperGrok weekly (or monthly)
+ *    rate limit via `config.creditUsagePercent` + `config.currentPeriod`, plus
+ *    optional on-demand / prepaid / subscription tier.
+ * 2. `GET /v1/billing` — absolute monthly included credits under `config.used` /
+ *    `config.monthlyLimit` (and the older `usage.creditUsage` nest).
+ *
+ * Both are accepted so caches, mocks, and dual-fetch merges keep working.
  */
 const GrokUsageResponseSchema = z.object({
   config: z
     .object({
       monthlyLimit: GrokValSchema,
       used: GrokValSchema,
+      // Credits-format SuperGrok fields (CLI `/usage`).
+      creditUsagePercent: ApiNumberSchema.optional(),
+      currentPeriod: GrokUsagePeriodSchema,
       onDemandCap: GrokValSchema,
+      onDemandUsed: GrokValSchema,
+      prepaidBalance: GrokValSchema,
+      isUnifiedBillingUser: z.boolean().nullish(),
       billingPeriodStart: z.string().nullish(),
       billingPeriodEnd: z.string().nullish(),
       history: z
@@ -70,8 +100,14 @@ const GrokUsageResponseSchema = z.object({
       creditUsage: ApiNumberSchema.optional(),
     })
     .nullish(),
+  // Top-level plan signal from the credits-format response (e.g. "SuperGrok").
+  subscriptionTier: z.union([z.string(), z.array(z.string())]).nullish(),
+  subscription_tier: z.string().nullish(),
+  onDemandEnabled: z.boolean().nullish(),
 });
 
+type GrokUsageResponse = z.infer<typeof GrokUsageResponseSchema>;
+type GrokPeriodKind = "weekly" | "monthly" | "unknown";
 const GrokOidcDiscoverySchema = z.object({
   token_endpoint: z.string().url(),
 });
@@ -285,50 +321,81 @@ export class GrokQuotaProvider implements ProviderUsageFetcher {
       }
     }
 
-    let res = await this.callBillingApi(auth.token);
+    let snapshots = await this.fetchBillingSnapshots(auth.token);
 
-    if (res.status === 401 && auth.credential?.refresh_token) {
+    if (snapshots.primaryStatus === 401 && auth.credential?.refresh_token) {
       const refreshed = await this.refreshAndPersist(auth);
       if (refreshed) {
         auth = refreshed;
-        res = await this.callBillingApi(auth.token);
+        snapshots = await this.fetchBillingSnapshots(auth.token);
       }
     }
 
-    if (!res.ok) {
-      this.logger.debug({ status: res.status }, "Grok usage fetch failed");
+    if (!snapshots.credits && !snapshots.legacy) {
+      this.logger.debug({ status: snapshots.primaryStatus }, "Grok usage fetch failed");
       return unavailableUsage({
         ...this,
-        error:
-          res.status === 401
-            ? "Grok session expired. Run `grok login` and refresh usage."
-            : `Grok billing API returned HTTP ${res.status}.`,
+        error: grokBillingErrorMessage(snapshots.primaryStatus),
       });
     }
 
-    let resp: z.infer<typeof GrokUsageResponseSchema>;
+    return normalizeGrokUsageResponse(snapshots, this);
+  }
+  /**
+   * Hit both billing wire shapes in parallel:
+   * - `?format=credits` → SuperGrok weekly/monthly rate-limit percent (CLI `/usage`)
+   * - plain `/v1/billing` → absolute monthly included credits
+   */
+  private async fetchBillingSnapshots(token: string): Promise<GrokBillingSnapshots> {
+    const [creditsOutcome, legacyOutcome] = await Promise.all([
+      this.fetchParsedBilling(token, true),
+      this.fetchParsedBilling(token, false),
+    ]);
+    return {
+      credits: creditsOutcome.parsed,
+      legacy: legacyOutcome.parsed,
+      // Prefer the credits endpoint status for error messaging (what the CLI uses).
+      primaryStatus: creditsOutcome.status ?? legacyOutcome.status,
+    };
+  }
+
+  private async fetchParsedBilling(
+    token: string,
+    formatCredits: boolean,
+  ): Promise<{ status: number | null; parsed: GrokUsageResponse | null }> {
     try {
-      resp = GrokUsageResponseSchema.parse(await res.json());
+      const res = await this.callBillingApi(token, formatCredits);
+      if (!res.ok) {
+        return { status: res.status, parsed: null };
+      }
+      try {
+        return {
+          status: res.status,
+          parsed: GrokUsageResponseSchema.parse(await res.json()),
+        };
+      } catch (error) {
+        this.logger.debug({ err: error, formatCredits }, "Grok usage response parse failed");
+        return { status: res.status, parsed: null };
+      }
     } catch (error) {
-      this.logger.debug({ err: error }, "Grok usage response parse failed");
-      return unavailableUsage({
-        ...this,
-        error: "Grok billing response could not be parsed.",
-      });
+      this.logger.debug({ err: error, formatCredits }, "Grok usage fetch error");
+      return { status: null, parsed: null };
     }
-    return normalizeGrokUsageResponse(resp, this);
   }
 
-  private callBillingApi(token: string): Promise<Response> {
-    return fetchProviderApi(this.fetchApi, GROK_BILLING_URL, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "X-XAI-Token-Auth": GROK_CLI_TOKEN_AUTH,
-        Accept: "application/json",
+  private callBillingApi(token: string, formatCredits: boolean): Promise<Response> {
+    return fetchProviderApi(
+      this.fetchApi,
+      formatCredits ? GROK_BILLING_CREDITS_URL : GROK_BILLING_URL,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "X-XAI-Token-Auth": GROK_CLI_TOKEN_AUTH,
+          Accept: "application/json",
+        },
       },
-    });
+    );
   }
-
   private async refreshAndPersist(auth: GrokAuthRecord): Promise<GrokAuthRecord | null> {
     if (!auth.credential?.refresh_token || !auth.path || !auth.entryKey) {
       return null;
@@ -415,6 +482,12 @@ export class GrokQuotaProvider implements ProviderUsageFetcher {
   }
 }
 
+interface GrokBillingSnapshots {
+  credits: GrokUsageResponse | null;
+  legacy: GrokUsageResponse | null;
+  primaryStatus: number | null;
+}
+
 function remainingCredits(limit: number | null, used: number | null): number | null {
   if (limit === null || used === null) return null;
   return Math.max(0, limit - used);
@@ -425,76 +498,188 @@ function usedPctFromCredits(limit: number | null, used: number | null): number |
   return Math.max(0, Math.min(100, (used / limit) * 100));
 }
 
-function toneFromUsedPct(usedPct: number | null): ProviderUsageWindow["tone"] {
-  if (usedPct === null) return "default";
-  if (usedPct >= 90) return "danger";
-  if (usedPct >= 70) return "warning";
-  return "ok";
+function clampUsagePercent(value: number | null | undefined): number | null {
+  if (typeof value !== "number" || !Number.isFinite(value)) return null;
+  return Math.max(0, Math.min(100, value));
 }
 
-function buildMonthlyCredits(
+/**
+ * Map Grok's `USAGE_PERIOD_TYPE_*` (and short aliases) onto our generic window ids.
+ * Unknown types still produce a window labeled from the raw type when possible.
+ */
+function classifyGrokPeriodType(type: string | null | undefined): GrokPeriodKind {
+  if (!type) return "unknown";
+  const normalized = type.trim().toUpperCase();
+  if (normalized.includes("WEEK")) return "weekly";
+  if (normalized.includes("MONTH")) return "monthly";
+  return "unknown";
+}
+
+function pickFirstString(...values: Array<string | null | undefined>): string | null {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim().length > 0) return value.trim();
+  }
+  return null;
+}
+
+function resolveSubscriptionLabel(resp: GrokUsageResponse): string | null {
+  const tiers = resp.subscriptionTier;
+  if (typeof tiers === "string" && tiers.trim()) return tiers.trim();
+  if (Array.isArray(tiers)) {
+    const joined = tiers
+      .map((tier) => (typeof tier === "string" ? tier.trim() : ""))
+      .filter(Boolean)
+      .join(", ");
+    if (joined) return joined;
+  }
+  return pickFirstString(resp.subscription_tier);
+}
+
+function pickNumber(...values: Array<number | null | undefined>): number | null {
+  for (const value of values) {
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+  }
+  return null;
+}
+
+function buildPeriodWindow(input: {
+  kind: GrokPeriodKind;
+  usedPct: number | null;
+  resetsAt: string | null;
+}): ProviderUsageWindow | null {
+  if (input.usedPct === null && input.kind === "unknown") return null;
+  if (input.kind === "weekly") {
+    const window = windowFromUsedPct({
+      id: "weekly",
+      label: "Weekly",
+      utilizationPct: input.usedPct,
+      resetsAt: input.resetsAt,
+      tone: toneFromUsedPct(input.usedPct),
+    });
+    // Full d/h/m countdown in the compact tooltip — optional on the protocol.
+    window.fullCountdown = true;
+    return window;
+  }
+  if (input.kind === "monthly") {
+    return windowFromUsedPct({
+      id: "monthly",
+      label: "Monthly",
+      utilizationPct: input.usedPct,
+      resetsAt: input.resetsAt,
+      tone: toneFromUsedPct(input.usedPct),
+    });
+  }
+  // Unknown period type — still surface the percent under a neutral label.
+  return windowFromUsedPct({
+    id: "plan_usage",
+    label: "Plan usage",
+    utilizationPct: input.usedPct,
+    resetsAt: input.resetsAt,
+    tone: toneFromUsedPct(input.usedPct),
+  });
+}
+
+function buildMonthlyCreditsBalance(
   monthlyLimit: number | null,
   creditUsage: number | null,
   periodEnd: string | null,
-): { balances: ProviderUsageBalance[]; windows: ProviderUsageWindow[] } {
-  if (monthlyLimit === null && creditUsage === null) {
-    return { balances: [], windows: [] };
-  }
+): ProviderUsageBalance | null {
+  if (monthlyLimit === null && creditUsage === null) return null;
   const remaining = remainingCredits(monthlyLimit, creditUsage);
   const usedPct = usedPctFromCredits(monthlyLimit, creditUsage);
   return {
-    balances: [
-      {
-        id: "monthly_credits",
-        label: "Monthly credits",
-        used: creditUsage,
-        remaining,
-        limit: monthlyLimit,
-        unit: "credits",
-        tone: balanceToneFromRemaining(remaining),
-      },
-    ],
-    windows: [
-      windowFromUsedPct({
-        id: "monthly",
-        label: "Monthly",
-        utilizationPct: usedPct,
-        resetsAt: periodEnd,
-        tone: toneFromUsedPct(usedPct),
-      }),
-    ],
+    id: "monthly_credits",
+    label: "Monthly credits",
+    used: creditUsage,
+    remaining,
+    limit: monthlyLimit,
+    unit: "credits",
+    resetsAt: periodEnd,
+    tone: usedPct != null ? toneFromUsedPct(usedPct) : balanceToneFromRemaining(remaining),
   };
 }
 
-function buildOnDemandBalance(onDemandCap: number | null): ProviderUsageBalance[] {
+function buildOnDemandBalances(
+  onDemandCap: number | null,
+  onDemandUsed: number | null,
+): ProviderUsageBalance[] {
   if (onDemandCap === null || onDemandCap <= 0) return [];
+  const remaining = onDemandUsed === null ? onDemandCap : Math.max(0, onDemandCap - onDemandUsed);
+  const usedPct = usedPctFromCredits(onDemandCap, onDemandUsed);
   return [
     {
       id: "on_demand_cap",
       label: "On-demand cap",
-      used: null,
-      remaining: onDemandCap,
+      used: onDemandUsed,
+      remaining,
       limit: onDemandCap,
       unit: "credits",
-      tone: "default",
+      tone: usedPct != null ? toneFromUsedPct(usedPct) : "default",
     },
   ];
 }
 
-function buildPeriodDetails(
-  periodStart: string | null,
-  periodEnd: string | null,
-  history: NonNullable<z.infer<typeof GrokUsageResponseSchema>["config"]>["history"],
-): ProviderUsageDetail[] {
+function buildPrepaidBalance(prepaid: number | null): ProviderUsageBalance[] {
+  if (prepaid === null || prepaid <= 0) return [];
+  return [
+    {
+      id: "prepaid_balance",
+      label: "Prepaid credits",
+      used: null,
+      remaining: prepaid,
+      limit: null,
+      unit: "credits",
+      tone: balanceToneFromRemaining(prepaid),
+    },
+  ];
+}
+
+function buildPeriodDetails(input: {
+  periodStart: string | null;
+  periodEnd: string | null;
+  periodKind: GrokPeriodKind;
+  history: NonNullable<GrokUsageResponse["config"]>["history"];
+  subscriptionLabel: string | null;
+  isUnified: boolean | null | undefined;
+}): ProviderUsageDetail[] {
   const details: ProviderUsageDetail[] = [];
-  if (periodStart) {
-    details.push({ id: "period_start", label: "Billing period start", value: periodStart });
+  if (input.subscriptionLabel) {
+    details.push({
+      id: "subscription",
+      label: "Plan",
+      value: input.subscriptionLabel,
+    });
   }
-  if (periodEnd) {
-    details.push({ id: "period_end", label: "Billing period end", value: periodEnd });
+  if (input.periodKind === "weekly" || input.periodKind === "monthly") {
+    details.push({
+      id: "current_period",
+      label: "Current period",
+      value: input.periodKind === "weekly" ? "Weekly" : "Monthly",
+    });
+  }
+  if (input.periodStart) {
+    details.push({
+      id: "period_start",
+      label: input.periodKind === "weekly" ? "Week starts" : "Billing period start",
+      value: input.periodStart,
+    });
+  }
+  if (input.periodEnd) {
+    details.push({
+      id: "period_end",
+      label: input.periodKind === "weekly" ? "Week resets" : "Billing period end",
+      value: input.periodEnd,
+    });
+  }
+  if (input.isUnified === true) {
+    details.push({
+      id: "unified_billing",
+      label: "Billing",
+      value: "Unified",
+    });
   }
 
-  const previous = history?.[0];
+  const previous = input.history?.[0];
   if (!previous) {
     return details;
   }
@@ -513,21 +698,176 @@ function buildPeriodDetails(
   return details;
 }
 
+interface GrokResolvedFields {
+  monthlyLimit: number | null;
+  creditUsage: number | null;
+  onDemandCap: number | null;
+  onDemandUsed: number | null;
+  prepaidBalance: number | null;
+  currentPeriod: NonNullable<NonNullable<GrokUsageResponse["config"]>["currentPeriod"]> | null;
+  periodKind: GrokPeriodKind;
+  rollingStart: string | null;
+  rollingEnd: string | null;
+  monthlyPeriodEnd: string | null;
+  creditUsagePercent: number | null;
+  subscriptionLabel: string | null;
+  history: NonNullable<GrokUsageResponse["config"]>["history"];
+  isUnified: boolean | null | undefined;
+}
+
+function configVal(
+  creditsConfig: GrokUsageResponse["config"],
+  legacyConfig: GrokUsageResponse["config"],
+  key: "monthlyLimit" | "used" | "onDemandCap" | "onDemandUsed" | "prepaidBalance",
+): number | null {
+  return pickNumber(readVal(creditsConfig?.[key]), readVal(legacyConfig?.[key]));
+}
+
+function resolvePeriodFields(
+  creditsConfig: GrokUsageResponse["config"],
+  legacyConfig: GrokUsageResponse["config"],
+): Pick<
+  GrokResolvedFields,
+  | "currentPeriod"
+  | "periodKind"
+  | "rollingStart"
+  | "rollingEnd"
+  | "monthlyPeriodEnd"
+  | "creditUsagePercent"
+> {
+  const creditUsagePercent = clampUsagePercent(
+    creditsConfig?.creditUsagePercent ?? legacyConfig?.creditUsagePercent,
+  );
+  const currentPeriod = creditsConfig?.currentPeriod ?? legacyConfig?.currentPeriod ?? null;
+  let periodKind = classifyGrokPeriodType(currentPeriod?.type ?? null);
+  if (periodKind === "unknown" && creditUsagePercent != null) {
+    periodKind = "weekly";
+  }
+  const rollingStart = pickFirstString(currentPeriod?.start, creditsConfig?.billingPeriodStart);
+  const rollingEnd = pickFirstString(currentPeriod?.end, creditsConfig?.billingPeriodEnd);
+  const monthlyPeriodEnd =
+    periodKind === "monthly"
+      ? pickFirstString(rollingEnd, legacyConfig?.billingPeriodEnd, creditsConfig?.billingPeriodEnd)
+      : pickFirstString(legacyConfig?.billingPeriodEnd);
+  return {
+    currentPeriod,
+    periodKind,
+    rollingStart,
+    rollingEnd,
+    monthlyPeriodEnd,
+    creditUsagePercent,
+  };
+}
+
+function resolveGrokFields(
+  credits: GrokUsageResponse | null,
+  legacy: GrokUsageResponse | null,
+): GrokResolvedFields {
+  const creditsConfig = credits?.config;
+  const legacyConfig = legacy?.config;
+  const period = resolvePeriodFields(creditsConfig, legacyConfig);
+  return {
+    monthlyLimit: configVal(creditsConfig, legacyConfig, "monthlyLimit"),
+    creditUsage: pickNumber(
+      readVal(creditsConfig?.used),
+      credits?.usage?.creditUsage,
+      readVal(legacyConfig?.used),
+      legacy?.usage?.creditUsage,
+    ),
+    onDemandCap: configVal(creditsConfig, legacyConfig, "onDemandCap"),
+    onDemandUsed: configVal(creditsConfig, legacyConfig, "onDemandUsed"),
+    prepaidBalance: configVal(creditsConfig, legacyConfig, "prepaidBalance"),
+    ...period,
+    subscriptionLabel:
+      resolveSubscriptionLabel(credits ?? {}) ?? resolveSubscriptionLabel(legacy ?? {}),
+    history: creditsConfig?.history ?? legacyConfig?.history,
+    isUnified: creditsConfig?.isUnifiedBillingUser ?? legacyConfig?.isUnifiedBillingUser,
+  };
+}
+
+function buildGrokWindows(fields: GrokResolvedFields): ProviderUsageWindow[] {
+  const windows: ProviderUsageWindow[] = [];
+  const windowIds = new Set<string>();
+
+  // 1) Credits-format rolling window (weekly SuperGrok limit is the common case).
+  if (fields.creditUsagePercent != null || fields.currentPeriod) {
+    const periodWindow = buildPeriodWindow({
+      kind: fields.periodKind,
+      usedPct: fields.creditUsagePercent,
+      resetsAt: fields.rollingEnd,
+    });
+    if (periodWindow && !windowIds.has(periodWindow.id)) {
+      windows.push(periodWindow);
+      windowIds.add(periodWindow.id);
+    }
+  }
+
+  // 2) Absolute monthly included credits. When the rolling period is already
+  // monthly from creditUsagePercent, absolute numbers only feed the balance.
+  // When it's weekly (or missing), also emit a separate Monthly window.
+  const shouldAddMonthlyWindow =
+    !windowIds.has("monthly") &&
+    fields.monthlyLimit != null &&
+    fields.creditUsage != null &&
+    (fields.periodKind !== "monthly" || fields.creditUsagePercent == null);
+  if (shouldAddMonthlyWindow) {
+    const usedPct = usedPctFromCredits(fields.monthlyLimit, fields.creditUsage);
+    windows.push(
+      windowFromUsedPct({
+        id: "monthly",
+        label: "Monthly",
+        utilizationPct: usedPct,
+        resetsAt: fields.monthlyPeriodEnd,
+        tone: toneFromUsedPct(usedPct),
+      }),
+    );
+  }
+
+  return windows;
+}
+
+function grokBillingErrorMessage(status: number | null): string {
+  if (status === 401) {
+    return "Grok session expired. Run `grok login` and refresh usage.";
+  }
+  if (status != null) {
+    return `Grok billing API returned HTTP ${status}.`;
+  }
+  return "Grok billing response could not be parsed.";
+}
+
+/**
+ * Prefer credits-format fields (weekly SuperGrok) and fill absolute monthly
+ * credits / calendar bounds from the plain `/v1/billing` payload.
+ */
 function normalizeGrokUsageResponse(
-  resp: z.infer<typeof GrokUsageResponseSchema>,
+  snapshots: GrokBillingSnapshots,
   provider: { providerId: string; displayName: string },
 ): ProviderUsage {
-  const monthlyLimit = readVal(resp.config?.monthlyLimit);
-  // Prefer the live `config.used` field; fall back to legacy `usage.creditUsage`.
-  const creditUsage = readVal(resp.config?.used) ?? resp.usage?.creditUsage ?? null;
-  const onDemandCap = readVal(resp.config?.onDemandCap);
-  const periodStart = resp.config?.billingPeriodStart ?? null;
-  const periodEnd = resp.config?.billingPeriodEnd ?? null;
+  if (!snapshots.credits && !snapshots.legacy) {
+    return unavailableUsage(provider);
+  }
 
-  const monthly = buildMonthlyCredits(monthlyLimit, creditUsage, periodEnd);
-  const balances = [...monthly.balances, ...buildOnDemandBalance(onDemandCap)];
-  const windows = monthly.windows;
-  const details = buildPeriodDetails(periodStart, periodEnd, resp.config?.history);
+  const fields = resolveGrokFields(snapshots.credits, snapshots.legacy);
+  const windows = buildGrokWindows(fields);
+  const monthlyBalance = buildMonthlyCreditsBalance(
+    fields.monthlyLimit,
+    fields.creditUsage,
+    fields.monthlyPeriodEnd,
+  );
+  const balances: ProviderUsageBalance[] = [
+    ...(monthlyBalance ? [monthlyBalance] : []),
+    ...buildPrepaidBalance(fields.prepaidBalance),
+    ...buildOnDemandBalances(fields.onDemandCap, fields.onDemandUsed),
+  ];
+  const details = buildPeriodDetails({
+    periodStart: fields.rollingStart,
+    periodEnd: fields.rollingEnd,
+    periodKind: fields.periodKind,
+    history: fields.history,
+    subscriptionLabel: fields.subscriptionLabel,
+    isUnified: fields.isUnified,
+  });
 
   if (balances.length === 0 && windows.length === 0) {
     return unavailableUsage(provider);
@@ -537,7 +877,7 @@ function normalizeGrokUsageResponse(
     providerId: provider.providerId,
     displayName: provider.displayName,
     status: "available",
-    planLabel: "Grok Build",
+    planLabel: fields.subscriptionLabel ?? "Grok Build",
     windows,
     balances,
     details,

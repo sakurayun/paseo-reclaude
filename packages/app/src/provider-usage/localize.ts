@@ -35,11 +35,12 @@ const WINDOW_LABEL_KEYS: Record<string, string> = {
   code_review: "providerUsage.windows.codeReview",
   monthly: "providerUsage.windows.monthly",
   coding_usage: "providerUsage.windows.codingUsage",
+  plan_usage: "providerUsage.windows.planUsage",
 };
-
 const BALANCE_LABEL_KEYS: Record<string, string> = {
   monthly_credits: "providerUsage.balances.monthlyCredits",
   on_demand_cap: "providerUsage.balances.onDemandCap",
+  prepaid_balance: "providerUsage.balances.prepaidCredits",
   plan_usage: "providerUsage.balances.planUsage",
   credits: "providerUsage.balances.credits",
   credit: "providerUsage.balances.credits",
@@ -49,6 +50,9 @@ const DETAIL_LABEL_KEYS: Record<string, string> = {
   period_start: "providerUsage.details.periodStart",
   period_end: "providerUsage.details.periodEnd",
   previous_cycle: "providerUsage.details.previousCycle",
+  subscription: "providerUsage.details.plan",
+  current_period: "providerUsage.details.currentPeriod",
+  unified_billing: "providerUsage.details.billing",
   status: "providerUsage.details.status",
   valid: "providerUsage.details.valid",
   purchase_time: "providerUsage.details.purchased",
@@ -64,8 +68,20 @@ const DETAIL_VALUE_KEYS: Record<string, string> = {
   VALID: "providerUsage.detailValues.valid",
   INVALID: "providerUsage.detailValues.invalid",
   EXPIRED: "providerUsage.detailValues.expired",
+  Weekly: "providerUsage.detailValues.weekly",
+  Monthly: "providerUsage.detailValues.monthly",
+  Unified: "providerUsage.detailValues.unified",
 };
 
+const PLAN_LABEL_KEYS: Record<string, string> = {
+  "Grok Build": "providerUsage.providers.grok",
+  SuperGrok: "providerUsage.plans.superGrok",
+  "SuperGrok Heavy": "providerUsage.plans.superGrokHeavy",
+  "SuperGrok Lite": "providerUsage.plans.superGrokLite",
+  supergrok: "providerUsage.plans.superGrok",
+  supergrok_heavy: "providerUsage.plans.superGrokHeavy",
+  supergrok_lite: "providerUsage.plans.superGrokLite",
+};
 function translateKey(t: TFunction, key: string | undefined, fallback: string): string {
   if (!key) return fallback;
   const translated = t(key, { defaultValue: "" });
@@ -143,18 +159,6 @@ function localizeDetailValue(t: TFunction, detail: ProviderUsageDetail, locale: 
   return detail.value;
 }
 
-function localizeDetail(
-  t: TFunction,
-  detail: ProviderUsageDetail,
-  locale: string,
-): ProviderUsageDetail {
-  return {
-    ...detail,
-    label: translateKey(t, DETAIL_LABEL_KEYS[detail.id], detail.label),
-    value: localizeDetailValue(t, detail, locale),
-  };
-}
-
 const ERROR_HINTS: Array<{ match: RegExp; key: string }> = [
   {
     match: /grok login|XAI_API_KEY/i,
@@ -188,22 +192,45 @@ function localizeError(t: TFunction, error: string | null | undefined): string |
   return error;
 }
 
+function localizePlanLabel(t: TFunction, planLabel: string | null | undefined): string | null {
+  if (!planLabel) return planLabel ?? null;
+  return translateKey(t, PLAN_LABEL_KEYS[planLabel], planLabel);
+}
+
+function localizeDetailLabel(
+  t: TFunction,
+  detail: ProviderUsageDetail,
+  periodKind: "weekly" | "monthly" | null,
+): string {
+  // Prefer week-specific wording when the active Grok period is weekly.
+  if (periodKind === "weekly") {
+    if (detail.id === "period_start") {
+      return translateKey(t, "providerUsage.details.weekStarts", detail.label);
+    }
+    if (detail.id === "period_end") {
+      return translateKey(t, "providerUsage.details.weekResets", detail.label);
+    }
+  }
+  return translateKey(t, DETAIL_LABEL_KEYS[detail.id], detail.label);
+}
+
+function detectPeriodKind(usage: ProviderUsage): "weekly" | "monthly" | null {
+  if (usage.windows.some((window) => window.id === "weekly")) return "weekly";
+  if (usage.windows.some((window) => window.id === "monthly")) return "monthly";
+  return null;
+}
+
 export function localizeProviderUsage(
   usage: ProviderUsage,
   t: TFunction,
   locale: string = "zh-CN",
 ): ProviderUsage {
   const displayNameKey = PROVIDER_DISPLAY_NAME_KEYS[usage.providerId];
+  const periodKind = detectPeriodKind(usage);
   return {
     ...usage,
     displayName: translateKey(t, displayNameKey, usage.displayName),
-    planLabel: usage.planLabel
-      ? translateKey(
-          t,
-          usage.planLabel === "Grok Build" ? "providerUsage.providers.grok" : undefined,
-          usage.planLabel,
-        )
-      : usage.planLabel,
+    planLabel: localizePlanLabel(t, usage.planLabel),
     sourceLabel: usage.sourceLabel
       ? translateKey(
           t,
@@ -218,6 +245,11 @@ export function localizeProviderUsage(
     balances: (usage.balances ?? []).map((balance) =>
       Object.assign({}, balance, { label: localizeBalanceLabel(t, balance) }),
     ),
-    details: (usage.details ?? []).map((detail) => localizeDetail(t, detail, locale)),
+    details: (usage.details ?? []).map((detail) =>
+      Object.assign({}, detail, {
+        label: localizeDetailLabel(t, detail, periodKind),
+        value: localizeDetailValue(t, detail, locale),
+      }),
+    ),
   };
 }
