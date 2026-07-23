@@ -38,10 +38,99 @@ export interface LocalDaemonVersionResult {
   error: string | null;
 }
 
-const RELEASE_DOWNLOAD_BASE_URL = "https://github.com/getpaseo/paseo/releases/download";
+/** Matches packages/desktop/electron-builder.yml publish.owner/repo. */
+const RELEASE_OWNER = "sakurayun";
+const RELEASE_REPO = "paseo-reclaude";
+const RELEASE_DOWNLOAD_BASE_URL = `https://github.com/${RELEASE_OWNER}/${RELEASE_REPO}/releases/download`;
+
+/**
+ * Public GitHub acceleration mirrors commonly used in mainland China.
+ * Keep in sync with packages/desktop/src/features/github-release-mirrors.ts.
+ */
+const GITHUB_RELEASE_MIRROR_PREFIXES = [
+  "https://ghfast.top/",
+  "https://gh-proxy.com/",
+  "https://mirror.ghproxy.com/",
+  "https://ghproxy.net/",
+] as const;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
+}
+
+function resolveDefaultTimeZone(): string {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone ?? "";
+  } catch {
+    return "";
+  }
+}
+
+function collectNavigatorLocales(): string[] {
+  try {
+    if (typeof navigator === "undefined") {
+      return [];
+    }
+    const values = [navigator.language, ...(navigator.languages ?? [])];
+    return values.filter((value): value is string => typeof value === "string" && value.length > 0);
+  } catch {
+    return [];
+  }
+}
+
+function isMainlandChinaLocale(locale: string): boolean {
+  const normalized = locale.trim().toLowerCase().replaceAll("_", "-");
+  return (
+    normalized === "zh-cn" ||
+    normalized === "zh-hans" ||
+    normalized === "zh-hans-cn" ||
+    normalized.startsWith("zh-cn-") ||
+    normalized.startsWith("zh-hans-")
+  );
+}
+
+export function shouldPreferGithubReleaseMirrors(input?: {
+  locale?: string | null;
+  locales?: readonly string[] | null;
+  timeZone?: string | null;
+}): boolean {
+  const timeZone = input?.timeZone?.trim() || resolveDefaultTimeZone();
+  if (timeZone === "Asia/Shanghai" || timeZone === "Asia/Urumqi") {
+    return true;
+  }
+
+  const candidates = [...(input?.locale ? [input.locale] : []), ...(input?.locales ?? [])];
+  if (candidates.length === 0) {
+    candidates.push(...collectNavigatorLocales());
+  }
+
+  return candidates.some(isMainlandChinaLocale);
+}
+
+/**
+ * When mainland China is detected, rewrite a github.com asset URL through the
+ * first acceleration mirror so browser-opened downloads (e.g. Rosetta callout)
+ * don't hit github.com directly.
+ */
+export function preferGithubReleaseMirrorUrl(
+  url: string,
+  options?: {
+    preferMirrors?: boolean;
+  },
+): string {
+  const preferMirrors = options?.preferMirrors ?? shouldPreferGithubReleaseMirrors();
+  if (!preferMirrors) {
+    return url;
+  }
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== "https:" || !parsed.hostname.endsWith("github.com")) {
+      return url;
+    }
+    return `${GITHUB_RELEASE_MIRROR_PREFIXES[0]}${parsed.href}`;
+  } catch {
+    return url;
+  }
 }
 
 function toStringOrNull(value: unknown): string | null {
@@ -188,13 +277,19 @@ export function formatVersionWithPrefix(version: string | null | undefined): str
   return value.startsWith("v") ? value : `v${value}`;
 }
 
-export function buildMacAppleSiliconDownloadUrl(version: string | null | undefined): string | null {
+export function buildMacAppleSiliconDownloadUrl(
+  version: string | null | undefined,
+  options?: {
+    preferMirrors?: boolean;
+  },
+): string | null {
   const normalizedVersion = normalizeVersionForComparison(version);
   if (!normalizedVersion) {
     return null;
   }
 
-  return `${RELEASE_DOWNLOAD_BASE_URL}/v${normalizedVersion}/Paseo-${normalizedVersion}-arm64.dmg`;
+  const direct = `${RELEASE_DOWNLOAD_BASE_URL}/v${normalizedVersion}/Paseo-${normalizedVersion}-arm64.dmg`;
+  return preferGithubReleaseMirrorUrl(direct, options);
 }
 
 export function buildDaemonUpdateDiagnostics(result: LocalDaemonUpdateResult): string {

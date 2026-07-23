@@ -20,6 +20,11 @@ import {
   type AppReleaseChannel,
   type AppUpdateCheckIntent,
 } from "./app-update-rollout.js";
+import {
+  patchHttpExecutorWithGithubMirrors,
+  shouldPreferGithubMirrors,
+  type GithubMirrorHttpExecutorTarget,
+} from "./github-release-mirrors.js";
 
 export {
   bucketFromStagingUserId,
@@ -85,8 +90,38 @@ export function shouldInstallAppUpdateOnQuit(input: {
   return !(input.platform === "linux" && input.isAppImage);
 }
 
+export function detectMainlandChinaPreferMirrors(input?: {
+  locale?: string | null;
+  locales?: readonly string[] | null;
+  timeZone?: string | null;
+}): boolean {
+  let locale = input?.locale ?? null;
+  let locales = input?.locales ?? null;
+  let timeZone = input?.timeZone ?? null;
+
+  if (locale == null || locales == null || timeZone == null) {
+    try {
+      locale ??= typeof app.getLocale === "function" ? app.getLocale() : null;
+      locales ??=
+        typeof app.getPreferredSystemLanguages === "function"
+          ? app.getPreferredSystemLanguages()
+          : null;
+    } catch {
+      // app may be unavailable in unit tests.
+    }
+    try {
+      timeZone ??= Intl.DateTimeFormat().resolvedOptions().timeZone ?? null;
+    } catch {
+      timeZone ??= null;
+    }
+  }
+
+  return shouldPreferGithubMirrors({ locale, locales, timeZone });
+}
+
 class ElectronAppUpdateRuntime implements AppUpdateRuntime {
   private configured = false;
+  private mirrorDownloadPatched = false;
 
   configure(input: AppUpdateRuntimeConfiguration): void {
     autoUpdater.autoDownload = true;
@@ -106,6 +141,11 @@ class ElectronAppUpdateRuntime implements AppUpdateRuntime {
       }
     };
 
+    // Install/restart downloads (settings + sidebar callout) go through this
+    // HTTP executor. In mainland China, GitHub is often unreachable, so patch
+    // downloads to walk a short list of public acceleration mirrors first.
+    this.ensureGithubMirrorDownloadPatch();
+
     if (this.configured) return;
     this.configured = true;
 
@@ -121,6 +161,34 @@ class ElectronAppUpdateRuntime implements AppUpdateRuntime {
     autoUpdater.on("error", (error) => {
       input.onError(error);
     });
+  }
+
+  private ensureGithubMirrorDownloadPatch(): void {
+    if (this.mirrorDownloadPatched) {
+      return;
+    }
+
+    // electron-updater constructs the executor lazily on first configure/check.
+    // Touching it once guarantees the property exists so we can wrap downloads.
+    const executor = (autoUpdater as unknown as { httpExecutor?: GithubMirrorHttpExecutorTarget })
+      .httpExecutor;
+    if (!executor || typeof executor.download !== "function") {
+      return;
+    }
+
+    patchHttpExecutorWithGithubMirrors(executor, {
+      shouldPreferMirrors: () => detectMainlandChinaPreferMirrors(),
+      onAttemptError: ({ candidate, error, remaining }) => {
+        if (remaining <= 0) {
+          return;
+        }
+        console.warn(
+          `[auto-updater] GitHub download via ${candidate.href} failed; trying next mirror:`,
+          error,
+        );
+      },
+    });
+    this.mirrorDownloadPatched = true;
   }
 
   async checkForUpdates(): Promise<RuntimeUpdateCheckResult | null> {

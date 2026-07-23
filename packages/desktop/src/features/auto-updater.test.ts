@@ -16,11 +16,41 @@ vi.mock("electron-updater", () => ({
 
 import {
   bucketFromStagingUserId,
+  detectMainlandChinaPreferMirrors,
   resolveStagingUserId,
   rolloutManifestSchema,
   shouldAdmitToRollout,
   shouldInstallAppUpdateOnQuit,
 } from "./auto-updater";
+
+describe("detectMainlandChinaPreferMirrors", () => {
+  it("returns true for Shanghai timezone or zh-CN locale", () => {
+    expect(
+      detectMainlandChinaPreferMirrors({
+        locale: "en-US",
+        locales: ["en-US"],
+        timeZone: "Asia/Shanghai",
+      }),
+    ).toBe(true);
+    expect(
+      detectMainlandChinaPreferMirrors({
+        locale: "zh-CN",
+        locales: ["zh-CN"],
+        timeZone: "UTC",
+      }),
+    ).toBe(true);
+  });
+
+  it("returns false for non-CN locale and timezone", () => {
+    expect(
+      detectMainlandChinaPreferMirrors({
+        locale: "en-US",
+        locales: ["en-US"],
+        timeZone: "America/New_York",
+      }),
+    ).toBe(false);
+  });
+});
 
 describe("shouldInstallAppUpdateOnQuit", () => {
   it("keeps Linux AppImage updates on the manual install path", () => {
