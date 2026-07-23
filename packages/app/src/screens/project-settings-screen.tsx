@@ -11,6 +11,7 @@ import { HostPicker as SharedHostPicker, HostStatusDotSlot } from "@/components/
 import type {
   PaseoConfigRaw,
   PaseoConfigRevision,
+  ProjectAppearance,
   ProjectConfigRpcError,
 } from "@getpaseo/protocol/messages";
 import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
@@ -31,8 +32,10 @@ import { SettingsGroup } from "@/screens/settings/settings-group";
 import { SettingsSection } from "@/screens/settings/settings-section";
 import { settingsStyles } from "@/styles/settings";
 import { useProjects } from "@/hooks/use-projects";
-import { useProjectIconDataByProjectKey } from "@/projects/project-icons";
+import { useProjectIcons } from "@/projects/icons";
+import { ProjectAppearanceSection } from "@/screens/project-settings/appearance-section";
 import { useHostRuntimeClient, useHostRuntimeSnapshot } from "@/runtime/host-runtime";
+import { useHostFeature } from "@/runtime/host-features";
 import { useToast } from "@/contexts/toast-context";
 import { confirmDialog } from "@/utils/confirm-dialog";
 import {
@@ -207,20 +210,46 @@ function ProjectSettingsBody({
   });
 
   const data = readQuery.data;
+  const supportsAppearance = useHostFeature(selectedHost.serverId, "projectAppearance");
+  const appearanceKey = `${selectedHost.serverId}:${selectedHost.projectAppearance?.revision ?? "automatic"}`;
+  const [colorPreview, setColorPreview] = useState<{
+    appearanceKey: string;
+    color: string | null;
+  } | null>(null);
+  const previewColor =
+    colorPreview?.appearanceKey === appearanceKey
+      ? colorPreview.color
+      : (selectedHost.projectAppearance?.color ?? null);
+  const previewAppearance = useMemo<ProjectAppearance>(
+    () => ({
+      icon: selectedHost.projectAppearance?.icon ?? { type: "automatic" },
+      color: previewColor,
+      revision: selectedHost.projectAppearance?.revision ?? "preview",
+    }),
+    [previewColor, selectedHost.projectAppearance],
+  );
+  const handleColorPreview = useCallback(
+    (color: string | null) => setColorPreview({ appearanceKey, color }),
+    [appearanceKey],
+  );
   const projectIconTargets = useMemo(
     () => [
       {
         serverId: selectedHost.serverId,
         projectKey: project.projectKey,
         iconWorkingDir: selectedHost.repoRoot,
+        projectAppearance: selectedHost.projectAppearance,
       },
     ],
-    [project.projectKey, selectedHost.repoRoot, selectedHost.serverId],
+    [
+      project.projectKey,
+      selectedHost.projectAppearance,
+      selectedHost.repoRoot,
+      selectedHost.serverId,
+    ],
   );
-  const projectIconDataByKey = useProjectIconDataByProjectKey({
-    projects: projectIconTargets,
-  });
-  const projectIconDataUri = projectIconDataByKey.get(project.projectKey) ?? null;
+  const projectIcons = useProjectIcons({ projects: projectIconTargets });
+  const projectIconDataUri = projectIcons.get(project.projectKey) ?? null;
   const loadedConfig: PaseoConfigRaw | null = data?.ok ? (data.config ?? {}) : null;
   const loadedRevision: PaseoConfigRevision | null = data?.ok ? data.revision : null;
   const readError: ProjectConfigRpcError | null = data && !data.ok ? data.error : null;
@@ -241,11 +270,23 @@ function ProjectSettingsBody({
             iconDataUri={projectIconDataUri}
             projectName={project.projectName}
             projectKey={project.projectKey}
+            appearance={previewAppearance}
           />
           <ProjectNameEditor project={project} client={client} />
         </View>
         <HostContext hosts={hosts} selectedHost={selectedHost} onSelectHost={onSelectHost} />
       </View>
+
+      {supportsAppearance ? (
+        <ProjectAppearanceSection
+          key={appearanceKey}
+          projectId={project.projectKey}
+          serverId={selectedHost.serverId}
+          appearance={selectedHost.projectAppearance}
+          client={client}
+          onColorPreview={handleColorPreview}
+        />
+      ) : null}
 
       {renderContent({
         readQuery,
@@ -915,10 +956,12 @@ function ProjectTitleIcon({
   iconDataUri,
   projectName,
   projectKey,
+  appearance,
 }: {
   iconDataUri: string | null;
   projectName: string;
   projectKey: string;
+  appearance: ProjectHostEntry["projectAppearance"];
 }) {
   const initial = projectName.trim().charAt(0).toUpperCase() || "?";
   return (
@@ -926,6 +969,7 @@ function ProjectTitleIcon({
       iconDataUri={iconDataUri}
       initial={initial}
       projectKey={projectKey}
+      appearance={appearance}
       imageStyle={styles.titleIcon}
       fallbackStyle={styles.titleIconFallback}
       textStyle={styles.titleIconFallbackText}

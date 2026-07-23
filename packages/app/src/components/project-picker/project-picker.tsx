@@ -12,7 +12,7 @@ import {
   getHostProjectSourceDirectory,
   type HostProjectListItem,
 } from "@/projects/host-projects";
-import { useProjectIconDataByProjectKey } from "@/projects/project-icons";
+import { useProjectIcons } from "@/projects/icons";
 import { ProjectPickerAddProjectRow } from "@/screens/new-workspace-add-project-row";
 import type { Theme } from "@/styles/theme";
 import { projectIconPlaceholderLabelFromDisplayName } from "@/utils/project-display-name";
@@ -222,11 +222,14 @@ export function ProjectPicker({
         if (!iconWorkingDir) {
           return [];
         }
-        return [{ serverId, projectKey: project.projectKey, iconWorkingDir }];
+        const projectAppearance = project.hosts.find(
+          (host) => host.serverId === serverId,
+        )?.projectAppearance;
+        return [{ serverId, projectKey: project.projectKey, iconWorkingDir, projectAppearance }];
       }),
     [projects, serverId],
   );
-  const projectIconDataByProjectKey = useProjectIconDataByProjectKey({
+  const projectIconDataByProjectKey = useProjectIcons({
     projects: projectIconTargets,
   });
 

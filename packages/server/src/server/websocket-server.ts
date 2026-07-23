@@ -253,11 +253,13 @@ function createNoopProjectRegistry(): ProjectRegistry {
       kind: input.kind,
       displayName: input.displayName,
       customName: null,
+      appearance: null,
       createdAt: input.timestamp,
       updatedAt: input.timestamp,
       archivedAt: null,
     }),
     upsert: async () => {},
+    update: async () => null,
     archive: async () => {},
     remove: async () => {},
   };
@@ -1682,6 +1684,8 @@ export class VoiceAssistantWebSocketServer {
         opencodeSessionDiff: true,
         // COMPAT(agentNativeFork): added in v0.2.0, remove gate after 2027-01-18.
         agentNativeFork: true,
+        // COMPAT(projectAppearance): added in v0.2.0, remove after 2027-01-20.
+        projectAppearance: true,
       },
     };
   }

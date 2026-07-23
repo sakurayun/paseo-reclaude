@@ -21,6 +21,7 @@ export interface ProjectHostEntry {
   workspaces: WorkspaceSummary[];
   gitRuntime?: WorkspaceDescriptor["gitRuntime"];
   githubRuntime?: WorkspaceDescriptor["githubRuntime"];
+  projectAppearance?: WorkspaceDescriptor["projectAppearance"];
 }
 
 export interface ProjectSummary {
@@ -58,6 +59,7 @@ interface HostGroup {
   serverName: string;
   isOnline: boolean;
   workspaces: WorkspaceDescriptor[];
+  projectAppearance?: WorkspaceDescriptor["projectAppearance"];
   // Repo root for a project parent that has no workspaces yet. Without it the
   // host's repoRoot resolves to "" and the project reads as non-editable.
   fallbackRepoRoot: string;
@@ -144,6 +146,7 @@ function toHostEntry(group: HostGroup): ProjectHostEntry {
     workspaces: group.workspaces.map(toWorkspaceSummary),
     gitRuntime: canonical?.gitRuntime,
     githubRuntime: canonical?.githubRuntime,
+    projectAppearance: canonical?.projectAppearance ?? group.projectAppearance,
   };
 }
 
@@ -203,6 +206,9 @@ export function buildProjects(input: BuildProjectsInput): BuildProjectsResult {
           serverName: host.serverName,
           isOnline: host.isOnline,
           workspaces: [],
+          projectAppearance: hostProject.hosts.find(
+            (placement) => placement.serverId === host.serverId,
+          )?.projectAppearance,
           fallbackRepoRoot: emptyRepoRootByProjectKey.get(hostProject.projectKey) ?? "",
         });
       }

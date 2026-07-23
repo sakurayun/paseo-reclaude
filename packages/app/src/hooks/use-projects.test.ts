@@ -225,6 +225,7 @@ describe("deriveProjectsFromReplica", () => {
       "gitRuntime",
       "githubRuntime",
       "isOnline",
+      "projectAppearance",
       "repoRoot",
       "serverId",
       "serverName",

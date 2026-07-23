@@ -7,7 +7,7 @@ import { useTranslation } from "react-i18next";
 import { ProjectIconView } from "@/components/project-icon-view";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { useProjects, type ProjectHostError } from "@/hooks/use-projects";
-import { useProjectIconDataByProjectKey } from "@/projects/project-icons";
+import { useProjectIcons } from "@/projects/icons";
 import { settingsStyles } from "@/styles/settings";
 import { buildProjectSettingsRoute } from "@/utils/host-routes";
 import type { ProjectSummary } from "@/utils/projects";
@@ -30,12 +30,13 @@ export default function ProjectsScreen({ view }: ProjectsScreenProps) {
             serverId: host.serverId,
             projectKey: project.projectKey,
             iconWorkingDir: host.repoRoot,
+            projectAppearance: host.projectAppearance,
           },
         ];
       }),
     [projects],
   );
-  const iconDataByProjectKey = useProjectIconDataByProjectKey({
+  const iconDataByProjectKey = useProjectIcons({
     projects: iconTargets,
   });
 
@@ -132,6 +133,7 @@ function ProjectRow({ project, isFirst, isSelected, iconDataUri }: ProjectRowPro
             iconDataUri={iconDataUri}
             projectName={projectName}
             projectKey={projectKey}
+            appearance={project.hosts[0]?.projectAppearance}
           />
         </View>
         <Text style={settingsStyles.rowTitle} numberOfLines={1}>
@@ -147,10 +149,12 @@ function ProjectRowIcon({
   iconDataUri,
   projectName,
   projectKey,
+  appearance,
 }: {
   iconDataUri: string | null;
   projectName: string;
   projectKey: string;
+  appearance: ProjectSummary["hosts"][number]["projectAppearance"];
 }) {
   const initial = projectName.trim().charAt(0).toUpperCase() || "?";
   return (
@@ -158,6 +162,7 @@ function ProjectRowIcon({
       iconDataUri={iconDataUri}
       initial={initial}
       projectKey={projectKey}
+      appearance={appearance}
       imageStyle={styles.iconImage}
       fallbackStyle={styles.iconFallback}
       textStyle={styles.iconFallbackText}

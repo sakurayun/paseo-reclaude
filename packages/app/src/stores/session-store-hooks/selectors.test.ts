@@ -299,6 +299,7 @@ describe("workspace structure composition", () => {
       projectId: "project-a",
       projectDisplayName: "Project A",
       projectCustomName: null,
+      projectAppearance: null,
       projectRootPath: "/repo/a",
       projectKind: "git",
     };

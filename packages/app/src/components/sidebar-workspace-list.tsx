@@ -55,7 +55,7 @@ import {
 import { useSidebarCollapsedSectionsStore } from "@/stores/sidebar-collapsed-sections-store";
 import { useHostFeatureMap } from "@/runtime/host-features";
 import { useIsCompactFormFactor } from "@/constants/layout";
-import { useProjectIconDataByProjectKey } from "@/projects/project-icons";
+import { useProjectIcons } from "@/projects/icons";
 import {
   buildNewWorkspaceRoute,
   buildProjectSettingsRoute,
@@ -443,6 +443,7 @@ function ProjectLeadingVisual({
   iconDataUri,
   workspace,
   projectKey,
+  appearance,
   chevron = null,
   isArchiving = false,
 }: {
@@ -450,6 +451,7 @@ function ProjectLeadingVisual({
   iconDataUri: string | null;
   workspace: SidebarWorkspaceEntry | null;
   projectKey: string;
+  appearance?: SidebarProjectHostTarget["projectAppearance"];
   chevron?: "expand" | "collapse" | null;
   isArchiving?: boolean;
 }) {
@@ -475,6 +477,7 @@ function ProjectLeadingVisual({
           iconDataUri={iconDataUri}
           placeholderInitial={placeholderInitial}
           projectKey={projectKey}
+          appearance={appearance}
         />
       </View>
     );
@@ -486,6 +489,7 @@ function ProjectLeadingVisual({
       iconDataUri={iconDataUri}
       placeholderInitial={placeholderInitial}
       projectKey={projectKey}
+      appearance={appearance}
       isArchiving={isArchiving}
       shouldShowSyncedLoader={shouldShowSyncedLoader}
       activeWorkspace={activeWorkspace}
@@ -723,16 +727,19 @@ function ProjectIcon({
   iconDataUri,
   placeholderInitial,
   projectKey,
+  appearance,
 }: {
   iconDataUri: string | null;
   placeholderInitial: string;
   projectKey: string;
+  appearance?: SidebarProjectHostTarget["projectAppearance"];
 }) {
   return (
     <ProjectIconView
       iconDataUri={iconDataUri}
       initial={placeholderInitial}
       projectKey={projectKey}
+      appearance={appearance}
       imageStyle={styles.projectIcon}
       fallbackStyle={styles.projectIconFallback}
       textStyle={styles.projectIconFallbackText}
@@ -745,6 +752,7 @@ function ProjectLeadingVisualStatus({
   iconDataUri,
   placeholderInitial,
   projectKey,
+  appearance,
   isArchiving,
   shouldShowSyncedLoader,
   activeWorkspace,
@@ -753,6 +761,7 @@ function ProjectLeadingVisualStatus({
   iconDataUri: string | null;
   placeholderInitial: string;
   projectKey: string;
+  appearance?: SidebarProjectHostTarget["projectAppearance"];
   isArchiving: boolean;
   shouldShowSyncedLoader: boolean;
   activeWorkspace: SidebarWorkspaceEntry;
@@ -796,6 +805,7 @@ function ProjectLeadingVisualStatus({
         iconDataUri={iconDataUri}
         placeholderInitial={placeholderInitial}
         projectKey={projectKey}
+        appearance={appearance}
       />
       {dotColorStyle ? (
         <StatusDotOverlay
@@ -1038,6 +1048,7 @@ function ProjectHeaderRow({
           iconDataUri={iconDataUri}
           workspace={workspace}
           projectKey={project.projectKey}
+          appearance={project.hosts[0]?.projectAppearance}
           chevron={chevron}
           isArchiving={isArchiving}
         />
@@ -2127,7 +2138,7 @@ function ProjectModeList({
     [parentGestureRef],
   );
 
-  const projectIconByProjectKey = useProjectIconDataByProjectKey({
+  const projectIconByProjectKey = useProjectIcons({
     projects: projectIconTargets,
   });
 

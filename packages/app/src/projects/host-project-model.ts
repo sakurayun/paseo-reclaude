@@ -89,6 +89,7 @@ export function hostProjectFromWorkspace(input: {
         serverId: input.serverId,
         iconWorkingDir,
         canCreateWorktree: canCreate,
+        projectAppearance: input.workspace.projectAppearance,
       },
     ],
     workspaceKeys: [`${input.serverId}:${input.workspace.id}`],

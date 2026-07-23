@@ -848,11 +848,29 @@ export const UpdateAgentRequestMessageSchema = z.object({
   requestId: z.string(),
 });
 
+export const ProjectAppearancePayloadSchema = z.object({
+  icon: z.discriminatedUnion("type", [
+    z.object({ type: z.literal("automatic") }),
+    z.object({ type: z.literal("favicon"), url: z.string() }),
+    z.object({ type: z.literal("custom"), text: z.string() }),
+  ]),
+  color: z.string().nullable(),
+  revision: z.string(),
+});
+
 export const ProjectRenameRequestSchema = z.object({
   type: z.literal("project.rename.request"),
   projectId: z.string(),
   // Null or empty string clears the override and reverts to the derived name.
   customName: z.string().nullable(),
+  requestId: z.string(),
+});
+
+export const ProjectAppearanceSetRequestSchema = z.object({
+  type: z.literal("project.appearance.set.request"),
+  projectId: z.string(),
+  icon: ProjectAppearancePayloadSchema.shape.icon,
+  color: z.string().nullable(),
   requestId: z.string(),
 });
 
@@ -1764,6 +1782,17 @@ export const ProjectRenameResponsePayloadSchema = z.object({
 export const ProjectRenameResponseSchema = z.object({
   type: z.literal("project.rename.response"),
   payload: ProjectRenameResponsePayloadSchema,
+});
+
+export const ProjectAppearanceSetResponseSchema = z.object({
+  type: z.literal("project.appearance.set.response"),
+  payload: z.object({
+    requestId: z.string(),
+    projectId: z.string(),
+    accepted: z.boolean(),
+    appearance: ProjectAppearancePayloadSchema.nullable(),
+    error: z.string().nullable(),
+  }),
 });
 
 export const ProjectRemoveResponsePayloadSchema = z.object({
@@ -2719,6 +2748,12 @@ export const FileWriteRequestSchema = z.object({
 export const ProjectIconRequestSchema = z.object({
   type: z.literal("project_icon_request"),
   cwd: z.string(),
+  requestId: z.string(),
+});
+
+export const ProjectIconGetRequestSchema = z.object({
+  type: z.literal("project.icon.get.request"),
+  projectId: z.string(),
   requestId: z.string(),
 });
 
@@ -3798,6 +3833,7 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   CloseItemsRequestMessageSchema,
   UpdateAgentRequestMessageSchema,
   ProjectRenameRequestSchema,
+  ProjectAppearanceSetRequestSchema,
   ProjectRemoveRequestSchema,
   WorkspaceTitleSetRequestSchema,
   WorkspacePinSetRequestSchema,
@@ -3931,6 +3967,7 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   FileUnsubscribeRequestSchema,
   FileWriteRequestSchema,
   ProjectIconRequestSchema,
+  ProjectIconGetRequestSchema,
   FileDownloadTokenRequestSchema,
   FileUploadRequestSchema,
   ClearAgentAttentionMessageSchema,
@@ -4296,6 +4333,8 @@ export const ServerInfoStatusPayloadSchema = z
         opencodeSessionDiff: z.boolean().optional(),
         // COMPAT(agentNativeFork): added in v0.2.0, remove gate after 2027-01-18.
         agentNativeFork: z.boolean().optional(),
+        // COMPAT(projectAppearance): added in v0.2.0, remove after 2027-01-20.
+        projectAppearance: z.boolean().optional(),
       })
       .optional(),
   })
@@ -4573,6 +4612,8 @@ export const WorkspaceDescriptorPayloadSchema = z
     // value (customName) and projectCustomName mirrors the raw override so the
     // settings UI can prefill its input and offer a "reset" action.
     projectCustomName: z.string().nullable().optional(),
+    // COMPAT(projectAppearance): added in v0.2.0, remove after 2027-01-20.
+    projectAppearance: ProjectAppearancePayloadSchema.nullable().optional(),
     projectRootPath: z.string(),
     workspaceDirectory: z.string().optional(),
     projectKind: z.enum(["git", "non_git", "directory"]),
@@ -4709,6 +4750,8 @@ export const WorkspaceProjectDescriptorPayloadSchema = z.object({
   projectId: z.string(),
   projectDisplayName: z.string(),
   projectCustomName: z.string().nullable().optional(),
+  // COMPAT(projectAppearance): added in v0.2.0, remove after 2027-01-20.
+  projectAppearance: ProjectAppearancePayloadSchema.nullable().optional(),
   projectRootPath: z.string(),
   projectKind: z.enum(["git", "non_git", "directory"]),
 });
@@ -6543,6 +6586,16 @@ export const ProjectIconResponseSchema = z.object({
   }),
 });
 
+export const ProjectIconGetResponseSchema = z.object({
+  type: z.literal("project.icon.get.response"),
+  payload: z.object({
+    projectId: z.string(),
+    icon: ProjectIconSchema.nullable(),
+    error: z.string().nullable(),
+    requestId: z.string(),
+  }),
+});
+
 export const FileDownloadTokenResponseSchema = z.object({
   type: z.literal("file_download_token_response"),
   payload: z.object({
@@ -7345,6 +7398,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   AgentRewindResponseMessageSchema,
   UpdateAgentResponseMessageSchema,
   ProjectRenameResponseSchema,
+  ProjectAppearanceSetResponseSchema,
   ProjectRemoveResponseSchema,
   WorkspaceTitleSetResponseSchema,
   WorkspacePinSetResponseSchema,
@@ -7405,6 +7459,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   FileWriteResponseSchema,
   FileUpdateSchema,
   ProjectIconResponseSchema,
+  ProjectIconGetResponseSchema,
   FileDownloadTokenResponseSchema,
   FileUploadResponseSchema,
   ListProviderModelsResponseMessageSchema,
@@ -7596,6 +7651,7 @@ export type AgentDetachResponseMessage = z.infer<typeof AgentDetachResponseMessa
 export type AgentRewindResponseMessage = z.infer<typeof AgentRewindResponseMessageSchema>;
 export type UpdateAgentResponseMessage = z.infer<typeof UpdateAgentResponseMessageSchema>;
 export type ProjectRenameResponse = z.infer<typeof ProjectRenameResponseSchema>;
+export type ProjectAppearanceSetResponse = z.infer<typeof ProjectAppearanceSetResponseSchema>;
 export type ProjectRemoveResponse = z.infer<typeof ProjectRemoveResponseSchema>;
 export type WorkspaceTitleSetResponse = z.infer<typeof WorkspaceTitleSetResponseSchema>;
 export type WorkspaceTitleSetResponsePayload = z.infer<
@@ -7766,7 +7822,9 @@ export type LoopStopRequest = z.infer<typeof LoopStopRequestSchema>;
 export type ResumeAgentRequestMessage = z.infer<typeof ResumeAgentRequestMessageSchema>;
 export type DeleteAgentRequestMessage = z.infer<typeof DeleteAgentRequestMessageSchema>;
 export type UpdateAgentRequestMessage = z.infer<typeof UpdateAgentRequestMessageSchema>;
+export type ProjectAppearance = z.infer<typeof ProjectAppearancePayloadSchema>;
 export type ProjectRenameRequest = z.infer<typeof ProjectRenameRequestSchema>;
+export type ProjectAppearanceSetRequest = z.infer<typeof ProjectAppearanceSetRequestSchema>;
 export type ProjectRemoveRequest = z.infer<typeof ProjectRemoveRequestSchema>;
 export type WorkspaceTitleSetRequest = z.infer<typeof WorkspaceTitleSetRequestSchema>;
 export type WorkspacePinSetRequest = z.infer<typeof WorkspacePinSetRequestSchema>;
@@ -7938,6 +7996,8 @@ export type FileUpdate = z.infer<typeof FileUpdateSchema>;
 
 export type ProjectIconRequest = z.infer<typeof ProjectIconRequestSchema>;
 export type ProjectIconResponse = z.infer<typeof ProjectIconResponseSchema>;
+export type ProjectIconGetRequest = z.infer<typeof ProjectIconGetRequestSchema>;
+export type ProjectIconGetResponse = z.infer<typeof ProjectIconGetResponseSchema>;
 export type ProjectIcon = z.infer<typeof ProjectIconSchema>;
 export type FileDownloadTokenRequest = z.infer<typeof FileDownloadTokenRequestSchema>;
 export type FileDownloadTokenResponse = z.infer<typeof FileDownloadTokenResponseSchema>;

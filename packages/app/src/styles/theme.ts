@@ -1417,3 +1417,16 @@ export const THEME_SWATCHES: Record<ThemeName, string> = {
   catppuccinMacchiato: CATPPUCCIN_MACCHIATO.mauve,
   catppuccinMocha: CATPPUCCIN_MOCHA.mauve,
 };
+
+export const PROJECT_ICON_COLORS = [
+  "#8b5cf6",
+  "#0ea5e9",
+  "#10b981",
+  "#f97316",
+  "#ec4899",
+  "#6366f1",
+  "#14b8a6",
+  "#ef4444",
+  "#eab308",
+  "#3b82f6",
+] as const;

@@ -5,6 +5,7 @@ export interface WorkspaceStructureHostPlacement {
   serverId: string;
   iconWorkingDir: string;
   canCreateWorktree: boolean;
+  projectAppearance?: WorkspaceDescriptor["projectAppearance"];
 }
 
 export interface WorkspaceStructureProject {
@@ -79,6 +80,7 @@ export function buildWorkspaceStructureProjects(input: {
         serverId: session.serverId,
         iconWorkingDir: emptyProject.projectRootPath,
         canCreateWorktree: canCreateWorktreeForProjectKind(emptyProject.projectKind),
+        projectAppearance: emptyProject.projectAppearance,
       };
       const existing = byProject.get(projectKey);
 
@@ -120,6 +122,7 @@ export function buildWorkspaceStructureProjects(input: {
                 serverId: session.serverId,
                 iconWorkingDir: workspace.projectRootPath,
                 canCreateWorktree: canCreateWorktreeForProjectKind(workspace.projectKind),
+                projectAppearance: workspace.projectAppearance,
               },
             ],
           ]),
@@ -138,6 +141,7 @@ export function buildWorkspaceStructureProjects(input: {
         serverId: session.serverId,
         iconWorkingDir: workspace.projectRootPath,
         canCreateWorktree: canCreateWorktreeForProjectKind(workspace.projectKind),
+        projectAppearance: workspace.projectAppearance,
       });
       existing.workspaces.push({
         workspaceId: workspace.id,

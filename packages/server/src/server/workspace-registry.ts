@@ -2,6 +2,7 @@ import { promises as fs } from "node:fs";
 
 import type { Logger } from "pino";
 import { z } from "zod";
+import { ProjectAppearancePayloadSchema } from "@getpaseo/protocol/messages";
 
 import { writeJsonFileAtomic } from "./atomic-file.js";
 import { areEquivalentPaths } from "../utils/path.js";
@@ -21,6 +22,9 @@ const PersistedProjectRecordSchema = z.object({
   customName: z
     .string()
     .nullable()
+    .optional()
+    .transform((value) => value ?? null),
+  appearance: ProjectAppearancePayloadSchema.nullable()
     .optional()
     .transform((value) => value ?? null),
   createdAt: z.string(),
@@ -75,6 +79,7 @@ const PersistedWorkspaceRecordSchema = z.object({
     .transform((value) => value ?? null),
 });
 
+export type PersistedProjectAppearance = z.infer<typeof ProjectAppearancePayloadSchema>;
 export type PersistedProjectRecord = z.infer<typeof PersistedProjectRecordSchema>;
 export type PersistedWorkspaceRecord = z.infer<typeof PersistedWorkspaceRecordSchema>;
 
@@ -90,6 +95,10 @@ export interface ProjectRegistry {
     timestamp: string;
   }): Promise<PersistedProjectRecord>;
   upsert(record: PersistedProjectRecord): Promise<void>;
+  update(
+    projectId: string,
+    updater: (record: PersistedProjectRecord) => PersistedProjectRecord,
+  ): Promise<PersistedProjectRecord | null>;
   archive(projectId: string, archivedAt: string): Promise<void>;
   remove(projectId: string): Promise<void>;
   /** Central lifecycle seam for daemon-global project observers. */
@@ -347,6 +356,16 @@ export class FileBackedProjectRegistry
     await this.notifyMutation({ kind: "upsert", projectId: record.projectId, project: record });
   }
 
+  override async update(
+    projectId: string,
+    updater: (record: PersistedProjectRecord) => PersistedProjectRecord,
+  ): Promise<PersistedProjectRecord | null> {
+    const project = await super.update(projectId, updater);
+    if (!project) return null;
+    await this.notifyMutation({ kind: "upsert", projectId, project });
+    return project;
+  }
+
   override async archive(projectId: string, archivedAt: string): Promise<void> {
     const project = await this.archiveIfActive(projectId, archivedAt);
     if (!project) return;
@@ -389,6 +408,7 @@ export function createPersistedProjectRecord(input: {
   kind: PersistedProjectKind;
   displayName: string;
   customName?: string | null;
+  appearance?: PersistedProjectAppearance | null;
   createdAt: string;
   updatedAt: string;
   archivedAt?: string | null;
@@ -396,6 +416,7 @@ export function createPersistedProjectRecord(input: {
   return PersistedProjectRecordSchema.parse({
     ...input,
     customName: input.customName ?? null,
+    appearance: input.appearance ?? null,
     archivedAt: input.archivedAt ?? null,
   });
 }
