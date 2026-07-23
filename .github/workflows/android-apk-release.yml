@@ -23,6 +23,11 @@ env:
   # arm64-only + modest Gradle heap keeps the runner under RAM pressure while
   # hermesc runs (same knobs as the former free-tier EAS APK path).
   PASEO_APK_LOW_MEM: "1"
+  # Install the SDK under the workspace (runner-owned). Free-disk-space deletes
+  # the system /usr/local/lib/android tree; setup-android cannot recreate it
+  # without root (EACCES mkdir).
+  ANDROID_HOME: ${{ github.workspace }}/.android-sdk
+  ANDROID_SDK_ROOT: ${{ github.workspace }}/.android-sdk
 
 jobs:
   publish-android-apk:
@@ -36,7 +41,7 @@ jobs:
       # Tag push: build exactly that tag.
       # workflow_dispatch: build the workflow ref (usually main, where the local
       # Gradle scripts live) and still attach the APK to inputs.tag's release.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
           ref: ${{ github.event_name == 'workflow_dispatch' && github.sha || github.ref }}
@@ -75,6 +80,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # Drop large preinstalled toolchains we do not use. Keep the workspace
+          # free for our own ANDROID_HOME under $GITHUB_WORKSPACE/.android-sdk.
           sudo rm -rf \
             /usr/share/dotnet \
             /usr/local/lib/android \
@@ -84,7 +91,7 @@ jobs:
           df -h
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: "22"
           cache: "npm"
@@ -92,25 +99,35 @@ jobs:
           scope: "@boudra"
 
       - name: Setup Java
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "21"
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Install Android SDK packages
+      - name: Prepare Android SDK home
         shell: bash
         run: |
           set -euo pipefail
-          # Match react-native 0.81 pins (libs.versions.toml) + common cmdline tools.
-          yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager \
-            "platform-tools" \
-            "platforms;android-36" \
-            "build-tools;36.0.0" \
-            "ndk;27.1.12297006"
+          mkdir -p "$ANDROID_HOME"
+          echo "ANDROID_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT" >> "$GITHUB_ENV"
+          echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
+          echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
+
+      # v4 runs on Node 24 (avoids the Node 20 deprecation path on runners).
+      # ANDROID_HOME is workspace-local so this works after free-disk-space removes
+      # the system /usr/local/lib/android directory.
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          accept-android-sdk-licenses: true
+          log-accepted-android-sdk-licenses: false
+          # Match react-native 0.81 pins (libs.versions.toml).
+          packages: >-
+            platform-tools
+            platforms;android-36
+            build-tools;36.0.0
+            ndk;27.1.12297006
 
       - name: Install JS dependencies
         run: node scripts/npm-retry.mjs ci
