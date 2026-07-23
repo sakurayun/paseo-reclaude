@@ -1977,6 +1977,13 @@ export const es: TranslationResources = {
       loading: "Cargando archivo...",
       noPreview: "No hay vista previa disponible",
       binaryPreviewUnavailable: "Vista previa binaria no disponible",
+      download: "Descargar",
+      directoryOpenedInExplorer:
+        "Esta ruta es una carpeta. Se muestra en el explorador de archivos.",
+      openInExplorer: "Abrir en el explorador de archivos",
+      loadingDirectory: "Cargando directorio...",
+      emptyDirectory: "Esta carpeta está vacía",
+      failedToLoadDirectory: "No se pudo cargar el directorio",
       failedToLoad: "No se pudo cargar el archivo",
       failedToLoadPreview: "No se pudo cargar la vista previa del archivo",
       editor: {

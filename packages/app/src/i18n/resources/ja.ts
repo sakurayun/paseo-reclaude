@@ -1948,6 +1948,13 @@ export const ja: TranslationResources = {
       loading: "ファイルを読み込み中...",
       noPreview: "プレビューが利用できません",
       binaryPreviewUnavailable: "バイナリプレビューが利用できません",
+      download: "ダウンロード",
+      directoryOpenedInExplorer:
+        "このパスはフォルダーです。ファイルエクスプローラーで表示しています。",
+      openInExplorer: "ファイルエクスプローラーで開く",
+      loadingDirectory: "ディレクトリを読み込み中...",
+      emptyDirectory: "このフォルダーは空です",
+      failedToLoadDirectory: "ディレクトリの読み込みに失敗しました",
       failedToLoad: "ファイルの読み込みに失敗しました",
       failedToLoadPreview: "ファイルプレビューの読み込みに失敗しました",
       editor: {

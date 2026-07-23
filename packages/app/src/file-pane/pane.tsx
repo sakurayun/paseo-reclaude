@@ -31,12 +31,16 @@ import { useAttachmentPreviewUrl } from "@/attachments/use-attachment-preview-ur
 import { persistAttachmentFromBytes } from "@/attachments/service";
 import { createPreviewAttachmentId, getFileNameFromPath } from "@/attachments/utils";
 import { explorerFileFromReadResult } from "@/file-explorer/read-result";
-import { resolveFilePreviewReadTarget } from "@/file-explorer/preview-target";
 import type { WorkspaceFileLocation } from "@/workspace/file-open";
+import {
+  ancestorExplorerPaths,
+  isNotAFileError,
+  toWorkspaceRelativePath,
+} from "@/workspace/classify-workspace-path";
 import { useRetainedPanelActive } from "@/components/retained-panel";
 import { useAppActivelyVisible } from "@/hooks/use-app-visible";
 import { isFileQueryEnabled } from "@/components/file-pane-enabled";
-import { isWeb } from "@/constants/platform";
+import { getIsElectron, isWeb } from "@/constants/platform";
 import { useAppSettings } from "@/hooks/use-settings";
 import { useLiveFile } from "./live-file";
 import { FilePanelBar } from "./bar";
@@ -44,6 +48,19 @@ import { FileEditorModel, type FileEditorFile } from "./editor/model";
 import { FileEditorView } from "./editor/view";
 import { confirmDialog } from "@/utils/confirm-dialog";
 import { usePublishPanelInstanceAttributes } from "@/panels/panel-instance-attributes";
+import { Button } from "@/components/ui/button";
+import { useFileDownload } from "@/hooks/use-file-download";
+import { useIsLocalDaemon } from "@/hooks/use-is-local-daemon";
+import { useFileExplorerActions } from "@/hooks/use-file-explorer-actions";
+import { usePanelStore } from "@/stores/panel-store";
+import { buildAbsoluteExplorerPath } from "@/utils/explorer-paths";
+import { revealItemInFolder } from "@/desktop/shell";
+import { isElectronRuntimeMac } from "@/desktop/host";
+import { useToast } from "@/contexts/toast-context";
+import { DirectoryBrowser } from "./directory-browser";
+import { usePaneContext } from "@/panels/pane-context";
+import { useFilePanePathRouting } from "./use-file-pane-path-routing";
+import { resolveDirectorySurfacePaths } from "./outside-path";
 
 interface CodeLineProps {
   tokens: HighlightToken[];
@@ -59,6 +76,9 @@ interface FilePreviewBodyProps {
   location: WorkspaceFileLocation;
   navigationRevision: number;
   imagePreviewUri: string | null;
+  onDownloadBinary?: () => void;
+  onRevealBinary?: () => void;
+  revealBinaryLabel?: string;
 }
 
 type TextExplorerFile = ExplorerFile & { kind: "text" };
@@ -210,6 +230,9 @@ function FilePreviewBody({
   location,
   navigationRevision,
   imagePreviewUri,
+  onDownloadBinary,
+  onRevealBinary,
+  revealBinaryLabel,
 }: FilePreviewBodyProps) {
   const theme = UnistylesRuntime.getTheme();
   const { t } = useTranslation();
@@ -371,20 +394,58 @@ function FilePreviewBody({
   }
 
   return (
-    <View style={styles.centerState}>
+    <BinaryFilePreview
+      size={preview.size}
+      onDownload={onDownloadBinary}
+      onReveal={onRevealBinary}
+      revealLabel={revealBinaryLabel}
+    />
+  );
+}
+
+function BinaryFilePreview({
+  size,
+  onDownload,
+  onReveal,
+  revealLabel,
+}: {
+  size: number;
+  onDownload?: () => void;
+  onReveal?: () => void;
+  revealLabel?: string;
+}) {
+  const { t } = useTranslation();
+  return (
+    <View style={styles.centerState} testID="file-binary-preview">
       <Text style={styles.emptyText}>{t("panels.file.binaryPreviewUnavailable")}</Text>
-      <Text style={styles.binaryMetaText}>{formatFileSize({ size: preview.size })}</Text>
+      <Text style={styles.binaryMetaText}>{formatFileSize({ size })}</Text>
+      {onDownload || onReveal ? (
+        <View style={styles.binaryActions}>
+          {onDownload ? (
+            <Button variant="outline" size="sm" onPress={onDownload} testID="file-binary-download">
+              {t("panels.file.download")}
+            </Button>
+          ) : null}
+          {onReveal ? (
+            <Button variant="outline" size="sm" onPress={onReveal} testID="file-binary-reveal">
+              {revealLabel ?? t("workspace.fileExplorer.context.revealInFiles")}
+            </Button>
+          ) : null}
+        </View>
+      ) : null}
     </View>
   );
 }
 
 export function FilePane({
   serverId,
+  workspaceId = null,
   workspaceRoot,
   location,
   navigationRevision,
 }: {
   serverId: string;
+  workspaceId?: string | null;
   workspaceRoot: string;
   location: WorkspaceFileLocation;
   navigationRevision: number;
@@ -405,16 +466,17 @@ export function FilePane({
   );
   const normalizedWorkspaceRoot = useMemo(() => workspaceRoot.trim(), [workspaceRoot]);
   const normalizedFilePath = useMemo(() => trimNonEmpty(location.path), [location.path]);
-  const readTarget = useMemo(
-    () =>
-      normalizedFilePath
-        ? resolveFilePreviewReadTarget({
-            path: normalizedFilePath,
-            workspaceRoot: normalizedWorkspaceRoot,
-          })
-        : null,
-    [normalizedFilePath, normalizedWorkspaceRoot],
-  );
+  const {
+    directoryRelativePath,
+    outsideAbsolutePath,
+    outsidePathKind,
+    browseAbsoluteDirectory,
+    readTarget,
+  } = useFilePanePathRouting({
+    client,
+    path: normalizedFilePath,
+    workspaceRoot: normalizedWorkspaceRoot,
+  });
 
   // Re-read the file when this pane becomes visible again (#445). `isActive`
   // covers tab switches; active app visibility covers backgrounding and returning
@@ -461,7 +523,35 @@ export function FilePane({
   });
   const lineCount =
     preview?.kind === "text" ? (preview.content ?? "").split("\n").length : undefined;
-  const errorMessage = getFileErrorMessage(query.error, t("panels.file.failedToLoad"));
+  const { activeAbsoluteDirectory, recoveredDirectoryPath } = resolveDirectorySurfacePaths({
+    directoryRelativePath,
+    outsideAbsolutePath,
+    browseAbsoluteDirectory,
+    directoryLoadError: isNotAFileError(query.error),
+    path: normalizedFilePath,
+    workspaceRoot: normalizedWorkspaceRoot,
+  });
+
+  const directorySurface = useDirectoryFileSurface({
+    serverId,
+    workspaceId,
+    workspaceRoot: normalizedWorkspaceRoot,
+    activeAbsoluteDirectory,
+    outsideAbsolutePath,
+    outsidePathKind,
+    recoveredDirectoryPath,
+  });
+
+  const binaryActions = useBinaryFileActions({
+    serverId,
+    workspaceId,
+    workspaceRoot: normalizedWorkspaceRoot,
+    filePath: normalizedFilePath,
+  });
+
+  if (directorySurface) {
+    return directorySurface;
+  }
 
   return (
     <FilePanePresentation
@@ -476,14 +566,237 @@ export function FilePane({
       lineCount={lineCount}
       editable={editable}
       disconnectedMessage={t("workspace.terminal.hostDisconnected")}
-      errorMessage={errorMessage}
+      errorMessage={getFileErrorMessage(query.error, t("panels.file.failedToLoad"))}
       isLoading={query.isFetching}
       isMobile={isMobile}
       location={location}
       navigationRevision={navigationRevision}
       imagePreviewUri={imagePreviewUri}
+      onDownloadBinary={binaryActions.onDownload}
+      onRevealBinary={binaryActions.onReveal}
+      revealBinaryLabel={binaryActions.revealLabel}
     />
   );
+}
+
+function useDirectoryFileSurface(input: {
+  serverId: string;
+  workspaceId?: string | null;
+  workspaceRoot: string;
+  activeAbsoluteDirectory: string | null;
+  outsideAbsolutePath: string | null;
+  outsidePathKind: string | null;
+  recoveredDirectoryPath: string | null;
+}): React.ReactElement | null {
+  const { t } = useTranslation();
+  const openDirectoryInExplorer = useOpenDirectoryInExplorer({
+    serverId: input.serverId,
+    workspaceId: input.workspaceId,
+    workspaceRoot: input.workspaceRoot,
+  });
+  const { openFileInWorkspace } = usePaneContext();
+
+  useEffect(() => {
+    if (!input.recoveredDirectoryPath) {
+      return;
+    }
+    openDirectoryInExplorer(input.recoveredDirectoryPath);
+  }, [input.recoveredDirectoryPath, openDirectoryInExplorer]);
+
+  const handleReopenDirectoryInExplorer = useCallback(() => {
+    if (!input.recoveredDirectoryPath) {
+      return;
+    }
+    openDirectoryInExplorer(input.recoveredDirectoryPath);
+  }, [input.recoveredDirectoryPath, openDirectoryInExplorer]);
+
+  const handleBrowseFile = useCallback(
+    (path: string) => {
+      openFileInWorkspace({
+        location: { path },
+        disposition: "main",
+      });
+    },
+    [openFileInWorkspace],
+  );
+
+  if (input.activeAbsoluteDirectory) {
+    return (
+      <View style={styles.container} testID="workspace-file-pane">
+        <DirectoryBrowser
+          serverId={input.serverId}
+          absolutePath={input.activeAbsoluteDirectory}
+          workspaceRoot={input.workspaceRoot}
+          onOpenFile={handleBrowseFile}
+        />
+      </View>
+    );
+  }
+
+  if (input.outsideAbsolutePath && input.outsidePathKind === "unknown") {
+    return (
+      <View style={styles.container} testID="workspace-file-pane">
+        <View style={styles.centerState}>
+          <ActivityIndicator size="small" />
+          <Text style={styles.loadingText}>{t("panels.file.loading")}</Text>
+        </View>
+      </View>
+    );
+  }
+
+  if (input.recoveredDirectoryPath != null) {
+    return (
+      <View style={styles.container} testID="workspace-file-pane">
+        <View style={styles.centerState} testID="file-directory-redirect">
+          <Text style={styles.emptyText}>{t("panels.file.directoryOpenedInExplorer")}</Text>
+          <View style={styles.binaryActions}>
+            <Button
+              variant="outline"
+              size="sm"
+              onPress={handleReopenDirectoryInExplorer}
+              testID="file-directory-open-explorer"
+            >
+              {t("panels.file.openInExplorer")}
+            </Button>
+          </View>
+        </View>
+      </View>
+    );
+  }
+
+  return null;
+}
+
+function useOpenDirectoryInExplorer(input: {
+  serverId: string;
+  workspaceId?: string | null;
+  workspaceRoot: string;
+}): (relativePath: string) => void {
+  const isMobile = useIsCompactFormFactor();
+  const openFileExplorerForCheckout = usePanelStore((state) => state.openFileExplorerForCheckout);
+  const setExplorerTabForCheckout = usePanelStore((state) => state.setExplorerTabForCheckout);
+  const setExpandedPathsForWorkspace = usePanelStore((state) => state.setExpandedPathsForWorkspace);
+  const { workspaceStateKey, requestDirectoryListing, selectExplorerEntry } =
+    useFileExplorerActions({
+      serverId: input.serverId,
+      workspaceId: input.workspaceId,
+      workspaceRoot: input.workspaceRoot,
+    });
+
+  return useCallback(
+    (relativePath: string) => {
+      const checkout = {
+        serverId: input.serverId,
+        cwd: input.workspaceRoot,
+        isGit: true,
+      };
+      const ancestors = ancestorExplorerPaths(relativePath);
+      if (workspaceStateKey && ancestors.length > 0) {
+        setExpandedPathsForWorkspace(workspaceStateKey, ancestors);
+      }
+      for (const ancestor of ancestors) {
+        void requestDirectoryListing(ancestor, {
+          recordHistory: false,
+          setCurrentPath: false,
+          silent: true,
+        });
+      }
+      void requestDirectoryListing(relativePath, {
+        recordHistory: true,
+        setCurrentPath: true,
+      });
+      selectExplorerEntry(relativePath === "." ? null : relativePath);
+      setExplorerTabForCheckout({ ...checkout, tab: "files" });
+      openFileExplorerForCheckout({
+        isCompact: isMobile,
+        checkout,
+      });
+    },
+    [
+      input.serverId,
+      input.workspaceRoot,
+      isMobile,
+      openFileExplorerForCheckout,
+      requestDirectoryListing,
+      selectExplorerEntry,
+      setExpandedPathsForWorkspace,
+      setExplorerTabForCheckout,
+      workspaceStateKey,
+    ],
+  );
+}
+
+function useBinaryFileActions(input: {
+  serverId: string;
+  workspaceId?: string | null;
+  workspaceRoot: string;
+  filePath: string | null;
+}): {
+  onDownload?: () => void;
+  onReveal?: () => void;
+  revealLabel: string;
+} {
+  const { t } = useTranslation();
+  const toast = useToast();
+  const isLocalDaemon = useIsLocalDaemon(input.serverId);
+  const canReveal = getIsElectron() && isLocalDaemon;
+  const downloadFile = useFileDownload({
+    serverId: input.serverId,
+    workspaceId: input.workspaceId,
+    workspaceRoot: input.workspaceRoot,
+  });
+  const downloadPath = useMemo(() => {
+    if (!input.filePath) {
+      return null;
+    }
+    return (
+      toWorkspaceRelativePath({
+        path: input.filePath,
+        workspaceRoot: input.workspaceRoot,
+      }) ?? input.filePath
+    );
+  }, [input.filePath, input.workspaceRoot]);
+
+  const onDownload = useCallback(() => {
+    if (!downloadPath) {
+      return;
+    }
+    downloadFile({
+      fileName: getFileNameFromPath(downloadPath) ?? downloadPath,
+      path: downloadPath,
+    });
+  }, [downloadFile, downloadPath]);
+
+  const onReveal = useCallback(() => {
+    if (!downloadPath) {
+      return;
+    }
+    void revealItemInFolder(
+      buildAbsoluteExplorerPath({
+        workspaceRoot: input.workspaceRoot,
+        entryPath: downloadPath,
+      }),
+    ).catch((error) => {
+      toast.error(error instanceof Error ? error.message : t("panels.file.failedToLoad"));
+    });
+  }, [downloadPath, input.workspaceRoot, t, toast]);
+
+  const revealLabel = useMemo(() => {
+    if (isElectronRuntimeMac()) {
+      return t("workspace.fileExplorer.context.revealInFinder");
+    }
+    const platform = typeof navigator !== "undefined" ? navigator.userAgent : "";
+    if (/Windows/i.test(platform)) {
+      return t("workspace.fileExplorer.context.revealInExplorer");
+    }
+    return t("workspace.fileExplorer.context.revealInFiles");
+  }, [t]);
+
+  return {
+    onDownload: downloadPath ? onDownload : undefined,
+    onReveal: canReveal && downloadPath ? onReveal : undefined,
+    revealLabel,
+  };
 }
 
 function isMarkdownPreview(preview: ExplorerFile | null, path: string): boolean {
@@ -525,6 +838,9 @@ function FilePanePresentation({
   location,
   navigationRevision,
   imagePreviewUri,
+  onDownloadBinary,
+  onRevealBinary,
+  revealBinaryLabel,
 }: {
   serverId: string;
   client: DaemonClient | null;
@@ -543,6 +859,9 @@ function FilePanePresentation({
   location: WorkspaceFileLocation;
   navigationRevision: number;
   imagePreviewUri: string | null;
+  onDownloadBinary?: () => void;
+  onRevealBinary?: () => void;
+  revealBinaryLabel?: string;
 }) {
   if (!client && readTarget) {
     return (
@@ -597,6 +916,9 @@ function FilePanePresentation({
         location={location}
         navigationRevision={navigationRevision}
         imagePreviewUri={imagePreviewUri}
+        onDownloadBinary={onDownloadBinary}
+        onRevealBinary={onRevealBinary}
+        revealBinaryLabel={revealBinaryLabel}
       />
     </View>
   );
@@ -805,6 +1127,14 @@ const styles = StyleSheet.create((theme) => ({
     marginTop: theme.spacing[2],
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.sm,
+  },
+  binaryActions: {
+    marginTop: theme.spacing[4],
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[2],
+    flexWrap: "wrap",
+    justifyContent: "center",
   },
   previewScrollContainer: {
     flex: 1,

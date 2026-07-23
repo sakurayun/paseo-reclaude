@@ -1,7 +1,16 @@
 import type { ClientSideConnection } from "@agentclientprotocol/sdk";
 import type { Logger } from "pino";
 
-import type { AgentMode, AgentModelDefinition, AgentSelectOption } from "../agent-sdk-types.js";
+import type {
+  AgentMode,
+  AgentModelDefinition,
+  AgentSelectOption,
+  ImportableProviderSession,
+  ImportProviderSessionContext,
+  ImportProviderSessionInput,
+  ListImportableSessionsOptions,
+} from "../agent-sdk-types.js";
+import { importSessionFromPersistence } from "../provider-session-import.js";
 import type {
   ACPProviderModeWriteResult,
   ACPProviderModeWriterContext,
@@ -16,6 +25,10 @@ import {
   getGrokLocalContextWindows,
   resolveGrokContextWindowMaxTokens,
 } from "./grok-model-context.js";
+import {
+  listGrokImportableSessions,
+  readGrokImportSessionConfig,
+} from "./grok-session-descriptor.js";
 
 interface GrokACPAgentClientOptions {
   logger: Logger;
@@ -88,6 +101,10 @@ export const GROK_MODES: AgentMode[] = [
  * marked `_meta.hideFromScrollback === true`, and map `_x.ai/session/update` task
  * events to synthetic `tool_call` timeline items keyed by `task_id`.
  *
+ * Session import: Grok ACP advertises `loadSession` but not `session/list`, so
+ * import discovery reads `~/.grok/sessions/<encoded-cwd>/<id>/summary.json` and
+ * resume still goes through ACP `session/load`.
+ *
  * Docs: https://docs.x.ai/build/overview and local `~/.grok/docs/user-guide/15-agent-mode.md`.
  */
 export class GrokACPAgentClient extends GenericACPAgentClient {
@@ -124,6 +141,36 @@ export class GrokACPAgentClient extends GenericACPAgentClient {
           ? (options.providerParams as Record<string, unknown>)
           : {}),
       },
+    });
+  }
+
+  /**
+   * List terminal-started Grok sessions from disk. Shared ACP `session/list`
+   * is not implemented by Grok Build (returns Method not found).
+   */
+  override async listImportableSessions(
+    options?: ListImportableSessionsOptions,
+  ): Promise<ImportableProviderSession[]> {
+    return listGrokImportableSessions(options);
+  }
+
+  /**
+   * Resume a Grok native session via ACP `session/load`, restoring model and
+   * reasoning effort recorded in `summary.json` when present.
+   */
+  override async importSession(
+    input: ImportProviderSessionInput,
+    context: ImportProviderSessionContext,
+  ) {
+    const importConfig = await readGrokImportSessionConfig(input.providerHandleId, {
+      cwd: input.cwd,
+    });
+    return importSessionFromPersistence({
+      provider: this.provider,
+      request: input,
+      context,
+      resumeSession: this.resumeSession.bind(this),
+      config: importConfig,
     });
   }
 }

@@ -1932,6 +1932,12 @@ export const ar: TranslationResources = {
       loading: "جارٍ تحميل الملف...",
       noPreview: "لا تتوفر معاينة",
       binaryPreviewUnavailable: "المعاينة الثنائية غير متاحة",
+      download: "تنزيل",
+      directoryOpenedInExplorer: "هذا المسار مجلد. يتم عرضه في مستكشف الملفات.",
+      openInExplorer: "فتح في مستكشف الملفات",
+      loadingDirectory: "جارٍ تحميل المجلد...",
+      emptyDirectory: "هذا المجلد فارغ",
+      failedToLoadDirectory: "فشل تحميل المجلد",
       failedToLoad: "فشل تحميل الملف",
       failedToLoadPreview: "فشل تحميل معاينة الملف",
       editor: {

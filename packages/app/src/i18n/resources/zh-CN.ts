@@ -1907,6 +1907,12 @@ export const zhCN: TranslationResources = {
       loading: "正在加载文件...",
       noPreview: "没有可用预览",
       binaryPreviewUnavailable: "二进制预览不可用",
+      download: "下载",
+      directoryOpenedInExplorer: "这是一个文件夹，已在文件浏览器中打开。",
+      openInExplorer: "在文件浏览器中打开",
+      loadingDirectory: "正在加载目录...",
+      emptyDirectory: "此文件夹为空",
+      failedToLoadDirectory: "加载目录失败",
       failedToLoad: "加载文件失败",
       failedToLoadPreview: "加载文件预览失败",
       editor: {

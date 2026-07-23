@@ -1962,6 +1962,12 @@ export const ptBR: TranslationResources = {
       loading: "Carregando arquivo...",
       noPreview: "Nenhuma prévia disponível",
       binaryPreviewUnavailable: "Prévia binária indisponível",
+      download: "Baixar",
+      directoryOpenedInExplorer: "Este caminho é uma pasta. Exibindo no explorador de arquivos.",
+      openInExplorer: "Abrir no explorador de arquivos",
+      loadingDirectory: "Carregando diretório...",
+      emptyDirectory: "Esta pasta está vazia",
+      failedToLoadDirectory: "Falha ao carregar diretório",
       failedToLoad: "Falha ao carregar arquivo",
       failedToLoadPreview: "Falha ao carregar prévia do arquivo",
       editor: {

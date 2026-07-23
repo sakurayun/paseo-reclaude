@@ -64,6 +64,11 @@ import {
   type OpenFileDisposition,
   type WorkspaceFileOpenRequest,
 } from "@/workspace/file-open";
+import {
+  ancestorExplorerPaths,
+  classifyWorkspacePath,
+  toWorkspaceRelativePath,
+} from "@/workspace/classify-workspace-path";
 import { FindBar, usePaneFind, type PaneFindMatchState } from "@/panels/pane-find";
 import type { TerminalFindResultChangeEvent } from "@/terminal/runtime/terminal-emulator-runtime";
 import { useSshTerminalFileDrop } from "@/ssh/upload/use-ssh-terminal-file-drop";
@@ -73,6 +78,8 @@ import type {
   TerminalDesktopNotification,
   TerminalProgressState,
 } from "@/terminal/runtime/terminal-kitty-protocols";
+import { useFileExplorerActions } from "@/hooks/use-file-explorer-actions";
+import { useWorkspaceFields } from "@/stores/session-store-hooks";
 
 interface TerminalPaneProps {
   serverId: string;
@@ -900,6 +907,64 @@ export function TerminalPane({
   });
   const reportedCwdRef = useRef<string | null>(null);
 
+  const workspaceFields = useWorkspaceFields(serverId, workspaceId, (workspace) => ({
+    isGitCheckout: workspace.projectKind === "git",
+  }));
+  const isGitCheckout = workspaceFields?.isGitCheckout ?? true;
+  const openFileExplorerForCheckout = usePanelStore((state) => state.openFileExplorerForCheckout);
+  const setExplorerTabForCheckout = usePanelStore((state) => state.setExplorerTabForCheckout);
+  const setExpandedPathsForWorkspace = usePanelStore((state) => state.setExpandedPathsForWorkspace);
+  const { workspaceStateKey, requestDirectoryListing, selectExplorerEntry } =
+    useFileExplorerActions({
+      serverId,
+      workspaceId,
+      workspaceRoot: cwd,
+    });
+
+  const openDirectoryInExplorer = useCallback(
+    (relativePath: string) => {
+      const checkout = {
+        serverId,
+        cwd,
+        isGit: isGitCheckout,
+      };
+      const ancestors = ancestorExplorerPaths(relativePath);
+      if (workspaceStateKey && ancestors.length > 0) {
+        // Expand every ancestor so the tree reveals the clicked folder.
+        setExpandedPathsForWorkspace(workspaceStateKey, ancestors);
+      }
+      for (const ancestor of ancestors) {
+        void requestDirectoryListing(ancestor, {
+          recordHistory: false,
+          setCurrentPath: false,
+          silent: true,
+        });
+      }
+      void requestDirectoryListing(relativePath, {
+        recordHistory: true,
+        setCurrentPath: true,
+      });
+      selectExplorerEntry(relativePath === "." ? null : relativePath);
+      setExplorerTabForCheckout({ ...checkout, tab: "files" });
+      openFileExplorerForCheckout({
+        isCompact: isMobile,
+        checkout,
+      });
+    },
+    [
+      cwd,
+      isGitCheckout,
+      isMobile,
+      openFileExplorerForCheckout,
+      requestDirectoryListing,
+      selectExplorerEntry,
+      serverId,
+      setExpandedPathsForWorkspace,
+      setExplorerTabForCheckout,
+      workspaceStateKey,
+    ],
+  );
+
   const handleResolveLocalFileLink = useCallback(
     async (source: TerminalLocalFileLinkSource): Promise<TerminalLocalFileLinkTarget | null> => {
       const workspaceRoot = reportedCwdRef.current || cwd;
@@ -919,6 +984,7 @@ export function TerminalPane({
           token: resolution.token,
           target: resolution.target,
           workspaceRoot,
+          includeDirectories: true,
           getDirectorySuggestions: (input) => client.getDirectorySuggestions(input),
         });
       } catch {
@@ -933,9 +999,88 @@ export function TerminalPane({
       if (!location) {
         return;
       }
-      onOpenWorkspaceFile({ location, disposition });
+
+      // Always classify against the workspace root — not the terminal's current
+      // directory. Using reported cwd makes parent/workspace paths look "outside"
+      // the root and incorrectly opens them as files (e.g. clicking a `pwd` path).
+      const workspaceRoot = cwd;
+
+      const openAsFile = (path: string) => {
+        onOpenWorkspaceFile({
+          location: { ...location, path },
+          disposition,
+        });
+      };
+
+      // Sync fast-path: workspace root is always a directory.
+      const relativeNow = toWorkspaceRelativePath({
+        path: location.path,
+        workspaceRoot,
+      });
+      if (relativeNow === ".") {
+        openDirectoryInExplorer(".");
+        return;
+      }
+
+      if (!client) {
+        if (relativeNow) {
+          openAsFile(relativeNow);
+        } else {
+          openAsFile(location.path);
+        }
+        return;
+      }
+
+      void (async () => {
+        const classified = await classifyWorkspacePath({
+          listDirectory: (root, path) => client.listDirectory(root, path),
+          workspaceRoot,
+          path: location.path,
+        });
+
+        if (classified?.kind === "directory") {
+          openDirectoryInExplorer(classified.relativePath);
+          return;
+        }
+
+        if (classified?.kind === "absolute-directory") {
+          // Outside the workspace (e.g. `cd ..` then click `pwd`). Open a
+          // directory browser tab — the file pane lists contents via
+          // listDirectory(absolutePath, ".") instead of trying to read a file.
+          openAsFile(classified.absolutePath);
+          return;
+        }
+
+        if (classified?.kind === "file") {
+          openAsFile(classified.relativePath);
+          return;
+        }
+
+        if (classified?.kind === "absolute-file") {
+          openAsFile(classified.absolutePath);
+          return;
+        }
+
+        const relativePath = toWorkspaceRelativePath({
+          path: location.path,
+          workspaceRoot,
+        });
+
+        // Never open the workspace root as a file tab.
+        if (relativePath === ".") {
+          openDirectoryInExplorer(".");
+          return;
+        }
+
+        if (relativePath) {
+          openAsFile(relativePath);
+          return;
+        }
+
+        openAsFile(location.path);
+      })();
     },
-    [onOpenWorkspaceFile],
+    [client, cwd, onOpenWorkspaceFile, openDirectoryInExplorer],
   );
   const handleDesktopNotification = useCallback(
     (notification: TerminalDesktopNotification) => {

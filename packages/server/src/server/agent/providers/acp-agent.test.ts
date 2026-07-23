@@ -2532,6 +2532,112 @@ describe("ACPAgentSession", () => {
     ]);
   });
 
+  test("startTurn dedupes ACP user echo chunks that append [image] placeholders", async () => {
+    // Grok (and other ACP agents) re-echo image blocks as content type "image",
+    // which contentBlockToText renders as "[image]". Without stripping those
+    // placeholders, assembled echo text "hello[image]" fails prefix matching
+    // against the submitted text "hello" and leaks a second plain-text bubble.
+    const session = createSession();
+    const events: AgentStreamEvent[] = [];
+    const prompt = vi.fn(() => new Promise<PromptResponse>(() => {}));
+
+    asInternals<ACPSessionInternals>(session).sessionId = "session-1";
+    asInternals<ACPSessionInternals>(session).connection = { prompt };
+
+    session.subscribe((event) => {
+      events.push(event);
+    });
+
+    await session.startTurn(
+      [
+        { type: "text", text: "hello" },
+        { type: "image", data: "base64img", mimeType: "image/png" },
+      ],
+      { clientMessageId: "msg-client-1" },
+    );
+
+    // Provider-owned message id (Grok does not always echo the client id).
+    await session.sessionUpdate({
+      sessionId: "session-1",
+      update: {
+        sessionUpdate: "user_message_chunk",
+        messageId: "msg-provider-1",
+        content: { type: "text", text: "hello" },
+      } as SessionUpdate,
+    });
+    await session.sessionUpdate({
+      sessionId: "session-1",
+      update: {
+        sessionUpdate: "user_message_chunk",
+        messageId: "msg-provider-1",
+        content: { type: "image", data: "base64img", mimeType: "image/png" },
+      } as SessionUpdate,
+    });
+
+    expect(
+      events.filter((event) => event.type === "timeline" && event.item.type === "user_message"),
+    ).toEqual([
+      {
+        type: "timeline",
+        provider: "claude-acp",
+        item: {
+          type: "user_message",
+          text: "hello",
+          messageId: "msg-client-1",
+          clientMessageId: "msg-client-1",
+        },
+        turnId: expect.any(String),
+      },
+    ]);
+  });
+
+  test("startTurn dedupes pure [image] ACP user echo chunks for image prompts", async () => {
+    const session = createSession();
+    const events: AgentStreamEvent[] = [];
+    const prompt = vi.fn(() => new Promise<PromptResponse>(() => {}));
+
+    asInternals<ACPSessionInternals>(session).sessionId = "session-1";
+    asInternals<ACPSessionInternals>(session).connection = { prompt };
+
+    session.subscribe((event) => {
+      events.push(event);
+    });
+
+    await session.startTurn(
+      [
+        { type: "text", text: "describe this" },
+        { type: "image", data: "base64img", mimeType: "image/png" },
+      ],
+      { clientMessageId: "msg-client-1" },
+    );
+
+    // Image-only echo under a separate provider message id (no text chunk yet).
+    await session.sessionUpdate({
+      sessionId: "session-1",
+      update: {
+        sessionUpdate: "user_message_chunk",
+        messageId: "msg-provider-image",
+        content: { type: "image", data: "base64img", mimeType: "image/png" },
+      } as SessionUpdate,
+    });
+
+    expect(
+      events.filter((event) => event.type === "timeline" && event.item.type === "user_message"),
+    ).toEqual([
+      {
+        type: "timeline",
+        provider: "claude-acp",
+        item: {
+          type: "user_message",
+          text: "describe this",
+          messageId: "msg-client-1",
+          clientMessageId: "msg-client-1",
+        },
+        turnId: expect.any(String),
+      },
+    ]);
+  });
+
   test("startTurn converts background prompt rejections into turn_failed events", async () => {
     const session = createSession();
     const events: Array<{ type: string; turnId?: string; error?: string }> = [];

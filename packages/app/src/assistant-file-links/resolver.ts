@@ -32,7 +32,7 @@ export type GetDirectorySuggestions = (input: {
   query: string;
   cwd: string;
   includeFiles: true;
-  includeDirectories: false;
+  includeDirectories: boolean;
   matchMode: "suffix";
   limit: number;
 }) => Promise<DirectorySuggestionResult>;
@@ -57,6 +57,8 @@ export interface FetchDaemonResolutionInput {
   target: InlinePathTarget;
   workspaceRoot?: string;
   getDirectorySuggestions: GetDirectorySuggestions;
+  /** When true, directory matches are accepted (used by terminal local links). */
+  includeDirectories?: boolean;
 }
 
 export class UnresolvedFileLinkError extends Error {
@@ -72,6 +74,7 @@ export async function fetchDaemonResolution({
   target,
   workspaceRoot,
   getDirectorySuggestions,
+  includeDirectories = false,
 }: FetchDaemonResolutionInput): Promise<InlinePathTarget> {
   const trimmedRoot = workspaceRoot?.trim();
   if (!trimmedRoot) {
@@ -84,15 +87,19 @@ export async function fetchDaemonResolution({
       query: ambiguousQuery,
       cwd: trimmedRoot,
       includeFiles: true,
-      includeDirectories: false,
+      includeDirectories,
       matchMode: "suffix",
-      limit: 1,
+      limit: includeDirectories ? 8 : 1,
     });
   } catch {
     throw new UnresolvedFileLinkError(token);
   }
 
-  const match = suggestions.entries.find((entry) => entry.kind === "file");
+  const match =
+    suggestions.entries.find((entry) => entry.kind === "file") ??
+    (includeDirectories
+      ? suggestions.entries.find((entry) => entry.kind === "directory")
+      : undefined);
   if (!match || suggestions.error) {
     throw new UnresolvedFileLinkError(token);
   }

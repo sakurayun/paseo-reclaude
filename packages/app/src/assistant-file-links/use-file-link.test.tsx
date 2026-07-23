@@ -49,7 +49,7 @@ interface TestClient {
     query: string;
     cwd: string;
     includeFiles: true;
-    includeDirectories: false;
+    includeDirectories: boolean;
     matchMode: "suffix";
     limit: number;
   }) => Promise<DirectorySuggestionResult>;

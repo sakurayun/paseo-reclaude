@@ -221,6 +221,41 @@ describe("fetchDaemonResolution", () => {
     ).rejects.toEqual(new UnresolvedFileLinkError("src/file.ts"));
   });
 
+  it("resolves directory matches when includeDirectories is enabled", async () => {
+    const { getDirectorySuggestions, searches } = suggestionsFromMap({
+      components: [{ path: "src/components", kind: "directory" }],
+    });
+
+    const result = await fetchDaemonResolution({
+      ambiguousQuery: "components",
+      token: "components",
+      target: {
+        raw: "components",
+        path: "/Users/test/project/components",
+        lineStart: undefined,
+        lineEnd: undefined,
+      },
+      workspaceRoot: "/Users/test/project",
+      includeDirectories: true,
+      getDirectorySuggestions,
+    });
+
+    expect(searches).toEqual([
+      {
+        query: "components",
+        cwd: "/Users/test/project",
+        matchMode: "suffix",
+        limit: 8,
+      },
+    ]);
+    expect(result).toEqual({
+      raw: "components",
+      path: "/Users/test/project/src/components",
+      lineStart: undefined,
+      lineEnd: undefined,
+    });
+  });
+
   it("throws a typed unresolved error when the daemon throws", async () => {
     await expect(
       fetchDaemonResolution({

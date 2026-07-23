@@ -1985,6 +1985,13 @@ export const fr: TranslationResources = {
       loading: "Chargement du fichier...",
       noPreview: "Aucun aperçu disponible",
       binaryPreviewUnavailable: "Aperçu binaire indisponible",
+      download: "Télécharger",
+      directoryOpenedInExplorer:
+        "Ce chemin est un dossier. Affiché dans l'explorateur de fichiers.",
+      openInExplorer: "Ouvrir dans l'explorateur de fichiers",
+      loadingDirectory: "Chargement du dossier...",
+      emptyDirectory: "Ce dossier est vide",
+      failedToLoadDirectory: "Échec du chargement du dossier",
       failedToLoad: "Échec du chargement du fichier",
       failedToLoadPreview: "Échec du chargement de l'aperçu du fichier",
       editor: {

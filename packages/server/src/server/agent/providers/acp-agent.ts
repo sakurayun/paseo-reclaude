@@ -3093,7 +3093,17 @@ export class ACPAgentSession implements AgentSession, ACPClient {
         return true;
       }
     }
-    return active.text.startsWith(item.text);
+    // ACP agents (notably Grok) re-echo image/audio content blocks as
+    // "[image]" / "[audio]" placeholders. Those are not part of the text we
+    // submitted via emitSubmittedUserMessage, so strip them before progressive
+    // prefix matching — otherwise assembled text like "hello[image]" escapes
+    // dedupe and the UI shows a second plain-text bubble ending in "[image]".
+    const echoText = stripAcpMediaPlaceholders(item.text);
+    if (echoText.length === 0) {
+      // Pure media echo of the active submitted prompt.
+      return true;
+    }
+    return active.text.startsWith(echoText);
   }
 
   private emitBootstrapThreadEvent(): void {
@@ -3371,6 +3381,15 @@ function contentBlockToText(content: ContentBlock): string {
     default:
       return "";
   }
+}
+
+/**
+ * Strip ACP media placeholders produced by {@link contentBlockToText} so
+ * submitted-message echo dedupe can compare against the text-only prompt we
+ * already emitted to the timeline.
+ */
+function stripAcpMediaPlaceholders(text: string): string {
+  return text.replaceAll("[image]", "").replaceAll("[audio]", "");
 }
 
 function coalesceDefined<T>(next: T | undefined, previous: T | undefined, fallback: T): T {

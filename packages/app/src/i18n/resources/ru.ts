@@ -1969,6 +1969,12 @@ export const ru: TranslationResources = {
       loading: "Загрузка файла...",
       noPreview: "Предварительный просмотр недоступен",
       binaryPreviewUnavailable: "Предварительный просмотр двоичного файла недоступен.",
+      download: "Скачать",
+      directoryOpenedInExplorer: "Это путь к папке. Показано в проводнике файлов.",
+      openInExplorer: "Открыть в проводнике файлов",
+      loadingDirectory: "Загрузка каталога...",
+      emptyDirectory: "Эта папка пуста",
+      failedToLoadDirectory: "Не удалось загрузить каталог",
       failedToLoad: "Не удалось загрузить файл",
       failedToLoadPreview: "Не удалось загрузить предварительный просмотр файла.",
       editor: {

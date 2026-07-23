@@ -1944,6 +1944,12 @@ export const en = {
       loading: "Loading file...",
       noPreview: "No preview available",
       binaryPreviewUnavailable: "Binary preview unavailable",
+      download: "Download",
+      directoryOpenedInExplorer: "This path is a folder. Showing it in the file explorer.",
+      openInExplorer: "Open in file explorer",
+      loadingDirectory: "Loading directory...",
+      emptyDirectory: "This folder is empty",
+      failedToLoadDirectory: "Failed to load directory",
       failedToLoad: "Failed to load file",
       failedToLoadPreview: "Failed to load file preview",
       editor: {
