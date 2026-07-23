@@ -4,9 +4,11 @@ const pkg = require("./package.json");
 const withFdroidAutolinking = require("./plugins/with-fdroid-autolinking");
 const appVariant = process.env.APP_VARIANT ?? "production";
 const isFdroidBuild = process.env.PASEO_FDROID_BUILD === "1";
-// Free-tier EAS APK workers OOM hermesc (exit 137) when Gradle holds a large heap
-// while native ABIs + Metro/Hermes run. Lower heap + arm64-only for that path.
-const isLowMemApkBuild = process.env.PASEO_EAS_APK_LOW_MEM === "1";
+// Low-mem APK path (GitHub Actions runners / free-tier EAS): OOM hermesc (exit 137)
+// when Gradle holds a large heap while multi-ABI native + Metro/Hermes run.
+// Prefer PASEO_APK_LOW_MEM; keep PASEO_EAS_APK_LOW_MEM as a back-compat alias.
+const isLowMemApkBuild =
+  process.env.PASEO_APK_LOW_MEM === "1" || process.env.PASEO_EAS_APK_LOW_MEM === "1";
 
 const buildProfile = isFdroidBuild
   ? {
@@ -198,7 +200,7 @@ module.exports = {
         "expo-gradle-jvmargs",
         isLowMemApkBuild
           ? {
-              // Leave RAM for hermesc on free-tier EAS (Gradle heap is not hermesc).
+              // Leave RAM for hermesc on constrained CI (Gradle heap is not hermesc).
               xmx: "2048m",
               maxMetaspace: "512m",
             }
@@ -213,7 +215,7 @@ module.exports = {
           android: {
             minSdkVersion: 29,
             kotlinVersion: "2.1.20",
-            // Free-tier APK: arm64 only. Local/other builds keep 32-bit arm too.
+            // Low-mem APK: arm64 only. Local/other builds keep 32-bit arm too.
             // (Hermes + multi-ABI native work OOM-kills hermesc with exit 137.)
             buildArchs: isLowMemApkBuild ? ["arm64-v8a"] : ["armeabi-v7a", "arm64-v8a"],
             // Allow HTTP connections for local network hosts in release builds

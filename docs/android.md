@@ -9,7 +9,7 @@ Controlled by `APP_VARIANT` in `packages/app/app.config.js` (vanilla Expo, no cu
 | `production`  | Paseo       | `sh.paseo`       |
 | `development` | Paseo Debug | `sh.paseo.debug` |
 
-EAS profiles: `development`, `production`, and `production-apk` in `packages/app/eas.json`.
+EAS profiles (optional store / manual cloud builds only): `development`, `production`, and `production-apk` in `packages/app/eas.json`. GitHub Release APKs do **not** use these — see **Android APK (GitHub Actions, no EAS)** below.
 
 `development` uses Android `debug`.
 
@@ -122,12 +122,12 @@ The flag must be present for both prebuild and Gradle because Gradle starts Metr
 
 Keep the excluded npm packages installed. Normal builds use them, while the F-Droid profile removes only their Android native modules and config plugins. Paseo always applies `expo-gradle-jvmargs` with `-Xmx4096m` and `-XX:MaxMetaspaceSize=1024m` so local Expo prebuilds have enough Gradle heap whether they use precompiled AARs or source-built Expo modules.
 
-Release builds compile native ABIs and run Hermes bundling in the same Gradle invocation; a free-tier EAS worker can OOM-kill Hermes with exit code 137. This fork's `production-apk` profile is tuned for free-tier accounts (no `resourceClass: "large"`, which needs Expo Production/Enterprise/On-Demand):
+Release builds compile native ABIs and run Hermes bundling in the same Gradle invocation; constrained CI runners can OOM-kill Hermes with exit code 137. GitHub Actions APK builds set `PASEO_APK_LOW_MEM=1` (alias: `PASEO_EAS_APK_LOW_MEM`):
 
-- `PASEO_EAS_APK_LOW_MEM=1` → Gradle heap `-Xmx2048m` (leave RAM for `hermesc`) and `buildArchs: ["arm64-v8a"]` only
-- `gradleCommand` uses `--no-daemon --max-workers=1 -Dorg.gradle.parallel=false` so native compile and the JS/Hermes step do not pile up
+- Gradle heap `-Xmx2048m` (leave RAM for `hermesc`) and `buildArchs: ["arm64-v8a"]` only
+- Gradle uses `--no-daemon` with a low worker cap so native compile and the JS/Hermes step do not pile up
 
-Other Android builds keep `armeabi-v7a` + `arm64-v8a` and the larger Gradle heap. The free-tier APK will not run on 32-bit-only phones or x86 emulators.
+Other Android builds keep `armeabi-v7a` + `arm64-v8a` and the larger Gradle heap. The low-mem APK will not run on 32-bit-only phones or x86 emulators.
 
 ### React version lockstep
 
@@ -147,32 +147,46 @@ Do not ignore `packages/app/app.config.js`. EAS Build's archive step applies ign
 adb exec-out screencap -p > screenshot.png
 ```
 
-## Cloud build + submit (EAS)
+## Android APK (GitHub Actions, no EAS)
 
-Stable tag pushes like `v0.1.0` trigger:
+Sideload APKs are built **entirely on GitHub Actions** by `.github/workflows/android-apk-release.yml`. The workflow does **not** call `eas build` and does not need `EXPO_TOKEN`.
 
-- The EAS GitHub app on Expo servers (iOS + Android production builds + store submit). There is no workflow file in this repo for it.
-- `.github/workflows/android-apk-release.yml` on GitHub Actions (APK asset on GitHub Release).
+Stable / beta tags (`v*`) and `android-v*` tags trigger it. `workflow_dispatch` accepts an existing `tag` input so you can rebuild without cutting a new tag.
 
-iOS auto-submits to App Store review via a Fastlane lane after EAS uploads to TestFlight. Android auto-submits to the Play Store via EAS-managed credentials.
+Pipeline on the runner:
 
-Beta tags like `v0.1.1-beta.1` only trigger the GitHub APK workflow. They publish a GitHub prerelease APK for testing and do not submit to the stores.
+1. Install Node 22, Java 21, Android SDK (`platforms;android-36`, `build-tools;36.0.0`, NDK `27.1.12297006`)
+2. `npm ci` + `node scripts/build-github-android-apk.mjs`
+   - `build:app-deps`, terminal/mermaid webviews
+   - `expo prebuild --platform android --clean` with `APP_VARIANT=production` and `PASEO_APK_LOW_MEM=1`
+   - optional release keystore from repo secrets (see below)
+   - `./gradlew :app:assembleRelease`
+3. Upload `paseo-<tag>-android.apk` to the GitHub Release (and as a workflow artifact)
 
-`android-v*` tags also trigger only the GitHub APK workflow — useful when you want to ship an APK without going through stores. The GitHub APK workflow supports `workflow_dispatch` with an existing `tag` input so you can rebuild without cutting a new tag.
-
-### Useful commands
+Local parity (needs Android SDK + Java 21 on your machine):
 
 ```bash
-cd packages/app
-
-# Recent builds
-npx eas build:list --limit 10 --non-interactive --json | jq '.[] | {platform, status, appVersion, gitCommitHash}'
-
-# Inspect a build (the printed `Logs` URL opens the build's Expo dashboard page,
-# which has a Submissions section showing the auto-submit to the Play Store).
-npx eas build:view <build-id>
+# From repo root after npm install
+PASEO_APK_LOW_MEM=1 npm run android:apk --workspace=@getpaseo/app
+# or
+PASEO_APK_LOW_MEM=1 node scripts/build-github-android-apk.mjs
 ```
 
-The Play Console (Internal testing → Production tracks) is the final confirmation that the binary reached the store.
+### Optional release keystore secrets
 
-See [docs/release.md](release.md) for the full mobile-build babysitting flow.
+Without secrets, the APK is signed with Expo's default **debug** keystore (works for sideload; upgrades from a differently signed package require uninstall first).
+
+To sign with your own keystore, set these repository secrets:
+
+| Secret                      | Meaning                                                                                    |
+| --------------------------- | ------------------------------------------------------------------------------------------ |
+| `ANDROID_KEYSTORE_BASE64`   | Base64 of the `.jks` / `.keystore` file                                                    |
+| `ANDROID_KEYSTORE_PASSWORD` | Keystore password                                                                          |
+| `ANDROID_KEY_ALIAS`         | Key alias                                                                                  |
+| `ANDROID_KEY_PASSWORD`      | Key password (falls back to store password if unset in the script path that requires both) |
+
+### Store builds (EAS, optional)
+
+Store iOS / Play Store Android builds are a separate path and may still be driven by the EAS GitHub app when configured on the Expo project. They are **not** used for the GitHub Release APK asset.
+
+See [docs/release.md](release.md) for the full release babysitting flow.

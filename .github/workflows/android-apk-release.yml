@@ -1,5 +1,7 @@
 name: Android APK Release
 
+# Builds the sideload Android APK entirely on GitHub Actions (Expo prebuild +
+# local Gradle). Does not submit work to Expo EAS Build.
 on:
   push:
     tags:
@@ -18,6 +20,9 @@ concurrency:
 
 env:
   SOURCE_TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
+  # arm64-only + modest Gradle heap keeps the runner under RAM pressure while
+  # hermesc runs (same knobs as the former free-tier EAS APK path).
+  PASEO_APK_LOW_MEM: "1"
 
 jobs:
   publish-android-apk:
@@ -25,12 +30,16 @@ jobs:
       contents: write
       packages: read
     runs-on: ubuntu-latest
+    timeout-minutes: 120
 
     steps:
+      # Tag push: build exactly that tag.
+      # workflow_dispatch: build the workflow ref (usually main, where the local
+      # Gradle scripts live) and still attach the APK to inputs.tag's release.
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref }}
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.sha || github.ref }}
 
       - name: Resolve release tag
         shell: bash
@@ -62,6 +71,18 @@ jobs:
             echo "Release creation raced with another workflow; continuing."
           fi
 
+      - name: Free disk space
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo rm -rf \
+            /usr/share/dotnet \
+            /usr/local/lib/android \
+            /opt/ghc \
+            /usr/local/share/boost \
+            "$AGENT_TOOLSDIRECTORY" || true
+          df -h
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
@@ -70,63 +91,66 @@ jobs:
           registry-url: "https://npm.pkg.github.com"
           scope: "@boudra"
 
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Match react-native 0.81 pins (libs.versions.toml) + common cmdline tools.
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager \
+            "platform-tools" \
+            "platforms;android-36" \
+            "build-tools;36.0.0" \
+            "ndk;27.1.12297006"
+
       - name: Install JS dependencies
         run: node scripts/npm-retry.mjs ci
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Setup Expo and EAS
-        uses: expo/expo-github-action@v8
+      - name: Build Android APK on runner
+        id: build_apk
+        shell: bash
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          ANDROID_APK_OUTPUT_DIR: ${{ runner.temp }}/android-apk
+          ANDROID_APK_OUTPUT_NAME: paseo-${{ env.RELEASE_TAG }}-android.apk
+          ANDROID_APK_PATH_FILE: ${{ runner.temp }}/android-apk/path.txt
+        run: |
+          set -euo pipefail
+          mkdir -p "$ANDROID_APK_OUTPUT_DIR"
+          node scripts/build-github-android-apk.mjs
+          apk_path="$(tr -d '\r\n' < "$ANDROID_APK_PATH_FILE")"
+          if [[ ! -f "$apk_path" ]]; then
+            echo "APK path missing or not a file: $apk_path"
+            exit 1
+          fi
+          # Script also appends to GITHUB_OUTPUT when present; re-assert for clarity.
+          echo "asset_path=$apk_path" >> "$GITHUB_OUTPUT"
+          echo "asset_name=$(basename "$apk_path")" >> "$GITHUB_OUTPUT"
+          ls -lh "$apk_path"
+
+      - name: Upload APK workflow artifact
+        uses: actions/upload-artifact@v4
         with:
-          eas-version: latest
-          token: ${{ secrets.EXPO_TOKEN }}
-
-      - name: Build Android APK on EAS
-        id: eas_build
-        shell: bash
-        run: |
-          set -euo pipefail
-          cd packages/app
-
-          build_json="$(eas build --platform android --profile production-apk --non-interactive --wait --json)"
-          echo "$build_json" > "$RUNNER_TEMP/eas-build.json"
-
-          build_id="$(jq -r 'if type == "array" then .[0].id // empty else .id // empty end' "$RUNNER_TEMP/eas-build.json")"
-          if [ -z "$build_id" ]; then
-            echo "Failed to determine EAS build ID."
-            cat "$RUNNER_TEMP/eas-build.json"
-            exit 1
-          fi
-
-          echo "build_id=$build_id" >> "$GITHUB_OUTPUT"
-
-      - name: Resolve APK artifact URL
-        id: artifact
-        shell: bash
-        run: |
-          set -euo pipefail
-          cd packages/app
-
-          build_view_json="$(eas build:view '${{ steps.eas_build.outputs.build_id }}' --json)"
-          echo "$build_view_json" > "$RUNNER_TEMP/eas-build-view.json"
-
-          artifact_url="$(jq -r '.artifacts.buildUrl // .artifacts.applicationArchiveUrl // empty' "$RUNNER_TEMP/eas-build-view.json")"
-          if [ -z "$artifact_url" ]; then
-            echo "Failed to determine APK artifact URL."
-            cat "$RUNNER_TEMP/eas-build-view.json"
-            exit 1
-          fi
-
-          asset_name="paseo-${RELEASE_TAG}-android.apk"
-          asset_path="$RUNNER_TEMP/$asset_name"
-
-          curl --fail --location --output "$asset_path" "$artifact_url"
-
-          echo "asset_name=$asset_name" >> "$GITHUB_OUTPUT"
-          echo "asset_path=$asset_path" >> "$GITHUB_OUTPUT"
+          name: paseo-${{ env.RELEASE_TAG }}-android-apk
+          path: ${{ steps.build_apk.outputs.asset_path }}
+          if-no-files-found: error
 
       - name: Upload APK to GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release upload "$RELEASE_TAG" "${{ steps.artifact.outputs.asset_path }}" --clobber --repo "${{ github.repository }}"
+          gh release upload "$RELEASE_TAG" "${{ steps.build_apk.outputs.asset_path }}" --clobber --repo "${{ github.repository }}"

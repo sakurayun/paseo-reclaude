@@ -93,3 +93,6 @@ packages/desktop/src-tauri/resources/managed-runtime/
 app.json
 .spec-workflow/templates/
 package-lock.json
+
+# Local secrets (keystores, credentials) — never commit
+.secrets/

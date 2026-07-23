@@ -27,6 +27,7 @@
       "distribution": "internal",
       "env": {
         "APP_VARIANT": "production",
+        "PASEO_APK_LOW_MEM": "1",
         "PASEO_EAS_APK_LOW_MEM": "1"
       },
       "android": {

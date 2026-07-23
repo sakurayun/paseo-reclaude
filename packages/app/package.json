@@ -12,6 +12,7 @@
     "android:development": "npm --prefix ../.. run build:client && cross-env APP_VARIANT=development expo prebuild --platform android --non-interactive && cross-env APP_VARIANT=development expo run:android --variant=debug",
     "android:production": "npm --prefix ../.. run build:client && cross-env APP_VARIANT=production expo prebuild --platform android --non-interactive && cross-env APP_VARIANT=production expo run:android --variant=release",
     "android:release": "npm run android:production",
+    "android:apk": "node ../../scripts/build-github-android-apk.mjs",
     "android:clear": "node -e \"require('node:fs').rmSync('android', { recursive: true, force: true })\"",
     "ios": "npm --prefix ../.. run build:client && expo run:ios",
     "ios:release": "npm --prefix ../.. run build:client && expo run:ios --configuration Release",

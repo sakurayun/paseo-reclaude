@@ -74,7 +74,7 @@ npm run release:patch
 npm run release:minor
 ```
 
-This bumps the version across all workspaces, runs checks, publishes to npm, and pushes the branch + tag. The tag push triggers `Desktop Release`, `Android APK Release`, `Docker`, and `Release Notes Sync` on GitHub Actions. EAS picks up the same tag via the EAS GitHub app and starts the iOS + Android store builds in parallel (see "Mobile builds (EAS)" below) — there is no `release-mobile.yml` in this repo.
+This bumps the version across all workspaces, runs checks, publishes to npm, and pushes the branch + tag. The tag push triggers `Desktop Release`, `Android APK Release` (local Gradle on the runner — not EAS), `Docker`, and `Release Notes Sync` on GitHub Actions. If the Expo project still has the EAS GitHub app enabled, store iOS/Android builds may start in parallel (see "Mobile builds" below) — there is no `release-mobile.yml` in this repo.
 
 The Docker workflow builds images from the checked-out source tree on pull requests and on `main` as non-publishing checks. Stable `vX.Y.Z` tag pushes publish `ghcr.io/getpaseo/paseo:X.Y.Z` and `ghcr.io/getpaseo/paseo:latest`; beta `vX.Y.Z-beta.N` tag pushes publish only `ghcr.io/getpaseo/paseo:X.Y.Z-beta.N` and never move `latest`.
 
@@ -207,13 +207,10 @@ If N+1 is a hotfix for a bug in N, dispatch `desktop-rollout.yml -f tag=v0.1.<N+
 - **Bootstrap caveat.** Clients running a build older than the rollout feature ignore `rolloutHours` and admit immediately. Rollout protection only applies to clients running the rollout-aware version or later.
 - **Up to ~30 min automatic admission latency.** Renderer polls every 30 minutes, so a stable user may take up to that long to be evaluated against the rollout window. Clicking **Check** is manual and bypasses rollout admission.
 
-## Mobile builds (EAS)
+## Mobile builds
 
-iOS and Android store builds are not in `.github/workflows`. They are triggered by the EAS GitHub app the moment the `v*` tag is pushed:
-
-- **Android (Play Store)** — EAS builds with profile `production` and auto-submits to the Play Store via `eas submit` (EAS-managed credentials, no Fastlane).
-- **iOS (TestFlight + App Store)** — EAS builds with profile `production`, uploads to TestFlight, and a Fastlane lane submits the build for App Store review.
-- **Android APK (GitHub Release asset)** — separate, via `.github/workflows/android-apk-release.yml`. This is the only Android-related workflow that lives in this repo.
+- **Android APK (GitHub Release asset)** — `.github/workflows/android-apk-release.yml` builds the APK **on the GitHub Actions runner** (Expo prebuild + Gradle). It does not call Expo EAS Build and does not need `EXPO_TOKEN`. Rebuild with `workflow_dispatch` + an existing tag. Details and optional keystore secrets: [docs/android.md](android.md).
+- **iOS / Play Store (optional EAS)** — not defined in `.github/workflows`. If the Expo project's EAS GitHub app is connected, a `v*` tag may still start store profiles (`production`) on Expo servers. This fork's GitHub Release APK path no longer depends on that.
 
 EAS uses the local app version source. `packages/app/app.config.js` derives Android `versionCode` and iOS `buildNumber` from the package version as `major * 1_000_000 + minor * 1_000 + patch`, ignoring prerelease metadata. Rebuilding the same tag produces the same native build number; if a store has already accepted a binary and you need a different binary, cut a new patch instead of relying on EAS remote auto-increment.
 
@@ -507,10 +504,5 @@ Betas are checkpoints along the way; the entry is the single record for the jump
 - [ ] Verify the changelog heading follows strict `## X.Y.Z - YYYY-MM-DD` format
 - [ ] `npm run release:patch`, `npm run release:minor`, or `npm run release:promote` completes successfully
 - [ ] GitHub `Desktop Release` workflow for the `v*` tag is green
-- [ ] GitHub `Android APK Release` workflow for the same tag is green
-- [ ] EAS `Release Mobile` workflow for the same tag is green
-- [ ] EAS iOS `build_ios` completes for the same tag
-- [ ] EAS iOS `submit_ios` succeeds, uploading the build to App Store Connect/TestFlight
-- [ ] EAS iOS `submit_ios_for_review` succeeds, putting the build into App Store review
-- [ ] EAS Android `build_android` completes for the same tag
-- [ ] EAS Android `submit_android` succeeds, putting the build on its Play Store track
+- [ ] GitHub `Android APK Release` workflow for the same tag is green (runner-local Gradle APK on the GitHub Release; not EAS)
+- [ ] (Optional, only if Expo EAS GitHub app is still connected for stores) EAS `Release Mobile` / iOS / Play Store jobs for the same tag are green
