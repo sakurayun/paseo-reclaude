@@ -194,18 +194,30 @@ function setGradleJvmArgs(xmx, maxMetaspace) {
     return;
   }
   let props = readFileSync(gradlePropsPath, "utf8");
+  // Ensure trailing newline so appends never glue onto the previous key
+  // (bug: `android.kotlinVersion=2.1.20` + `org.gradle.workers.max=1` became one line).
+  if (props.length > 0 && !props.endsWith("\n")) {
+    props += "\n";
+  }
+
   const line = `org.gradle.jvmargs=-Xmx${xmx} -XX:MaxMetaspaceSize=${maxMetaspace} -XX:+HeapDumpOnOutOfMemoryError -Dfile.encoding=UTF-8`;
   if (/^org\.gradle\.jvmargs=/m.test(props)) {
     props = props.replace(/^org\.gradle\.jvmargs=.*$/m, line);
   } else {
-    props += `\n${line}\n`;
+    props += `${line}\n`;
   }
+
   // Force serial workers via properties too (in case CLI flags are ignored by a plugin).
+  // Escape regex metacharacters in keys (dots in org.gradle.*).
   const setProp = (key, value) => {
-    const re = new RegExp(`^${key}=.*$`, "m");
+    const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const re = new RegExp(`^${escaped}=.*$`, "m");
     if (re.test(props)) {
       props = props.replace(re, `${key}=${value}`);
     } else {
+      if (!props.endsWith("\n")) {
+        props += "\n";
+      }
       props += `${key}=${value}\n`;
     }
   };
