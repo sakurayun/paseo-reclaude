@@ -3,7 +3,12 @@
  * Build a production Android APK entirely on the local machine / CI runner.
  *
  * Does not call EAS. Flow:
- *   build app deps → expo prebuild → optional release keystore → gradle assembleRelease
+ *   build app deps → expo prebuild → optional release keystore →
+ *   (1) createBundleReleaseJsAndAssets alone → (2) assembleRelease
+ *
+ * Splitting JS/Hermes from native assemble is deliberate: GHA runners were
+ * SIGTERM'd ("The operation was canceled.") right after Metro finished, while
+ * hermesc ran alongside the rest of the native compile graph.
  *
  * Optional signing secrets (recommended for install-over-update stability):
  *   ANDROID_KEYSTORE_BASE64  base64-encoded .jks / .keystore
@@ -14,8 +19,6 @@
  * Without those secrets, the generated project keeps Expo's default debug keystore
  * for the release build (fine for sideload APKs; installers must uninstall older
  * differently-signed packages first).
- *
- * Prints the absolute APK path on the last stdout line for CI consumption.
  */
 import { spawnSync } from "node:child_process";
 import {
@@ -36,6 +39,20 @@ const rootDir = path.resolve(__dirname, "..");
 const appDir = path.join(rootDir, "packages", "app");
 const androidDir = path.join(appDir, "android");
 const appGradlePath = path.join(androidDir, "app", "build.gradle");
+const gradlePropsPath = path.join(androidDir, "gradle.properties");
+
+const LINT_EXCLUDES = [
+  "-x",
+  "lint",
+  "-x",
+  "lintVitalAnalyzeRelease",
+  "-x",
+  "lintVitalRelease",
+  "-x",
+  "generateReleaseLintModel",
+  "-x",
+  "generateReleaseLintVitalModel",
+];
 
 function run(command, args, { cwd = rootDir, env = process.env } = {}) {
   const result = spawnSync(command, args, {
@@ -152,6 +169,88 @@ function configureReleaseSigningFromEnv() {
   console.log(`Configured release signing with keystore alias ${keyAlias}`);
 }
 
+/** Drop Hermes source-map composition — expensive RAM right after Metro. */
+function configureHermesFlagsForCi() {
+  let gradle = readFileSync(appGradlePath, "utf8");
+  if (/hermesFlags\s*=/.test(gradle)) {
+    gradle = gradle.replace(/hermesFlags\s*=\s*\[[^\]]*\]/, 'hermesFlags = ["-O"]');
+  } else if (gradle.includes("/* Autolinking */")) {
+    gradle = gradle.replace(
+      "/* Autolinking */",
+      `// CI: no -output-source-map (compose-source-maps + hermesc peak RAM together)
+    hermesFlags = ["-O"]
+
+    /* Autolinking */`,
+    );
+  } else {
+    throw new Error("Could not inject hermesFlags into app/build.gradle");
+  }
+  writeFileSync(appGradlePath, gradle);
+  console.log('Set hermesFlags = ["-O"] (no source map)');
+}
+
+function setGradleJvmArgs(xmx, maxMetaspace) {
+  if (!existsSync(gradlePropsPath)) {
+    return;
+  }
+  let props = readFileSync(gradlePropsPath, "utf8");
+  const line = `org.gradle.jvmargs=-Xmx${xmx} -XX:MaxMetaspaceSize=${maxMetaspace} -XX:+HeapDumpOnOutOfMemoryError -Dfile.encoding=UTF-8`;
+  if (/^org\.gradle\.jvmargs=/m.test(props)) {
+    props = props.replace(/^org\.gradle\.jvmargs=.*$/m, line);
+  } else {
+    props += `\n${line}\n`;
+  }
+  // Force serial workers via properties too (in case CLI flags are ignored by a plugin).
+  const setProp = (key, value) => {
+    const re = new RegExp(`^${key}=.*$`, "m");
+    if (re.test(props)) {
+      props = props.replace(re, `${key}=${value}`);
+    } else {
+      props += `${key}=${value}\n`;
+    }
+  };
+  setProp("org.gradle.parallel", "false");
+  setProp("org.gradle.workers.max", "1");
+  setProp("reactNativeArchitectures", "arm64-v8a");
+  writeFileSync(gradlePropsPath, props);
+  console.log(`gradle.properties jvmargs Xmx=${xmx}, MaxMetaspace=${maxMetaspace}`);
+}
+
+function gradleEnv(baseEnv) {
+  return {
+    ...baseEnv,
+    NODE_ENV: "production",
+    CI: "true",
+    ORG_GRADLE_PROJECT_reactNativeArchitectures:
+      process.env.ORG_GRADLE_PROJECT_reactNativeArchitectures ?? "arm64-v8a",
+  };
+}
+
+function runGradle(args, env) {
+  const gradlew = process.platform === "win32" ? "gradlew.bat" : "./gradlew";
+  run(
+    gradlew,
+    [
+      ...args,
+      ...LINT_EXCLUDES,
+      "--no-daemon",
+      "--max-workers=1",
+      "-Dorg.gradle.parallel=false",
+      "-Dorg.gradle.workers.max=1",
+      "-PreactNativeArchitectures=arm64-v8a",
+    ],
+    { cwd: androidDir, env },
+  );
+}
+
+function logMemory(label) {
+  console.log(`==> Memory snapshot: ${label}`);
+  if (process.platform === "linux") {
+    spawnSync("free", ["-h"], { stdio: "inherit" });
+    spawnSync("bash", ["-lc", "swapon --show || true"], { stdio: "inherit" });
+  }
+}
+
 function main() {
   const lowMem = process.env.PASEO_APK_LOW_MEM ?? process.env.PASEO_EAS_APK_LOW_MEM ?? "1";
   const prebuildEnv = {
@@ -182,43 +281,22 @@ function main() {
   }
 
   configureReleaseSigningFromEnv();
+  configureHermesFlagsForCi();
 
-  console.log("==> Gradle assembleRelease");
-  const gradlew = process.platform === "win32" ? "gradlew.bat" : "./gradlew";
-  // Single-worker assemble: Metro/hermesc + native compile peak together; more
-  // workers on GHA runners commonly get the job SIGTERM'd ("operation canceled").
-  run(
-    gradlew,
-    [
-      ":app:assembleRelease",
-      "-x",
-      "lint",
-      "-x",
-      "lintVitalAnalyzeRelease",
-      "-x",
-      "lintVitalRelease",
-      "-x",
-      "generateReleaseLintModel",
-      "-x",
-      "generateReleaseLintVitalModel",
-      "--no-daemon",
-      "--max-workers=1",
-      "-Dorg.gradle.parallel=false",
-      "-Dorg.gradle.workers.max=1",
-      "-PreactNativeArchitectures=arm64-v8a",
-    ],
-    {
-      cwd: androidDir,
-      env: {
-        ...prebuildEnv,
-        // Metro/Hermes for the release JS bundle.
-        NODE_ENV: "production",
-        CI: "true",
-        ORG_GRADLE_PROJECT_reactNativeArchitectures:
-          process.env.ORG_GRADLE_PROJECT_reactNativeArchitectures ?? "arm64-v8a",
-      },
-    },
-  );
+  const env = gradleEnv(prebuildEnv);
+
+  // Phase 1: Metro + hermesc only. Keep the Gradle JVM small so hermesc has RAM.
+  logMemory("before JS/Hermes bundle");
+  setGradleJvmArgs("1536m", "384m");
+  console.log("==> Gradle :app:createBundleReleaseJsAndAssets (JS + Hermes only)");
+  runGradle([":app:createBundleReleaseJsAndAssets"], env);
+  logMemory("after JS/Hermes bundle");
+
+  // Phase 2: native compile + package. Bundle task should be UP-TO-DATE.
+  setGradleJvmArgs("3072m", "768m");
+  console.log("==> Gradle :app:assembleRelease (native + package; reuse bundle)");
+  runGradle([":app:assembleRelease"], env);
+  logMemory("after assembleRelease");
 
   const apkPath = pickReleaseApk();
   const outDir = process.env.ANDROID_APK_OUTPUT_DIR?.trim();

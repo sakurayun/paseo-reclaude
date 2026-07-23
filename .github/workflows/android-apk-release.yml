@@ -90,22 +90,29 @@ jobs:
             "$AGENT_TOOLSDIRECTORY" || true
           df -h
 
-      # Standard GHA runners (~7–16GB RAM) get SIGTERM mid assembleRelease once
-      # Metro/hermesc + native compile peak together; swap absorbs the spike so the
-      # job reports a real error instead of "The operation was canceled."
+      # Runners often already ship a tiny ~3G swap; our previous "only if none"
+      # guard skipped the large file and hermesc still got SIGTERM after Metro.
+      # Always attach an extra 16G swapfile (in addition to any existing swap).
       - name: Enable swap
         shell: bash
         run: |
           set -euo pipefail
-          if ! swapon --show | grep -q .; then
-            sudo fallocate -l 12G /swapfile || sudo dd if=/dev/zero of=/swapfile bs=1M count=12288
-            sudo chmod 600 /swapfile
-            sudo mkswap /swapfile
-            sudo swapon /swapfile
+          SWAPFILE=/mnt/swapfile-paseo
+          sudo mkdir -p /mnt
+          if [[ ! -f "$SWAPFILE" ]]; then
+            sudo fallocate -l 16G "$SWAPFILE" || sudo dd if=/dev/zero of="$SWAPFILE" bs=1M count=16384
+            sudo chmod 600 "$SWAPFILE"
+            sudo mkswap "$SWAPFILE"
           fi
-          sudo sysctl -w vm.swappiness=10
+          sudo swapon "$SWAPFILE" || true
+          sudo sysctl -w vm.swappiness=30
           free -h
           swapon --show
+          # Expect >= 16G total swap on top of the runner default.
+          swap_total_kib="$(awk '/SwapTotal:/ {print $2}' /proc/meminfo)"
+          if [[ "${swap_total_kib:-0}" -lt 10000000 ]]; then
+            echo "::warning::Swap looks smaller than expected (${swap_total_kib} KiB). hermesc may still OOM."
+          fi
 
       - name: Setup Node
         uses: actions/setup-node@v5
@@ -186,6 +193,22 @@ jobs:
           echo "asset_name=$(basename "$apk_path")" >> "$GITHUB_OUTPUT"
           ls -lh "$apk_path"
           free -h
+
+      - name: Diagnose cancel / OOM on failure
+        if: failure()
+        shell: bash
+        run: |
+          set +e
+          echo "== free =="
+          free -h
+          echo "== swap =="
+          swapon --show
+          echo "== dmesg (oom/kill) =="
+          sudo dmesg -T 2>/dev/null | rg -i 'oom|killed process|out of memory|hermesc|java' | tail -80
+          echo "== disk =="
+          df -h
+          echo "== recent android build dirs =="
+          du -sh packages/app/android/app/build 2>/dev/null || true
 
       - name: Upload APK workflow artifact
         uses: actions/upload-artifact@v4
