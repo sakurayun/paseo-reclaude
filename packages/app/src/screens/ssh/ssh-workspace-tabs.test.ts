@@ -7,7 +7,7 @@ import {
 } from "@/screens/ssh/ssh-workspace-tabs";
 import { useWorkspaceLayoutStore } from "@/stores/workspace-layout-store";
 import { useSessionStore } from "@/stores/session-store";
-import { buildWorkspaceTabPersistenceKey } from "@/stores/workspace-tabs-store";
+import { buildWorkspaceTabPersistenceKey } from "@/workspace-tabs/model";
 import { useSshTerminalMetaStore } from "@/stores/ssh-terminal-meta-store";
 
 vi.mock("@react-native-async-storage/async-storage", () => {

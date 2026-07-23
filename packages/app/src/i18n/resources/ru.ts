@@ -1178,6 +1178,8 @@ export const ru: TranslationResources = {
         },
       },
       diff: {
+        openChangesTab: "Открыть вкладку «Изменения»",
+        closeChangesTab: "Закрыть вкладку «Изменения»",
         binaryFile: "Бинарный файл",
         tooLarge: "Разница слишком велика для отображения",
         unified: "Единый дифференциал",
@@ -1992,6 +1994,8 @@ export const ru: TranslationResources = {
       changesLabel: "Изменения",
       changesSubtitle: "Различия рабочего дерева",
       commitSubtitle: "Различия коммита",
+      uncommittedSubtitle: "Незафиксированные изменения",
+      baseSubtitle: "Сравнение с {{baseRef}}",
       directoryMissing: "Каталог Workspace не найден.",
       empty: "Нет изменений",
       loadError: "Не удалось загрузить различия",

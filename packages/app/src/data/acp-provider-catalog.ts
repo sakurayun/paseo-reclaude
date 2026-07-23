@@ -150,10 +150,10 @@ const CATALOG_DATA = [
     title: "Dirac",
     description:
       "Reduces API costs by more than 50%, produces better and faster work. Uses Hash anchored parallel edits, AST manipulation and a whole lot of neat optimizations. Fully Open Source.",
-    version: "0.4.21",
+    version: "0.4.22",
     iconId: "dirac",
     installLink: "https://dirac.run",
-    command: ["npx", "-y", "dirac-cli@0.4.21", "--acp"],
+    command: ["npx", "-y", "dirac-cli@0.4.22", "--acp"],
   },
   {
     id: "factory-droid",
@@ -173,10 +173,10 @@ const CATALOG_DATA = [
     id: "fast-agent",
     title: "fast-agent",
     description: "Code and build agents with comprehensive multi-provider support",
-    version: "0.9.20",
+    version: "0.9.21",
     iconId: "fast-agent",
     installLink: "https://fast-agent.ai/acp/",
-    command: ["uvx", "--from", "fast-agent-acp==0.9.20", "fast-agent-acp", "-x"],
+    command: ["uvx", "--from", "fast-agent-acp==0.9.21", "fast-agent-acp", "-x"],
   },
   {
     id: "gemini",
@@ -302,10 +302,10 @@ const CATALOG_DATA = [
     id: "qoder",
     title: "Qoder CLI",
     description: "AI coding assistant with agentic capabilities",
-    version: "1.1.2",
+    version: "1.1.3",
     iconId: "qoder",
     installLink: "https://qoder.com",
-    command: ["npx", "-y", "@qoder-ai/qodercli@1.1.2", "--acp"],
+    command: ["npx", "-y", "@qoder-ai/qodercli@1.1.3", "--acp"],
   },
   {
     id: "qwen-code",

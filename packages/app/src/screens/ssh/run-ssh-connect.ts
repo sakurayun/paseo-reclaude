@@ -5,7 +5,7 @@ import { generateMessageId } from "@/types/stream";
 import { confirmDialog } from "@/utils/confirm-dialog";
 import { navigateToPreparedWorkspaceTab } from "@/utils/workspace-navigation";
 import { buildDeterministicWorkspaceTabId } from "@/workspace-tabs/identity";
-import { buildWorkspaceTabPersistenceKey } from "@/stores/workspace-tabs-store";
+import { buildWorkspaceTabPersistenceKey } from "@/workspace-tabs/model";
 import { useWorkspaceLayoutStore } from "@/stores/workspace-layout-store";
 import { registerSshTerminal } from "@/stores/ssh-terminal-meta-store";
 import { useSessionStore } from "@/stores/session-store";

@@ -1,7 +1,5 @@
-import type { WorkspaceTabTarget } from "@/stores/workspace-tabs-store";
 import { normalizeWorkspaceFileLocation, workspaceFileLocationsEqual } from "@/workspace/file-open";
-
-type WorkspaceDraftTabSetup = NonNullable<Extract<WorkspaceTabTarget, { kind: "draft" }>["setup"]>;
+import type { WorkspaceDraftTabSetup, WorkspaceTabTarget } from "@/workspace-tabs/model";
 
 /** Tab kind discrimination spans many branches by design. */
 // eslint-disable-next-line complexity -- exhaustive tab-kind discrimination
@@ -58,6 +56,8 @@ export function normalizeWorkspaceTabTarget(
       return normalizeWorkspaceIdTabTarget(value.kind, value.workspaceId);
     case "port-forwards":
       return { kind: "port-forwards" };
+    case "working_diff":
+      return normalizeWorkingDiffTabTarget(value);
     default:
       return null;
   }
@@ -141,6 +141,12 @@ export function workspaceTabTargetsEqual(
     }
     case "port-forwards":
       return true;
+    case "working_diff":
+      return (
+        right.kind === "working_diff" &&
+        left.focusPath === right.focusPath &&
+        left.focusRequestId === right.focusRequestId
+      );
     default:
       return false;
   }
@@ -213,6 +219,9 @@ export function buildDeterministicWorkspaceTabId(target: WorkspaceTabTarget): st
   if (target.kind === "commit_diff") {
     return `commit_diff_${target.sha}`;
   }
+  if (target.kind === "working_diff") {
+    return "working_diff";
+  }
   return `file_${target.path}`;
 }
 
@@ -229,6 +238,24 @@ function normalizeFileTabTarget(
 ): WorkspaceTabTarget | null {
   const location = normalizeWorkspaceFileLocation(value);
   return location ? { kind: "file", ...location } : null;
+}
+
+function normalizeWorkingDiffTabTarget(
+  value: Extract<WorkspaceTabTarget, { kind: "working_diff" }>,
+): WorkspaceTabTarget | null {
+  const focusPath = trimNonEmpty(value.focusPath)?.replace(/\\/g, "/") ?? null;
+  const focusRequestId = normalizePositiveInteger(value.focusRequestId);
+  return {
+    kind: "working_diff" as const,
+    ...(focusPath ? { focusPath } : {}),
+    ...(focusRequestId ? { focusRequestId } : {}),
+  };
+}
+
+function normalizePositiveInteger(value: number | null | undefined): number | null {
+  return typeof value === "number" && Number.isFinite(value) && value > 0
+    ? Math.floor(value)
+    : null;
 }
 
 function trimOptionalString(value: string | null | undefined): string | null {

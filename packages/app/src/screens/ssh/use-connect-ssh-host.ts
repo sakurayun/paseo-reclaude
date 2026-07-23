@@ -9,7 +9,7 @@ import { getLastWorkspaceSelection } from "@/stores/navigation-active-workspace-
 import { useSessionStore } from "@/stores/session-store";
 import { startSshConnect } from "@/screens/ssh/run-ssh-connect";
 import { undismissSshTab } from "@/stores/ssh-tab-dismissed-store";
-import { buildWorkspaceTabPersistenceKey } from "@/stores/workspace-tabs-store";
+import { buildWorkspaceTabPersistenceKey } from "@/workspace-tabs/model";
 
 export interface UseConnectSshHostResult {
   // Opens a connecting tab and drives the SSH connect (progress log + inline

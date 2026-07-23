@@ -1,20 +1,19 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useLocalSearchParams, useRouter, type Href } from "expo-router";
 import { HostRouteBootstrapBoundary } from "@/components/host-route-bootstrap-boundary";
+import { useFetchQuery } from "@/data/query";
+import { resolveAgentRoute, type AgentRouteLookup } from "@/navigation/agent-route-resolution";
+import { AgentRouteResolutionView } from "@/navigation/agent-route-resolution-view";
 import { useSessionStore } from "@/stores/session-store";
-import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
-import { buildHostRootRoute } from "@/utils/host-routes";
-import { normalizeWorkspaceOpaqueId } from "@/utils/workspace-identity";
-import {
-  AGENT_READY_ROUTE_CONNECTION_FALLBACK_TIMEOUT_MS,
-  shouldFallbackHostAgentReadyRoute,
-} from "./agent-ready-route-state";
+import { getHostRuntimeStore, useHostRuntimeSnapshot, useHosts } from "@/runtime/host-runtime";
+import { buildHostRootRoute, buildSettingsHostRoute } from "@/utils/host-routes";
+import { toErrorMessage } from "@/utils/error-messages";
+import { navigateToAgent } from "@/utils/navigate-to-agent";
 
 // Catch render-time crashes in the full-screen agent subtree (e.g. opening a
 // history session) so they surface as a recoverable error screen instead of a
 // white screen / launch crash. See components/route-error-boundary.tsx.
 export { RouteErrorBoundary as ErrorBoundary } from "@/components/route-error-boundary";
-import { navigateToAgent } from "@/utils/navigate-to-agent";
 
 export default function HostAgentReadyRoute() {
   return (
@@ -30,138 +29,128 @@ function HostAgentReadyRouteContent() {
     serverId?: string;
     agentId?: string;
   }>();
-  const redirectedRef = useRef(false);
-  const [connectionFallbackReady, setConnectionFallbackReady] = useState(false);
+  const handledNavigationRef = useRef<string | null>(null);
   const serverId = typeof params.serverId === "string" ? params.serverId : "";
   const agentId = typeof params.agentId === "string" ? params.agentId : "";
-  const client = useHostRuntimeClient(serverId);
-  const isConnected = useHostRuntimeIsConnected(serverId);
+  const hosts = useHosts();
+  const runtimeSnapshot = useHostRuntimeSnapshot(serverId);
+  const client = runtimeSnapshot?.client ?? null;
+  const connectionStatus = runtimeSnapshot?.connectionStatus ?? "connecting";
+  const hostName = hosts.find((host) => host.serverId === serverId)?.label ?? serverId;
   const agentWorkspaceId = useSessionStore((state) => {
     if (!serverId || !agentId) {
       return null;
     }
     return state.sessions[serverId]?.agents?.get(agentId)?.workspaceId ?? null;
   });
-  const hasHydratedWorkspaces = useSessionStore((state) =>
-    serverId ? (state.sessions[serverId]?.hasHydratedWorkspaces ?? false) : false,
+  const shouldLookupAgent = Boolean(
+    serverId && agentId && client && connectionStatus === "online" && !agentWorkspaceId,
   );
-  const resolvedWorkspaceId = normalizeWorkspaceOpaqueId(agentWorkspaceId);
-
-  useEffect(() => {
-    setConnectionFallbackReady(false);
-  }, [agentId, serverId]);
-
-  useEffect(() => {
-    if (!serverId || !agentId || redirectedRef.current) {
-      return;
+  const lookupQuery = useFetchQuery({
+    queryKey: ["agentRouteResolution", serverId, agentId, runtimeSnapshot?.clientGeneration ?? 0],
+    queryFn: async () => {
+      if (!client) {
+        throw new Error("Target host client is unavailable");
+      }
+      const result = await client.fetchAgent({ agentId });
+      return result?.agent?.workspaceId ?? null;
+    },
+    enabled: shouldLookupAgent,
+    retry: false,
+    dataShape: "value",
+    staleTimeMs: 0,
+  });
+  const lookup = useMemo<AgentRouteLookup>(() => {
+    if (!shouldLookupAgent) {
+      return { kind: "idle" };
     }
-    if (client && isConnected) {
-      setConnectionFallbackReady(false);
-      return;
+    if (lookupQuery.isFetching) {
+      return { kind: "fetching" };
     }
-
-    setConnectionFallbackReady(false);
-    const handle = setTimeout(() => {
-      setConnectionFallbackReady(true);
-    }, AGENT_READY_ROUTE_CONNECTION_FALLBACK_TIMEOUT_MS);
-    return () => {
-      clearTimeout(handle);
-    };
-  }, [agentId, client, isConnected, serverId]);
-
-  useEffect(() => {
-    if (redirectedRef.current) {
-      return;
+    if (lookupQuery.isError) {
+      return { kind: "failed", error: toErrorMessage(lookupQuery.error) };
     }
-    if (!serverId || !agentId) {
-      redirectedRef.current = true;
-      router.replace("/" as Href);
-      return;
+    if (lookupQuery.isSuccess) {
+      return { kind: "found", workspaceId: lookupQuery.data };
     }
-
-    if (resolvedWorkspaceId) {
-      redirectedRef.current = true;
-      navigateToAgent({
-        serverId,
-        agentId,
-      });
-    }
-  }, [agentId, resolvedWorkspaceId, router, serverId]);
-
-  useEffect(() => {
-    if (redirectedRef.current) {
-      return;
-    }
-    if (!serverId || !agentId) {
-      return;
-    }
-    // Fork-only: keep the connection grace period from the Android notification
-    // deeplink fix instead of upstream's immediate redirect, so a cold-start
-    // deeplink doesn't bounce to root before the host runtime finishes
-    // connecting. Adapted to workspace-by-ID (was cwd-based).
-    if (
-      shouldFallbackHostAgentReadyRoute({
-        agentWorkspaceId,
-        hasHydratedWorkspaces,
-        hasClient: Boolean(client),
-        isConnected,
-        connectionFallbackReady,
-      })
-    ) {
-      redirectedRef.current = true;
-      router.replace(buildHostRootRoute(serverId));
-    }
+    return { kind: "fetching" };
   }, [
-    agentWorkspaceId,
-    agentId,
-    client,
-    connectionFallbackReady,
-    hasHydratedWorkspaces,
-    isConnected,
-    router,
-    serverId,
+    lookupQuery.data,
+    lookupQuery.error,
+    lookupQuery.isError,
+    lookupQuery.isFetching,
+    lookupQuery.isSuccess,
+    shouldLookupAgent,
   ]);
+  const resolution = resolveAgentRoute({
+    serverId,
+    agentId,
+    cachedWorkspaceId: agentWorkspaceId,
+    connectionStatus,
+    lookup,
+  });
 
   useEffect(() => {
-    if (redirectedRef.current) {
+    let navigationKey: string | null = null;
+    if (resolution.kind === "invalid") {
+      navigationKey = "invalid";
+    } else if (resolution.kind === "resolved") {
+      navigationKey = `workspace:${resolution.workspaceId}`;
+    } else if (resolution.kind === "notFound") {
+      navigationKey = "not-found";
+    }
+    if (!navigationKey || handledNavigationRef.current === navigationKey) {
       return;
     }
-    if (!serverId || !agentId || !client || !isConnected) {
+    handledNavigationRef.current = navigationKey;
+
+    if (resolution.kind === "resolved") {
+      navigateToAgent({ serverId, agentId, workspaceId: resolution.workspaceId });
       return;
     }
+    router.replace(resolution.kind === "invalid" ? ("/" as Href) : buildHostRootRoute(serverId));
+  }, [agentId, resolution, router, serverId]);
 
-    let cancelled = false;
-    void client
-      .fetchAgent({ agentId })
-      .then((result) => {
-        if (cancelled || redirectedRef.current) {
-          return;
-        }
-        const workspaceId = normalizeWorkspaceOpaqueId(result?.agent?.workspaceId);
-        redirectedRef.current = true;
-        if (workspaceId) {
-          navigateToAgent({
-            serverId,
-            agentId,
-            workspaceId,
-          });
-          return;
-        }
-        router.replace(buildHostRootRoute(serverId));
-        return;
-      })
-      .catch(() => {
-        if (cancelled || redirectedRef.current) {
-          return;
-        }
-        redirectedRef.current = true;
-        router.replace(buildHostRootRoute(serverId));
-      });
+  const handleRetry = useCallback(() => {
+    if (resolution.kind === "lookupError") {
+      void lookupQuery.refetch();
+      return;
+    }
+    if (serverId) {
+      void getHostRuntimeStore().runProbeCycleNow(serverId);
+    }
+  }, [lookupQuery, resolution.kind, serverId]);
+  const handleManageHost = useCallback(() => {
+    if (serverId) {
+      router.push(buildSettingsHostRoute(serverId));
+    }
+  }, [router, serverId]);
+  const handleBack = useCallback(() => {
+    if (router.canGoBack()) {
+      router.back();
+      return;
+    }
+    router.replace(serverId ? buildHostRootRoute(serverId) : ("/" as Href));
+  }, [router, serverId]);
 
-    return () => {
-      cancelled = true;
-    };
-  }, [agentId, client, isConnected, router, serverId]);
+  if (
+    resolution.kind === "waitingForHost" ||
+    resolution.kind === "fetchingAgent" ||
+    resolution.kind === "lookupError"
+  ) {
+    // Agent URLs intentionally omit workspaceId. Keep this route mounted while the target host
+    // reconnects, then resolve the workspace from the authoritative agent record.
+    return (
+      <AgentRouteResolutionView
+        resolution={resolution}
+        hostName={hostName}
+        lastHostError={runtimeSnapshot?.lastError ?? null}
+        onRetry={handleRetry}
+        onManageHost={handleManageHost}
+        onBack={handleBack}
+      />
+    );
+  }
 
   return null;
 }

@@ -5,7 +5,7 @@ import {
   buildWorkspaceTabPersistenceKey,
   type WorkspaceTab,
   type WorkspaceTabTarget,
-} from "@/stores/workspace-tabs-store";
+} from "@/workspace-tabs/model";
 import { buildHostWorkspaceRoute } from "@/utils/host-routes";
 
 export interface PrepareWorkspaceTabInput {

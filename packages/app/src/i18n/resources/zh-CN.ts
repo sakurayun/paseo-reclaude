@@ -1140,6 +1140,8 @@ export const zhCN: TranslationResources = {
         },
       },
       diff: {
+        openChangesTab: "打开“更改”标签页",
+        closeChangesTab: "关闭“更改”标签页",
         binaryFile: "二进制文件",
         tooLarge: "Diff 过大，无法显示",
         unified: "统一视图 diff",
@@ -1930,6 +1932,8 @@ export const zhCN: TranslationResources = {
       changesLabel: "更改",
       changesSubtitle: "工作区差异",
       commitSubtitle: "提交差异",
+      uncommittedSubtitle: "未提交的更改",
+      baseSubtitle: "与 {{baseRef}} 比较",
       directoryMissing: "未找到 workspace 目录。",
       empty: "没有更改",
       loadError: "加载差异失败",

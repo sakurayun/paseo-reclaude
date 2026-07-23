@@ -2,13 +2,10 @@ import type { QueryKey } from "@tanstack/react-query";
 import type { CheckoutGitOp, CheckoutPrMergeMethod } from "@getpaseo/protocol/messages";
 import { create } from "zustand";
 import { queryClient as appQueryClient } from "@/data/query-client";
-import {
-  buildWorkspaceTabPersistenceKey,
-  useWorkspaceLayoutStore,
-} from "@/stores/workspace-layout-store";
+import { useWorkspaceLayoutStore } from "@/stores/workspace-layout-store";
+import { buildWorkspaceTabPersistenceKey } from "@/workspace-tabs/model";
 import { useSessionStore } from "@/stores/session-store";
 import type { WorkspaceDescriptor } from "@/stores/session-store";
-import { useWorkspaceTabsStore } from "@/stores/workspace-tabs-store";
 import {
   clearWorkspaceArchivePending,
   markWorkspaceArchivePending,
@@ -211,7 +208,6 @@ function purgeArchivedWorkspaceState(input: { serverId: string; workspaceId: str
   if (workspaceKey) {
     useWorkspaceLayoutStore.getState().purgeWorkspace(workspaceKey);
   }
-  useWorkspaceTabsStore.getState().purgeWorkspace({ serverId, workspaceId });
 }
 
 const successTimers = new Map<string, ReturnType<typeof setTimeout>>();

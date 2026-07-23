@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.2.0-beta.3 - 2026-07-22
+
+### Added
+
+- Open the complete Changes view as a workspace tab ([#2298](https://github.com/getpaseo/paseo/pull/2298) by [@nikuscs](https://github.com/nikuscs))
+- Add files to chat directly from Files and Changes ([#2275](https://github.com/getpaseo/paseo/pull/2275) by [@nikuscs](https://github.com/nikuscs))
+- Open existing agents from Paseo links or the CLI ([#2324](https://github.com/getpaseo/paseo/pull/2324))
+- Use Oh My Pi's Write Approval mode to allow reads while requiring approval for changes ([#2228](https://github.com/getpaseo/paseo/pull/2228) by [@theslava](https://github.com/theslava))
+
+### Improved
+
+- Usage bars now warn as provider limits approach ([#2322](https://github.com/getpaseo/paseo/pull/2322) by [@cleiter](https://github.com/cleiter))
+- Oh My Pi advisor results now retain their structure and severity ([#2219](https://github.com/getpaseo/paseo/pull/2219) by [@ebg1223](https://github.com/ebg1223))
+
+### Fixed
+
+- Notifications now open the correct workspace and agent ([#2331](https://github.com/getpaseo/paseo/pull/2331))
+- Archived agents can be restored directly from History ([#2316](https://github.com/getpaseo/paseo/pull/2316))
+- CLI agent runs stay in the current workspace unless a new workspace is requested ([#2315](https://github.com/getpaseo/paseo/pull/2315))
+- Oh My Pi slash commands now include commands from every supported source ([#2175](https://github.com/getpaseo/paseo/pull/2175) by [@bendavid](https://github.com/bendavid))
+- Oh My Pi chats no longer stay stuck as running after delayed or incomplete completion events ([#2261](https://github.com/getpaseo/paseo/pull/2261), [#2282](https://github.com/getpaseo/paseo/pull/2282) by [@isac322](https://github.com/isac322))
+
 ## 0.2.0-beta.2 - 2026-07-22
 
 ### Added

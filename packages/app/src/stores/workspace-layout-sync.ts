@@ -10,7 +10,7 @@ import {
 } from "@/stores/workspace-layout-actions";
 import { useWorkspaceLayoutStore } from "@/stores/workspace-layout-store";
 import { useSessionStore } from "@/stores/session-store";
-import { buildWorkspaceTabPersistenceKey, type WorkspaceTab } from "@/stores/workspace-tabs-store";
+import { buildWorkspaceTabPersistenceKey, type WorkspaceTab } from "@/workspace-tabs/model";
 
 // Single, off-React integration point for desktop workspace-layout sync. One bridge
 // per serverId mirrors the local workspace-layout-store to the daemon and applies

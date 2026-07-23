@@ -16,7 +16,7 @@ import {
   startWorkspaceLayoutSync,
 } from "@/stores/workspace-layout-sync";
 import { useWorkspaceLayoutStore } from "@/stores/workspace-layout-store";
-import { buildWorkspaceTabPersistenceKey } from "@/stores/workspace-tabs-store";
+import { buildWorkspaceTabPersistenceKey } from "@/workspace-tabs/model";
 import { useSessionStore } from "@/stores/session-store";
 
 vi.mock("@react-native-async-storage/async-storage", () => {

@@ -98,7 +98,7 @@ import type { PinnedTabTarget } from "@/workspace-pins/target";
 import { PinnedTargetsRow } from "@/workspace-pins/pinned-targets-row";
 import { PinnableMenuItem } from "@/workspace-pins/pinnable-menu-item";
 import { useWorkspaceLayoutStore } from "@/stores/workspace-layout-store";
-import { buildWorkspaceTabPersistenceKey } from "@/stores/workspace-tabs-store";
+import { buildWorkspaceTabPersistenceKey } from "@/workspace-tabs/model";
 import { resolveWorkspaceTabWheelScroll } from "@/screens/workspace/workspace-tab-wheel-scroll";
 import {
   TAB_GROUP_COLOR_HEX,
@@ -541,7 +541,7 @@ interface WorkspaceDesktopTabsRowProps {
 
 function getFallbackTabLabel(
   tab: WorkspaceTabDescriptor,
-  labels: { newAgent: string; setup: string; terminal: string; agent: string },
+  labels: { newAgent: string; setup: string; terminal: string; agent: string; changes: string },
 ): string {
   if (tab.target.kind === "draft") {
     return labels.newAgent;
@@ -554,6 +554,9 @@ function getFallbackTabLabel(
   }
   if (tab.target.kind === "file") {
     return tab.target.path.split("/").findLast(Boolean) ?? tab.target.path;
+  }
+  if (tab.target.kind === "working_diff") {
+    return labels.changes;
   }
   return labels.agent;
 }
@@ -1264,6 +1267,7 @@ export function WorkspaceDesktopTabsRow({
       setup: t("workspace.tabs.fallback.setup"),
       terminal: t("workspace.tabs.fallback.terminal"),
       agent: t("workspace.tabs.fallback.agent"),
+      changes: t("panels.diff.changesLabel"),
     }),
     [t],
   );
