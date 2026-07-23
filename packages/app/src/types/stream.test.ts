@@ -928,6 +928,57 @@ describe("stream reducer canonical tool calls", () => {
     assert.strictEqual(todos.items[0]?.text, "Task 1");
   });
 
+  it("renders Grok todo_write as todo_list (including after think-style re-label)", () => {
+    const state = hydrateStreamState([
+      {
+        event: canonicalToolTimeline({
+          provider: "grok",
+          callId: "call-todo-1",
+          name: "todo_write",
+          status: "running",
+          input: {
+            todos: [
+              { id: "1", content: "Create SidebarThemeMenu", status: "in_progress" },
+              { id: "2", content: "Wire footer", status: "pending" },
+            ],
+            merge: false,
+          },
+        }),
+        timestamp: new Date("2025-01-01T11:05:00Z"),
+      },
+      // Mid-call Grok re-labels as think / "Updating plan" but keeps todos in input.
+      // Server now keeps name=todo_write; client still extracts from unknown detail.
+      {
+        event: canonicalToolTimeline({
+          provider: "grok",
+          callId: "call-todo-1",
+          name: "todo_write",
+          status: "running",
+          input: {
+            variant: "TodoWrite",
+            merge: false,
+            todos: [
+              { id: "1", content: "Create SidebarThemeMenu", status: "completed" },
+              { id: "2", content: "Wire footer", status: "in_progress" },
+            ],
+          },
+        }),
+        timestamp: new Date("2025-01-01T11:05:01Z"),
+      },
+    ]);
+
+    const tools = state.filter(isAgentToolCallItem);
+    const todos = state.find(
+      (item): item is Extract<StreamItem, { kind: "todo_list" }> => item.kind === "todo_list",
+    );
+
+    assert.strictEqual(tools.length, 0);
+    assert.ok(todos);
+    assert.strictEqual(todos.items.length, 2);
+    assert.strictEqual(todos.items[0]?.completed, true);
+    assert.strictEqual(todos.items[1]?.text, "Wire footer");
+  });
+
   it("preserves optimistic user message images when authoritative user message arrives", () => {
     const messageId = "msg-user-images";
     const optimisticTimestamp = new Date("2025-01-01T11:10:00Z");

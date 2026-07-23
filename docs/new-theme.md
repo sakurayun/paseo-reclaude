@@ -21,9 +21,10 @@ gone, rounded 12px hovers, PR/Git activity cards floating as borderless cards
 
 ## What the user sees
 
-Settings → Appearance → theme dropdown only. The redesigned floating UI is
-**always on** — classic chrome is retired and there is no switch to turn the new
-theme off. The theme dropdown picks which new-theme **palette** to use:
+Theme palette can be switched from **Settings → Appearance → theme dropdown**, or
+from the **left-sidebar footer** (bottom-right theme icon). The redesigned floating
+UI is **always on** — classic chrome is retired and there is no switch to turn the
+new theme off. The theme dropdown picks which new-theme **palette** to use:
 
 | Theme dropdown       | New-theme Unistyles key       | Notes                            |
 | -------------------- | ----------------------------- | -------------------------------- |

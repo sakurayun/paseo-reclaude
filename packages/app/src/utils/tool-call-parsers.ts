@@ -269,14 +269,19 @@ export interface TaskEntry {
 
 const TaskStatusSchema = z.enum(["pending", "in_progress", "completed"]);
 
+// Grok ACP sends merge updates with only `{ id, status }` (content null/omitted).
+// Claude sends full `{ content, status }` every time. Accept both; empty-content
+// entries are filtered out (the client merges status-only rows onto prior state).
 const ClaudeTodoWriteSchema = z.object({
   todos: z.array(
     z.object({
-      content: z.string(),
+      id: z.union([z.string(), z.number()]).optional(),
+      content: z.string().nullish(),
       status: TaskStatusSchema,
-      activeForm: z.string().optional(),
+      activeForm: z.string().nullish(),
     }),
   ),
+  merge: z.boolean().optional(),
 });
 
 const UpdatePlanSchema = z.object({
@@ -311,15 +316,29 @@ export function extractTaskEntriesFromToolCall(
     if (!parsed.success) {
       return null;
     }
-    return parsed.data.todos.map((todo) => {
+    const entries: TaskEntry[] = [];
+    for (const todo of parsed.data.todos) {
       const status = todo.status;
-      const text = todo.activeForm?.trim() || todo.content.trim();
-      return {
-        text: text.length ? text : todo.content,
+      const activeForm = todo.activeForm?.trim() ?? "";
+      const content = typeof todo.content === "string" ? todo.content.trim() : "";
+      const text = activeForm || content;
+      if (!text) {
+        // Status-only merge row — skip so a pure status-merge payload yields
+        // null below and the stream reducer keeps the prior checklist.
+        continue;
+      }
+      entries.push({
+        text,
         status,
         completed: status === "completed",
-      };
-    });
+      });
+    }
+    // Full replace with zero parseable items is not useful (empty checklist flash).
+    // Status-only merge payloads return null so the stream reducer keeps prior state.
+    if (entries.length === 0) {
+      return null;
+    }
+    return entries;
   }
 
   if (normalized === "update_plan") {

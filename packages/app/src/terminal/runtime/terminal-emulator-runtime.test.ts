@@ -14,7 +14,15 @@ vi.mock("@xterm/addon-fit", () => ({
 
 vi.mock("@xterm/addon-image", () => ({
   ImageAddon: class ImageAddon {
+    // Accept options via rest so the runtime can `new ImageAddon({...})`.
+    readonly options: unknown;
+    constructor(...args: unknown[]) {
+      this.options = args[0];
+    }
     dispose(): void {}
+    getImageAtBufferCell(): undefined {
+      return undefined;
+    }
   },
 }));
 

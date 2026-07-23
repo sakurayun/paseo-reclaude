@@ -33,6 +33,7 @@ import { HostPicker } from "@/components/hosts/host-picker";
 import { SidebarHeaderRow } from "@/components/sidebar/sidebar-header-row";
 import { SidebarDisplayPreferencesMenu } from "@/components/sidebar/sidebar-display-preferences-menu";
 import { SidebarHelpMenu } from "@/components/sidebar/sidebar-help-menu";
+import { SidebarThemeMenu } from "@/components/sidebar/sidebar-theme-menu";
 import { SidebarResizeHandle } from "@/components/sidebar-resize-handle";
 import { Shortcut } from "@/components/ui/shortcut";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -769,31 +770,35 @@ function SidebarFooter({
           theme={theme}
         />
       ) : null}
-      <View style={styles.footerIconRow}>
-        <SidebarHostPicker
-          theme={theme}
-          label={labels.hosts}
-          onAddHost={handleAddHost}
-          onOpenHostSettings={handleOpenHostSettings}
-        />
-        {!isNewThemeSidebar ? (
+      <View style={isNewThemeSidebar ? styles.footerIconRowSpaced : styles.footerIconRow}>
+        <View style={styles.footerIconRow}>
+          <SidebarHostPicker
+            theme={theme}
+            label={labels.hosts}
+            onAddHost={handleAddHost}
+            onOpenHostSettings={handleOpenHostSettings}
+          />
+          {!isNewThemeSidebar ? (
+            <FooterIconButton
+              onPress={handleHome}
+              testID="sidebar-home"
+              label={labels.home}
+              icon={Home}
+              theme={theme}
+            />
+          ) : null}
+          <SidebarHelpMenu />
           <FooterIconButton
-            onPress={handleHome}
-            testID="sidebar-home"
-            label={labels.home}
-            icon={Home}
+            onPress={handleSettings}
+            testID="sidebar-settings"
+            label={labels.settings}
+            icon={Settings}
+            shortcutKeys={settingsKeys}
             theme={theme}
           />
-        ) : null}
-        <SidebarHelpMenu />
-        <FooterIconButton
-          onPress={handleSettings}
-          testID="sidebar-settings"
-          label={labels.settings}
-          icon={Settings}
-          shortcutKeys={settingsKeys}
-          theme={theme}
-        />
+        </View>
+        {/* Theme picker pinned bottom-right of the nav footer. */}
+        <SidebarThemeMenu />
       </View>
     </View>
   );
@@ -1587,6 +1592,15 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     gap: theme.spacing[2],
     flexShrink: 0,
+  },
+  // New-theme footer: left chrome icons + theme picker flush to the right edge.
+  footerIconRowSpaced: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: theme.spacing[2],
   },
   footerAddProjectButton: {
     minWidth: 0,

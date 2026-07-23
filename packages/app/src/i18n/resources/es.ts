@@ -1316,6 +1316,7 @@ export const es: TranslationResources = {
       commandCenter: "Centro de comando",
       openCommandCenter: "Abrir centro de comando",
       displayPreferences: "Preferencias de visualización",
+      theme: "Tema",
     },
     search: {
       placeholder: "Filtrar proyectos...",

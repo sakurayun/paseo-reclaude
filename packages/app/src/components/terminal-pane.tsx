@@ -67,11 +67,20 @@ import {
 import { FindBar, usePaneFind, type PaneFindMatchState } from "@/panels/pane-find";
 import type { TerminalFindResultChangeEvent } from "@/terminal/runtime/terminal-emulator-runtime";
 import { useSshTerminalFileDrop } from "@/ssh/upload/use-ssh-terminal-file-drop";
+import { sendOsNotification } from "@/utils/os-notifications";
+import { buildTerminalNotificationOsData } from "@/terminal/runtime/terminal-desktop-notification-actions";
+import type {
+  TerminalDesktopNotification,
+  TerminalProgressState,
+} from "@/terminal/runtime/terminal-kitty-protocols";
 
 interface TerminalPaneProps {
   serverId: string;
   cwd: string;
   terminalId: string;
+  // Optional workspace id so OSC 99 notification clicks can deep-link back to
+  // this terminal tab (`?open=terminal:<id>`).
+  workspaceId?: string | null;
   isWorkspaceFocused: boolean;
   isPaneFocused: boolean;
   onOpenFileExplorer: () => void;
@@ -228,6 +237,7 @@ export function TerminalPane({
   serverId,
   cwd,
   terminalId,
+  workspaceId = null,
   isWorkspaceFocused,
   isPaneFocused,
   onOpenFileExplorer,
@@ -885,11 +895,17 @@ export function TerminalPane({
   const handleInputModeChange = useCallback((state: TerminalInputModeState) => {
     inputModeRef.current = state;
   }, []);
+  const [terminalProgress, setTerminalProgress] = useState<TerminalProgressState>({
+    kind: "hidden",
+  });
+  const reportedCwdRef = useRef<string | null>(null);
+
   const handleResolveLocalFileLink = useCallback(
     async (source: TerminalLocalFileLinkSource): Promise<TerminalLocalFileLinkTarget | null> => {
+      const workspaceRoot = reportedCwdRef.current || cwd;
       const resolution = classifyForResolution(
         { href: source.text, text: source.text, sourceType: "inline-code" },
-        { workspaceRoot: cwd },
+        { workspaceRoot },
       );
       if (resolution.kind === "resolved") {
         return resolution.value.kind === "file" ? resolution.value.target : null;
@@ -902,7 +918,7 @@ export function TerminalPane({
           ambiguousQuery: resolution.ambiguousQuery,
           token: resolution.token,
           target: resolution.target,
-          workspaceRoot: cwd,
+          workspaceRoot,
           getDirectorySuggestions: (input) => client.getDirectorySuggestions(input),
         });
       } catch {
@@ -921,6 +937,32 @@ export function TerminalPane({
     },
     [onOpenWorkspaceFile],
   );
+  const handleDesktopNotification = useCallback(
+    (notification: TerminalDesktopNotification) => {
+      // Show the OS notification only — Kitty a=focus / a=report run on click,
+      // and c=1 close reports run on dismiss (see PushNotificationRouter).
+      void sendOsNotification({
+        title: notification.title,
+        body: notification.body || undefined,
+        data: buildTerminalNotificationOsData({
+          serverId,
+          terminalId,
+          notificationId: notification.id,
+          workspaceId,
+          report: notification.report,
+          focus: notification.focus,
+          reportClose: notification.reportClose,
+        }),
+      });
+    },
+    [serverId, terminalId, workspaceId],
+  );
+  const handleProgressChange = useCallback((progress: TerminalProgressState) => {
+    setTerminalProgress(progress);
+  }, []);
+  const handleCwdReport = useCallback((nextCwd: string) => {
+    reportedCwdRef.current = nextCwd;
+  }, []);
 
   const toggleModifier = useCallback(
     (modifier: keyof ModifierState) => {
@@ -1020,6 +1062,10 @@ export function TerminalPane({
               onFileDrop={sshFileDrop.onFileDrop}
               onResolveLocalFileLink={localFileLinks ? handleResolveLocalFileLink : undefined}
               onOpenLocalFileLink={localFileLinks ? handleOpenLocalFileLink : undefined}
+              onDesktopNotification={handleDesktopNotification}
+              onProgressChange={handleProgressChange}
+              onCwdReport={handleCwdReport}
+              onRequestFocus={requestTerminalFocus}
               onPendingModifiersConsumed={handlePendingModifiersConsumed}
               pendingModifiers={modifiers}
               focusRequestToken={focusRequestToken}
@@ -1029,6 +1075,8 @@ export function TerminalPane({
         ) : (
           <View style={styles.terminalGestureContainer} />
         )}
+
+        <TerminalProgressBar progress={terminalProgress} />
 
         {showLoadingOverlay ? (
           <View style={styles.attachOverlay} pointerEvents="none" testID="terminal-attach-loading">
@@ -1108,6 +1156,36 @@ export function TerminalPane({
   );
 }
 
+function TerminalProgressBar({ progress }: { progress: TerminalProgressState }) {
+  if (progress.kind === "hidden") {
+    return null;
+  }
+
+  const percent =
+    progress.kind === "normal" || progress.kind === "error" || progress.kind === "paused"
+      ? (progress.percent ?? 0)
+      : 0;
+  const fillStyle = [
+    styles.progressFill,
+    progress.kind === "error" ? styles.progressFillError : null,
+    progress.kind === "paused" ? styles.progressFillPaused : null,
+    progress.kind === "indeterminate"
+      ? styles.progressFillIndeterminate
+      : { width: `${percent}%` as const },
+  ];
+
+  return (
+    <View
+      style={styles.progressTrack}
+      pointerEvents="none"
+      testID="terminal-progress-track"
+      accessibilityRole="progressbar"
+    >
+      <View style={fillStyle} />
+    </View>
+  );
+}
+
 const styles = StyleSheet.create((theme) => ({
   container: {
     flex: 1,
@@ -1123,6 +1201,30 @@ const styles = StyleSheet.create((theme) => ({
   terminalGestureContainer: {
     flex: 1,
     minHeight: 0,
+  },
+  progressTrack: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    top: 0,
+    height: 2,
+    backgroundColor: "transparent",
+    overflow: "hidden",
+    zIndex: 2,
+  },
+  progressFill: {
+    height: "100%",
+    backgroundColor: theme.colors.primary,
+  },
+  progressFillError: {
+    backgroundColor: theme.colors.destructive,
+  },
+  progressFillPaused: {
+    backgroundColor: theme.colors.foregroundMuted,
+  },
+  progressFillIndeterminate: {
+    width: "35%",
+    backgroundColor: theme.colors.primary,
   },
   attachOverlay: {
     ...StyleSheet.absoluteFillObject,

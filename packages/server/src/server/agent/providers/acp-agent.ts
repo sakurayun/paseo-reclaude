@@ -498,6 +498,18 @@ export interface ACPToolSnapshot {
   locations?: ToolCallLocation[] | null;
   rawInput?: unknown;
   rawOutput?: unknown;
+  /**
+   * Vendor `_meta` from the latest tool_call / tool_call_update.
+   * Grok puts the stable tool identity at `_meta["x.ai/tool"].name`
+   * (e.g. `todo_write`) even when presentation `kind`/`title` change to
+   * `think` / "Updating plan".
+   */
+  meta?: Record<string, unknown> | null;
+  /**
+   * First non-empty title seen for this callId. Used when later updates
+   * replace the title with a human label while the original was the tool id.
+   */
+  originalTitle?: string;
 }
 
 interface PendingPermission {
@@ -3371,20 +3383,50 @@ function coalesceDefined<T>(next: T | undefined, previous: T | undefined, fallba
   return fallback;
 }
 
+function resolveToolCallMeta(
+  update: ToolCall | ToolCallUpdate,
+  previous?: ACPToolSnapshot,
+): Record<string, unknown> | null {
+  if (update._meta !== undefined) {
+    return isRecord(update._meta) ? update._meta : null;
+  }
+  return previous?.meta ?? null;
+}
+
+function resolveOriginalToolTitle(
+  toolCallId: string,
+  update: ToolCall | ToolCallUpdate,
+  previous?: ACPToolSnapshot,
+): string {
+  if (previous?.originalTitle) {
+    return previous.originalTitle;
+  }
+  if (typeof previous?.title === "string" && previous.title.trim().length > 0) {
+    return previous.title;
+  }
+  if (typeof update.title === "string" && update.title.trim().length > 0) {
+    return update.title;
+  }
+  return toolCallId;
+}
+
 function mergeToolSnapshot(
   toolCallId: string,
   update: ToolCall | ToolCallUpdate,
   previous?: ACPToolSnapshot,
 ): ACPToolSnapshot {
+  const nextTitle = update.title ?? previous?.title ?? toolCallId;
   return {
     toolCallId,
-    title: update.title ?? previous?.title ?? toolCallId,
+    title: nextTitle,
     kind: update.kind ?? previous?.kind ?? null,
     status: update.status ?? previous?.status ?? null,
     content: coalesceDefined(update.content, previous?.content, null),
     locations: coalesceDefined(update.locations, previous?.locations, null),
     rawInput: update.rawInput !== undefined ? update.rawInput : previous?.rawInput,
     rawOutput: update.rawOutput !== undefined ? update.rawOutput : previous?.rawOutput,
+    meta: resolveToolCallMeta(update, previous),
+    originalTitle: resolveOriginalToolTitle(toolCallId, update, previous),
   };
 }
 
@@ -3398,14 +3440,77 @@ function mapPlanToTimeline(plan: Plan): AgentTimelineItem {
   };
 }
 
-export function resolveAcpToolCallName(snapshot: ACPToolSnapshot): string {
-  const kind = typeof snapshot.kind === "string" ? snapshot.kind.trim() : "";
-  const title = snapshot.title.trim();
-  // Generic ACP "other" (and missing kind) should not become the display label
-  // "Other" — prefer the human title agents put on the tool.
-  if (!kind || kind === "other") {
-    return title || kind || snapshot.toolCallId;
+/**
+ * Grok (and potentially other vendors) put the stable tool identity on
+ * `_meta["x.ai/tool"].name` while presentation fields (kind/title) change mid-call.
+ */
+export function readVendorToolName(
+  meta: Record<string, unknown> | null | undefined,
+): string | null {
+  if (!meta) return null;
+  const vendor = meta["x.ai/tool"];
+  if (!isRecord(vendor)) return null;
+  const name = vendor.name;
+  if (typeof name !== "string") return null;
+  const trimmed = name.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+/** True when rawInput looks like a TodoWrite / todo_write payload. */
+export function isTodoWriteRawInput(rawInput: unknown): boolean {
+  if (!isRecord(rawInput)) return false;
+  if (!Array.isArray(rawInput.todos)) return false;
+  // Grok marks updates with variant: "TodoWrite"; Claude uses the tool name alone.
+  if (rawInput.variant === "TodoWrite" || rawInput.variant === "todo_write") {
+    return true;
   }
+  return rawInput.todos.some(
+    (entry) =>
+      isRecord(entry) &&
+      (typeof entry.content === "string" ||
+        typeof entry.status === "string" ||
+        typeof entry.id === "string"),
+  );
+}
+
+/**
+ * Machine-style tool ids (todo_write, WebFetch) vs human labels ("Updating plan").
+ */
+function looksLikeToolIdentifier(title: string): boolean {
+  if (!title || /\s/.test(title)) return false;
+  // snake_case / kebab-case / PascalCase identifiers without spaces
+  return /^[A-Za-z][A-Za-z0-9_.-]*$/.test(title);
+}
+
+export function resolveAcpToolCallName(snapshot: ACPToolSnapshot): string {
+  // 1) Vendor meta wins (Grok: `_meta["x.ai/tool"].name` stays `todo_write`
+  // even when kind flips to `think` and title becomes "Updating plan").
+  const vendorName = readVendorToolName(snapshot.meta ?? null);
+  if (vendorName) {
+    return vendorName;
+  }
+
+  // 2) Structured todo payload — keep the identity even under a presentation kind.
+  if (isTodoWriteRawInput(snapshot.rawInput)) {
+    return "todo_write";
+  }
+
+  const kind = typeof snapshot.kind === "string" ? snapshot.kind.trim().toLowerCase() : "";
+  const title = snapshot.title.trim();
+  const originalTitle = (snapshot.originalTitle ?? "").trim();
+
+  // 3) Generic presentation kinds must not become the tool name. Prefer a
+  // machine-style original title (todo_write) over a human label (Updating plan).
+  if (!kind || kind === "other" || kind === "think") {
+    if (looksLikeToolIdentifier(originalTitle) && originalTitle.toLowerCase() !== kind) {
+      return originalTitle;
+    }
+    if (looksLikeToolIdentifier(title) && title.toLowerCase() !== kind) {
+      return title;
+    }
+    return title || originalTitle || kind || snapshot.toolCallId;
+  }
+
   return kind;
 }
 
@@ -3414,15 +3519,19 @@ function mapToolSnapshotToTimeline(
   terminals: Map<string, TerminalEntry>,
 ): ToolCallTimelineItem {
   const status = mapToolStatus(snapshot.status);
-  const detail = mapToolDetail(snapshot, terminals);
+  const name = resolveAcpToolCallName(snapshot);
+  const detail = mapToolDetail(snapshot, terminals, name);
   const base = {
     type: "tool_call" as const,
     callId: snapshot.toolCallId,
-    name: resolveAcpToolCallName(snapshot),
+    name,
     detail,
     metadata: {
       kind: snapshot.kind ?? undefined,
       title: snapshot.title,
+      ...(readVendorToolName(snapshot.meta ?? null)
+        ? { vendorToolName: readVendorToolName(snapshot.meta ?? null) }
+        : {}),
     },
   };
   if (status === "failed") {
@@ -3472,6 +3581,7 @@ interface MapToolDetailContext {
 function mapToolDetail(
   snapshot: ACPToolSnapshot,
   terminals: Map<string, TerminalEntry>,
+  resolvedName?: string,
 ): ToolCallDetail {
   const context: MapToolDetailContext = {
     snapshot,
@@ -3482,6 +3592,26 @@ function mapToolDetail(
     rawInput: readRecord(snapshot.rawInput),
     rawOutput: readRecord(snapshot.rawOutput),
   };
+
+  // Todo/task-list tools must keep structured rawInput so the client can
+  // extract the checklist. Grok often re-labels these as kind "think" with
+  // title "Updating plan", which would otherwise become plain_text and lose
+  // the todos array.
+  const toolName = (resolvedName ?? resolveAcpToolCallName(snapshot))
+    .trim()
+    .replace(/[.\s-]+/g, "_")
+    .toLowerCase();
+  if (
+    toolName === "todo_write" ||
+    toolName === "todowrite" ||
+    isTodoWriteRawInput(snapshot.rawInput)
+  ) {
+    return {
+      type: "unknown",
+      input: snapshot.rawInput ?? null,
+      output: snapshot.rawOutput ?? null,
+    };
+  }
 
   switch (snapshot.kind) {
     case "read":

@@ -257,10 +257,18 @@ export function createSshConnectService(deps: SshConnectServiceDeps): SshConnect
 
     progress("Authenticated. Opening shell…");
     try {
+      // Advertise image-capable terminal identity when the remote AcceptEnv
+      // allows it. DA1 sixel bits are always answered by the daemon headless
+      // xterm regardless; TERM_PROGRAM helps kitty/iTerm-style tools opt in.
+      const shellEnv = {
+        TERM_PROGRAM: "kitty",
+        COLORTERM: "truecolor",
+        ...host.env,
+      };
       const channel = await acquired.connection.shell({
         cols: input.cols ?? 80,
         rows: input.rows ?? 24,
-        ...(host.env ? { env: host.env } : {}),
+        env: shellEnv,
       });
 
       let released = false;

@@ -27,6 +27,8 @@ import {
   mapACPUsage,
   resolveACPModeSelection,
   resolveACPModelSelection,
+  isTodoWriteRawInput,
+  readVendorToolName,
   resolveAcpToolCallName,
   summarizeACPRequestError,
 } from "./acp-agent.js";
@@ -3035,5 +3037,80 @@ describe("resolveAcpToolCallName", () => {
         kind: "read",
       } as never),
     ).toBe("read");
+  });
+
+  test("prefers Grok vendor meta name when kind flips to think", () => {
+    expect(
+      resolveAcpToolCallName({
+        toolCallId: "call-todo",
+        title: "Updating plan",
+        kind: "think",
+        originalTitle: "todo_write",
+        meta: {
+          "x.ai/tool": {
+            version: 1,
+            name: "todo_write",
+            kind: "plan",
+            namespace: "grok_build",
+            label: "Plan",
+          },
+        },
+        rawInput: {
+          variant: "TodoWrite",
+          merge: false,
+          todos: [{ id: "1", content: "Ship it", status: "in_progress" }],
+        },
+      } as never),
+    ).toBe("todo_write");
+  });
+
+  test("detects todo_write from rawInput when meta is missing", () => {
+    expect(
+      resolveAcpToolCallName({
+        toolCallId: "call-todo-2",
+        title: "Updating plan",
+        kind: "think",
+        rawInput: {
+          todos: [
+            { content: "A", status: "pending" },
+            { content: "B", status: "completed" },
+          ],
+        },
+      } as never),
+    ).toBe("todo_write");
+  });
+
+  test("keeps original machine title under think presentation", () => {
+    expect(
+      resolveAcpToolCallName({
+        toolCallId: "call-todo-3",
+        title: "Updating plan",
+        kind: "think",
+        originalTitle: "todo_write",
+      } as never),
+    ).toBe("todo_write");
+  });
+});
+
+describe("readVendorToolName / isTodoWriteRawInput", () => {
+  test("reads x.ai/tool name from meta", () => {
+    expect(
+      readVendorToolName({
+        "x.ai/tool": { name: "todo_write", kind: "plan" },
+      }),
+    ).toBe("todo_write");
+    expect(readVendorToolName({})).toBeNull();
+    expect(readVendorToolName(null)).toBeNull();
+  });
+
+  test("detects todo payloads including Grok variant", () => {
+    expect(
+      isTodoWriteRawInput({
+        variant: "TodoWrite",
+        todos: [{ id: "1", content: null, status: "completed" }],
+      }),
+    ).toBe(true);
+    expect(isTodoWriteRawInput({ command: "ls" })).toBe(false);
+    expect(isTodoWriteRawInput(null)).toBe(false);
   });
 });

@@ -1308,6 +1308,7 @@ export const ru: TranslationResources = {
       commandCenter: "Командный центр",
       openCommandCenter: "Открыть командный центр",
       displayPreferences: "Параметры отображения",
+      theme: "Тема",
     },
     search: {
       placeholder: "Фильтровать проекты...",

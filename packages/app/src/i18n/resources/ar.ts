@@ -1283,6 +1283,7 @@ export const ar: TranslationResources = {
       commandCenter: "مركز القيادة",
       openCommandCenter: "فتح مركز القيادة",
       displayPreferences: "تفضيلات العرض",
+      theme: "المظهر",
     },
     search: {
       placeholder: "تصفية المشاريع...",

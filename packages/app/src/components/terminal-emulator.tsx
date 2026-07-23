@@ -26,6 +26,10 @@ import {
   type TerminalOutputData,
 } from "../terminal/runtime/terminal-emulator-runtime";
 import type {
+  TerminalDesktopNotification,
+  TerminalProgressState,
+} from "../terminal/runtime/terminal-kitty-protocols";
+import type {
   TerminalLocalFileLinkSource,
   TerminalLocalFileLinkTarget,
 } from "../terminal/local-links/terminal-local-link-provider";
@@ -139,6 +143,11 @@ interface TerminalEmulatorProps {
     disposition: "main" | "side",
   ) => Promise<void> | void;
   onRendererReadyChange?: (change: TerminalRendererReadyChange) => void;
+  onGpuRendererChange?: (input: { enabled: boolean }) => Promise<void> | void;
+  onDesktopNotification?: (notification: TerminalDesktopNotification) => Promise<void> | void;
+  onProgressChange?: (progress: TerminalProgressState) => Promise<void> | void;
+  onCwdReport?: (cwd: string) => Promise<void> | void;
+  onRequestFocus?: () => Promise<void> | void;
   pendingModifiers?: PendingTerminalModifiers;
   focusRequestToken?: number;
   resizeRequestToken?: number;
@@ -187,6 +196,11 @@ export default function TerminalEmulator({
   onResolveLocalFileLink,
   onOpenLocalFileLink,
   onRendererReadyChange,
+  onGpuRendererChange,
+  onDesktopNotification,
+  onProgressChange,
+  onCwdReport,
+  onRequestFocus,
   pendingModifiers = { ctrl: false, shift: false, alt: false },
   focusRequestToken = 0,
   resizeRequestToken = 0,
@@ -220,6 +234,11 @@ export default function TerminalEmulator({
     onFileDrop,
     onResolveLocalFileLink,
     onOpenLocalFileLink,
+    onGpuRendererChange,
+    onDesktopNotification,
+    onProgressChange,
+    onCwdReport,
+    onRequestFocus,
   });
   mountCallbacksRef.current = {
     onInput,
@@ -231,6 +250,11 @@ export default function TerminalEmulator({
     onFileDrop,
     onResolveLocalFileLink,
     onOpenLocalFileLink,
+    onGpuRendererChange,
+    onDesktopNotification,
+    onProgressChange,
+    onCwdReport,
+    onRequestFocus,
   };
   const initialSnapshotRef = useRef(initialSnapshot);
   initialSnapshotRef.current = initialSnapshot;
@@ -489,15 +513,25 @@ export default function TerminalEmulator({
         onFontZoom,
         onResolveLocalFileLink,
         onOpenLocalFileLink,
+        onGpuRendererChange,
+        onDesktopNotification,
+        onProgressChange,
+        onCwdReport,
+        onRequestFocus,
         onOpenExternalUrl: openExternalUrl,
       },
     });
   }, [
+    onCwdReport,
+    onDesktopNotification,
     onFontZoom,
+    onGpuRendererChange,
     onInput,
     onInputModeChange,
     onOpenLocalFileLink,
     onPendingModifiersConsumed,
+    onProgressChange,
+    onRequestFocus,
     onResolveLocalFileLink,
     onResize,
     onTerminalKey,

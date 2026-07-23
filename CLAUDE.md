@@ -47,6 +47,8 @@ At the start of non-trivial work, list `docs/` and skim anything relevant to the
 | [docs/rpc-namespacing.md](docs/rpc-namespacing.md)                 | WebSocket RPC naming convention — dotted namespaces and `.request`/`.response` pairs                                              |
 | [docs/protocol-validation.md](docs/protocol-validation.md)         | zod-aot generated inbound WebSocket validation, patched compiler regressions, schema-purity rules                                 |
 | [docs/terminal-performance.md](docs/terminal-performance.md)       | Terminal latency pipeline, coalescing/backpressure invariants, benchmark + perf spec usage                                        |
+| [docs/terminal-images.md](docs/terminal-images.md)                 | Terminal inline images — Sixel / iTerm2 IIP / Kitty, click-to-preview, WebGL + snapshot gotchas                                   |
+| [docs/terminal-kitty.md](docs/terminal-kitty.md)                   | Kitty protocol matrix, GPU WebGL path, what Kittens can/cannot be, OSC 99/9/7/22                                                  |
 | [docs/testing.md](docs/testing.md)                                 | TDD workflow, determinism, real dependencies over mocks, test organization                                                        |
 | [docs/transcript-context.md](docs/transcript-context.md)           | Add Transcripts ownership, privacy boundary, cross-host identity, limits, and platform verification                               |
 | [docs/mobile-testing.md](docs/mobile-testing.md)                   | Maestro and mobile test workflows                                                                                                 |

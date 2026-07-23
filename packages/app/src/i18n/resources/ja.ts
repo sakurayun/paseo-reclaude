@@ -1294,6 +1294,7 @@ export const ja: TranslationResources = {
       commandCenter: "コマンドセンター",
       openCommandCenter: "コマンドセンターを開く",
       displayPreferences: "表示設定",
+      theme: "テーマ",
     },
     search: {
       placeholder: "プロジェクトを絞り込む...",

@@ -532,6 +532,10 @@ export function buildTerminalEnvironment(
   const baseEnv: Record<string, string> = createExternalProcessEnv(process.env, input.env, {
     TERM: "xterm-256color",
     TERM_PROGRAM: "kitty",
+    // Advertise truecolor + Kitty-compatible identity for apps that probe env
+    // (icat, kitten notify, rich TUI toolkits). Keep TERM as xterm-256color so
+    // legacy terminfo lookups still succeed.
+    COLORTERM: "truecolor",
   });
   const envWithAgentHooks = prependPaseoCliToPath(
     baseEnv,
@@ -1204,10 +1208,13 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
   }
   emitTitleChange(initialTitle);
 
-  // Respond to DA1 queries (CSI c or CSI 0 c) — apps like nvim query terminal capabilities
+  // Respond to DA1 queries (CSI c or CSI 0 c) — apps like nvim / img2sixel probe capabilities.
+  // Features match the client @xterm/addon-image DA1: VT220 + SIXEL + charsets + ANSI color.
+  // (Kitty / iTerm2 image protocols are advertised via TERM_PROGRAM=kitty + OSC/APC handlers
+  // on the client renderer; DA1 only has a standard bit for SIXEL.)
   terminal.parser.registerCsiHandler({ final: "c" }, (params) => {
     if (params.length === 0 || (params.length === 1 && params[0] === 0)) {
-      backend.write("\x1b[?62;4;22c");
+      backend.write("\x1b[?62;4;9;22c");
       return true;
     }
     return false;

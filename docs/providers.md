@@ -12,6 +12,8 @@ Built-in ACP providers include `copilot` (`copilot-acp-agent.ts`) and `grok` (`g
 
 Grok-specific ACP behavior stays in the Grok adapter (and small adjacent modules such as `grok-background-tasks.ts`): mode mapping for Always Approve (`bypassPermissions` id + launch `--always-approve`; do not use a blocking ACP `prompt` for `/always-approve` during setMode — that freezes create_agent / draft send), suppression of `user_message_chunk` when `_meta.hideFromScrollback === true`, and structured `_x.ai/session/update` task events rendered as synthetic `tool_call` timeline items. Shared ACP only exposes narrow hooks (`shouldSuppressUserMessageChunk`, `extensionNotificationHandler`) so other providers remain unaffected.
 
+**Todo / task list:** Grok emits both standard ACP `sessionUpdate: "plan"` entries and `todo_write` tool calls. Mid-call Grok often re-labels the tool as `kind: "think"` / title `"Updating plan"` while the real tool id stays on `_meta["x.ai/tool"].name`. `resolveAcpToolCallName` prefers that vendor meta (then rawInput todos / originalTitle) so the client still extracts a checklist; todo payloads keep `detail.type === "unknown"` with structured `rawInput` even under a `think` presentation kind.
+
 Tool cards use `kind` as the display name when it is a concrete ACP kind; when `kind` is missing or `other`, the base class prefers the tool `title` so cards are not labeled "Other".
 
 Copilot custom agents are exposed through ACP session config, not the slash-command list. When custom agents are available, Copilot returns a select config option with `id: "agent"` and `category: "_agent"`; Paseo maps that to the `agent` provider feature. Copilot uses the agent display name as the option value, and the blank value means the default Copilot agent.

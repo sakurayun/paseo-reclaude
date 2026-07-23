@@ -11,6 +11,10 @@ import type {
   TerminalLocalFileLinkSource,
   TerminalLocalFileLinkTarget,
 } from "../local-links/terminal-local-link-provider";
+import type {
+  TerminalDesktopNotification,
+  TerminalProgressState,
+} from "../runtime/terminal-kitty-protocols";
 
 interface MountMessage {
   type: "mount";
@@ -87,6 +91,15 @@ type OutboundMessage =
   | { type: "swipeLeft"; streamKey: string }
   | { type: "swipeRight"; streamKey: string }
   | { type: "clipboardRead"; streamKey: string }
+  | { type: "gpuRendererChange"; streamKey: string; enabled: boolean }
+  | {
+      type: "desktopNotification";
+      streamKey: string;
+      notification: TerminalDesktopNotification;
+    }
+  | { type: "progressChange"; streamKey: string; progress: TerminalProgressState }
+  | { type: "cwdReport"; streamKey: string; cwd: string }
+  | { type: "requestFocus"; streamKey: string }
   | { type: "debug"; message: string; details?: unknown };
 
 declare global {
@@ -332,6 +345,19 @@ class TerminalWebViewBridge {
             target,
             disposition,
           }),
+        onGpuRendererChange: ({ enabled }) =>
+          sendToNative({ type: "gpuRendererChange", streamKey: message.streamKey, enabled }),
+        onDesktopNotification: (notification) =>
+          sendToNative({
+            type: "desktopNotification",
+            streamKey: message.streamKey,
+            notification,
+          }),
+        onProgressChange: (progress) =>
+          sendToNative({ type: "progressChange", streamKey: message.streamKey, progress }),
+        onCwdReport: (cwd) =>
+          sendToNative({ type: "cwdReport", streamKey: message.streamKey, cwd }),
+        onRequestFocus: () => sendToNative({ type: "requestFocus", streamKey: message.streamKey }),
       },
     });
     runtime.setPendingModifiers({ pendingModifiers: message.pendingModifiers });

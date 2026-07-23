@@ -29,6 +29,7 @@ import { AnsiText } from "./ansi-text";
 import { getCodeInsets } from "./code-insets";
 import { isWeb } from "@/constants/platform";
 import { ansiToPlainText, mapRawRangeToVisible } from "@/utils/ansi-spans";
+import { buildShellAnsiDocument } from "@/utils/shell-command-ansi";
 // Type-only import keeps the message <-> tool-call-details cycle compile-time only.
 import type { MessageFindHighlight } from "./message";
 
@@ -250,15 +251,14 @@ function ShellDetailSectionBase({
     shiftShellHighlights(findHighlights?.get("shell.output"), trimmedDelta),
   );
 
-  // Compose a single ANSI document: green `$ ` prompt + command + blank line +
-  // output. One AnsiText pass keeps selection continuous across the card.
-  const shellDocument = useMemo(() => {
-    const prompt = "\u001b[32m$ \u001b[0m";
-    if (!hasOutput) {
-      return `${prompt}${normalizedCommand}`;
-    }
-    return `${prompt}${normalizedCommand}\n\n${commandOutput}`;
-  }, [commandOutput, hasOutput, normalizedCommand]);
+  // Compose a single ANSI document: bold-green `$ ` + syntax-colored command +
+  // blank line + dimmed (or vendor-ANSI) output. One AnsiText pass keeps
+  // selection continuous across the card; visible (stripped) text is unchanged
+  // so find-highlight offsets stay valid.
+  const shellDocument = useMemo(
+    () => buildShellAnsiDocument(normalizedCommand, hasOutput ? commandOutput : null),
+    [commandOutput, hasOutput, normalizedCommand],
+  );
 
   const documentHighlights = useMemo(() => {
     // Prompt is 2 visible chars (`$ `). Command highlights shift by that.

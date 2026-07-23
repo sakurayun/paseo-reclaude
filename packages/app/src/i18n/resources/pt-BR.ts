@@ -1306,6 +1306,7 @@ export const ptBR: TranslationResources = {
       commandCenter: "Central de comandos",
       openCommandCenter: "Abrir central de comandos",
       displayPreferences: "Preferências de exibição",
+      theme: "Tema",
     },
     search: {
       placeholder: "Filtrar projetos...",

@@ -10,6 +10,7 @@ interface MockNotificationInstance {
   title: string;
   options?: MockNotificationOptions;
   clickListeners: Array<(event: Event) => void>;
+  closeListeners?: Array<(event: Event) => void>;
   addEventListener: (event: string, listener: (event: Event) => void) => void;
   close: ReturnType<typeof vi.fn>;
 }
@@ -231,6 +232,7 @@ describe("sendOsNotification", () => {
       static permission = "granted";
       static requestPermission = vi.fn(async () => "granted");
       clickListeners: Array<(event: Event) => void> = [];
+      closeListeners: Array<(event: Event) => void> = [];
       close = vi.fn();
 
       constructor(
@@ -243,6 +245,9 @@ describe("sendOsNotification", () => {
       addEventListener(event: string, listener: (event: Event) => void): void {
         if (event === "click") {
           this.clickListeners.push(listener);
+        }
+        if (event === "close") {
+          this.closeListeners.push(listener);
         }
       }
     }
@@ -261,6 +266,70 @@ describe("sendOsNotification", () => {
     expect(sent).toBe(true);
     expect(created).toHaveLength(1);
     expect(created[0]?.clickListeners).toHaveLength(0);
+  });
+
+  it("attaches click and close handlers for terminal notifications", async () => {
+    const created: Array<{
+      clickListeners: Array<(event: Event) => void>;
+      closeListeners: Array<(event: Event) => void>;
+    }> = [];
+
+    class MockNotification {
+      static permission = "granted";
+      static requestPermission = vi.fn(async () => "granted");
+      clickListeners: Array<(event: Event) => void> = [];
+      closeListeners: Array<(event: Event) => void> = [];
+      close = vi.fn();
+
+      constructor(
+        public title: string,
+        public options?: MockNotificationOptions,
+      ) {
+        created.push(this);
+      }
+
+      addEventListener(event: string, listener: (event: Event) => void): void {
+        if (event === "click") {
+          this.clickListeners.push(listener);
+        }
+        if (event === "close") {
+          this.closeListeners.push(listener);
+        }
+      }
+    }
+
+    const dispatchEvent = vi.fn((event: unknown) => {
+      void event;
+      return true;
+    });
+    (globalThis as { Notification?: unknown }).Notification = MockNotification;
+    (globalThis as { dispatchEvent?: unknown }).dispatchEvent = dispatchEvent;
+    (globalThis as { location?: unknown }).location = { assign: vi.fn() };
+
+    const { sendOsNotification, WEB_NOTIFICATION_CLOSE_EVENT } = await loadModuleForPlatform("web");
+
+    await sendOsNotification({
+      title: "Build done",
+      data: {
+        kind: "terminal-notification",
+        serverId: "srv-1",
+        terminalId: "term-1",
+        notificationId: "job",
+        report: true,
+        focus: true,
+        reportClose: true,
+      },
+    });
+
+    expect(created[0]?.clickListeners).toHaveLength(1);
+    expect(created[0]?.closeListeners).toHaveLength(1);
+
+    created[0]?.closeListeners[0]?.({} as Event);
+    expect(dispatchEvent).toHaveBeenCalled();
+    const closeEvent = dispatchEvent.mock.calls
+      .map((call) => call[0] as { type?: string; detail?: { data?: Record<string, unknown> } })
+      .find((event) => event.type === WEB_NOTIFICATION_CLOSE_EVENT);
+    expect(closeEvent?.detail?.data?.kind).toBe("terminal-notification");
   });
 
   it("uses the desktop notification bridge when available", async () => {

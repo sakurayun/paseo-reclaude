@@ -1320,6 +1320,7 @@ export const fr: TranslationResources = {
       commandCenter: "Centre de commande",
       openCommandCenter: "Ouvrir le centre de commande",
       displayPreferences: "Préférences d'affichage",
+      theme: "Thème",
     },
     search: {
       placeholder: "Filtrer les projets...",

@@ -949,6 +949,7 @@ export function AppearanceSection() {
           </View>
           <LigaturePreview
             enabled={settings.terminalLigaturesEnabled}
+            terminalColorScheme={settings.terminalColorScheme}
             overrides={previewOverrides}
           />
           <TerminalLetterSpacingRow

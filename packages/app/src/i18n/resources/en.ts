@@ -1294,6 +1294,7 @@ export const en = {
       commandCenter: "Command center",
       openCommandCenter: "Open command center",
       displayPreferences: "Display preferences",
+      theme: "Theme",
     },
     search: {
       placeholder: "Filter projects...",

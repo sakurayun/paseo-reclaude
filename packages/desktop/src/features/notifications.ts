@@ -114,6 +114,18 @@ export function registerNotificationHandlers(): void {
     });
 
     notification.on("close", () => {
+      // Forward close so Kitty OSC 99 `c=1` close reports can be injected into
+      // the originating terminal. Prefer the sender window; fall back to any
+      // open window so dismissal still reaches the app.
+      if (data && Object.keys(data).length > 0) {
+        const win =
+          BrowserWindow.fromWebContents(event.sender) ??
+          BrowserWindow.getAllWindows().find((entry) => !entry.isDestroyed()) ??
+          null;
+        if (win && !win.isDestroyed()) {
+          win.webContents.send("paseo:event:notification-close", { data });
+        }
+      }
       activeNotifications.delete(notification);
     });
 

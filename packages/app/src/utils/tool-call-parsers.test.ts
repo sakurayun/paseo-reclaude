@@ -35,6 +35,33 @@ describe("tool-call-parsers", () => {
     expect(tasks?.map((task) => task.text)).toEqual(["Task 1", "Task 2"]);
     expect(tasks?.map((task) => task.completed)).toEqual([false, true]);
   });
+
+  it("extracts Grok todo_write with id fields", () => {
+    const tasks = extractTaskEntriesFromToolCall("todo_write", {
+      todos: [
+        { id: "1", content: "在 acp-agent 增加钩子", status: "in_progress" },
+        { id: "2", content: "新增 grok-background-tasks.ts", status: "pending" },
+      ],
+      merge: false,
+    });
+    expect(tasks?.map((task) => task.text)).toEqual([
+      "在 acp-agent 增加钩子",
+      "新增 grok-background-tasks.ts",
+    ]);
+    expect(tasks?.map((task) => task.completed)).toEqual([false, false]);
+  });
+
+  it("returns null for Grok status-only merge payloads (keep prior checklist)", () => {
+    expect(
+      extractTaskEntriesFromToolCall("todo_write", {
+        todos: [
+          { id: "1", content: null, status: "completed" },
+          { id: "2", status: "completed" },
+        ],
+        merge: true,
+      }),
+    ).toBeNull();
+  });
 });
 
 describe("task tool call effects", () => {

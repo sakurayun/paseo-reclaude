@@ -1270,6 +1270,7 @@ export const zhCN: TranslationResources = {
       commandCenter: "命令中心",
       openCommandCenter: "打开命令中心",
       displayPreferences: "显示偏好",
+      theme: "主题",
     },
     search: {
       placeholder: "筛选项目...",

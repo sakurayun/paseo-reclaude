@@ -53,6 +53,25 @@ import {
   type TerminalLocalFileLinkSource,
   type TerminalLocalFileLinkTarget,
 } from "../local-links/terminal-local-link-provider";
+import {
+  canvasToPngDataUrl,
+  getTerminalImageAtViewportCell,
+  openTerminalImageLightbox,
+  shouldOpenTerminalImagePreview,
+  type TerminalImageLightboxHandle,
+} from "./terminal-image-preview";
+import {
+  KittyNotificationAccumulator,
+  buildKittyOsc99ActivationReport,
+  buildKittyOsc99CloseReport,
+  isKittyOsc99Done,
+  parseKittyOsc99,
+  parseOsc7,
+  parseOsc9,
+  parseOsc22,
+  type TerminalDesktopNotification,
+  type TerminalProgressState,
+} from "./terminal-kitty-protocols";
 
 export type TerminalOutputData = Uint8Array;
 
@@ -89,6 +108,16 @@ export interface TerminalEmulatorRuntimeCallbacks {
   ) => Promise<void> | void;
   onInputModeChange?: (state: TerminalInputModeState) => Promise<void> | void;
   onFontZoom?: (input: { direction: TerminalFontZoomDirection }) => Promise<void> | void;
+  /** WebGL GPU renderer became available or fell back to canvas. */
+  onGpuRendererChange?: (input: { enabled: boolean }) => Promise<void> | void;
+  /** Kitty/iTerm desktop notification (OSC 99 / OSC 9). */
+  onDesktopNotification?: (notification: TerminalDesktopNotification) => Promise<void> | void;
+  /** ConEmu/Windows Terminal progress (OSC 9;4). */
+  onProgressChange?: (progress: TerminalProgressState) => Promise<void> | void;
+  /** OSC 7 working directory report. */
+  onCwdReport?: (cwd: string) => Promise<void> | void;
+  /** Focus the terminal surface (notification click with a=focus). */
+  onRequestFocus?: () => Promise<void> | void;
 }
 
 export type TerminalFontZoomDirection = "in" | "out" | "reset";
@@ -117,6 +146,8 @@ export interface TerminalFindQueryInput {
 interface TerminalEmulatorRuntimeDisposables {
   disposeInput: () => void;
   removeClickEditListeners: () => void;
+  removeImagePreviewListeners: () => void;
+  removeKittyProtocolHandlers: () => void;
   disconnectResizeObserver: () => void;
   removeWheelZoomListener: () => void;
   removeWindowResize: () => void;
@@ -287,6 +318,17 @@ export class TerminalEmulatorRuntime {
   private readonly editHistory = new TerminalEditHistory();
   // True while we inject synthetic key sequences so onData doesn't wipe history.
   private isInjectingEditSequence = false;
+  // Live ImageAddon instance (WebGL path). Used for hit-testing click-to-preview.
+  private imageAddon: ImageAddon | null = null;
+  private imageLightbox: TerminalImageLightboxHandle | null = null;
+  private imagePreviewRoot: HTMLElement | null = null;
+  private gpuEnabled = false;
+  private webglRetryTimer: ReturnType<typeof setTimeout> | null = null;
+  private webglRetryAttempt = 0;
+  private readonly kittyNotificationAccumulator = new KittyNotificationAccumulator();
+  private reportedCwd: string | null = null;
+  private pointerShapeStyleTarget: HTMLElement | null = null;
+  private previousPointerShape: string = "";
 
   private handleVisibilityRestore = (): void => {
     if (typeof document !== "undefined" && document.visibilityState !== "visible") {
@@ -392,9 +434,18 @@ export class TerminalEmulatorRuntime {
         // ignore
       }
       imageAddon = null;
+      this.imageAddon = null;
+    };
+    const setGpuEnabled = (enabled: boolean): void => {
+      if (this.gpuEnabled === enabled) {
+        return;
+      }
+      this.gpuEnabled = enabled;
+      void this.callbacks.onGpuRendererChange?.({ enabled });
     };
     const disposeWebglRenderer = (): void => {
       if (!webglAddon) {
+        setGpuEnabled(false);
         return;
       }
       try {
@@ -404,8 +455,25 @@ export class TerminalEmulatorRuntime {
       }
       webglAddon = null;
       disposeImageAddon();
+      setGpuEnabled(false);
       // WebGL and DOM renderers can have different cell dimensions.
       this.fitAndEmitResize?.({ force: true, shouldClaim: false });
+    };
+    const scheduleWebglRetry = (): void => {
+      if (this.webglRetryTimer !== null) {
+        return;
+      }
+      // Exponential backoff: 250ms, 500ms, 1s, 2s… capped at 8s, max 6 attempts.
+      const attempt = this.webglRetryAttempt;
+      if (attempt >= 6) {
+        return;
+      }
+      const delayMs = Math.min(8_000, 250 * 2 ** attempt);
+      this.webglRetryAttempt = attempt + 1;
+      this.webglRetryTimer = setTimeout(() => {
+        this.webglRetryTimer = null;
+        mountWebglRenderer();
+      }, delayMs);
     };
 
     // Browser xterm is a renderer only; it never replies to terminal protocol queries.
@@ -434,17 +502,31 @@ export class TerminalEmulatorRuntime {
     const mountWebglRenderer = (): void => {
       try {
         disposeWebglRenderer();
-        webglAddon = new WebglAddon();
+        // customGlyphs: continuous box-drawing / progress / powerline on GPU.
+        webglAddon = new WebglAddon({ customGlyphs: true });
         webglAddon.onContextLoss(() => {
           disposeWebglRenderer();
+          scheduleWebglRetry();
         });
         terminal.loadAddon(webglAddon);
-        imageAddon = new ImageAddon();
+        // Sixel + iTerm2 IIP + Kitty graphics — defaults are all on; set them
+        // explicitly so a future addon default change can't silently drop one.
+        imageAddon = new ImageAddon({
+          enableSizeReports: true,
+          sixelSupport: true,
+          iipSupport: true,
+          kittySupport: true,
+          showPlaceholder: true,
+        });
         terminal.loadAddon(imageAddon);
+        this.imageAddon = imageAddon;
         registerProtocolQuerySuppression();
+        this.webglRetryAttempt = 0;
+        setGpuEnabled(true);
         this.fitAndEmitResize?.({ force: true, shouldClaim: false });
       } catch {
         disposeWebglRenderer();
+        scheduleWebglRetry();
       }
     };
     // Exposed so setLigatures can re-activate WebGL after the ligatures addon
@@ -528,7 +610,14 @@ export class TerminalEmulatorRuntime {
       this.callbacks.onInput?.(data);
     });
 
+    this.imagePreviewRoot = input.root;
+    this.pointerShapeStyleTarget = terminal.screenElement ?? terminal.element ?? input.host;
+    if (this.pointerShapeStyleTarget) {
+      this.previousPointerShape = this.pointerShapeStyleTarget.style.cursor;
+    }
     const removeClickEditListeners = this.setupClickEditHandlers(terminal);
+    const removeImagePreviewListeners = this.setupImagePreviewHandlers(terminal);
+    const removeKittyProtocolHandlers = this.setupKittyProtocolHandlers(terminal);
 
     terminal.attachCustomKeyEventHandler((event) =>
       this.handleCustomTerminalKeyEvent(event, terminal),
@@ -620,6 +709,8 @@ export class TerminalEmulatorRuntime {
         inputDisposable.dispose();
       },
       removeClickEditListeners,
+      removeImagePreviewListeners,
+      removeKittyProtocolHandlers,
       disconnectResizeObserver: () => {
         resizeObserver.disconnect();
       },
@@ -668,9 +759,24 @@ export class TerminalEmulatorRuntime {
 
     this.cleanup = () => {
       this.reinitWebglRenderer = null;
+      this.closeImageLightbox();
+      this.imagePreviewRoot = null;
+      this.kittyNotificationAccumulator.clear();
+      this.reportedCwd = null;
+      if (this.webglRetryTimer !== null) {
+        clearTimeout(this.webglRetryTimer);
+        this.webglRetryTimer = null;
+      }
+      this.webglRetryAttempt = 0;
+      if (this.pointerShapeStyleTarget) {
+        this.pointerShapeStyleTarget.style.cursor = this.previousPointerShape;
+      }
+      this.pointerShapeStyleTarget = null;
       this.disableLigatures(terminal);
       disposables.disposeInput();
       disposables.removeClickEditListeners();
+      disposables.removeImagePreviewListeners();
+      disposables.removeKittyProtocolHandlers();
       disposables.disconnectResizeObserver();
       disposables.removeWheelZoomListener();
       disposables.removeWindowResize();
@@ -685,7 +791,17 @@ export class TerminalEmulatorRuntime {
       disposables.disposeTerminal();
       disposables.restoreDocumentStyles();
       disposables.restoreViewportStyles();
+      this.gpuEnabled = false;
     };
+  }
+
+  /** Last OSC 7 reported cwd for this surface, if any. */
+  getReportedCwd(): string | null {
+    return this.reportedCwd;
+  }
+
+  isGpuAccelerated(): boolean {
+    return this.gpuEnabled;
   }
 
   write(input: {
@@ -1149,6 +1265,108 @@ export class TerminalEmulatorRuntime {
   }
 
   /**
+   * Kitty-compatible OSC handlers: desktop notifications, progress, cwd, pointer.
+   * Shared by local and SSH terminals (same byte stream + runtime).
+   */
+  private setupKittyProtocolHandlers(terminal: Terminal): () => void {
+    const disposables: Array<{ dispose: () => void }> = [];
+
+    const injectResponses = (responses: string[] | undefined): void => {
+      if (!responses || responses.length === 0) {
+        return;
+      }
+      for (const response of responses) {
+        void this.callbacks.onInput?.(response);
+      }
+    };
+
+    const handleNotification = (notification: TerminalDesktopNotification): void => {
+      void this.callbacks.onDesktopNotification?.(notification);
+    };
+
+    disposables.push(
+      terminal.parser.registerOscHandler(99, (data) => {
+        const result = parseKittyOsc99(data);
+        injectResponses(result.responses);
+        if (result.closeNotificationId) {
+          // Best-effort: no durable OS handle list; still acknowledge close report path.
+          return true;
+        }
+        if (result.notification) {
+          const done = isKittyOsc99Done(data);
+          const complete = this.kittyNotificationAccumulator.ingest(result.notification, done);
+          if (complete) {
+            handleNotification(complete);
+          }
+        }
+        return result.handled;
+      }),
+    );
+
+    disposables.push(
+      terminal.parser.registerOscHandler(9, (data) => {
+        const result = parseOsc9(data);
+        if (result.progress) {
+          void this.callbacks.onProgressChange?.(result.progress);
+        }
+        if (result.notification) {
+          handleNotification(result.notification);
+        }
+        return result.handled;
+      }),
+    );
+
+    disposables.push(
+      terminal.parser.registerOscHandler(7, (data) => {
+        const result = parseOsc7(data);
+        if (result.cwd) {
+          this.reportedCwd = result.cwd;
+          void this.callbacks.onCwdReport?.(result.cwd);
+        }
+        return result.handled;
+      }),
+    );
+
+    disposables.push(
+      terminal.parser.registerOscHandler(22, (data) => {
+        const result = parseOsc22(data);
+        const target = this.pointerShapeStyleTarget;
+        if (target) {
+          target.style.cursor = result.pointerShape ?? this.previousPointerShape;
+        }
+        return result.handled;
+      }),
+    );
+
+    return () => {
+      for (const disposable of disposables) {
+        try {
+          disposable.dispose();
+        } catch {
+          // ignore
+        }
+      }
+    };
+  }
+
+  /**
+   * Report notification activation/close back to the PTY (Kitty OSC 99).
+   * Prefer `reportTerminalNotificationActivated` / `Closed` at the OS
+   * notification layer (works even when the pane is unmounted). These
+   * runtime helpers remain for in-process tests and direct call sites.
+   */
+  reportDesktopNotificationActivated(id: string, options?: { focus?: boolean }): void {
+    void this.callbacks.onInput?.(buildKittyOsc99ActivationReport(id));
+    if (options?.focus !== false) {
+      void this.callbacks.onRequestFocus?.();
+    }
+  }
+
+  reportDesktopNotificationClosed(id: string): void {
+    void this.callbacks.onInput?.(buildKittyOsc99CloseReport(id));
+  }
+
+  /**
    * Plain-click cursor positioning and selection-aware Backspace/Delete.
    * Shared by local and SSH terminals (same emulator runtime).
    */
@@ -1173,6 +1391,16 @@ export class TerminalEmulatorRuntime {
 
       const selectionText = terminal.getSelection();
       const elapsedMs = event.timeStamp - mouseDownTimeStamp;
+      // Prefer image preview over cursor repositioning when the click lands on
+      // a Sixel / IIP / Kitty cell (works in scrollback too).
+      if (
+        this.tryOpenImagePreviewAtMouseEvent(terminal, event, {
+          elapsedMs,
+          hasMeaningfulSelection: selectionText.length > 1,
+        })
+      ) {
+        return;
+      }
       if (
         !shouldMoveCursorOnClick({
           button: event.button,
@@ -1206,11 +1434,107 @@ export class TerminalEmulatorRuntime {
     };
   }
 
-  private tryMoveCursorToMouseEvent(terminal: Terminal, event: MouseEvent): void {
+  /**
+   * Hover pointer + click affordance for inline terminal images.
+   * Click handling itself lives in setupClickEditHandlers so one mouseup path
+   * can prefer preview over cursor repositioning.
+   */
+  private setupImagePreviewHandlers(terminal: Terminal): () => void {
+    const target = terminal.screenElement ?? terminal.element;
+    if (!target) {
+      return () => undefined;
+    }
+
+    const previousCursor = target.style.cursor;
+    const onMouseMove = (event: MouseEvent): void => {
+      if (terminal.modes.mouseTrackingMode !== "none") {
+        target.style.cursor = previousCursor;
+        return;
+      }
+      const canvas = this.resolveImageCanvasAtMouseEvent(terminal, event);
+      target.style.cursor = canvas ? "zoom-in" : previousCursor;
+    };
+    const onMouseLeave = (): void => {
+      target.style.cursor = previousCursor;
+    };
+
+    target.addEventListener("mousemove", onMouseMove);
+    target.addEventListener("mouseleave", onMouseLeave);
+    return () => {
+      target.removeEventListener("mousemove", onMouseMove);
+      target.removeEventListener("mouseleave", onMouseLeave);
+      target.style.cursor = previousCursor;
+    };
+  }
+
+  private closeImageLightbox(): void {
+    this.imageLightbox?.close();
+    this.imageLightbox = null;
+  }
+
+  private tryOpenImagePreviewAtMouseEvent(
+    terminal: Terminal,
+    event: MouseEvent,
+    input: { elapsedMs: number; hasMeaningfulSelection: boolean },
+  ): boolean {
+    const canvas = this.resolveImageCanvasAtMouseEvent(terminal, event);
+    if (
+      !shouldOpenTerminalImagePreview({
+        button: event.button,
+        detail: event.detail,
+        elapsedMs: input.elapsedMs,
+        hasMeaningfulSelection: input.hasMeaningfulSelection,
+        mouseTrackingMode: terminal.modes.mouseTrackingMode,
+        suppressInput: this.suppressInput,
+        hasImage: Boolean(canvas),
+      })
+    ) {
+      return false;
+    }
+    if (!canvas) {
+      return false;
+    }
+    const dataUrl = canvasToPngDataUrl(canvas);
+    const root = this.imagePreviewRoot;
+    if (!dataUrl || !root) {
+      return false;
+    }
+    this.closeImageLightbox();
+    this.imageLightbox = openTerminalImageLightbox({
+      root,
+      dataUrl,
+    });
+    event.preventDefault();
+    event.stopPropagation();
+    return true;
+  }
+
+  private resolveImageCanvasAtMouseEvent(
+    terminal: Terminal,
+    event: MouseEvent,
+  ): HTMLCanvasElement | undefined {
+    const viewportCell = this.resolveViewportCellFromMouseEvent(terminal, event);
+    if (!viewportCell) {
+      return undefined;
+    }
+    return getTerminalImageAtViewportCell({
+      imageSource: this.imageAddon,
+      viewportCol: viewportCell.col,
+      viewportRow: viewportCell.row,
+      viewportY: terminal.buffer.active.viewportY,
+      cols: terminal.cols,
+      rows: terminal.rows,
+    });
+  }
+
+  private resolveViewportCellFromMouseEvent(
+    terminal: Terminal,
+    event: MouseEvent,
+  ): { col: number; row: number } | null {
     const screen = terminal.screenElement ?? terminal.element;
     const dimensions = terminal.dimensions;
     if (!screen || !dimensions) {
-      return;
+      return null;
     }
 
     const cell = dimensions.css.cell;
@@ -1218,7 +1542,7 @@ export class TerminalEmulatorRuntime {
     const style = window.getComputedStyle(screen);
     const paddingLeft = Number.parseFloat(style.paddingLeft) || 0;
     const paddingTop = Number.parseFloat(style.paddingTop) || 0;
-    const viewportCell = resolveTerminalViewportCellFromMouse({
+    return resolveTerminalViewportCellFromMouse({
       clientX: event.clientX,
       clientY: event.clientY,
       screenLeft: rect.left,
@@ -1230,6 +1554,10 @@ export class TerminalEmulatorRuntime {
       paddingLeft,
       paddingTop,
     });
+  }
+
+  private tryMoveCursorToMouseEvent(terminal: Terminal, event: MouseEvent): void {
+    const viewportCell = this.resolveViewportCellFromMouseEvent(terminal, event);
     if (!viewportCell) {
       return;
     }

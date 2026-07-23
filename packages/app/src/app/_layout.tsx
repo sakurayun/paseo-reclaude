@@ -126,8 +126,14 @@ import { navigateToAgent } from "@/utils/navigate-to-agent";
 import {
   ensureOsNotificationPermission,
   WEB_NOTIFICATION_CLICK_EVENT,
+  WEB_NOTIFICATION_CLOSE_EVENT,
   type WebNotificationClickDetail,
+  type WebNotificationCloseDetail,
 } from "@/utils/os-notifications";
+import {
+  reportTerminalNotificationActivated,
+  reportTerminalNotificationClosed,
+} from "@/terminal/runtime/terminal-desktop-notification-actions";
 
 polyfillCrypto();
 
@@ -147,10 +153,32 @@ const HostRuntimeBootstrapContext = createContext<HostRuntimeBootstrapState>({
   startupBlocker: { kind: "none" },
 });
 
+function readNotificationEventData(payload: unknown): Record<string, unknown> | undefined {
+  if (
+    typeof payload === "object" &&
+    payload !== null &&
+    "data" in payload &&
+    typeof (payload as { data?: unknown }).data === "object" &&
+    (payload as { data?: unknown }).data !== null
+  ) {
+    return (payload as { data: Record<string, unknown> }).data;
+  }
+  return undefined;
+}
+
 function PushNotificationRouter() {
   const router = useRouter();
   const lastHandledIdRef = useRef<string | null>(null);
   const openNotification = useStableEvent((data: Record<string, unknown> | undefined) => {
+    // Kitty OSC 99: inject activation report + optional focus before routing.
+    const terminalAction = reportTerminalNotificationActivated(data);
+    if (terminalAction.handled) {
+      if (terminalAction.shouldFocus) {
+        router.navigate(buildNotificationRoute(data));
+      }
+      return;
+    }
+
     const target = resolveNotificationTarget(data);
     const serverId = target.serverId;
     const workspaceId = target.workspaceId;
@@ -162,31 +190,34 @@ function PushNotificationRouter() {
 
     router.navigate(buildNotificationRoute(data));
   });
+  const closeNotification = useStableEvent((data: Record<string, unknown> | undefined) => {
+    // Kitty OSC 99 c=1: report dismissal back to the PTY.
+    reportTerminalNotificationClosed(data);
+  });
 
   useEffect(() => {
     if (isWeb) {
-      let removeDesktopNotificationListener: (() => void) | null = null;
+      let removeDesktopNotificationClickListener: (() => void) | null = null;
+      let removeDesktopNotificationCloseListener: (() => void) | null = null;
       let cancelled = false;
 
       if (getIsElectronRuntime()) {
         void ensureOsNotificationPermission();
 
-        const unlistenResult = getDesktopHost()?.events?.on?.(
+        const unlistenClickResult = getDesktopHost()?.events?.on?.(
           "notification-click",
           (payload: unknown) => {
-            const data =
-              typeof payload === "object" &&
-              payload !== null &&
-              "data" in payload &&
-              typeof (payload as { data?: unknown }).data === "object" &&
-              (payload as { data?: unknown }).data !== null
-                ? (payload as { data: Record<string, unknown> }).data
-                : undefined;
-            openNotification(data);
+            openNotification(readNotificationEventData(payload));
+          },
+        );
+        const unlistenCloseResult = getDesktopHost()?.events?.on?.(
+          "notification-close",
+          (payload: unknown) => {
+            closeNotification(readNotificationEventData(payload));
           },
         );
 
-        void Promise.resolve(unlistenResult).then((unlisten) => {
+        void Promise.resolve(unlistenClickResult).then((unlisten) => {
           if (typeof unlisten !== "function") {
             return;
           }
@@ -194,7 +225,18 @@ function PushNotificationRouter() {
             unlisten();
             return;
           }
-          removeDesktopNotificationListener = unlisten;
+          removeDesktopNotificationClickListener = unlisten;
+          return;
+        });
+        void Promise.resolve(unlistenCloseResult).then((unlisten) => {
+          if (typeof unlisten !== "function") {
+            return;
+          }
+          if (cancelled) {
+            unlisten();
+            return;
+          }
+          removeDesktopNotificationCloseListener = unlisten;
           return;
         });
       }
@@ -204,13 +246,20 @@ function PushNotificationRouter() {
         event.preventDefault();
         openNotification(customEvent.detail?.data);
       };
+      const closeFromWeb = (event: Event) => {
+        const customEvent = event as CustomEvent<WebNotificationCloseDetail>;
+        closeNotification(customEvent.detail?.data);
+      };
 
       window.addEventListener(WEB_NOTIFICATION_CLICK_EVENT, openFromWebClick as EventListener);
+      window.addEventListener(WEB_NOTIFICATION_CLOSE_EVENT, closeFromWeb as EventListener);
 
       return () => {
         cancelled = true;
-        removeDesktopNotificationListener?.();
+        removeDesktopNotificationClickListener?.();
+        removeDesktopNotificationCloseListener?.();
         window.removeEventListener(WEB_NOTIFICATION_CLICK_EVENT, openFromWebClick as EventListener);
+        window.removeEventListener(WEB_NOTIFICATION_CLOSE_EVENT, closeFromWeb as EventListener);
       };
     }
 
@@ -249,7 +298,7 @@ function PushNotificationRouter() {
     return () => {
       subscription.remove();
     };
-  }, [openNotification]);
+  }, [closeNotification, openNotification]);
 
   return null;
 }

@@ -28,6 +28,10 @@ import type {
   TerminalLocalFileLinkSource,
   TerminalLocalFileLinkTarget,
 } from "../terminal/local-links/terminal-local-link-provider";
+import type {
+  TerminalDesktopNotification,
+  TerminalProgressState,
+} from "../terminal/runtime/terminal-kitty-protocols";
 import { terminalEmulatorWebViewHtml } from "../terminal/webview/terminal-emulator-webview-html";
 import type { PendingTerminalModifiers } from "../utils/terminal-keys";
 import type { TerminalRendererReadyChange } from "../utils/terminal-renderer-readiness";
@@ -83,6 +87,11 @@ interface TerminalEmulatorProps {
     disposition: "main" | "side",
   ) => Promise<void> | void;
   onRendererReadyChange?: (change: TerminalRendererReadyChange) => void;
+  onGpuRendererChange?: (input: { enabled: boolean }) => Promise<void> | void;
+  onDesktopNotification?: (notification: TerminalDesktopNotification) => Promise<void> | void;
+  onProgressChange?: (progress: TerminalProgressState) => Promise<void> | void;
+  onCwdReport?: (cwd: string) => Promise<void> | void;
+  onRequestFocus?: () => Promise<void> | void;
   pendingModifiers?: PendingTerminalModifiers;
   focusRequestToken?: number;
   resizeRequestToken?: number;
@@ -161,6 +170,15 @@ type BridgeOutboundMessage =
   | { type: "swipeLeft"; streamKey: string }
   | { type: "swipeRight"; streamKey: string }
   | { type: "clipboardRead"; streamKey: string }
+  | { type: "gpuRendererChange"; streamKey: string; enabled: boolean }
+  | {
+      type: "desktopNotification";
+      streamKey: string;
+      notification: TerminalDesktopNotification;
+    }
+  | { type: "progressChange"; streamKey: string; progress: TerminalProgressState }
+  | { type: "cwdReport"; streamKey: string; cwd: string }
+  | { type: "requestFocus"; streamKey: string }
   | { type: "debug"; message: string; details?: unknown };
 
 const TERMINAL_WEBVIEW_SOURCE = { html: terminalEmulatorWebViewHtml };
@@ -177,6 +195,51 @@ interface PendingTerminalTap {
 
 function buildThemeKey(theme: ITheme): string {
   return JSON.stringify(theme);
+}
+
+function dispatchTerminalProtocolMessage(
+  message: BridgeOutboundMessage,
+  callbacks: {
+    onSwipeLeft?: () => void;
+    onSwipeRight?: () => void;
+    onGpuRendererChange?: (input: { enabled: boolean }) => Promise<void> | void;
+    onDesktopNotification?: (notification: TerminalDesktopNotification) => Promise<void> | void;
+    onProgressChange?: (progress: TerminalProgressState) => Promise<void> | void;
+    onCwdReport?: (cwd: string) => Promise<void> | void;
+    onRequestFocus?: () => Promise<void> | void;
+  },
+  sendToWebView: (message: BridgeInboundMessage) => void,
+): boolean {
+  switch (message.type) {
+    case "swipeLeft":
+      callbacks.onSwipeLeft?.();
+      return true;
+    case "swipeRight":
+      callbacks.onSwipeRight?.();
+      return true;
+    case "clipboardRead":
+      void forwardClipboardToWebView(message.streamKey, sendToWebView);
+      return true;
+    case "gpuRendererChange":
+      void callbacks.onGpuRendererChange?.({ enabled: message.enabled });
+      return true;
+    case "desktopNotification":
+      void callbacks.onDesktopNotification?.(message.notification);
+      return true;
+    case "progressChange":
+      void callbacks.onProgressChange?.(message.progress);
+      return true;
+    case "cwdReport":
+      void callbacks.onCwdReport?.(message.cwd);
+      return true;
+    case "requestFocus":
+      void callbacks.onRequestFocus?.();
+      return true;
+    case "debug":
+      return true;
+    default:
+      return false;
+  }
 }
 
 function serializeForInjectedJavaScript(message: BridgeInboundMessage): string {
@@ -301,6 +364,11 @@ export default function TerminalEmulator({
   onResolveLocalFileLink,
   onOpenLocalFileLink,
   onRendererReadyChange,
+  onGpuRendererChange,
+  onDesktopNotification,
+  onProgressChange,
+  onCwdReport,
+  onRequestFocus,
   pendingModifiers = { ctrl: false, shift: false, alt: false },
   focusRequestToken = 0,
   resizeRequestToken = 0,
@@ -351,6 +419,11 @@ export default function TerminalEmulator({
     onRendererReadyChange,
     onResolveLocalFileLink,
     onOpenLocalFileLink,
+    onGpuRendererChange,
+    onDesktopNotification,
+    onProgressChange,
+    onCwdReport,
+    onRequestFocus,
     onSwipeLeft,
     onSwipeRight,
   });
@@ -364,6 +437,11 @@ export default function TerminalEmulator({
     onRendererReadyChange,
     onResolveLocalFileLink,
     onOpenLocalFileLink,
+    onGpuRendererChange,
+    onDesktopNotification,
+    onProgressChange,
+    onCwdReport,
+    onRequestFocus,
     onSwipeLeft,
     onSwipeRight,
   };
@@ -628,21 +706,11 @@ export default function TerminalEmulator({
       if (dispatchTerminalSessionMessage(message, callbacksRef.current)) {
         return;
       }
-      switch (message.type) {
-        case "openExternalUrl":
-          void openExternalUrl(message.url);
-          break;
-        case "swipeLeft":
-          callbacksRef.current.onSwipeLeft?.();
-          break;
-        case "swipeRight":
-          callbacksRef.current.onSwipeRight?.();
-          break;
-        case "clipboardRead":
-          void forwardClipboardToWebView(message.streamKey, sendToWebView);
-          break;
-        case "debug":
-          break;
+      if (dispatchTerminalProtocolMessage(message, callbacksRef.current, sendToWebView)) {
+        return;
+      }
+      if (message.type === "openExternalUrl") {
+        void openExternalUrl(message.url);
       }
     },
     [resolveLocalFileLink, sendToWebView],
