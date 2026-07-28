@@ -4,6 +4,7 @@ import * as path from "node:path";
 import type { Logger } from "pino";
 
 import type { AgentModelDefinition, AgentSelectOption } from "../../agent-sdk-types.js";
+import { getClaudeManifestModels } from "./model-manifest.js";
 
 export type ClaudeThinkingEffort = "low" | "medium" | "high" | "xhigh" | "max";
 
@@ -207,9 +208,21 @@ function isBedrockTransport(): boolean {
   return process.env.CLAUDE_CODE_USE_BEDROCK === "1";
 }
 
-export function getClaudeModels(): AgentModelDefinition[] {
-  const models = isBedrockTransport() ? CLAUDE_BEDROCK_MODELS : CLAUDE_MODELS;
-  return models.map((model) => cloneClaudeModelDefinition(model));
+export function getClaudeModels(claudeCodeVersion?: string): AgentModelDefinition[] {
+  if (isBedrockTransport()) {
+    return CLAUDE_BEDROCK_MODELS.map((model) => cloneClaudeModelDefinition(model));
+  }
+  return getClaudeManifestModels(claudeCodeVersion);
+}
+
+export function findClaudeModel(
+  modelId: string | null | undefined,
+): AgentModelDefinition | undefined {
+  const normalizedModelId = normalizeClaudeRuntimeModelId(modelId);
+  if (!normalizedModelId) {
+    return undefined;
+  }
+  return getClaudeModels().find((model) => model.id === normalizedModelId);
 }
 
 export function decorateClaudeModelsWithSdkEfforts(
@@ -242,8 +255,9 @@ export function decorateClaudeModelsWithSdkEfforts(
 export async function getClaudeModelsWithSettings(
   logger: Logger,
   configDir?: string,
+  claudeCodeVersion?: string,
 ): Promise<AgentModelDefinition[]> {
-  const hardcodedModels = getClaudeModels();
+  const hardcodedModels = getClaudeModels(claudeCodeVersion);
   const settingsModels = await readClaudeSettingsModels(logger, configDir);
   if (settingsModels.length === 0) {
     return hardcodedModels;

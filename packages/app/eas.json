@@ -20,6 +20,9 @@
       "node": "22.14.0",
       "env": {
         "APP_VARIANT": "production"
+      },
+      "android": {
+        "resourceClass": "large"
       }
     },
     "production-apk": {

@@ -55,6 +55,7 @@ interface ComposerWorkspaceAttachmentBinding {
   removeAttachment: (input: RemoveWorkspaceAttachmentInput) => boolean;
   openAttachment: (input: OpenWorkspaceAttachmentInput) => boolean;
   isAttachmentOpenable: (attachment: WorkspaceComposerAttachment) => boolean;
+  beginSubmit: (attachments: readonly ComposerAttachment[]) => void;
   clearSentAttachments: (attachments: readonly ComposerAttachment[]) => void;
   completeSubmit: (input: CompleteSubmitInput) => void;
   resetSuppression: () => void;
@@ -217,12 +218,22 @@ function useWorkspaceAttachmentBinding({
     setSuppressedKeys([]);
   }, []);
 
+  const beginSubmit = useCallback((attachments: readonly ComposerAttachment[]) => {
+    const keys = attachments.filter(isWorkspaceAttachment).map(getAttachmentKey);
+    if (keys.length === 0) return;
+    setSuppressedKeys((current) => {
+      const next = new Set(current);
+      for (const key of keys) next.add(key);
+      return next.size === current.length ? current : Array.from(next);
+    });
+  }, []);
+
   const completeSubmit = useCallback(
     ({ result, outgoingAttachments }: CompleteSubmitInput) => {
       if (result === "submitted") {
         clearSentAttachments(outgoingAttachments);
       }
-      if (result === "queued" || result === "submitted") {
+      if (result === "queued" || result === "submitted" || result === "failed") {
         resetSuppression();
       }
     },
@@ -235,6 +246,7 @@ function useWorkspaceAttachmentBinding({
     removeAttachment,
     openAttachment,
     isAttachmentOpenable,
+    beginSubmit,
     clearSentAttachments,
     completeSubmit,
     resetSuppression,

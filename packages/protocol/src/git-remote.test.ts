@@ -36,10 +36,32 @@ describe("parseGitRemoteLocation", () => {
       port: "8443",
       path: "org/repo",
     });
+    // Default HTTPS port is omitted from the location.
     expect(parseGitRemoteLocation("https://git.example:443/org/repo.git")).toEqual({
       transport: "https",
       host: "git.example",
+      port: undefined,
       path: "org/repo",
     });
+  });
+
+  it("preserves an explicit non-default port from an https remote", () => {
+    expect(parseGitRemoteLocation("https://home-git.example.com:60443/team/repo.git")?.port).toBe(
+      "60443",
+    );
+  });
+
+  it("preserves a port from a plain http remote", () => {
+    expect(parseGitRemoteLocation("http://internal.example.com:3000/team/repo.git")?.port).toBe(
+      "3000",
+    );
+  });
+
+  it("omits the port for a default-port remote", () => {
+    expect(parseGitRemoteLocation("https://github.com/acme/repo.git")?.port).toBeUndefined();
+  });
+
+  it("has no port for an scp-form remote", () => {
+    expect(parseGitRemoteLocation("git@host.example.com:team/repo.git")?.port).toBeUndefined();
   });
 });

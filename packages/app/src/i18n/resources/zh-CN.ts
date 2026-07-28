@@ -680,6 +680,7 @@ export const zhCN: TranslationResources = {
         copyResumeCommand: "复制恢复命令",
         copyAgentId: "复制 Agent ID",
         copyFilePath: "复制文件路径",
+        copyTerminalId: "复制 Terminal ID",
         rename: "重命名",
         closeAbove: "关闭上方标签",
         closeBelow: "关闭下方标签",
@@ -718,6 +719,7 @@ export const zhCN: TranslationResources = {
       toasts: {
         copyFailed: "复制失败",
         agentIdCopiedLabel: "Agent ID",
+        terminalIdCopiedLabel: "Terminal ID",
         resumeCommandCopiedLabel: "恢复命令",
         filePathCopiedLabel: "文件路径",
         resumeIdUnavailable: "恢复 ID 不可用",
@@ -1177,7 +1179,8 @@ export const zhCN: TranslationResources = {
         deletedFile: "已删除",
         commits: {
           title: "提交",
-          countLabel: "最近 {{count}} 个提交",
+          countLabel: "{{count}} 个工作区提交",
+          noneAhead: "尚无领先于 {{baseRef}} 的提交",
           fileDiffEmpty: "没有可显示的更改",
           fileDiffError: "加载文件差异失败",
           loading: "正在加载提交…",
@@ -1314,6 +1317,8 @@ export const zhCN: TranslationResources = {
         openSettings: "打开 project 设置",
         openNewWindow: "在新窗口中打开",
         openNewWindowFailed: "无法打开新窗口",
+        openFolder: "Open in file manager",
+        openFolderFailed: "Couldn't open folder",
         remove: "移除 project",
         removing: "正在移除...",
       },
@@ -2581,6 +2586,7 @@ export const zhCN: TranslationResources = {
         copyRelativeFilePath: "复制相对路径",
         renameFile: "重命名",
         deleteFile: "删除",
+        switchProject: "切换项目",
       },
       helpNotes: {
         showKeyboardShortcuts: "焦点不在文本输入框或终端内时可用。",

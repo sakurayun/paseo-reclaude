@@ -47,6 +47,7 @@ export interface CreateWorktreeWorkspaceInput {
   branch: string | null;
   baseBranch: string | null;
   title: string | null;
+  expectsInitialAgent?: boolean;
 }
 
 export interface WorkspaceProvisioningService {
@@ -60,6 +61,7 @@ export interface WorkspaceProvisioningService {
     cwd: string,
     title?: string | null,
     projectId?: string,
+    context?: { expectsInitialAgent?: boolean },
   ): Promise<PersistedWorkspaceRecord>;
   createWorkspaceForWorktree(
     input: CreateWorktreeWorkspaceInput,
@@ -191,6 +193,7 @@ export function createWorkspaceProvisioningService(deps: {
     cwd: string,
     title?: string | null,
     projectId?: string,
+    context?: { expectsInitialAgent?: boolean },
   ): Promise<PersistedWorkspaceRecord> {
     const target = await resolveDirectoryTarget(cwd);
     const normalizedCwd = target.cwd;
@@ -208,7 +211,7 @@ export function createWorkspaceProvisioningService(deps: {
       createdAt: timestamp,
       updatedAt: timestamp,
     });
-    await workspaceRegistry.upsert(workspace);
+    await workspaceRegistry.upsert(workspace, context);
     return workspace;
   }
 
@@ -240,7 +243,9 @@ export function createWorkspaceProvisioningService(deps: {
       createdAt: timestamp,
       updatedAt: timestamp,
     });
-    await workspaceRegistry.upsert(workspace);
+    await workspaceRegistry.upsert(workspace, {
+      expectsInitialAgent: input.expectsInitialAgent,
+    });
     return workspace;
   }
 
@@ -311,7 +316,11 @@ export function createWorkspaceProvisioningService(deps: {
   ): Promise<string> {
     if (input.createdWorktree) return input.createdWorktree.workspace.workspaceId;
     if (input.requestedWorkspaceId) return input.requestedWorkspaceId;
-    return (await createWorkspaceForDirectory(input.cwd, input.initialTitle)).workspaceId;
+    return (
+      await createWorkspaceForDirectory(input.cwd, input.initialTitle, undefined, {
+        expectsInitialAgent: true,
+      })
+    ).workspaceId;
   }
 
   async function ensureWorkspaceRecordUnarchived(

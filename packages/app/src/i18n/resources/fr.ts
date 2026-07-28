@@ -687,6 +687,7 @@ export const fr: TranslationResources = {
         copyResumeCommand: "Copier la commande de reprise",
         copyAgentId: "Copier l'identifiant de l'agent",
         copyFilePath: "Copier le chemin du fichier",
+        copyTerminalId: "Copier l'identifiant du terminal",
         rename: "Rebaptiser",
         closeAbove: "Fermer les onglets ci-dessus",
         closeBelow: "Fermer les onglets ci-dessous",
@@ -726,6 +727,7 @@ export const fr: TranslationResources = {
       toasts: {
         copyFailed: "Échec de la copie",
         agentIdCopiedLabel: "AgentID",
+        terminalIdCopiedLabel: "Identifiant du terminal",
         resumeCommandCopiedLabel: "reprendre la commande",
         filePathCopiedLabel: "Chemin du fichier",
         resumeIdUnavailable: "ReprendreIDnon disponible",
@@ -1227,7 +1229,8 @@ export const fr: TranslationResources = {
         deletedFile: "Supprimé",
         commits: {
           title: "Commits",
-          countLabel: "{{count}} commits récents",
+          countLabel: "{{count}} commits de l’espace de travail",
+          noneAhead: "Aucun commit en avance sur {{baseRef}} pour le moment",
           fileDiffEmpty: "Aucune modification à afficher",
           fileDiffError: "Échec du chargement du diff du fichier",
           loading: "Chargement des commits…",
@@ -1365,6 +1368,8 @@ export const fr: TranslationResources = {
         openSettings: "Ouvrir les paramètres du projet",
         openNewWindow: "Ouvrir dans une nouvelle fenêtre",
         openNewWindowFailed: "Impossible d'ouvrir une nouvelle fenêtre",
+        openFolder: "Open in file manager",
+        openFolderFailed: "Couldn't open folder",
         remove: "Supprimer le projet",
         removing: "Suppression...",
       },
@@ -2680,6 +2685,7 @@ export const fr: TranslationResources = {
         copyRelativeFilePath: "Copier le chemin relatif",
         renameFile: "Renommer",
         deleteFile: "Supprimer",
+        switchProject: "Changer de projet",
       },
       helpNotes: {
         showKeyboardShortcuts:

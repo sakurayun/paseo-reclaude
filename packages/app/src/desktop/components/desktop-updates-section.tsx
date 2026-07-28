@@ -1,5 +1,6 @@
+import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import React, { type ReactElement, useCallback, useMemo, useState } from "react";
-import { ActivityIndicator, Alert, Text, View } from "react-native";
+import { Alert, Text, View } from "react-native";
 import * as Clipboard from "expo-clipboard";
 import { useTranslation } from "react-i18next";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
@@ -420,8 +421,8 @@ export function LocalDaemonSection() {
       testID="host-page-daemon-lifecycle-card"
     >
       {isLoading || isLoadingSettings ? (
-        <View style={LOADING_CARD_STYLE}>
-          <ActivityIndicator size="small" color={theme.colors.foregroundMuted} />
+        <View style={[settingsStyles.card, styles.loadingCard]}>
+          <LoadingSpinner size="small" color={theme.colors.foregroundMuted} />
         </View>
       ) : (
         <>
@@ -524,7 +525,6 @@ const styles = StyleSheet.create((theme) => ({
   },
 }));
 
-const LOADING_CARD_STYLE = [settingsStyles.cardSurface, styles.loadingCard];
 const ROW_WITH_BORDER_STYLE = [settingsStyles.row, settingsStyles.rowBorder];
 const LOGS_MODAL_SNAP_POINTS = ["70%", "92%"];
 const CLI_STATUS_MODAL_SNAP_POINTS = ["60%", "85%"];

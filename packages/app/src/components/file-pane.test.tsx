@@ -310,6 +310,7 @@ function makeFile(file: Partial<ExplorerFile>): ExplorerFile {
     content: "",
     encoding: "utf-8",
     kind: "text",
+    hasBom: false,
     modifiedAt: "2026-05-02T00:00:00.000Z",
     path: file.path ?? "src/example.ts",
     size: file.size ?? 0,

@@ -1,7 +1,12 @@
+import { useCallback, useMemo, useState } from "react";
+import { Pressable, Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
+import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { Import as ImportIcon } from "lucide-react-native";
-import { StyleSheet } from "react-native-unistyles";
-import { Button } from "@/components/ui/button";
+import type { Theme } from "@/styles/theme";
+
+const ThemedImportIcon = withUnistyles(ImportIcon);
+const iconColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
 
 interface ComposerImportPillProps {
   onPress: () => void;
@@ -10,29 +15,55 @@ interface ComposerImportPillProps {
 
 export function ComposerImportPill({ onPress, disabled = false }: ComposerImportPillProps) {
   const { t } = useTranslation();
+  const [isHovered, setIsHovered] = useState(false);
+  const handleHoverIn = useCallback(() => setIsHovered(true), []);
+  const handleHoverOut = useCallback(() => setIsHovered(false), []);
+  const bodyStyle = useMemo(() => [styles.body, isHovered && styles.bodyHovered], [isHovered]);
+  const labelStyle = useMemo(() => [styles.label, isHovered && styles.labelHovered], [isHovered]);
   return (
-    <Button
-      testID="composer-import-agent-pill"
-      accessibilityLabel={t("importSession.title")}
-      variant="outline"
-      size="sm"
-      leftIcon={ImportIcon}
-      onPress={onPress}
-      disabled={disabled}
-      style={styles.button}
-      textStyle={styles.label}
-    >
-      {t("importSession.title")}
-    </Button>
+    <View style={styles.row}>
+      <Pressable
+        testID="composer-import-agent-pill"
+        accessibilityRole="button"
+        accessibilityLabel={t("importSession.title")}
+        onPress={onPress}
+        disabled={disabled}
+        onHoverIn={handleHoverIn}
+        onHoverOut={handleHoverOut}
+        style={bodyStyle}
+      >
+        <ThemedImportIcon size={14} uniProps={iconColorMapping} />
+        <Text style={labelStyle} numberOfLines={1}>
+          {t("importSession.title")}
+        </Text>
+      </Pressable>
+    </View>
   );
 }
 
-const styles = StyleSheet.create(() => ({
-  button: {
-    maxWidth: "100%",
-    flexShrink: 1,
+const styles = StyleSheet.create((theme) => ({
+  row: {
+    flexDirection: "row",
+  },
+  body: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[2],
+    paddingHorizontal: theme.spacing[3],
+    paddingVertical: theme.spacing[2],
+    borderRadius: theme.borderRadius.xl,
+    borderWidth: theme.borderWidth[1],
+    borderColor: theme.colors.borderAccent,
+    backgroundColor: theme.colors.surface1,
+  },
+  bodyHovered: {
+    backgroundColor: theme.colors.surface2,
   },
   label: {
-    flexShrink: 1,
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.sm,
+  },
+  labelHovered: {
+    color: theme.colors.foreground,
   },
 }));

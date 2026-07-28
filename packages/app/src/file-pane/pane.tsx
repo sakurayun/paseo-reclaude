@@ -1,3 +1,4 @@
+import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import React, {
   useCallback,
   useEffect,
@@ -8,14 +9,8 @@ import React, {
 } from "react";
 import type { DaemonClient, FileReadResult } from "@getpaseo/client/internal/daemon-client";
 import type { FileVersion } from "@getpaseo/protocol/messages";
-import {
-  ActivityIndicator,
-  Image as RNImage,
-  ScrollView as RNScrollView,
-  Text,
-  View,
-} from "react-native";
-import { StyleSheet, UnistylesRuntime } from "react-native-unistyles";
+import { Image as RNImage, ScrollView as RNScrollView, Text, View } from "react-native";
+import { StyleSheet, UnistylesRuntime, withUnistyles } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
 import { MarkdownRenderer } from "@/components/markdown/renderer";
 import { useIsCompactFormFactor } from "@/constants/layout";
@@ -61,6 +56,12 @@ import { DirectoryBrowser } from "./directory-browser";
 import { usePaneContext } from "@/panels/pane-context";
 import { useFilePanePathRouting } from "./use-file-pane-path-routing";
 import { resolveDirectorySurfacePaths } from "./outside-path";
+import type { Theme } from "@/styles/theme";
+
+const ThemedLoadingSpinner = withUnistyles(LoadingSpinner);
+const foregroundMutedColorMapping = (theme: Theme) => ({
+  color: theme.colors.foregroundMuted,
+});
 
 interface CodeLineProps {
   tokens: HighlightToken[];
@@ -287,7 +288,7 @@ function FilePreviewBody({
   if (isLoading && !preview) {
     return (
       <View style={styles.centerState}>
-        <ActivityIndicator size="small" />
+        <ThemedLoadingSpinner size="small" uniProps={foregroundMutedColorMapping} />
         <Text style={styles.loadingText}>{t("panels.file.loading")}</Text>
       </View>
     );
@@ -369,7 +370,7 @@ function FilePreviewBody({
     if (!imagePreviewUri) {
       return (
         <View style={styles.centerState}>
-          <ActivityIndicator size="small" />
+          <ThemedLoadingSpinner size="small" uniProps={foregroundMutedColorMapping} />
           <Text style={styles.loadingText}>{t("panels.file.loading")}</Text>
         </View>
       );
@@ -521,6 +522,7 @@ export function FilePane({
     preview,
     supportsEditing,
   });
+  const canToggleMarkdownMode = isMarkdown && editable;
   const lineCount =
     preview?.kind === "text" ? (preview.content ?? "").split("\n").length : undefined;
   const { activeAbsoluteDirectory, recoveredDirectoryPath } = resolveDirectorySurfacePaths({
@@ -561,8 +563,8 @@ export function FilePane({
       preview={preview}
       version={version}
       filename={getFileNameFromPath(location.path) ?? location.path}
-      markdownMode={isMarkdown ? markdownMode : undefined}
-      onMarkdownModeChange={isMarkdown ? setMarkdownMode : undefined}
+      markdownMode={canToggleMarkdownMode ? markdownMode : undefined}
+      onMarkdownModeChange={canToggleMarkdownMode ? setMarkdownMode : undefined}
       lineCount={lineCount}
       editable={editable}
       disconnectedMessage={t("workspace.terminal.hostDisconnected")}
@@ -637,7 +639,7 @@ function useDirectoryFileSurface(input: {
     return (
       <View style={styles.container} testID="workspace-file-pane">
         <View style={styles.centerState}>
-          <ActivityIndicator size="small" />
+          <ThemedLoadingSpinner size="small" uniProps={foregroundMutedColorMapping} />
           <Text style={styles.loadingText}>{t("panels.file.loading")}</Text>
         </View>
       </View>
@@ -959,9 +961,13 @@ function EditableFilePane({
     () => ({
       async read(): Promise<FileEditorFile> {
         const file = await client.readFile(cwd, path);
-        if (file.kind !== "text") throw new Error("File is no longer text.");
+        const decodedFile = explorerFileFromReadResult(file);
+        if (decodedFile.kind !== "text" || decodedFile.content === undefined) {
+          throw new Error("File is no longer text.");
+        }
         return {
-          content: new TextDecoder().decode(file.bytes),
+          content: decodedFile.content,
+          hasBom: decodedFile.hasBom,
           version: {
             status: "ready",
             cwd,
@@ -983,6 +989,7 @@ function EditableFilePane({
       new FileEditorModel({
         file: {
           content: preview.content ?? "",
+          hasBom: preview.hasBom,
           version: {
             status: "ready",
             cwd,

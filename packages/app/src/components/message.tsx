@@ -1,9 +1,9 @@
+import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import {
   View,
   Text,
   Image,
   Pressable,
-  ActivityIndicator,
   type GestureResponderEvent,
   type LayoutChangeEvent,
   StyleProp,
@@ -137,6 +137,7 @@ interface UserMessageProps {
   client?: DaemonClient | null;
   isFirstInGroup?: boolean;
   isLastInGroup?: boolean;
+  isPending?: boolean;
   disableOuterSpacing?: boolean;
   findHighlights?: MessageFindHighlight[];
 }
@@ -191,6 +192,7 @@ const ThemedTodoCheckIcon = withUnistyles(Check);
 const ThemedFileSymlinkIcon = withUnistyles(FileSymlink);
 const ThemedTriangleAlertIcon = withUnistyles(TriangleAlertIcon);
 const ThemedChevronRightIcon = withUnistyles(ChevronRight);
+const ThemedLoadingSpinner = withUnistyles(LoadingSpinner);
 
 const foregroundColorMapping = (theme: Theme) => ({ color: theme.colors.foreground });
 const foregroundMutedColorMapping = (theme: Theme) => ({
@@ -597,6 +599,7 @@ export const UserMessage = memo(function UserMessage({
   client,
   isFirstInGroup = true,
   isLastInGroup = true,
+  isPending = false,
   disableOuterSpacing,
   findHighlights,
 }: UserMessageProps) {
@@ -609,7 +612,7 @@ export const UserMessage = memo(function UserMessage({
   const hasText = message.trim().length > 0;
   const hasImages = images.length > 0;
   const hasAttachments = attachments.length > 0;
-  const showTrailingRow = hasText && (isCompact || isNative || isHovered);
+  const showTrailingRow = !isPending && hasText && (isCompact || isNative || isHovered);
   const formattedTimestamp = useMemo(
     () => formatMessageTimestamp(new Date(timestamp)),
     [timestamp],
@@ -666,7 +669,7 @@ export const UserMessage = memo(function UserMessage({
   );
 
   return (
-    <View style={containerStyle} testID="user-message">
+    <View style={containerStyle} testID="user-message" aria-busy={isPending}>
       <View
         style={userMessageStylesheet.content}
         onPointerEnter={handlePointerEnter}
@@ -710,11 +713,15 @@ export const UserMessage = memo(function UserMessage({
           ) : null}
         </View>
         {hasText ? (
-          <View style={trailingRowStyle} pointerEvents={showTrailingRow ? "auto" : "none"}>
-            <Text style={userMessageStylesheet.timestampText} numberOfLines={1}>
+          <View
+            style={trailingRowStyle}
+            pointerEvents={showTrailingRow ? "auto" : "none"}
+            testID="user-message-trailing-row"
+          >
+            <Text style={userMessageStylesheet.timestampText} testID="user-message-timestamp">
               {formattedTimestamp}
             </Text>
-            {capabilities ? (
+            {capabilities && messageId ? (
               <RewindMenu
                 capabilities={capabilities}
                 isPending={rewindMutation.isPending}
@@ -1068,7 +1075,9 @@ const AssistantMarkdownResolvedImage = memo(function AssistantMarkdownResolvedIm
     return (
       <View style={frameStyle}>
         <View style={stateSurfaceStyle}>
-          {loadState.status === "loading" ? <ActivityIndicator size="small" /> : null}
+          {loadState.status === "loading" ? (
+            <ThemedLoadingSpinner size="small" uniProps={foregroundMutedColorMapping} />
+          ) : null}
           {loadState.status === "error" ? (
             <Text style={assistantMessageStylesheet.imageErrorText}>
               {t("message.attachments.imageUnavailable")}
@@ -1207,7 +1216,7 @@ function AssistantMarkdownImage({
   if (query.isLoading || dataImageQuery.isLoading) {
     return (
       <View style={stateFrameStyle}>
-        <ActivityIndicator size="small" />
+        <ThemedLoadingSpinner size="small" uniProps={foregroundMutedColorMapping} />
       </View>
     );
   }
@@ -2520,7 +2529,7 @@ export const CompactionMarker = memo(function CompactionMarker({
       <View style={compactionStylesheet.line} />
       <View style={compactionStylesheet.label}>
         {status === "loading" ? (
-          <ActivityIndicator size="small" color="#a1a1aa" />
+          <LoadingSpinner size="small" color="#a1a1aa" />
         ) : (
           <Scissors size={12} color="#a1a1aa" />
         )}
@@ -2982,7 +2991,9 @@ function computeShimmerMetrics(input: {
     Math.min(120, input.labelRowWidth > 0 ? input.labelRowWidth * 0.28 : 0),
   );
   const isWebShimmer = input.isLoading && isWeb;
-  const shouldMeasureWebShimmer = isWebShimmer;
+  // React Native Web only observes a node when onLayout exists at mount. Keep
+  // measuring while idle so a retained badge has dimensions when it starts loading.
+  const shouldMeasureWebShimmer = isWeb;
   const shouldMeasureNativeShimmer = input.isLoading && isNative;
   const isNativeShimmer =
     shouldMeasureNativeShimmer && input.labelRowWidth > 0 && input.labelRowHeight > 0;

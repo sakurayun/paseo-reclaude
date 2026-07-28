@@ -679,6 +679,7 @@ export const en = {
         openFor: "Open menu for {{label}}",
         copyResumeCommand: "Copy resume command",
         copyAgentId: "Copy agent id",
+        copyTerminalId: "Copy terminal id",
         copyFilePath: "Copy file path",
         rename: "Rename",
         closeAbove: "Close tabs above",
@@ -718,6 +719,7 @@ export const en = {
       toasts: {
         copyFailed: "Copy failed",
         agentIdCopiedLabel: "Agent ID",
+        terminalIdCopiedLabel: "Terminal ID",
         resumeCommandCopiedLabel: "resume command",
         filePathCopiedLabel: "File path",
         resumeIdUnavailable: "Resume ID not available",
@@ -1201,7 +1203,8 @@ export const en = {
         deletedFile: "Deleted",
         commits: {
           title: "Commits",
-          countLabel: "{{count}} recent commits",
+          countLabel: "{{count}} workspace commits",
+          noneAhead: "No commits ahead of {{baseRef}} yet",
           fileDiffEmpty: "No changes to display",
           fileDiffError: "Failed to load file diff",
           loading: "Loading commits…",
@@ -1339,6 +1342,8 @@ export const en = {
         openSettings: "Open project settings",
         openNewWindow: "Open in new window",
         openNewWindowFailed: "Couldn't open a new window",
+        openFolder: "Open in file manager",
+        openFolderFailed: "Couldn't open folder",
         remove: "Remove project",
         removing: "Removing...",
       },
@@ -2625,6 +2630,7 @@ export const en = {
         copyRelativeFilePath: "Copy relative path",
         renameFile: "Rename",
         deleteFile: "Delete",
+        switchProject: "Switch project",
       },
       helpNotes: {
         showKeyboardShortcuts: "Available when focus is not in a text field or terminal.",

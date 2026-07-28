@@ -110,6 +110,37 @@ function createSession(
   return session;
 }
 
+function createProviderWithFakeAppServer(appServer: FakeCodexAppServer): CodexAppServerAgentClient {
+  const provider = new CodexAppServerAgentClient(createTestLogger());
+  const internals = castInternals<{
+    goalsEnabledPromise: Promise<boolean> | null;
+    autoReviewEnabledPromise: Promise<boolean> | null;
+    spawnAppServer: () => Promise<ChildProcessWithoutNullStreams>;
+  }>(provider);
+  internals.goalsEnabledPromise = Promise.resolve(false);
+  internals.autoReviewEnabledPromise = Promise.resolve(false);
+  internals.spawnAppServer = async () => appServer.child;
+  return provider;
+}
+
+function archivedThreadHandle() {
+  return {
+    sessionId: "archived-thread-id",
+    metadata: {
+      cwd: "/tmp/codex-question-test",
+      modeId: "auto",
+      model: "gpt-5.4",
+    },
+  };
+}
+
+function archivedThreadErrorMessage(threadId: string): string {
+  return (
+    `session ${threadId} is archived. ` +
+    `Run \`codex unarchive ${threadId}\` to unarchive it first.`
+  );
+}
+
 function asInternals(session: CodexTestSession): CodexSessionTestAccess {
   return castInternals<CodexSessionTestAccess>(session);
 }
@@ -304,14 +335,19 @@ async function listCommandsFromFakeCodex(skills: unknown[]): Promise<AgentSlashC
     `
 let buffer = "";
 
-function resultFor(method) {
+function resultFor(method, params) {
   if (method === "initialize") return {};
   if (method === "collaborationMode/list") return { data: [] };
   if (method === "skills/list") {
+    const cwds = params && params.cwds;
+    const projectCwd = "/tmp/codex-question-test";
+    if (!Array.isArray(cwds) || cwds.length !== 1 || cwds[0] !== projectCwd) {
+      return { data: [] };
+    }
     return {
       data: [
         {
-          cwd: "/tmp/codex-question-test",
+          cwd: projectCwd,
           skills: ${JSON.stringify(skills)},
           errors: [],
         },
@@ -332,7 +368,7 @@ process.stdin.on("data", (chunk) => {
     const message = JSON.parse(line);
     if (typeof message.id !== "number") continue;
     try {
-      process.stdout.write(JSON.stringify({ id: message.id, result: resultFor(message.method) }) + "\\n");
+      process.stdout.write(JSON.stringify({ id: message.id, result: resultFor(message.method, message.params) }) + "\\n");
     } catch (error) {
       process.stdout.write(JSON.stringify({ id: message.id, error: { message: error.message } }) + "\\n");
     }
@@ -935,6 +971,66 @@ describe("Codex app-server provider", () => {
     await session.close();
   });
 
+  test("loads archived Codex history without resuming the native thread", async () => {
+    const threadRequests: string[] = [];
+    const appServer = createFakeCodexAppServer({
+      "thread/loaded/list": () => {
+        threadRequests.push("thread/loaded/list");
+        return { data: [] };
+      },
+      "thread/resume": () => {
+        threadRequests.push("thread/resume");
+        return Promise.reject(new Error(archivedThreadErrorMessage("archived-thread-id")));
+      },
+      "thread/read": () => {
+        threadRequests.push("thread/read");
+        return { thread: { turns: [] } };
+      },
+    });
+    const provider = createProviderWithFakeAppServer(appServer);
+
+    const session = await provider.resumeSession(archivedThreadHandle(), undefined, undefined, {
+      purpose: "history",
+    });
+
+    expect(threadRequests).toEqual(["thread/loaded/list", "thread/resume", "thread/read"]);
+    await session.close();
+    appServer.assertNoErrors();
+  });
+
+  test("closes Codex app-server when an interactive resume fails", async () => {
+    const appServer = createFakeCodexAppServer({
+      "thread/resume": () =>
+        Promise.reject(new Error(archivedThreadErrorMessage("archived-thread-id"))),
+    });
+    const killSpy = vi.spyOn(appServer.child, "kill");
+    const provider = createProviderWithFakeAppServer(appServer);
+
+    await expect(provider.resumeSession(archivedThreadHandle())).rejects.toThrow(
+      archivedThreadErrorMessage("archived-thread-id"),
+    );
+
+    expect(killSpy).toHaveBeenCalledWith("SIGTERM");
+    appServer.assertNoErrors();
+  });
+
+  test("closes Codex app-server when archived history hydration fails", async () => {
+    const appServer = createFakeCodexAppServer({
+      "thread/resume": () =>
+        Promise.reject(new Error(archivedThreadErrorMessage("archived-thread-id"))),
+      "thread/read": () => Promise.reject(new Error("thread history is unavailable")),
+    });
+    const killSpy = vi.spyOn(appServer.child, "kill");
+    const provider = createProviderWithFakeAppServer(appServer);
+
+    await expect(
+      provider.resumeSession(archivedThreadHandle(), undefined, undefined, { purpose: "history" }),
+    ).rejects.toThrow("thread history is unavailable");
+
+    expect(killSpy).toHaveBeenCalledWith("SIGTERM");
+    appServer.assertNoErrors();
+  });
+
   test("unarchives a persisted Codex thread through app-server", async () => {
     const threadRequests: Array<{ method: string; params: unknown }> = [];
     const appServer = createFakeCodexAppServer({
@@ -1408,12 +1504,7 @@ describe("Codex app-server provider", () => {
         };
       },
     });
-    const provider = new CodexAppServerAgentClient(createTestLogger());
-    castInternals<{ goalsEnabledPromise: Promise<boolean> | null }>(provider).goalsEnabledPromise =
-      Promise.resolve(false);
-    castInternals<{ spawnAppServer: () => Promise<ChildProcessWithoutNullStreams> }>(
-      provider,
-    ).spawnAppServer = async () => appServer.child;
+    const provider = createProviderWithFakeAppServer(appServer);
 
     const outcome = await Promise.race([
       provider
@@ -1705,6 +1796,23 @@ describe("Codex app-server provider", () => {
         ],
       }),
     );
+  });
+
+  test("lists project skill commands when app-server receives the project cwd in cwds", async () => {
+    const commands = await listCommandsFromFakeCodex([
+      {
+        name: "project-skill-discovery-regression",
+        description: "A skill discovered from this project.",
+        path: "/tmp/codex-question-test/.agents/skills/project-skill-discovery-regression/SKILL.md",
+      },
+    ]);
+
+    expect(commands).toContainEqual({
+      name: "project-skill-discovery-regression",
+      description: "A skill discovered from this project.",
+      argumentHint: "",
+      kind: "skill",
+    });
   });
 
   test("deduplicates Codex skill slash commands returned from multiple skill roots", async () => {

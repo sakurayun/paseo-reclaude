@@ -19,6 +19,7 @@ import {
   type AgentCapabilityFlags,
   type AgentClient,
   type AgentCreateSessionOptions,
+  type AgentResumeSessionOptions,
   type AgentFeature,
   type AgentLaunchContext,
   type AgentSlashCommand,
@@ -437,6 +438,7 @@ export type ManagedAgent =
 
 export interface AgentMetricsSnapshot {
   total: number;
+  subscriptionCount: number;
   byLifecycle: Record<string, number>;
   withActiveForegroundTurn: number;
   timelineStats: {
@@ -778,6 +780,7 @@ export class AgentManager {
 
     return {
       total: this.agents.size,
+      subscriptionCount: this.subscribers.size,
       byLifecycle,
       withActiveForegroundTurn,
       timelineStats: {
@@ -1146,9 +1149,10 @@ export class AgentManager {
       workspaceId?: string;
       owner?: AgentOwner;
     },
+    resumeOptions?: AgentResumeSessionOptions,
   ): Promise<ManagedAgent> {
     return this.trackAgentRegistrationOperation(
-      this.resumeAgentFromPersistenceInternal(handle, overrides, agentId, options),
+      this.resumeAgentFromPersistenceInternal(handle, overrides, agentId, options, resumeOptions),
     );
   }
 
@@ -1164,6 +1168,7 @@ export class AgentManager {
       workspaceId?: string;
       owner?: AgentOwner;
     },
+    resumeOptions?: AgentResumeSessionOptions,
   ): Promise<ManagedAgent> {
     this.assertAcceptingAgentRegistrations();
     const resolvedAgentId = validateAgentId(
@@ -1190,7 +1195,12 @@ export class AgentManager {
     }
     const launchContext = await this.buildLaunchContext(resolvedAgentId, client);
     const providerLaunchConfig = this.resolveProviderLaunchConfig(launchConfig, launchContext);
-    const session = await client.resumeSession(handle, providerLaunchConfig, launchContext);
+    const session = await client.resumeSession(
+      handle,
+      providerLaunchConfig,
+      launchContext,
+      resumeOptions,
+    );
     return this.registerSession(session, storedConfig, resolvedAgentId, {
       ...options,
       persistence: handle,
@@ -1514,6 +1524,8 @@ export class AgentManager {
       },
       "agent.manager.close.start",
     );
+    await this.drainSessionEvents(agentId);
+    this.cancelRunningProviderSubagents(agentId);
     const closedAgent = this.prepareAgentForClosure(agent, "agent closed");
     let closeError: unknown;
     try {
@@ -1543,6 +1555,20 @@ export class AgentManager {
     }
     if (persistError !== undefined) {
       throw persistError;
+    }
+  }
+
+  private cancelRunningProviderSubagents(parentAgentId: string): void {
+    for (const subagent of this.providerSubagents.list(parentAgentId)) {
+      if (subagent.status !== "running") {
+        continue;
+      }
+      const event = this.providerSubagents.apply(parentAgentId, subagent.provider, {
+        type: "upsert",
+        id: subagent.id,
+        status: "canceled",
+      });
+      this.dispatch({ type: "provider_subagent", event });
     }
   }
 
@@ -1587,8 +1613,23 @@ export class AgentManager {
       !this.runs.hasRun(agent.id) &&
       !agent.pendingReplacement &&
       agent.pendingPermissions.size === 0 &&
-      agent.inFlightPermissionResponses.size === 0
+      agent.inFlightPermissionResponses.size === 0 &&
+      !this.hasRunningChild(agent.id)
     );
+  }
+
+  private hasRunningChild(parentAgentId: string): boolean {
+    for (const agent of this.agents.values()) {
+      if (
+        agent.lifecycle === "running" &&
+        getParentAgentIdFromLabels(agent.labels) === parentAgentId
+      ) {
+        return true;
+      }
+    }
+    return this.providerSubagents
+      .list(parentAgentId)
+      .some((subagent) => subagent.status === "running");
   }
 
   async archiveAgent(agentId: string): Promise<{ archivedAt: string }> {

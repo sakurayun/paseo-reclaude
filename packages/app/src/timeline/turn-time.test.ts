@@ -22,6 +22,18 @@ function assistant(id: string, timestamp: Date): StreamItem {
 }
 
 describe("deriveStreamTurnTiming", () => {
+  it("starts elapsed time from the submitted prompt", () => {
+    const submittedAt = new Date("2026-05-15T00:00:00.000Z");
+
+    const timing = deriveStreamTurnTiming({
+      agentStatus: "running",
+      tail: [],
+      head: [user("submitted", submittedAt)],
+    });
+
+    assert.equal(timing.runningStartedAt, submittedAt);
+  });
+
   it("uses the last user message as the running turn start", () => {
     const firstUserAt = new Date("2026-05-15T00:00:00.000Z");
     const secondUserAt = new Date("2026-05-15T00:01:00.000Z");

@@ -4,23 +4,18 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import type { Logger } from "pino";
+import type { ReclaudeAccountService } from "../../reclaude/reclaude-account-service.js";
 import { z } from "zod";
 import type {
   ProviderUsage,
   ProviderUsageDetail,
   ProviderUsageWindow,
 } from "../../../server/messages.js";
-import type { ReclaudeAccountService } from "../../reclaude/reclaude-account-service.js";
-import {
-  assembleMultiSourceUsage,
-  probeAllGatewayKinds,
-  type GatewayProbeResult,
-} from "../gateway/probe.js";
-import { resolveClaudeGatewayAuth } from "../gateway/resolve-auth.js";
 import type { ProviderApiFetch, ProviderUsageFetcher } from "../provider.js";
 import {
   ApiNumberSchema,
   fetchProviderApi,
+  toneFromUsedPct,
   unavailableUsage,
   windowFromUsedPct,
 } from "../usage.js";
@@ -47,11 +42,29 @@ const ClaudeUsageWindowSchema = z.object({
   resets_at: z.string().nullish(),
 });
 
+// Model- and surface-scoped weekly limits live in a `limits[]` array rather than a
+// top-level `seven_day_<model>` key. Entries are validated one at a time (see
+// scopedLimitsFromResponse) so a single malformed or newly-shaped entry cannot take down
+// the windows that already parsed from the top-level keys.
+const ClaudeScopeLabelSchema = z
+  .object({ id: z.string().nullish(), display_name: z.string().nullish() })
+  .nullish();
+
+const ClaudeLimitSchema = z.object({
+  kind: z.string(),
+  percent: ApiNumberSchema.nullish(),
+  resets_at: z.string().nullish(),
+  scope: z.object({ model: ClaudeScopeLabelSchema, surface: ClaudeScopeLabelSchema }).nullish(),
+});
+
 const ClaudeUsageResponseSchema = z.object({
   five_hour: ClaudeUsageWindowSchema.nullish(),
   seven_day: ClaudeUsageWindowSchema.nullish(),
   seven_day_opus: ClaudeUsageWindowSchema.nullish(),
   seven_day_omelette: ClaudeUsageWindowSchema.nullish(),
+  // Deliberately permissive: an additive section must never regress the top-level
+  // windows, so shape validation happens per entry rather than here.
+  limits: z.array(z.unknown()).nullish(),
   extra_usage: z
     .object({
       is_enabled: z.boolean().optional(),
@@ -67,6 +80,9 @@ const ClaudeTokenRefreshSchema = z.object({
 type ClaudeCredentials = z.infer<typeof ClaudeCredentialsSchema>;
 type ClaudeUsageResponse = z.infer<typeof ClaudeUsageResponseSchema>;
 type ClaudeTokenRefresh = z.infer<typeof ClaudeTokenRefreshSchema>;
+type ClaudeLimit = z.infer<typeof ClaudeLimitSchema>;
+
+const SCOPED_WEEKLY_KIND = "weekly_scoped";
 
 interface ClaudeCredentialRecord {
   oauth: { accessToken: string } & NonNullable<ClaudeCredentials["claudeAiOauth"]>;
@@ -74,14 +90,12 @@ interface ClaudeCredentialRecord {
 }
 
 interface ClaudeQuotaProviderOptions {
+  reclaude?: ReclaudeAccountService;
   logger: Logger;
   claudeHome?: string;
   claudeKeychainReader?: () => Promise<unknown | null>;
   platform?: typeof process.platform;
   fetch?: ProviderApiFetch;
-  reclaude?: ReclaudeAccountService;
-  /** Optional env override for tests. */
-  env?: NodeJS.ProcessEnv;
   /** Optional agents.providers.claude.env from Paseo config. */
   providerEnv?: Record<string, string> | null;
 }
@@ -96,66 +110,195 @@ function buildClaudePlan(
   return tier ? `${label} ${tier}` : label;
 }
 
-function mapClaudeUsageWindows(resp: ClaudeUsageResponse): ProviderUsageWindow[] {
+/**
+ * A weekly limit scoped to one model or one surface, normalized away from whichever
+ * shape of the response described it.
+ *
+ * The API describes the same limit two ways during the migration: a legacy top-level
+ * `seven_day_<model>` key, and an entry in `limits[]`. Everything downstream works on
+ * this one representation so the two shapes are reconciled exactly once, in
+ * `reconcileScopedLimits`, rather than at each place a window is built.
+ */
+interface ScopedLimit {
+  dimension: "model" | "surface";
+  /** The API's own identifier. Null on every response observed so far. */
+  id: string | null;
+  /** Display name, or the id when the API sends no display name. */
+  name: string;
+  usedPct: number | null;
+  resetsAt: string | null;
+}
+
+// Windows that describe no particular model or surface.
+const UNSCOPED_WINDOWS: ReadonlyArray<{
+  field: "five_hour" | "seven_day";
+  id: string;
+  label: string;
+}> = [
+  { field: "five_hour", id: "five_hour", label: "Session" },
+  { field: "seven_day", id: "weekly", label: "Weekly" },
+];
+
+// Scoped windows from before `limits[]` existed. Declaring the dimension here is what
+// stops a *surface* named "Omelette" from being mistaken for the legacy Omelette *model*
+// window: these keys are model-scoped by definition.
+const LEGACY_SCOPED_WINDOWS: ReadonlyArray<{
+  field: "seven_day_opus" | "seven_day_omelette";
+  name: string;
+}> = [
+  { field: "seven_day_opus", name: "Opus" },
+  { field: "seven_day_omelette", name: "Omelette" },
+];
+
+/** Fold a name down to the characters an id is allowed to carry. */
+function normalizeName(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
+/**
+ * Whether two descriptions denote the same limit. This is the single definition of
+ * identity for scoped limits; nothing else may compare them, and in particular nothing
+ * may compare display labels, which are presentation rather than identity.
+ *
+ * - Different dimensions are never the same limit, so a surface and a model sharing a
+ *   name stay apart.
+ * - When both sides carry the API's own id, that id decides, so `fable-pro` and
+ *   `fable_pro` stay apart.
+ * - Otherwise fall back to the normalized name, which is the only link available between
+ *   a legacy key (never has an id) and its `limits[]` counterpart.
+ */
+function isSameLimit(a: ScopedLimit, b: ScopedLimit): boolean {
+  if (a.dimension !== b.dimension) return false;
+  if (a.id && b.id) return a.id === b.id;
+  return normalizeName(a.name) === normalizeName(b.name);
+}
+
+/**
+ * Merge the legacy and `limits[]` descriptions into one limit per identity.
+ *
+ * A `limits[]` entry wins on identity because that is the representation the API is
+ * migrating towards, so a limit keeps the same window id whichever shape carried it.
+ * Its values are nullable though, so each field falls back to the legacy twin instead of
+ * discarding a number the response did contain.
+ */
+function reconcileScopedLimits(
+  legacy: ScopedLimit[],
+  fromLimitsArray: ScopedLimit[],
+): ScopedLimit[] {
+  const reconciled = [...legacy];
+  for (const limit of fromLimitsArray) {
+    const index = reconciled.findIndex((candidate) => isSameLimit(candidate, limit));
+    if (index === -1) {
+      reconciled.push(limit);
+      continue;
+    }
+    const twin = reconciled[index];
+    reconciled[index] = {
+      ...limit,
+      usedPct: limit.usedPct ?? twin?.usedPct ?? null,
+      resetsAt: limit.resetsAt ?? twin?.resetsAt ?? null,
+    };
+  }
+  return reconciled;
+}
+
+function scopedLimitFromLegacy(
+  spec: (typeof LEGACY_SCOPED_WINDOWS)[number],
+  window: z.infer<typeof ClaudeUsageWindowSchema>,
+): ScopedLimit {
+  return {
+    dimension: "model",
+    id: null,
+    name: spec.name,
+    usedPct: window.utilization,
+    resetsAt: window.resets_at ?? null,
+  };
+}
+
+/** The scope of a `limits[]` entry, or null when it names nothing renderable. */
+function scopedLimitFromEntry(limit: ClaudeLimit): ScopedLimit | null {
+  for (const dimension of ["model", "surface"] as const) {
+    const entry = limit.scope?.[dimension];
+    const id = entry?.id?.trim() || null;
+    const name = entry?.display_name?.trim() || id;
+    if (name) {
+      return {
+        dimension,
+        id,
+        name,
+        usedPct: limit.percent ?? null,
+        resetsAt: limit.resets_at ?? null,
+      };
+    }
+  }
+  return null;
+}
+
+// The client uses window ids as React keys, so they must be stable across refreshes and
+// unique within a response. An API-supplied id is already an identifier and is used
+// verbatim (ids elsewhere carry punctuation too, e.g. MiniMax's `interval_MiniMax-M2.7`);
+// only a name fallback is normalized. Normalizing an id would collapse `fable-pro` and
+// `fable_pro` into one window.
+function scopedWindowId(limit: ScopedLimit): string {
+  return `weekly_${limit.dimension}_${limit.id ?? normalizeName(limit.name)}`;
+}
+
+// Backstop for the one residual case identity cannot rule out: an entry whose verbatim id
+// equals another entry's normalized name. Suffix rather than drop, because a missing bar
+// is the bug this change exists to fix.
+function uniqueWindowId(candidate: string, taken: Set<string>): string {
+  if (!taken.has(candidate)) return candidate;
+  for (let suffix = 2; ; suffix += 1) {
+    const next = `${candidate}_${suffix}`;
+    if (!taken.has(next)) return next;
+  }
+}
+
+function legacyScopedLimits(resp: ClaudeUsageResponse): ScopedLimit[] {
+  const limits: ScopedLimit[] = [];
+  for (const spec of LEGACY_SCOPED_WINDOWS) {
+    const window = resp[spec.field];
+    if (window) limits.push(scopedLimitFromLegacy(spec, window));
+  }
+  return limits;
+}
+
+function unscopedWindows(resp: ClaudeUsageResponse): ProviderUsageWindow[] {
   const windows: ProviderUsageWindow[] = [];
-  if (resp.five_hour) {
+  for (const spec of UNSCOPED_WINDOWS) {
+    const window = resp[spec.field];
+    if (!window) continue;
     windows.push(
       windowFromUsedPct({
-        id: "five_hour",
-        label: "Session",
-        utilizationPct: resp.five_hour.utilization,
-        resetsAt: resp.five_hour.resets_at ?? null,
-        tone: "ok",
-      }),
-    );
-  }
-  if (resp.seven_day) {
-    windows.push(
-      windowFromUsedPct({
-        id: "weekly",
-        label: "Weekly",
-        utilizationPct: resp.seven_day.utilization,
-        resetsAt: resp.seven_day.resets_at ?? null,
-        tone: "ok",
-      }),
-    );
-  }
-  if (resp.seven_day_opus) {
-    windows.push(
-      windowFromUsedPct({
-        id: "weekly_opus",
-        label: "Weekly · Opus",
-        utilizationPct: resp.seven_day_opus.utilization,
-        resetsAt: resp.seven_day_opus.resets_at ?? null,
-        tone: "ok",
-      }),
-    );
-  }
-  if (resp.seven_day_omelette) {
-    windows.push(
-      windowFromUsedPct({
-        id: "weekly_omelette",
-        label: "Weekly · Omelette",
-        utilizationPct: resp.seven_day_omelette.utilization,
-        resetsAt: resp.seven_day_omelette.resets_at ?? null,
-        tone: "ok",
+        id: spec.id,
+        label: spec.label,
+        utilizationPct: window.utilization,
+        resetsAt: window.resets_at ?? null,
+        tone: toneFromUsedPct(window.utilization),
       }),
     );
   }
   return windows;
 }
 
-function mapClaudeUsageDetails(resp: ClaudeUsageResponse): ProviderUsageDetail[] {
-  const details: ProviderUsageDetail[] = [];
-  const extraUsageEnabled = resp.extra_usage?.is_enabled;
-  if (extraUsageEnabled !== undefined) {
-    details.push({
-      id: "extra_usage",
-      label: "Extra usage",
-      value: extraUsageEnabled ? "Enabled" : "Disabled",
+function scopedWindows(limits: ScopedLimit[]): ProviderUsageWindow[] {
+  const taken = new Set<string>();
+  return limits.map((limit) => {
+    const id = uniqueWindowId(scopedWindowId(limit), taken);
+    taken.add(id);
+    // Emitted even at 0% and inactive: a zero bar answers "how much of this model have I
+    // used", and the bar must not come and go between refreshes.
+    return windowFromUsedPct({
+      id,
+      label: `Weekly \u00b7 ${limit.name}`,
+      utilizationPct: limit.usedPct,
+      resetsAt: limit.resetsAt,
+      tone: toneFromUsedPct(limit.usedPct),
     });
-  }
-  return details;
+  });
 }
 
 async function readClaudeKeychainCredentials(): Promise<unknown | null> {
@@ -177,56 +320,33 @@ export class ClaudeQuotaProvider implements ProviderUsageFetcher {
   readonly providerId = "claude";
   readonly displayName = "Claude";
 
+  private readonly reclaude: ReclaudeAccountService | undefined;
   private readonly logger: Logger;
   private readonly claudeHome: string;
   private readonly readKeychainCredentials: () => Promise<unknown | null>;
   private readonly platform: typeof process.platform;
   private readonly fetchApi: ProviderApiFetch;
-  private readonly reclaude: ReclaudeAccountService | undefined;
-  private readonly env: NodeJS.ProcessEnv;
-  private readonly providerEnv: Record<string, string> | null;
 
   constructor(options: ClaudeQuotaProviderOptions) {
-    this.logger = options.logger;
+    this.reclaude = options.reclaude;
+    this.logger = options.logger.child({ module: "claude-quota-provider" });
     this.claudeHome =
       options.claudeHome || process.env["CLAUDE_HOME"] || join(homedir(), ".claude");
     this.readKeychainCredentials = options.claudeKeychainReader ?? readClaudeKeychainCredentials;
     this.platform = options.platform ?? process.platform;
     this.fetchApi = options.fetch ?? fetch;
-    this.reclaude = options.reclaude;
-    this.env = options.env ?? process.env;
-    this.providerEnv = options.providerEnv ?? null;
   }
 
   async fetchUsage(): Promise<ProviderUsage> {
     // When reclaude is the active Claude binary, usage comes from reclaude.ai
-    // (which passes through the official OAuth usage) instead of querying
-    // Anthropic directly. See docs/reclaude-integration.md.
+    // (OAuth-backed) rather than Anthropic's usage endpoint — reclaude does not
+    // talk to Anthropic directly. See docs/reclaude-integration.md.
     if (this.reclaude?.isActive()) {
       return this.fetchReclaudeUsage(this.reclaude);
     }
-
-    const [official, gatewayResults] = await Promise.all([
-      this.fetchOfficialUsage(),
-      this.fetchGatewayResults(),
-    ]);
-
-    if (!official && (!gatewayResults || gatewayResults.length === 0)) {
-      return unavailableUsage(this);
-    }
-
-    return assembleMultiSourceUsage({
-      providerId: this.providerId,
-      displayName: this.displayName,
-      official,
-      gatewayResults: gatewayResults ?? undefined,
-    });
-  }
-
-  private async fetchOfficialUsage(): Promise<ProviderUsage | null> {
     const credentials = await this.readCredentials();
     if (!credentials) {
-      return null;
+      return unavailableUsage(this);
     }
 
     const { oauth, filePath } = credentials;
@@ -235,12 +355,12 @@ export class ClaudeQuotaProvider implements ProviderUsageFetcher {
 
     if (resp === "NEEDS_AUTH") {
       if (!filePath || !oauth.refreshToken) {
-        return null;
+        return unavailableUsage(this);
       }
 
       const refreshed = await this.refreshClaudeToken(oauth.refreshToken);
       if (!refreshed?.access_token) {
-        return null;
+        return unavailableUsage(this);
       }
 
       await this.saveClaudeCredentials(filePath, {
@@ -251,15 +371,31 @@ export class ClaudeQuotaProvider implements ProviderUsageFetcher {
 
       resp = await this.callClaudeApi(refreshed.access_token);
       if (resp === "NEEDS_AUTH") {
-        return null;
+        return unavailableUsage(this);
       }
     }
 
-    const windows = mapClaudeUsageWindows(resp);
-    const details = mapClaudeUsageDetails(resp);
+    const scoped = reconcileScopedLimits(
+      legacyScopedLimits(resp),
+      this.scopedLimitsFromResponse(resp.limits),
+    );
+    const windows = [...unscopedWindows(resp), ...scopedWindows(scoped)];
 
-    if (windows.length === 0 && details.length === 0) {
-      return null;
+    if (windows.length === 0) {
+      // The response parsed but described nothing. That silence is how the previous
+      // shape change went unnoticed, so make it greppable. `warn` and not `debug`
+      // because file logging defaults to `info`.
+      this.logger.warn("Claude usage response parsed but produced no windows");
+    }
+
+    const details: ProviderUsageDetail[] = [];
+    const extraUsageEnabled = resp.extra_usage?.is_enabled;
+    if (extraUsageEnabled !== undefined) {
+      details.push({
+        id: "extra_usage",
+        label: "Extra usage",
+        value: extraUsageEnabled ? "Enabled" : "Disabled",
+      });
     }
 
     return {
@@ -274,33 +410,32 @@ export class ClaudeQuotaProvider implements ProviderUsageFetcher {
     };
   }
 
-  private fetchReclaudeUsage(reclaude: ReclaudeAccountService): ProviderUsage {
-    // Read-only: the last-synced cached snapshot (or an "unavailable"
-    // placeholder when not signed in / not yet synced). This NEVER hits
-    // reclaude.ai — the live fetch is the dedicated provider.reclaude.sync RPC —
-    // so the unified usage list and its refresh button stay reclaude-quiet.
-    return reclaude.getCachedUsage({
-      providerId: this.providerId,
-      displayName: this.displayName,
-    });
-  }
+  /**
+   * Scoped limits carried by `limits[]`.
+   *
+   * Entries are validated one at a time so a single malformed or newly-shaped entry
+   * cannot fail the whole response and take the windows that already parsed with it.
+   */
+  private scopedLimitsFromResponse(limits: ClaudeUsageResponse["limits"]): ScopedLimit[] {
+    if (!limits) return [];
 
-  private async fetchGatewayResults(): Promise<GatewayProbeResult[] | null> {
-    const auth = await resolveClaudeGatewayAuth({
-      claudeHome: this.claudeHome,
-      env: this.env,
-      providerEnv: this.providerEnv,
-    });
-    if (!auth) {
-      return null;
+    const parsed: ScopedLimit[] = [];
+    for (const entry of limits) {
+      const result = ClaudeLimitSchema.safeParse(entry);
+      if (!result.success) {
+        this.logger.warn({ err: result.error }, "Skipping unparseable Claude usage limit entry");
+        continue;
+      }
+      if (result.data.kind !== SCOPED_WEEKLY_KIND) continue;
+
+      const limit = scopedLimitFromEntry(result.data);
+      if (!limit) {
+        this.logger.warn("Skipping scoped Claude usage limit with no resolvable scope name");
+        continue;
+      }
+      parsed.push(limit);
     }
-    return probeAllGatewayKinds({
-      auth,
-      providerId: this.providerId,
-      displayName: this.displayName,
-      fetchApi: this.fetchApi,
-      logger: this.logger,
-    });
+    return parsed;
   }
 
   private async readCredentials(): Promise<ClaudeCredentialRecord | null> {
@@ -376,5 +511,15 @@ export class ClaudeQuotaProvider implements ProviderUsageFetcher {
     } catch {
       // Non-fatal; Claude Code can refresh again on its own next time.
     }
+  }
+  private fetchReclaudeUsage(reclaude: ReclaudeAccountService): ProviderUsage {
+    // Read-only: the last-synced cached snapshot (or an "unavailable"
+    // placeholder when not signed in / not yet synced). This NEVER hits
+    // reclaude.ai — the live fetch is the dedicated provider.reclaude.sync RPC —
+    // so the unified usage list and its refresh button stay reclaude-quiet.
+    return reclaude.getCachedUsage({
+      providerId: this.providerId,
+      displayName: this.displayName,
+    });
   }
 }

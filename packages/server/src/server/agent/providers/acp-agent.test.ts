@@ -2154,6 +2154,14 @@ describe("ACPAgentSession", () => {
         content: { type: "text", text: "lo" },
       } as SessionUpdate,
     });
+    await session.sessionUpdate({
+      sessionId: "session-1",
+      update: {
+        sessionUpdate: "agent_message_chunk",
+        messageId: "assistant-2",
+        content: { type: "text", text: "" },
+      } as SessionUpdate,
+    });
 
     const timeline = events
       .filter((event) => event.type === "timeline")
@@ -2165,7 +2173,6 @@ describe("ACPAgentSession", () => {
       { type: "assistant_message", text: " How are you?", messageId: "assistant-1" },
       { type: "reasoning", text: "Thinking" },
       { type: "reasoning", text: " more" },
-      { type: "user_message", text: "hel", messageId: "user-1" },
       { type: "user_message", text: "hello", messageId: "user-1" },
     ]);
   });
@@ -2671,6 +2678,49 @@ describe("ACPAgentSession", () => {
     expect(asInternals<ACPSessionInternals>(session).activeForegroundTurnId).toBeNull();
   });
 
+  test("flushes an image-only provider echo before a rejected turn finishes", async () => {
+    const session = createSession();
+    const events: AgentStreamEvent[] = [];
+    let rejectPrompt!: (error: Error) => void;
+    const prompt = vi.fn(
+      () =>
+        new Promise<PromptResponse>((_, reject) => {
+          rejectPrompt = reject;
+        }),
+    );
+
+    asInternals<ACPSessionInternals>(session).sessionId = "session-1";
+    asInternals<ACPSessionInternals>(session).connection = { prompt };
+    session.subscribe((event) => events.push(event));
+
+    const { turnId } = await session.startTurn([
+      { type: "image", data: "AA==", mimeType: "image/png" },
+    ]);
+    await session.sessionUpdate({
+      sessionId: "session-1",
+      update: {
+        sessionUpdate: "user_message_chunk",
+        content: { type: "image", data: "AA==", mimeType: "image/png" },
+      } as SessionUpdate,
+    });
+
+    rejectPrompt(new Error("prompt failed"));
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(
+      events.filter((event) => event.type === "timeline" || event.type === "turn_failed"),
+    ).toEqual([
+      {
+        type: "timeline",
+        provider: session.provider,
+        item: { type: "user_message", text: "[image]" },
+        turnId,
+      },
+      expect.objectContaining({ type: "turn_failed", turnId, error: "prompt failed" }),
+    ]);
+  });
+
   test("startTurn preserves JSON-RPC error details from a real ACP prompt response", async () => {
     const session = createSession();
     const clientToAgent = new TransformStream();
@@ -2773,6 +2823,32 @@ describe("ACPAgentSession close() tree-kill", () => {
     vi.restoreAllMocks();
   });
 
+  test("close() flushes a buffered provider-owned user message before unsubscribing", async () => {
+    const session = createSession();
+    const events: AgentStreamEvent[] = [];
+    session.subscribe((event) => events.push(event));
+    asInternals<ACPCloseInternals>(session).sessionId = "session-1";
+
+    await session.sessionUpdate({
+      sessionId: "session-1",
+      update: {
+        sessionUpdate: "user_message_chunk",
+        content: { type: "image", data: "AA==", mimeType: "image/png" },
+      } as SessionUpdate,
+    });
+    expect(events).toEqual([]);
+
+    await session.close();
+
+    expect(events).toEqual([
+      {
+        type: "timeline",
+        provider: session.provider,
+        item: { type: "user_message", text: "[image]" },
+      },
+    ]);
+  });
+
   test("close() terminates the main child process via the process tree", async () => {
     const terminator = new FakeTerminator();
     const session = createSession(terminator.terminate);
@@ -2849,6 +2925,81 @@ describe("ACPAgentSession close() tree-kill", () => {
     await expect(session.terminalOutput({ sessionId: "session-1", terminalId })).rejects.toThrow(
       `Unknown terminal '${terminalId}'`,
     );
+  });
+});
+
+describe("ACPAgentSession initialization cleanup", () => {
+  test("terminates the ACP process when session/new fails", async () => {
+    const terminator = new FakeTerminator();
+    const child = createProbeChildStub();
+
+    class FailingNewSession extends ACPAgentSession {
+      protected override async spawnProcess(): Promise<SpawnedACPProcess> {
+        return {
+          child,
+          connection: {
+            newSession: vi.fn().mockRejectedValue(new Error("session/new failed")),
+          } as unknown as ClientSideConnection,
+          initialize: { agentCapabilities: {} },
+        };
+      }
+    }
+
+    const session = new FailingNewSession(
+      { provider: "copilot", cwd: "/tmp/paseo-acp-test" },
+      {
+        provider: "copilot",
+        logger: createTestLogger(),
+        defaultCommand: ["copilot", "--acp"],
+        defaultModes: [],
+        capabilities: {
+          supportsStreaming: true,
+          supportsSessionPersistence: true,
+        },
+        terminateProcess: terminator.terminate,
+      },
+    );
+
+    await expect(session.initializeNewSession()).rejects.toThrow("session/new failed");
+
+    expect(terminator.terminated).toContain(child);
+  });
+
+  test("terminates the ACP process when session/load fails", async () => {
+    const terminator = new FakeTerminator();
+    const child = createProbeChildStub();
+
+    class FailingLoadSession extends ACPAgentSession {
+      protected override async spawnProcess(): Promise<SpawnedACPProcess> {
+        return {
+          child,
+          connection: {
+            loadSession: vi.fn().mockRejectedValue(new Error("session/load failed")),
+          } as unknown as ClientSideConnection,
+          initialize: { agentCapabilities: { loadSession: true } },
+        };
+      }
+    }
+
+    const session = new FailingLoadSession(
+      { provider: "cursor", cwd: "/tmp/paseo-acp-test" },
+      {
+        provider: "cursor",
+        logger: createTestLogger(),
+        defaultCommand: ["cursor-agent", "acp"],
+        defaultModes: [],
+        capabilities: {
+          supportsStreaming: true,
+          supportsSessionPersistence: true,
+        },
+        handle: { provider: "cursor", sessionId: "session-1" },
+        terminateProcess: terminator.terminate,
+      },
+    );
+
+    await expect(session.initializeResumedSession()).rejects.toThrow("session/load failed");
+
+    expect(terminator.terminated).toContain(child);
   });
 });
 
@@ -3013,6 +3164,68 @@ describe("ACP session/load invariant — cwd and mcpServers always passed", () =
         item: {
           type: "assistant_message",
           text: "Welcome back",
+          messageId: "assistant-replay-1",
+        },
+      },
+    ]);
+  });
+
+  test("coalesces an ID-less text and image user message during loadSession replay", async () => {
+    let session!: ACPAgentSession;
+    const loadSession = async () => {
+      await session.sessionUpdate({
+        sessionId: "session-1",
+        update: {
+          sessionUpdate: "user_message_chunk",
+          content: { type: "text", text: "hey" },
+        } as SessionUpdate,
+      });
+      await session.sessionUpdate({
+        sessionId: "session-1",
+        update: {
+          sessionUpdate: "user_message_chunk",
+          content: { type: "image", data: "AA==", mimeType: "image/png" },
+        } as SessionUpdate,
+      });
+      await session.sessionUpdate({
+        sessionId: "session-1",
+        update: {
+          sessionUpdate: "agent_message_chunk",
+          messageId: "assistant-replay-1",
+          content: { type: "text", text: "Hello" },
+        } as SessionUpdate,
+      });
+      return {
+        sessionId: "session-1",
+        modes: null,
+        models: null,
+        configOptions: [],
+      };
+    };
+    ({ session } = makeTestSession({
+      capabilities: { loadSession: true },
+      handle: { sessionId: "session-1", provider: "test-acp" },
+      loadSession,
+    }));
+
+    await session.initializeResumedSession();
+
+    const history: AgentStreamEvent[] = [];
+    for await (const event of session.streamHistory()) {
+      history.push(event);
+    }
+    expect(history).toEqual([
+      {
+        type: "timeline",
+        provider: session.provider,
+        item: { type: "user_message", text: "hey[image]" },
+      },
+      {
+        type: "timeline",
+        provider: session.provider,
+        item: {
+          type: "assistant_message",
+          text: "Hello",
           messageId: "assistant-replay-1",
         },
       },

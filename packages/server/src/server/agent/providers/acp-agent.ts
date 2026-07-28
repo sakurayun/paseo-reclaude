@@ -520,14 +520,9 @@ interface PendingPermission {
   turnId: string | null;
 }
 
-interface MessageAssemblyState {
+interface PendingUserMessage {
   text: string;
-}
-
-interface SubmittedUserMessageEcho {
-  messageId: string;
-  text: string;
-  turnId: string;
+  messageId?: string;
 }
 
 export type SessionStateResponse = NewSessionResponse | LoadSessionResponse | ResumeSessionResponse;
@@ -1526,9 +1521,8 @@ export class ACPAgentSession implements AgentSession, ACPClient {
   private readonly launchEnv?: Record<string, string>;
   private readonly subscribers = new Set<(event: AgentStreamEvent) => void>();
   private readonly pendingPermissions = new Map<string, PendingPermission>();
-  private readonly messageAssemblies = new Map<string, MessageAssemblyState>();
-  private readonly submittedUserMessageIds = new Set<string>();
-  private activeSubmittedUserMessage: SubmittedUserMessageEcho | null = null;
+  private pendingUserMessage: PendingUserMessage | null = null;
+  private submittedUserMessageTurnId: string | null = null;
   private readonly toolCalls = new Map<string, ACPToolSnapshot>();
   private readonly terminalEntries = new Map<string, TerminalEntry>();
   private readonly persistedHistory: AgentTimelineItem[] = [];
@@ -1606,21 +1600,25 @@ export class ACPAgentSession implements AgentSession, ACPClient {
   }
 
   async initializeNewSession(): Promise<void> {
-    const spawned = await this.spawnProcess();
-    this.child = spawned.child;
-    this.connection = spawned.connection;
-    this.agentCapabilities = spawned.initialize.agentCapabilities ?? null;
+    try {
+      const spawned = await this.spawnProcess();
+      this.child = spawned.child;
+      this.connection = spawned.connection;
+      this.agentCapabilities = spawned.initialize.agentCapabilities ?? null;
 
-    const response = await this.runACPRequest(() =>
-      this.connection!.newSession({
-        cwd: this.config.cwd,
-        mcpServers: this.acpMcpServers(),
-      }),
-    );
-    this.sessionId = response.sessionId;
-    this.bootstrapThreadEventPending = true;
-    this.applySessionState(response);
-    await this.applyConfiguredOverrides();
+      const response = await this.runACPRequest(() =>
+        this.connection!.newSession({
+          cwd: this.config.cwd,
+          mcpServers: this.acpMcpServers(),
+        }),
+      );
+      this.sessionId = response.sessionId;
+      this.bootstrapThreadEventPending = true;
+      this.applySessionState(response);
+      await this.applyConfiguredOverrides();
+    } catch (error) {
+      await this.closeAfterInitializationFailure(error);
+    }
   }
 
   /**
@@ -1631,45 +1629,62 @@ export class ACPAgentSession implements AgentSession, ACPClient {
    * from these calls regardless of capabilities.
    */
   async initializeResumedSession(): Promise<void> {
-    const handle = this.initialHandle;
-    if (!handle) {
-      throw new Error("Resume requested without persistence handle");
+    try {
+      const handle = this.initialHandle;
+      if (!handle) {
+        throw new Error("Resume requested without persistence handle");
+      }
+
+      const spawned = await this.spawnProcess();
+      this.child = spawned.child;
+      this.connection = spawned.connection;
+      this.agentCapabilities = spawned.initialize.agentCapabilities ?? null;
+      this.sessionId = handle.sessionId;
+      this.bootstrapThreadEventPending = true;
+
+      const sessionCapabilities = this.agentCapabilities?.sessionCapabilities;
+      if (this.agentCapabilities?.loadSession) {
+        this.replayingHistory = true;
+        const response = await this.runACPRequest(() =>
+          this.connection!.loadSession({
+            sessionId: handle.sessionId,
+            cwd: this.config.cwd,
+            mcpServers: this.acpMcpServers(),
+          }),
+        );
+        this.deliverTranslatedEvents(this.flushPendingUserMessage());
+        this.replayingHistory = false;
+        this.historyPending = this.persistedHistory.length > 0;
+        this.applySessionState(response);
+      } else if (sessionCapabilities?.resume) {
+        const response = await this.runACPRequest(() =>
+          this.connection!.unstable_resumeSession({
+            sessionId: handle.sessionId,
+            cwd: this.config.cwd,
+            mcpServers: this.acpMcpServers(),
+          }),
+        );
+        this.applySessionState(response);
+      } else {
+        throw new Error(`${this.provider} does not support ACP session resume`);
+      }
+
+      await this.applyConfiguredOverrides();
+    } catch (error) {
+      await this.closeAfterInitializationFailure(error);
     }
+  }
 
-    const spawned = await this.spawnProcess();
-    this.child = spawned.child;
-    this.connection = spawned.connection;
-    this.agentCapabilities = spawned.initialize.agentCapabilities ?? null;
-    this.sessionId = handle.sessionId;
-    this.bootstrapThreadEventPending = true;
-
-    const sessionCapabilities = this.agentCapabilities?.sessionCapabilities;
-    if (this.agentCapabilities?.loadSession) {
-      this.replayingHistory = true;
-      const response = await this.runACPRequest(() =>
-        this.connection!.loadSession({
-          sessionId: handle.sessionId,
-          cwd: this.config.cwd,
-          mcpServers: this.acpMcpServers(),
-        }),
+  private async closeAfterInitializationFailure(error: unknown): Promise<never> {
+    try {
+      await this.close();
+    } catch (closeError) {
+      this.logger.warn(
+        { err: closeError, initializationError: error },
+        "Failed to close ACP process after session initialization failure",
       );
-      this.replayingHistory = false;
-      this.historyPending = this.persistedHistory.length > 0;
-      this.applySessionState(response);
-    } else if (sessionCapabilities?.resume) {
-      const response = await this.runACPRequest(() =>
-        this.connection!.unstable_resumeSession({
-          sessionId: handle.sessionId,
-          cwd: this.config.cwd,
-          mcpServers: this.acpMcpServers(),
-        }),
-      );
-      this.applySessionState(response);
-    } else {
-      throw new Error(`${this.provider} does not support ACP session resume`);
     }
-
-    await this.applyConfiguredOverrides();
+    throw error;
   }
 
   async run(prompt: AgentPromptInput, options?: AgentRunOptions): Promise<AgentRunResult> {
@@ -1703,11 +1718,12 @@ export class ACPAgentSession implements AgentSession, ACPClient {
       throw new Error("A foreground turn is already active");
     }
 
+    this.deliverTranslatedEvents(this.flushPendingUserMessage());
     const turnId = randomUUID();
     const messageId = options?.clientMessageId ?? randomUUID();
     this.activeForegroundTurnId = turnId;
     this.fallbackAssistantMessageId = null;
-    this.activeSubmittedUserMessage = null;
+    this.submittedUserMessageTurnId = null;
     this.emitBootstrapThreadEvent();
     this.pushEvent({ type: "turn_started", provider: this.provider, turnId });
     this.emitSubmittedUserMessage(prompt, messageId, turnId, options?.clientMessageId);
@@ -2253,6 +2269,7 @@ export class ACPAgentSession implements AgentSession, ACPClient {
     }
     this.closed = true;
 
+    this.deliverTranslatedEvents(this.flushPendingUserMessage());
     this.settleCommandsReady();
 
     for (const pending of this.pendingPermissions.values()) {
@@ -2606,6 +2623,10 @@ export class ACPAgentSession implements AgentSession, ACPClient {
       { logger: this.logger, provider: this.provider },
     );
     const connection = new ClientSideConnection(() => this, stream);
+    // Take ownership before initialize so the outer initialization guard can
+    // close the process even when the ACP handshake itself rejects.
+    this.child = child;
+    this.connection = connection;
     const initialize = await this.runACPRequest(() =>
       connection.initialize({
         protocolVersion: PROTOCOL_VERSION,
@@ -2724,50 +2745,43 @@ export class ACPAgentSession implements AgentSession, ACPClient {
   }
 
   private translateSessionUpdate(update: SessionUpdate): AgentStreamEvent[] {
+    if (update.sessionUpdate === "user_message_chunk") {
+      return this.handleUserMessageChunk(update);
+    }
+
+    const pendingUserEvents = this.flushPendingUserMessage();
     switch (update.sessionUpdate) {
-      case "user_message_chunk": {
-        // Provider filter runs before assembly so hidden chunks cannot contaminate
-        // fallback message-ID state used by a later visible user message.
-        if (this.shouldSuppressUserMessageChunk?.(update)) {
-          return [];
-        }
-        this.fallbackAssistantMessageId = null;
-        const item = this.createMessageTimelineItem("user_message", update);
-        if (!item) {
-          return [];
-        }
-        if (item.type !== "user_message") {
-          return [this.wrapTimeline(item)];
-        }
-        if (this.isSubmittedUserMessageEcho(item)) {
-          return [];
-        }
-        return [this.wrapTimeline(item)];
-      }
       case "agent_message_chunk": {
         const item = this.createMessageTimelineItem("assistant_message", update);
-        return item ? [this.wrapTimeline(item)] : [];
+        return item ? [...pendingUserEvents, this.wrapTimeline(item)] : pendingUserEvents;
       }
       case "agent_thought_chunk": {
         this.fallbackAssistantMessageId = null;
         const item = this.createMessageTimelineItem("reasoning", update);
-        return item ? [this.wrapTimeline(item)] : [];
+        return item ? [...pendingUserEvents, this.wrapTimeline(item)] : pendingUserEvents;
       }
       case "tool_call":
         this.fallbackAssistantMessageId = null;
-        return this.handleToolCallUpdate(update.toolCallId, update, undefined);
+        return [
+          ...pendingUserEvents,
+          ...this.handleToolCallUpdate(update.toolCallId, update, undefined),
+        ];
       case "tool_call_update":
-        return this.handleToolCallUpdate(
-          update.toolCallId,
-          update,
-          this.toolCalls.get(update.toolCallId),
-        );
+        return [
+          ...pendingUserEvents,
+          ...this.handleToolCallUpdate(
+            update.toolCallId,
+            update,
+            this.toolCalls.get(update.toolCallId),
+          ),
+        ];
       case "plan":
         this.fallbackAssistantMessageId = null;
-        return [this.wrapTimeline(mapPlanToTimeline(update))];
+        return [...pendingUserEvents, this.wrapTimeline(mapPlanToTimeline(update))];
       case "current_mode_update":
         this.handleCurrentModeUpdate(update);
         return [
+          ...pendingUserEvents,
           {
             type: "mode_changed",
             provider: this.provider,
@@ -2776,13 +2790,13 @@ export class ACPAgentSession implements AgentSession, ACPClient {
           },
         ];
       case "config_option_update":
-        return this.handleConfigOptionUpdate(update);
+        return [...pendingUserEvents, ...this.handleConfigOptionUpdate(update)];
       case "session_info_update":
         this.handleSessionInfoUpdate(update);
-        return [];
+        return pendingUserEvents;
       case "usage_update":
         this.handleUsageUpdate(update);
-        return [];
+        return pendingUserEvents;
       case "available_commands_update":
         this.cachedCommands = update.availableCommands.map((command) => ({
           name: command.name,
@@ -2791,10 +2805,63 @@ export class ACPAgentSession implements AgentSession, ACPClient {
           kind: "command",
         }));
         this.settleCommandsReady();
-        return [];
+        return pendingUserEvents;
       default:
-        return [];
+        return pendingUserEvents;
     }
+  }
+
+  private handleUserMessageChunk(
+    update: Extract<SessionUpdate, { sessionUpdate: "user_message_chunk" }>,
+  ): AgentStreamEvent[] {
+    // Provider filter runs before assembly so hidden chunks cannot contaminate
+    // fallback message-ID state used by a later visible user message.
+    if (this.shouldSuppressUserMessageChunk?.(update)) {
+      return [];
+    }
+    this.fallbackAssistantMessageId = null;
+    if (
+      this.activeForegroundTurnId &&
+      this.submittedUserMessageTurnId === this.activeForegroundTurnId
+    ) {
+      return [];
+    }
+
+    const chunkText = contentBlockToText(update.content);
+    if (!chunkText) {
+      return [];
+    }
+
+    const messageId = update.messageId ?? undefined;
+    const pending = this.pendingUserMessage;
+    const startsNewMessage = Boolean(
+      pending?.messageId && messageId && pending.messageId !== messageId,
+    );
+    const events = startsNewMessage ? this.flushPendingUserMessage() : [];
+    this.pendingUserMessage ??= {
+      text: "",
+      ...(messageId ? { messageId } : {}),
+    };
+    if (!this.pendingUserMessage.messageId && messageId) {
+      this.pendingUserMessage.messageId = messageId;
+    }
+    this.pendingUserMessage.text += chunkText;
+    return events;
+  }
+
+  private flushPendingUserMessage(): AgentStreamEvent[] {
+    const pending = this.pendingUserMessage;
+    if (!pending) {
+      return [];
+    }
+    this.pendingUserMessage = null;
+    return [
+      this.wrapTimeline({
+        type: "user_message",
+        text: pending.text,
+        ...(pending.messageId ? { messageId: pending.messageId } : {}),
+      }),
+    ];
   }
 
   private handleToolCallUpdate(
@@ -2811,27 +2878,18 @@ export class ACPAgentSession implements AgentSession, ACPClient {
   }
 
   private createMessageTimelineItem(
-    type: "user_message" | "assistant_message" | "reasoning",
+    type: "assistant_message" | "reasoning",
     update: Extract<
       SessionUpdate,
-      { sessionUpdate: "user_message_chunk" | "agent_message_chunk" | "agent_thought_chunk" }
+      { sessionUpdate: "agent_message_chunk" | "agent_thought_chunk" }
     >,
   ):
-    | { type: "user_message"; text: string; messageId?: string }
     | { type: "assistant_message"; text: string; messageId: string }
     | { type: "reasoning"; text: string }
     | null {
     const chunkText = contentBlockToText(update.content);
     if (!chunkText) {
       return null;
-    }
-    const key = this.messageAssemblyKey(type, update.messageId);
-    const state = this.messageAssemblies.get(key) ?? { text: "" };
-    state.text += chunkText;
-    this.messageAssemblies.set(key, state);
-
-    if (type === "user_message") {
-      return { type: "user_message", text: state.text, messageId: update.messageId ?? undefined };
     }
     if (type === "assistant_message") {
       return {
@@ -2850,15 +2908,6 @@ export class ACPAgentSession implements AgentSession, ACPClient {
     }
     this.fallbackAssistantMessageId ??= randomUUID();
     return this.fallbackAssistantMessageId;
-  }
-
-  private messageAssemblyKey(
-    type: "user_message" | "assistant_message" | "reasoning",
-    messageId: string | null | undefined,
-  ): string {
-    const fallbackId =
-      type === "user_message" ? (this.activeForegroundTurnId ?? "default") : "default";
-    return `${type}:${messageId ?? fallbackId}`;
   }
 
   private handleCurrentModeUpdate(update: CurrentModeUpdate): void {
@@ -3031,6 +3080,21 @@ export class ACPAgentSession implements AgentSession, ACPClient {
     }
   }
 
+  private deliverTranslatedEvents(events: AgentStreamEvent[]): void {
+    if (this.replayingHistory) {
+      for (const event of events) {
+        if (event.type === "timeline") {
+          this.persistedHistory.push(event.item);
+        }
+      }
+      return;
+    }
+
+    for (const event of events) {
+      this.pushEvent(event);
+    }
+  }
+
   private emitSubmittedUserMessage(
     prompt: AgentPromptInput,
     messageId: string,
@@ -3041,8 +3105,7 @@ export class ACPAgentSession implements AgentSession, ACPClient {
     if (text.trim().length === 0) {
       return;
     }
-    this.submittedUserMessageIds.add(messageId);
-    this.activeSubmittedUserMessage = { messageId, text, turnId };
+    this.submittedUserMessageTurnId = turnId;
     this.pushEvent({
       type: "timeline",
       provider: this.provider,
@@ -3073,37 +3136,13 @@ export class ACPAgentSession implements AgentSession, ACPClient {
   private finishTurn(
     event: Extract<AgentStreamEvent, { type: "turn_completed" | "turn_failed" | "turn_canceled" }>,
   ): void {
+    this.deliverTranslatedEvents(this.flushPendingUserMessage());
     this.activeForegroundTurnId = null;
     this.fallbackAssistantMessageId = null;
-    if (this.activeSubmittedUserMessage?.turnId === event.turnId) {
-      this.activeSubmittedUserMessage = null;
+    if (this.submittedUserMessageTurnId === event.turnId) {
+      this.submittedUserMessageTurnId = null;
     }
     this.pushEvent(event);
-  }
-
-  private isSubmittedUserMessageEcho(
-    item: Extract<AgentTimelineItem, { type: "user_message" }>,
-  ): boolean {
-    const active = this.activeSubmittedUserMessage;
-    if (!active || active.turnId !== this.activeForegroundTurnId) {
-      return false;
-    }
-    if (item.messageId) {
-      if (this.submittedUserMessageIds.has(item.messageId)) {
-        return true;
-      }
-    }
-    // ACP agents (notably Grok) re-echo image/audio content blocks as
-    // "[image]" / "[audio]" placeholders. Those are not part of the text we
-    // submitted via emitSubmittedUserMessage, so strip them before progressive
-    // prefix matching — otherwise assembled text like "hello[image]" escapes
-    // dedupe and the UI shows a second plain-text bubble ending in "[image]".
-    const echoText = stripAcpMediaPlaceholders(item.text);
-    if (echoText.length === 0) {
-      // Pure media echo of the active submitted prompt.
-      return true;
-    }
-    return active.text.startsWith(echoText);
   }
 
   private emitBootstrapThreadEvent(): void {
@@ -3381,15 +3420,6 @@ function contentBlockToText(content: ContentBlock): string {
     default:
       return "";
   }
-}
-
-/**
- * Strip ACP media placeholders produced by {@link contentBlockToText} so
- * submitted-message echo dedupe can compare against the text-only prompt we
- * already emitted to the timeline.
- */
-function stripAcpMediaPlaceholders(text: string): string {
-  return text.replaceAll("[image]", "").replaceAll("[audio]", "");
 }
 
 function coalesceDefined<T>(next: T | undefined, previous: T | undefined, fallback: T): T {

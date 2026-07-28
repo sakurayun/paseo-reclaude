@@ -59,10 +59,8 @@ export function deriveStreamTurnTiming(params: {
     visitItem(item);
   }
 
-  const runningStartedAt =
-    params.agentStatus === "running"
-      ? (findLastUserMessageTimestamp(params.head) ?? currentUserAt)
-      : null;
+  const isRunning = params.agentStatus === "running";
+  const runningStartedAt = isRunning ? currentUserAt : null;
   if (params.agentStatus !== "running") {
     flushCompletedTurn();
   }
@@ -71,14 +69,4 @@ export function deriveStreamTurnTiming(params: {
     byAssistantId,
     runningStartedAt,
   };
-}
-
-function findLastUserMessageTimestamp(items: StreamItem[]): Date | null {
-  for (let i = items.length - 1; i >= 0; i -= 1) {
-    const item = items[i];
-    if (item?.kind === "user_message") {
-      return item.timestamp;
-    }
-  }
-  return null;
 }

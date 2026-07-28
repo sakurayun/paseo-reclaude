@@ -686,6 +686,7 @@ export const es: TranslationResources = {
         copyResumeCommand: "Copiar comando de reanudación",
         copyAgentId: "Copiar ID del agente",
         copyFilePath: "Copiar ruta del archivo",
+        copyTerminalId: "Copiar ID del terminal",
         rename: "Rebautizar",
         closeAbove: "Cerrar pestañas arriba",
         closeBelow: "Cerrar pestañas a continuación",
@@ -725,6 +726,7 @@ export const es: TranslationResources = {
       toasts: {
         copyFailed: "Copia fallida",
         agentIdCopiedLabel: "AgentID",
+        terminalIdCopiedLabel: "ID del terminal",
         resumeCommandCopiedLabel: "reanudar el comando",
         filePathCopiedLabel: "Ruta del archivo",
         resumeIdUnavailable: "ReanudarIDno disponible",
@@ -1223,7 +1225,8 @@ export const es: TranslationResources = {
         deletedFile: "Eliminado",
         commits: {
           title: "Commits",
-          countLabel: "{{count}} commits recientes",
+          countLabel: "{{count}} commits del espacio de trabajo",
+          noneAhead: "Aún no hay commits por delante de {{baseRef}}",
           fileDiffEmpty: "No hay cambios para mostrar",
           fileDiffError: "Error al cargar el diff del archivo",
           loading: "Cargando commits…",
@@ -1361,6 +1364,8 @@ export const es: TranslationResources = {
         openSettings: "Abrir la configuración del proyecto",
         openNewWindow: "Abrir en una ventana nueva",
         openNewWindowFailed: "No se pudo abrir una ventana nueva",
+        openFolder: "Open in file manager",
+        openFolderFailed: "Couldn't open folder",
         remove: "Eliminar proyecto",
         removing: "Eliminando...",
       },
@@ -2672,6 +2677,7 @@ export const es: TranslationResources = {
         copyRelativeFilePath: "Copiar ruta relativa",
         renameFile: "Renombrar",
         deleteFile: "Eliminar",
+        switchProject: "Cambiar proyecto",
       },
       helpNotes: {
         showKeyboardShortcuts: "Disponible cuando el foco no está en un campo de texto o terminal.",

@@ -165,6 +165,10 @@ interface CombinedModelSelectorProps {
    * (the composer's layout).
    */
   triggerFill?: boolean;
+  toolbar?: {
+    glyphSize: number;
+    showCaret: boolean;
+  };
 }
 
 interface SelectorContentProps {
@@ -632,6 +636,7 @@ export function CombinedModelSelector({
   desktopPlacement,
   desktopMinWidth,
   triggerFill = false,
+  toolbar,
 }: CombinedModelSelectorProps) {
   const { t } = useTranslation();
   const anchorRef = useRef<View>(null);
@@ -867,9 +872,10 @@ export function CombinedModelSelector({
           accessibilityRole="button"
           accessibilityLabel={t("modelSelector.selectedModel", { model: selectedModelLabel })}
           testID="combined-model-selector"
+          chevron={toolbar?.showCaret === false ? null : undefined}
         >
           {hasSelectedProvider ? (
-            <ProviderGlyph provider={selectedProvider} size={ICON_SIZE.md} />
+            <ProviderGlyph provider={selectedProvider} size={toolbar?.glyphSize ?? ICON_SIZE.md} />
           ) : null}
           <Text style={styles.triggerText} numberOfLines={1} ellipsizeMode="tail">
             {triggerLabel}

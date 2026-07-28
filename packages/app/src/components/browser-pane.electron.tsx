@@ -58,10 +58,7 @@ import {
   releaseResidentBrowserWebview,
   takeResidentBrowserWebview,
 } from "./browser-webview-resident";
-import {
-  BROWSER_TOOLBAR_BUTTON_DATA_SET,
-  installBrowserPaneInteractionStyles,
-} from "./browser-pane-interaction-styles";
+import { BROWSER_TOOLBAR_BUTTON_DATA_SET } from "./browser-pane-interaction-styles";
 
 type ElectronWebview = HTMLElement & {
   canGoBack?: () => boolean;

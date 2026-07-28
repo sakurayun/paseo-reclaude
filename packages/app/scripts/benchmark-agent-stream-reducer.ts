@@ -68,7 +68,6 @@ function runWorkload(messageBytes: number, batches: AgentStreamReducerEvent[][])
       currentTail: tail,
       currentHead: head,
       currentCursor: cursor,
-      currentAgent: null,
     });
     tail = result.tail;
     head = result.head;

@@ -680,6 +680,7 @@ export const ar: TranslationResources = {
         copyResumeCommand: "نسخ أمر السيرة الذاتية",
         copyAgentId: "نسخ معرف الوكيل",
         copyFilePath: "نسخ مسار الملف",
+        copyTerminalId: "نسخ معرف المحطة",
         rename: "إعادة تسمية",
         closeAbove: "إغلاق علامات التبويب أعلاه",
         closeBelow: "إغلاق علامات التبويب أدناه",
@@ -718,6 +719,7 @@ export const ar: TranslationResources = {
       toasts: {
         copyFailed: "فشل النسخ",
         agentIdCopiedLabel: "AgentID",
+        terminalIdCopiedLabel: "معرف المحطة",
         resumeCommandCopiedLabel: "أمر الاستئناف",
         filePathCopiedLabel: "مسار الملف",
         resumeIdUnavailable: "السيرة الذاتية ID غير متوفرة",
@@ -1190,7 +1192,8 @@ export const ar: TranslationResources = {
         deletedFile: "تم الحذف",
         commits: {
           title: "الإيداعات",
-          countLabel: "{{count}} من الإيداعات الأخيرة",
+          countLabel: "{{count}} من إيداعات مساحة العمل",
+          noneAhead: "لا توجد إيداعات متقدمة على {{baseRef}} بعد",
           fileDiffEmpty: "لا توجد تغييرات لعرضها",
           fileDiffError: "تعذّر تحميل فروق الملف",
           loading: "جارٍ تحميل الإيداعات…",
@@ -1328,6 +1331,8 @@ export const ar: TranslationResources = {
         openSettings: "افتح إعدادات المشروع",
         openNewWindow: "فتح في نافذة جديدة",
         openNewWindowFailed: "تعذّر فتح نافذة جديدة",
+        openFolder: "Open in file manager",
+        openFolderFailed: "Couldn't open folder",
         remove: "إزالة المشروع",
         removing: "جارٍ الإزالة...",
       },
@@ -2612,6 +2617,7 @@ export const ar: TranslationResources = {
         copyRelativeFilePath: "نسخ المسار النسبي",
         renameFile: "إعادة تسمية",
         deleteFile: "حذف",
+        switchProject: "تبديل المشروع",
       },
       helpNotes: {
         showKeyboardShortcuts: "متاح عندما لا يكون التركيز في حقل نص أو محطة طرفية.",

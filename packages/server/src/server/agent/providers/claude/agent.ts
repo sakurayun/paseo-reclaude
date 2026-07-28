@@ -42,6 +42,7 @@ import {
 import {
   CLAUDE_DISABLED_THINKING_OPTION_ID,
   CLAUDE_ULTRACODE_THINKING_OPTION_ID,
+  parseClaudeCodeVersion,
   resolveClaudeDisabledThinkingForModel,
 } from "./model-manifest.js";
 import { parsePartialJsonObject } from "./partial-json.js";
@@ -398,6 +399,7 @@ interface ClaudeAgentClientOptions {
   runtimeSettings?: ProviderRuntimeSettings;
   queryFactory?: ClaudeQueryFactory;
   resolveBinary?: () => Promise<string>;
+  resolveVersion?: () => Promise<string>;
   configDir?: string;
 }
 
@@ -1509,6 +1511,7 @@ export class ClaudeAgentClient implements AgentClient {
   private readonly runtimeSettings?: ProviderRuntimeSettings;
   private readonly queryFactory?: ClaudeQueryFactory;
   private readonly resolveBinary: () => Promise<string>;
+  private readonly resolveVersion: () => Promise<string>;
   private readonly configDir?: string;
   private readonly scratchQueries = new Set<Query>();
   private readonly closingScratchQueries = new WeakSet<Query>();
@@ -1519,6 +1522,8 @@ export class ClaudeAgentClient implements AgentClient {
     this.runtimeSettings = options.runtimeSettings;
     this.queryFactory = options.queryFactory;
     this.resolveBinary = options.resolveBinary ?? (() => resolveClaudeBinary(this.runtimeSettings));
+    this.resolveVersion =
+      options.resolveVersion ?? (() => resolveClaudeCodeVersion(this.runtimeSettings));
     this.configDir = options.configDir;
   }
 
@@ -1570,7 +1575,17 @@ export class ClaudeAgentClient implements AgentClient {
 
   async fetchCatalog(_options: FetchCatalogOptions): Promise<ProviderCatalog> {
     // Claude exposes a global catalog here; cwd/force are intentionally irrelevant.
-    const staticModels = await getClaudeModelsWithSettings(this.logger, this.configDir);
+    let claudeCodeVersion: string | undefined;
+    try {
+      claudeCodeVersion = await this.resolveVersion();
+    } catch (error) {
+      this.logger.warn({ err: error }, "Failed to resolve Claude Code version for model catalog");
+    }
+    const staticModels = await getClaudeModelsWithSettings(
+      this.logger,
+      this.configDir,
+      claudeCodeVersion,
+    );
     const modes = detectIneligibleAutoModeTransport(
       createProviderEnv({ baseEnv: process.env, runtimeSettings: this.runtimeSettings }),
     )
@@ -1768,6 +1783,29 @@ export async function resolveClaudeBinary(
   throw new Error(
     "Claude binary not found. Install Claude Code (https://github.com/anthropics/claude-code) and ensure it is available in your shell PATH.",
   );
+}
+
+export async function resolveClaudeCodeVersion(
+  runtimeSettings?: ProviderRuntimeSettings,
+): Promise<string> {
+  const launch = await resolveProviderLaunch({
+    commandConfig: runtimeSettings?.command,
+    defaultBinary: "claude",
+  });
+  const availability = await checkProviderLaunchAvailable(launch);
+  if (!availability.available) {
+    throw new Error("Claude binary not found while resolving Claude Code version");
+  }
+  const executable = availability.resolvedPath ?? launch.command;
+  const { stdout, stderr } = await execCommand(executable, [...launch.args, "--version"], {
+    ...createProviderEnvSpec({ runtimeSettings }),
+    timeout: 5_000,
+  });
+  const version = parseClaudeCodeVersion(`${stdout}\n${stderr}`);
+  if (!version) {
+    throw new Error("Unable to parse Claude Code version from --version output");
+  }
+  return version.join(".");
 }
 
 async function resolveClaudeAuth(

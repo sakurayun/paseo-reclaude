@@ -87,13 +87,23 @@ export const OmpAgentMessageSchema = z.discriminatedUnion("role", [
   OmpBashExecutionMessageSchema,
 ]);
 
+export const OmpModelThinkingSchema = z
+  .object({
+    mode: z.string().optional(),
+    efforts: z.array(z.string()).optional(),
+    defaultLevel: z.string().optional(),
+    effortMap: z.record(z.string(), z.string()).optional(),
+  })
+  .passthrough();
+
 export const OmpModelSchema = z
   .object({
     provider: z.string(),
     id: z.string(),
     name: z.string().optional(),
     reasoning: z.boolean().optional(),
-    contextWindow: z.number().optional(),
+    thinking: OmpModelThinkingSchema.optional(),
+    contextWindow: z.number().nullable().optional(),
     maxTokens: z.number().nullable().optional(),
     api: z.string().optional(),
     baseUrl: z.string().optional(),
@@ -168,6 +178,7 @@ export const OmpRpcHostToolDefinitionSchema = z
     name: z.string(),
     label: z.string().optional(),
     description: z.string(),
+    loadMode: z.enum(["essential", "discoverable"]).optional(),
     parameters: z.record(z.string(), z.unknown()),
     hidden: z.boolean().optional(),
   })
@@ -568,6 +579,7 @@ export type OmpToolCallContent = z.infer<typeof OmpToolCallContentSchema>;
 export type OmpAssistantContent = z.infer<typeof OmpAssistantContentSchema>;
 export type OmpAgentMessage = z.infer<typeof OmpAgentMessageSchema>;
 export type OmpModel = z.infer<typeof OmpModelSchema>;
+export type OmpModelThinking = z.infer<typeof OmpModelThinkingSchema>;
 export type OmpSessionState = z.infer<typeof OmpSessionStateSchema>;
 export type OmpSessionStats = z.infer<typeof OmpSessionStatsSchema>;
 export type OmpRpcSlashCommand = z.infer<typeof OmpRpcSlashCommandSchema>;

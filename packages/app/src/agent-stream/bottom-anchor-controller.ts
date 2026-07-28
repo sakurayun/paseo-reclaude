@@ -69,7 +69,7 @@ interface BottomAnchorControllerDriver {
   applyRouteRequest: (request: BottomAnchorRouteRequest | null) => void;
   requestLocalAnchor: (request: BottomAnchorLocalRequest) => void;
   beginUserScroll: () => void;
-  endUserScroll: () => void;
+  endUserScroll: (params: { isNearBottom: boolean }) => void;
   detachByUser: () => void;
   handleViewportMetricsChange: (params: {
     previousViewportWidth: number;
@@ -414,10 +414,14 @@ function createBottomAnchorControllerDriver(
       | "viewport_change"
       | "content_size_change"
       | "scroll_near_bottom_change"
+      | "user_scroll_end"
       | "history_readiness_change"
       | "manual_reevaluate"
       | "retry_scroll",
   ) => {
+    if (isUserScrollActive) {
+      return;
+    }
     if (attemptHandle) {
       return;
     }
@@ -503,18 +507,35 @@ function createBottomAnchorControllerDriver(
     },
     beginUserScroll() {
       isUserScrollActive = true;
-      cancelPendingRequest("user_scroll_started");
+      cancelPendingAttempt();
     },
-    endUserScroll() {
+    endUserScroll(params) {
       isUserScrollActive = false;
-      if (mode !== "sticky-bottom") {
-        return;
-      }
-      if (input.isNearBottom()) {
+      if (params.isNearBottom) {
+        if (mode === "detached") {
+          setModeInternal("sticky-bottom");
+          pendingVerification = { requestId: null, retries: 0 };
+          evaluate(false, "user_scroll_end");
+          return;
+        }
+        if (pendingRequest) {
+          evaluate(false, "user_scroll_end");
+          return;
+        }
+        if (
+          !input.isNearBottom() ||
+          stickyMeasurementRevision !== lastVerifiedStickyMeasurementRevision
+        ) {
+          pendingVerification = { requestId: null, retries: 0 };
+          evaluate(false, "user_scroll_end");
+          return;
+        }
         markStickyMeasurementVerified();
         return;
       }
-      this.detachByUser();
+      if (mode === "sticky-bottom") {
+        this.detachByUser();
+      }
     },
     detachByUser() {
       if (mode === "detached") {
@@ -600,9 +621,6 @@ function createBottomAnchorControllerDriver(
     handleScrollNearBottomChange(params) {
       const { nextIsNearBottom, scrollDelta } = params;
       if (isUserScrollActive) {
-        if (mode === "sticky-bottom" && !nextIsNearBottom) {
-          this.detachByUser();
-        }
         return;
       }
       if (
@@ -774,8 +792,8 @@ export function useBottomAnchorController(input: {
     beginUserScroll() {
       driverRef.current?.beginUserScroll();
     },
-    endUserScroll() {
-      driverRef.current?.endUserScroll();
+    endUserScroll(params: { isNearBottom: boolean }) {
+      driverRef.current?.endUserScroll(params);
     },
     detachByUser() {
       driverRef.current?.detachByUser();

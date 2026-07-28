@@ -181,6 +181,8 @@ npm run typecheck
 ## 社区
 
 - [paseo-relay](https://github.com/zenghongtu/paseo-relay) — Go 实现的自托管 relay
+- [getpaseo/paseo-relay](https://github.com/getpaseo/paseo-relay) — 官方分布式 relay（Elixir）
+- [paseo-skins](https://github.com/huangguang1999/paseo-skins) — 社区主题与零补丁桌面主题加载器（含 Agent Skill）
 - [paseo-vscode](https://marketplace.visualstudio.com/items?itemName=hinnes.paseo-vscode) — VS Code 扩展
 
 ### 自托管 relay TLS
@@ -228,18 +230,6 @@ server {
   }
 }
 ```
-
----
-
-<p align="center">
-  <a href="https://star-history.com/#getpaseo/paseo&Date">
-    <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=getpaseo/paseo&type=Date&theme=dark">
-      <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=getpaseo/paseo&type=Date">
-      <img src="https://api.star-history.com/svg?repos=getpaseo/paseo&type=Date" alt="Star history chart for getpaseo/paseo" width="600" style="max-width: 100%;">
-    </picture>
-  </a>
-</p>
 
 ## License
 

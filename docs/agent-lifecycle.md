@@ -21,11 +21,12 @@ the agent runs through `ensureAgentLoaded()`, which resumes the durable provider
 same Paseo agent ID. Provider history is not appended again when the canonical timeline is already
 primed.
 
-The daemon collects an eligible idle runtime after two minutes and sweeps every 15 seconds. Only
+The daemon collects an eligible idle runtime after 30 minutes and sweeps every minute. Only
 unarchived, non-internal agents that are exactly `idle`, have no active or pending run, replacement,
 or permission, and have not been activated during the idle window are eligible. `running`,
-`initializing`, and `error` agents stay resident. Subagents are considered independently; collection
-does not cascade or change parentage.
+`initializing`, and `error` agents stay resident. An idle parent also stays resident while current
+in-memory state shows a running managed child or provider subagent. Otherwise agents are evaluated
+independently; collection does not cascade or change parentage.
 
 Active schedules targeting an existing agent protect that agent from collection. Paused, completed,
 and new-agent schedules do not. A pane may remain open after collection; its next prompt resumes the
@@ -83,9 +84,16 @@ only the route's explicit Unarchive or Restore action changes the archived works
 History navigation preserves the selected agent as an explicit recovery target. If both that agent
 and its workspace are archived, the workspace recovery action restores the workspace and unarchives
 the selected agent as one user action. Other archived agents in the restored workspace remain
-recoverable from History. Opening one pins its tab and renders the archived-agent callout before any
-provider timeline is loaded; **Unarchive** runs the provider's native unarchive hook (including Codex
-`thread/unarchive`) before the normal agent resume and timeline hydration flow.
+recoverable from History. Opening one pins its tab and renders the archived-agent callout. Authoritative
+timeline catch-up may load provider history with a runtime-only `history` resume purpose, which must
+leave both Paseo's `archivedAt` and the provider's native archive state unchanged. **Unarchive** remains
+the only transition back to an interactive runtime: it runs the provider's native unarchive hook
+(including Codex `thread/unarchive`) before the normal agent resume and timeline hydration flow.
+
+Provider session connection owns every process it spawns until the session is registered with
+`AgentManager`. If initialization, persisted-session resume, or initial history hydration fails,
+`connect()` must dispose that process before rethrowing; the manager cannot clean up a session it never
+received.
 
 ## Tabs vs archive
 
