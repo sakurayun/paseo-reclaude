@@ -42,7 +42,6 @@ import {
 } from "@/components/message";
 import { PlanCard } from "@/components/plan-card";
 import type { StreamItem } from "@/types/stream";
-import type { PendingMessageSubmission } from "@/composer/submission/model";
 import type { PendingPermission } from "@/types/shared";
 import type {
   AgentCapabilityFlags,
@@ -327,7 +326,6 @@ export interface AgentStreamViewProps {
   streamItems: StreamItem[];
   streamHead?: StreamItem[];
   pendingPermissions: Map<string, PendingPermission>;
-  pendingMessageSubmissions?: readonly PendingMessageSubmission[];
   routeBottomAnchorRequest?: BottomAnchorRouteRequest | null;
   isAuthoritativeHistoryReady?: boolean;
   toast?: ToastApi | null;
@@ -356,7 +354,6 @@ const AGENT_CAPABILITY_FLAG_KEYS: (keyof AgentCapabilityFlags)[] = [
 ];
 
 const EMPTY_STREAM_HEAD: StreamItem[] = [];
-const EMPTY_PENDING_MESSAGE_SUBMISSIONS: readonly PendingMessageSubmission[] = [];
 const GROUPED_TOOL_CALL_DETAIL_MAX_HEIGHT = 200;
 
 function buildChatHistoryAttachment(input: {
@@ -438,7 +435,6 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       streamItems,
       streamHead: providedStreamHead,
       pendingPermissions,
-      pendingMessageSubmissions = EMPTY_PENDING_MESSAGE_SUBMISSIONS,
       routeBottomAnchorRequest = null,
       isAuthoritativeHistoryReady = true,
       toast,
@@ -455,10 +451,6 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     const autoExpandReasoning = useSettings((settings) => settings.autoExpandReasoning);
     const toolCallDetailLevel = useSettings((settings) => settings.toolCallDetailLevel);
     const viewportRef = useRef<StreamViewportHandle | null>(null);
-    const pendingClientMessageIds = useMemo(
-      () => new Set(pendingMessageSubmissions.map((submission) => submission.clientMessageId)),
-      [pendingMessageSubmissions],
-    );
     const isMobile = useIsCompactFormFactor();
     const streamRenderStrategy = useMemo(
       () =>
@@ -991,7 +983,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
           <UserMessage
             serverId={resolvedServerId}
             agentId={agentId}
-            messageId={item.messageId}
+            messageId={item.id}
             message={item.text}
             images={item.images}
             attachments={item.attachments}
@@ -1001,21 +993,10 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
             isFirstInGroup={layoutItem.isFirstInUserGroup}
             isLastInGroup={layoutItem.isLastInUserGroup}
             findHighlights={findHighlightsByItemId.get(item.id)?.get("text")}
-            isPending={
-              item.clientMessageId !== undefined &&
-              pendingClientMessageIds.has(item.clientMessageId)
-            }
           />
         );
       },
-      [
-        context.capabilities,
-        agentId,
-        client,
-        findHighlightsByItemId,
-        pendingClientMessageIds,
-        resolvedServerId,
-      ],
+      [context.capabilities, agentId, client, findHighlightsByItemId, resolvedServerId],
     );
 
     const renderAssistantMessageItem = useCallback(
@@ -1246,8 +1227,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       [pendingPermissions, agentId],
     );
 
-    const showRunningTurnFooter =
-      context.status === "running" || pendingMessageSubmissions.length > 0;
+    const showRunningTurnFooter = baseRenderModel.turnTiming.isActive;
     const pendingPermissionsNode = useMemo(
       () =>
         renderPendingPermissionsNode({
@@ -1562,9 +1542,6 @@ function agentStreamViewPropsEqual(
   if (left.streamItems !== right.streamItems) reasons.push("streamItems");
   if (left.streamHead !== right.streamHead) reasons.push("streamHead");
   if (left.pendingPermissions !== right.pendingPermissions) reasons.push("pendingPermissions");
-  if (left.pendingMessageSubmissions !== right.pendingMessageSubmissions) {
-    reasons.push("pendingMessageSubmissions");
-  }
   if (
     !bottomAnchorRouteRequestsEqual(left.routeBottomAnchorRequest, right.routeBottomAnchorRequest)
   ) {

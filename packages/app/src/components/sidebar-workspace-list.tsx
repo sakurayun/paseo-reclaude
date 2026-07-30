@@ -113,6 +113,7 @@ import type { PrHint } from "@/git/use-pr-status-query";
 import {
   buildSidebarProjectRowModel,
   resolveSidebarProjectIconTarget,
+  resolveSidebarProjectLocalPath,
   type SidebarProjectHostTarget,
 } from "@/utils/sidebar-project-row-model";
 import { redirectIfArchivingActiveWorkspace } from "@/utils/sidebar-workspace-archive-redirect";
@@ -131,6 +132,7 @@ import {
 import { getDesktopHost } from "@/desktop/host";
 import { installSidebarProjectRowInteractionStyles } from "@/components/sidebar/sidebar-project-row-interaction-styles";
 import { OpenInFileManagerMenuItem } from "@/workspace/open-in-file-manager/menu-item";
+import { useLocalDaemonServerId } from "@/hooks/use-is-local-daemon";
 
 const workspaceKeyExtractor = (workspace: SidebarWorkspacePlacement) => workspace.workspaceKey;
 
@@ -519,6 +521,9 @@ function ProjectRowTrailingActions({
 }) {
   const actionsVisible = platformIsNative || isMobileBreakpoint;
   const revealWithDesktopCss = platformIsWeb && !actionsVisible;
+  const localDaemonServerId = useLocalDaemonServerId();
+  const localProjectPath = resolveSidebarProjectLocalPath(project, localDaemonServerId);
+  const settingsTarget = project.hosts[0] ?? null;
   return (
     <View style={styles.projectTrailingActions}>
       {worktreeTarget ? (
@@ -538,7 +543,8 @@ function ProjectRowTrailingActions({
         >
           <ProjectKebabMenu
             projectKey={project.projectKey}
-            projectPath={project.iconWorkingDir}
+            settingsTarget={settingsTarget}
+            projectPath={localProjectPath}
             onRemoveProject={onRemoveProject}
             removeProjectStatus={removeProjectStatus}
           />
@@ -565,11 +571,13 @@ function renderKebabTriggerIcon({ hovered }: { hovered?: boolean }) {
 
 function ProjectKebabMenu({
   projectKey,
+  settingsTarget,
   projectPath,
   onRemoveProject,
   removeProjectStatus,
 }: {
   projectKey: string;
+  settingsTarget: { serverId: string; projectId: string } | null;
   projectPath: string;
   onRemoveProject: () => void;
   removeProjectStatus: "idle" | "pending" | "success";
@@ -577,10 +585,10 @@ function ProjectKebabMenu({
   const { t } = useTranslation();
   const toast = useToast();
   const handleOpenProjectSettings = useCallback(() => {
-    if (projectKey.trim().length === 0) return;
-    router.navigate(buildProjectSettingsRoute(projectKey));
-  }, [projectKey]);
-  const canOpenProjectSettings = projectKey.trim().length > 0;
+    if (!settingsTarget) return;
+    router.navigate(buildProjectSettingsRoute(settingsTarget.serverId, settingsTarget.projectId));
+  }, [settingsTarget]);
+  const canOpenProjectSettings = settingsTarget !== null;
   // Desktop-only: open a second window that lands on this project via the same
   // open-project flow as a CLI launch. The project stays visible here too — no
   // ownership, no move.
@@ -926,10 +934,10 @@ function NewWorkspaceGhostRow({
         serverId: worktreeTarget.serverId,
         sourceDirectory: worktreeTarget.iconWorkingDir,
         displayName,
-        projectId: project.projectKey,
+        projectId: worktreeTarget.projectId,
       }) as Href,
     );
-  }, [displayName, onWorkspacePress, project.projectKey, worktreeTarget]);
+  }, [displayName, onWorkspacePress, worktreeTarget]);
   const rowStyle = useCallback(
     ({ hovered = false, pressed }: PressableStateCallbackType & { hovered?: boolean }) => [
       styles.newWorkspaceGhostRow,
@@ -1005,10 +1013,10 @@ function ProjectHeaderRow({
         serverId: worktreeTarget.serverId,
         sourceDirectory: worktreeTarget.iconWorkingDir,
         displayName,
-        projectId: project.projectKey,
+        projectId: worktreeTarget.projectId,
       }) as Href,
     );
-  }, [displayName, onWorkspacePress, project.projectKey, worktreeTarget]);
+  }, [displayName, onWorkspacePress, worktreeTarget]);
   const interaction = useLongPressDragInteraction({
     drag,
     menuController,
@@ -1772,7 +1780,6 @@ function ProjectBlock({
       }
 
       void removeProjectFromHosts({
-        projectKey: project.projectKey,
         targets: readiness.targets,
         getClient: (serverId) => getHostRuntimeStore().getClient(serverId),
       })
@@ -1841,7 +1848,7 @@ function ProjectBlock({
   }
 
   return (
-    <View style={styles.projectBlock}>
+    <View role="group" accessibilityLabel={displayName} style={styles.projectBlock}>
       <ProjectHeaderRow
         project={project}
         displayName={displayName}

@@ -38,6 +38,7 @@ export function createScheduleCommand(): Command {
         collectMultiple,
         [],
       )
+      .option("--thinking <id>", "Thinking option ID for new-agent runs")
       .option("--cwd <path>", "Working directory (default: current; required with --host)")
       .option("--run-now", "Fire one immediate run on creation")
       .option("--max-runs <n>", "Maximum number of runs")

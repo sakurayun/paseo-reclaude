@@ -939,13 +939,13 @@ export class Session {
     });
     this.workspaceAutoName = workspaceAutoName;
     this.workspaceProvisioning = createWorkspaceProvisioningService({
+      serverId,
       workspaceRegistry: this.workspaceRegistry,
       projectRegistry: this.projectRegistry,
       workspaceGitService: this.workspaceGitService,
       logger: this.sessionLogger,
     });
     this.workspaceRecovery = createWorkspaceRecoveryService({
-      logger: this.sessionLogger,
       paseoHome: this.paseoHome,
       worktreesRoot: this.worktreesRoot,
       getWorkspace: (workspaceId) => this.workspaceRegistry.get(workspaceId),
@@ -2610,6 +2610,8 @@ export class Session {
         return this.handleCheckoutGetLogRequest(msg);
       case "checkout.get_commit_files.request":
         return this.handleCheckoutGetCommitFilesRequest(msg);
+      case "project.list.request":
+        return this.handleProjectListRequest(msg.requestId);
       case "paseo_worktree_list_request":
         return this.handlePaseoWorktreeListRequest(msg);
       case "paseo_worktree_archive_request":
@@ -3419,7 +3421,7 @@ export class Session {
       // resolved name lands in the UI immediately.
       const workspaces = await this.workspaceRegistry.list();
       const affectedWorkspaceIds = workspaces
-        .filter((workspace) => workspace.projectId === projectId)
+        .filter((workspace) => workspace.projectId === existing.projectId)
         .map((workspace) => workspace.workspaceId);
       if (affectedWorkspaceIds.length > 0) {
         await this.emitWorkspaceUpdatesForWorkspaceIds(affectedWorkspaceIds);
@@ -3731,8 +3733,10 @@ export class Session {
     this.sessionLogger.info({ projectId, requestId }, "session: project.remove.request");
 
     try {
+      const project = await this.projectRegistry.get(projectId);
+      const resolvedProjectId = project?.projectId ?? projectId;
       const projectWorkspaces = (await this.workspaceRegistry.list()).filter(
-        (workspace) => workspace.projectId === projectId,
+        (workspace) => workspace.projectId === resolvedProjectId,
       );
       const activeWorkspaceIds = projectWorkspaces
         .filter((workspace) => !workspace.archivedAt)
@@ -3760,15 +3764,16 @@ export class Session {
           removedWorkspaceIds.push(workspaceId);
         }
 
-        await this.projectRegistry.remove(projectId);
-        await removeCachedProjectFavicon({ paseoHome: this.paseoHome, projectId }).catch(
-          (error) => {
-            this.sessionLogger.warn(
-              { err: error, projectId },
-              "Failed to clean up removed project favicon",
-            );
-          },
-        );
+        await this.projectRegistry.remove(resolvedProjectId);
+        await removeCachedProjectFavicon({
+          paseoHome: this.paseoHome,
+          projectId: resolvedProjectId,
+        }).catch((error) => {
+          this.sessionLogger.warn(
+            { err: error, projectId: resolvedProjectId },
+            "Failed to clean up removed project favicon",
+          );
+        });
       } finally {
         if (activeWorkspaceIds.length > 0) {
           this.clearWorkspaceArchiving(activeWorkspaceIds);
@@ -5817,6 +5822,7 @@ export class Session {
   ): WorkspaceProjectDescriptorPayload {
     return {
       projectId: project.projectId,
+      ...(project.projectKey ? { projectKey: project.projectKey } : {}),
       projectDisplayName: resolveProjectDisplayName(project),
       projectCustomName: project.customName ?? null,
       projectAppearance: project.appearance ?? null,
@@ -6287,6 +6293,29 @@ export class Session {
           requestType: request.type,
           error: message,
           code,
+        },
+      });
+    }
+  }
+
+  private async handleProjectListRequest(requestId: string): Promise<void> {
+    try {
+      const projects = (await this.projectRegistry.list())
+        .filter((project) => !project.archivedAt)
+        .map((project) => this.buildProjectDescriptor(project));
+      this.emit({
+        type: "project.list.response",
+        payload: { requestId, projects },
+      });
+    } catch (error) {
+      this.sessionLogger.error({ err: error }, "Failed to handle project.list.request");
+      this.emit({
+        type: "rpc_error",
+        payload: {
+          requestId,
+          requestType: "project.list.request",
+          error: error instanceof Error ? error.message : "Failed to list projects",
+          code: "project_list_failed",
         },
       });
     }
@@ -7835,7 +7864,6 @@ export class Session {
             agentId,
             accepted: true,
             error: null,
-            outOfBand: true,
           },
         });
         return;
@@ -7863,7 +7891,6 @@ export class Session {
           agentId,
           accepted: true,
           error: null,
-          outOfBand: false,
         },
       });
     } catch (error) {

@@ -1,6 +1,6 @@
 {
   "name": "paseo",
-  "version": "0.1.133",
+  "version": "0.2.5",
   "private": true,
   "description": "Paseo: voice-controlled development environment for local AI coding agents",
   "keywords": [
@@ -40,7 +40,7 @@
     "dev:server:raw": "npm run dev --workspace=@getpaseo/server",
     "dev:app": "cross-env PASEO_LISTEN=127.0.0.1:6768 EXPO_PORT=8081 ./scripts/dev-app.sh",
     "dev:website": "npm run dev --workspace=@getpaseo/website",
-    "postinstall": "node scripts/postinstall-patches.mjs && node scripts/patch-xterm-viewport.mjs",
+    "postinstall": "node scripts/postinstall-patches.mjs",
     "prepare": "lefthook install --force",
     "build": "npm run build --workspaces --if-present",
     "build:highlight": "npm run build --workspace=@getpaseo/highlight",
@@ -69,7 +69,7 @@
     "format:check:files": "oxfmt --check",
     "lint": "oxlint",
     "lint:fix": "oxlint --fix",
-    "check:knip": "knip",
+    "knip": "knip",
     "acp:version-drift": "node scripts/check-acp-catalog-version-drift.mjs",
     "acp:version-drift:check": "node scripts/check-acp-catalog-version-drift.mjs --fail-on-drift",
     "acp:version-drift:update": "node scripts/check-acp-catalog-version-drift.mjs --update",
@@ -78,7 +78,6 @@
     "android:development": "npm run android:development --workspace=@getpaseo/app",
     "android:production": "npm run android:production --workspace=@getpaseo/app",
     "android:release": "npm run android:production --workspace=@getpaseo/app",
-    "android:apk": "npm run android:apk --workspace=@getpaseo/app",
     "android:clear": "npm run android:clear --workspace=@getpaseo/app",
     "android:clean": "npm run android:clean --workspace=@getpaseo/app",
     "ios": "npm run ios --workspace=@getpaseo/app",
@@ -133,11 +132,12 @@
     "ws": "^8.20.0"
   },
   "overrides": {
+    "@codemirror/language": "6.12.4",
+    "@codemirror/view": "6.43.6",
     "lightningcss": "1.30.1",
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "react-native-reanimated": "4.3.1",
-    "react-native-unistyles": "3.2.4",
     "react-native-worklets": "0.8.3"
   }
 }

@@ -286,6 +286,7 @@ function createNoopProjectRegistry(): ProjectRegistry {
       rootPath: input.rootPath,
       kind: input.kind,
       displayName: input.displayName,
+      projectKey: input.projectKey ?? null,
       customName: null,
       appearance: null,
       createdAt: input.timestamp,
@@ -1776,6 +1777,8 @@ export class VoiceAssistantWebSocketServer {
         projectRemove: true,
         // COMPAT(projectAdd): added in v0.1.97, drop the gate when floor >= v0.1.97.
         projectAdd: true,
+        // COMPAT(projectList): added in v0.2.4, drop the gate when floor >= v0.2.4.
+        projectList: true,
         // COMPAT(worktreeRestore): keep through 2027-01-11 for clients older than v0.1.105.
         worktreeRestore: true,
         // COMPAT(workspaceRecovery): added in v0.1.105, remove after 2027-01-11 once daemon floor >= v0.1.105.
@@ -1794,6 +1797,8 @@ export class VoiceAssistantWebSocketServer {
         grokUsageBroadcast: true,
         // COMPAT(agentDetach): added in v0.1.98, remove gate after 2026-12-19 once daemon floor >= v0.1.98.
         agentDetach: true,
+        // COMPAT(agentThinkingUpdate): added in v0.2.4, remove gate after 2027-01-28.
+        agentThinkingUpdate: true,
         // COMPAT(daemonDiagnostics): added in v0.1.100, remove gate after 2026-12-25 once daemon floor >= v0.1.100.
         daemonDiagnostics: true,
         // COMPAT(daemonSelfUpdate): added in v0.1.93, remove gate after 2026-12-13.

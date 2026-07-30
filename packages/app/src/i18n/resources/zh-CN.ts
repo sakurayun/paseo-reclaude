@@ -1146,6 +1146,8 @@ export const zhCN: TranslationResources = {
         closeChangesTab: "关闭“更改”标签页",
         binaryFile: "二进制文件",
         tooLarge: "Diff 过大，无法显示",
+        previewTooLargeTitle: "此 diff 过大，无法预览",
+        previewTooLargeDescription: "缩小比较范围即可在此预览",
         unified: "统一视图 diff",
         split: "并排视图 diff",
         switchToUnified: "切换到统一差异视图",
