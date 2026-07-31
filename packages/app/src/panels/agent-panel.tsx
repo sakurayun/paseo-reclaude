@@ -1571,6 +1571,10 @@ function ActiveAgentComposer({
         onMessageSent={onMessageSent}
         onClientSlashCommand={handleClientSlashCommand}
         isCompactLayout={isCompactComposerLayout}
+        // Chat composers surface the prompt-presets menu (and keyboard-history
+        // → presets switch). Must stay true so the MessageSquareQuote control
+        // and ArrowRight hop into presets remain available.
+        enablePromptPresets
       />
     </ReanimatedAnimated.View>
   );
