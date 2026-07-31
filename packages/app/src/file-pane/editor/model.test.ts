@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 import type { FileVersion, FileWriteResult } from "@getpaseo/protocol/messages";
 import {
   FileEditorModel,
+  getFileConflictCallout,
   type FileEditorClock,
   type FileEditorFile,
   type FileEditorSession,
@@ -335,6 +336,45 @@ describe("FileEditorModel", () => {
     expect(session.writes).toEqual([]);
   });
 
+  test("clears a transient check error when the recovered file is unchanged", () => {
+    const { model } = makeModel();
+    model.receiveFileVersion({
+      status: "error",
+      cwd: "/workspace",
+      path: "file.ts",
+      error: "Requested path is not a file",
+    });
+
+    model.receiveFileVersion(ready());
+
+    expect(model.getSnapshot()).toMatchObject({
+      status: "clean",
+      modified: false,
+      observedVersion: { status: "ready" },
+      error: null,
+    });
+  });
+
+  test("resumes autosave when a dirty file recovers unchanged from a check error", async () => {
+    const { model, session, clock } = makeModel();
+    model.edit("local");
+    model.receiveFileVersion({
+      status: "error",
+      cwd: "/workspace",
+      path: "file.ts",
+      error: "Requested path is not a file",
+    });
+
+    model.receiveFileVersion(ready());
+    clock.fire();
+    await Promise.resolve();
+
+    expect(model.getSnapshot()).toMatchObject({ status: "clean", modified: false });
+    expect(session.writes).toEqual([
+      { content: "local", expectedModifiedAt: "2026-07-18T00:00:00.000Z" },
+    ]);
+  });
+
   test("dispose cancels pending autosave", () => {
     const { model, session, clock } = makeModel();
     model.edit("local");
@@ -357,5 +397,39 @@ describe("FileEditorModel", () => {
     clock.fire();
     await Promise.resolve();
     expect(session.writes).toHaveLength(1);
+  });
+
+  test("maps conflict versions to one exhaustive callout state", () => {
+    const { model } = makeModel();
+    const snapshot = model.getSnapshot();
+
+    expect(getFileConflictCallout(snapshot)).toBeNull();
+    expect(
+      getFileConflictCallout({
+        ...snapshot,
+        status: "conflict",
+        modified: true,
+        observedVersion: ready("2026-07-18T00:00:01.000Z"),
+      }),
+    ).toEqual({ kind: "changed", canOverwrite: true });
+    expect(
+      getFileConflictCallout({
+        ...snapshot,
+        status: "conflict",
+        observedVersion: { status: "missing", cwd: "/workspace", path: "file.ts" },
+      }),
+    ).toEqual({ kind: "deleted" });
+    expect(
+      getFileConflictCallout({
+        ...snapshot,
+        status: "conflict",
+        observedVersion: {
+          status: "error",
+          cwd: "/workspace",
+          path: "file.ts",
+          error: "unreadable",
+        },
+      }),
+    ).toEqual({ kind: "checkFailed" });
   });
 });
