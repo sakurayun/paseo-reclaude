@@ -2225,12 +2225,28 @@ export const ar: TranslationResources = {
       codexChatgptAuthRequired:
         "حدود Codex الرسمية تتطلب تسجيل الدخول إلى ChatGPT. مع مفتاح API / عنوان Base مخصص (NewAPI / Sub2API / CPA) تُقرأ الحصة من البوابة.",
     },
+    meter: {
+      accessibilityUsed: "استخدام الخطة {{percentage}}% مستخدم",
+      accessibilityRemaining: "استخدام الخطة {{percentage}}% متبقٍ",
+      percentageMode: {
+        label: "نسبة حلقة الاستخدام",
+        description: "اعرض النسبة المستخدمة أو المتبقية على حلقة الاستخدام في حقل الإدخال.",
+        used: "مستخدم",
+        remaining: "متبقٍ",
+      },
+    },
     grok: {
       sync: "مزامنة الاستخدام",
       syncing: "جارٍ المزامنة…",
       syncError: "فشلت المزامنة",
       authenticated: "تم العثور على بيانات اعتماد Grok Build",
       needAuth: "سجّل الدخول باستخدام `grok login` أو عيّن XAI_API_KEY",
+      refreshInterval: {
+        label: "التحديث التلقائي لـ Grok",
+        description: "معدل سحب حلقة استخدام Grok في حقل الإدخال لبيانات الفوترة المباشرة.",
+        off: "إيقاف",
+        minutes: "{{count}} د",
+      },
     },
   },
   review: {

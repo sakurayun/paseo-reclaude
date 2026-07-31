@@ -43,6 +43,8 @@ WebGL surface as local shells.
 | **Styled underlines / undercurl**              | Supported         | xterm proposed API + WebGL.                                                                                                                                            |
 | **Synchronized output** CSI `?2026`            | Supported         | xterm core.                                                                                                                                                            |
 | **Sixel / iTerm2 IIP**                         | Supported         | Same image addon (not Kitty-specific).                                                                                                                                 |
+| **DA2** CSI `> c`                              | Supported         | Daemon answers secondary device attributes (`CSI > 0;276;0 c`, xterm-family).                                                                                          |
+| **XTVERSION** CSI `> 0 q`                      | Supported         | Daemon answers `DCS > \| paseo ST`. Modern full-screen TUIs (e.g. Grok Build) wait on this before enabling overlay UI; silence makes them degrade.                     |
 | **Text sizing** OSC `66`                       | Not supported     | Needs multi-cell font layout engine Kitty has natively.                                                                                                                |
 | **Multiple cursors**                           | Not supported     | Deep buffer/cursor model changes.                                                                                                                                      |
 | **File transfer** DCS `@kitty-file`            | Not supported     | Full rsync-style transfer kitten; use SSH uploads / file explorer instead.                                                                                             |
@@ -56,6 +58,8 @@ Env advertising (local + best-effort SSH `AcceptEnv`):
 - `TERM_PROGRAM=kitty`
 - `COLORTERM=truecolor`
 - DA1: `CSI ? 62;4;9;22 c` (includes SIXEL)
+- DA2: `CSI > 0;276;0 c`
+- XTVERSION: `DCS > | paseo ST` (honest identity — we are not the Kitty binary)
 
 ## Why Kittens cannot be “added”
 
@@ -84,18 +88,19 @@ run the CLI inside the Paseo terminal: those tools speak the protocols above.
 
 ## Implementation map
 
-| Concern                   | Location                                                                     |
-| ------------------------- | ---------------------------------------------------------------------------- |
-| GPU + image addon         | `packages/app/src/terminal/runtime/terminal-emulator-runtime.ts`             |
-| OSC 99/9/7/22 parsers     | `packages/app/src/terminal/runtime/terminal-kitty-protocols.ts`              |
-| OSC 99 click/close inject | `packages/app/src/terminal/runtime/terminal-desktop-notification-actions.ts` |
-| Click-to-preview images   | `packages/app/src/terminal/runtime/terminal-image-preview.ts`                |
-| Progress bar UI           | `packages/app/src/components/terminal-pane.tsx`                              |
-| OS notification bridge    | `packages/app/src/utils/os-notifications.ts` + desktop `notifications.ts`    |
-| Keyboard mode tracking    | `packages/protocol/src/terminal-input-mode.ts`                               |
-| Key encoding              | `packages/protocol/src/terminal-key-input.ts`                                |
-| Local env                 | `packages/server/src/terminal/terminal.ts` (`buildTerminalEnvironment`)      |
-| SSH env hints             | `packages/server/src/ssh/ssh-connect-service.ts`                             |
+| Concern                                         | Location                                                                     |
+| ----------------------------------------------- | ---------------------------------------------------------------------------- |
+| GPU + image addon                               | `packages/app/src/terminal/runtime/terminal-emulator-runtime.ts`             |
+| OSC 99/9/7/22 parsers                           | `packages/app/src/terminal/runtime/terminal-kitty-protocols.ts`              |
+| OSC 99 click/close inject                       | `packages/app/src/terminal/runtime/terminal-desktop-notification-actions.ts` |
+| Click-to-preview images                         | `packages/app/src/terminal/runtime/terminal-image-preview.ts`                |
+| Progress bar UI                                 | `packages/app/src/components/terminal-pane.tsx`                              |
+| OS notification bridge                          | `packages/app/src/utils/os-notifications.ts` + desktop `notifications.ts`    |
+| Keyboard mode tracking                          | `packages/protocol/src/terminal-input-mode.ts`                               |
+| Key encoding                                    | `packages/protocol/src/terminal-key-input.ts`                                |
+| Local env                                       | `packages/server/src/terminal/terminal.ts` (`buildTerminalEnvironment`)      |
+| DA1 / DA2 / XTVERSION / DSR / OSC color replies | `packages/server/src/terminal/terminal.ts` (daemon PTY parser)               |
+| SSH env hints                                   | `packages/server/src/ssh/ssh-connect-service.ts`                             |
 
 After changing runtime code used by native:
 

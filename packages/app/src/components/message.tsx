@@ -73,6 +73,7 @@ import { markdownNodeContainsType } from "@/utils/markdown-ast";
 import { useStableEvent } from "@/hooks/use-stable-event";
 import { MarkdownFenceBlock } from "@/components/markdown/markdown-fence-block";
 import { splitMarkdownBlocks } from "@/utils/split-markdown-blocks";
+import { breakableMonoText } from "@/utils/breakable-mono-text";
 import { formatDuration, formatMessageTimestamp } from "@/utils/time";
 import { writeMarkdownToRichClipboard } from "@/utils/rich-clipboard";
 import { getDefaultMarkdownClipboardEnvironment } from "@/utils/rich-clipboard-default-environment";
@@ -2028,6 +2029,9 @@ export const AssistantMessage = memo(function AssistantMessage({
         inheritedStyles: TextStyle = {},
       ) => {
         const content = node.content ?? "";
+        // Soft-break long monospaced tokens so mobile paragraphs wrap instead of
+        // clipping under overflow:hidden parents (file paths, dotted ids, etc.).
+        const displayContent = breakableMonoText(content);
         const isLinkedInlineCode = nodeHasParentType(parent, "link");
         const inlineCodeSource: AssistantFileLinkSource = {
           href: content,
@@ -2042,6 +2046,7 @@ export const AssistantMessage = memo(function AssistantMessage({
             <AssistantInlineCodePathLink
               key={node.key}
               content={content}
+              displayContent={displayContent}
               inheritedStyles={inheritedStyles}
               codeInlineStyle={styles.code_inline}
               linkStyle={styles.link}
@@ -2063,7 +2068,7 @@ export const AssistantMessage = memo(function AssistantMessage({
               codeInlineStyle={styles.code_inline}
               linkStyle={styles.link}
             >
-              {content}
+              {displayContent}
             </AssistantMarkdownCodeLink>
           );
         }
@@ -2076,7 +2081,7 @@ export const AssistantMessage = memo(function AssistantMessage({
             monoSurface
             disableFindHighlight
           >
-            {content}
+            {displayContent}
           </MarkdownInheritedText>
         );
       },

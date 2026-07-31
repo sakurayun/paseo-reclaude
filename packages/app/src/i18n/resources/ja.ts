@@ -2256,12 +2256,28 @@ export const ja: TranslationResources = {
       codexChatgptAuthRequired:
         "公式のレート制限には ChatGPT ログインが必要です。API キー / カスタム Base URL（NewAPI / Sub2API / CPA）ではゲートウェイから使用量を取得します。",
     },
+    meter: {
+      accessibilityUsed: "プラン使用量 {{percentage}}% 使用済み",
+      accessibilityRemaining: "プラン使用量 残り {{percentage}}%",
+      percentageMode: {
+        label: "使用量リングの表示",
+        description: "入力欄の使用量リングに使用済みまたは残りの割合を表示します。",
+        used: "使用済み",
+        remaining: "残り",
+      },
+    },
     grok: {
       sync: "使用量を同期",
       syncing: "同期中…",
       syncError: "同期に失敗しました",
       authenticated: "Grok Build の認証情報が見つかりました",
       needAuth: "`grok login` でサインインするか、XAI_API_KEY を設定してください",
+      refreshInterval: {
+        label: "Grok 使用量の自動更新",
+        description: "入力欄の Grok 使用量リングが請求データを取得する間隔。",
+        off: "オフ",
+        minutes: "{{count}} 分",
+      },
     },
   },
   review: {

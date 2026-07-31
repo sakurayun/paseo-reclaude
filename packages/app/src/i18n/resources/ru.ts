@@ -2266,12 +2266,29 @@ export const ru: TranslationResources = {
       codexChatgptAuthRequired:
         "Официальные лимиты Codex требуют входа в ChatGPT. Для API-ключа / своего Base URL (NewAPI / Sub2API / CPA) использование читается с шлюза.",
     },
+    meter: {
+      accessibilityUsed: "Использование тарифа {{percentage}}% использовано",
+      accessibilityRemaining: "Использование тарифа {{percentage}}% осталось",
+      percentageMode: {
+        label: "Процент на кольце использования",
+        description: "Показывать использованный или оставшийся процент на кольце в поле ввода.",
+        used: "Использовано",
+        remaining: "Осталось",
+      },
+    },
     grok: {
       sync: "Синхронизировать использование",
       syncing: "Синхронизация…",
       syncError: "Сбой синхронизации",
       authenticated: "Учётные данные Grok Build найдены",
       needAuth: "Войдите через `grok login` или задайте XAI_API_KEY",
+      refreshInterval: {
+        label: "Автообновление Grok",
+        description:
+          "Как часто кольцо использования Grok в поле ввода запрашивает данные биллинга.",
+        off: "Выкл.",
+        minutes: "{{count}} мин",
+      },
     },
   },
   review: {

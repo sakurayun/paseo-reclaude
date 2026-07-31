@@ -39,7 +39,7 @@ import TerminalEmulator, { type TerminalEmulatorHandle } from "./terminal-emulat
 import {
   DEFAULT_TERMINAL_FONT_SIZE,
   type TerminalFontZoomDirection,
-} from "@/terminal/runtime/terminal-emulator-runtime";
+} from "@/terminal/runtime/terminal-emulator-constants";
 import { applyTerminalFontZoom, useTerminalFontZoomStore } from "@/stores/terminal-font-zoom-store";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import {

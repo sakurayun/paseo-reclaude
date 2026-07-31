@@ -1,6 +1,6 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef } from "react";
 import { View, type PointerEvent as RNPointerEvent } from "react-native";
-import { StyleSheet, useUnistyles } from "react-native-unistyles";
+import { StyleSheet } from "react-native-unistyles";
 import { computeResizeHandleSizes } from "@/components/resize-handle-sizes";
 
 export interface ResizeHandleProps {
@@ -31,13 +31,8 @@ export function ResizeHandle({
   sizes,
   onResizeSplit,
 }: ResizeHandleProps) {
-  const { theme } = useUnistyles();
   const pointerStatesRef = useRef(new Map<number, PointerState>());
   const cursorBeforeDragRef = useRef<string | null>(null);
-  const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [active, setActive] = useState(false);
-  const [dragging, setDragging] = useState(false);
-  const highlighted = active || dragging;
 
   const handlePointerDown = useCallback(
     (event: RNPointerEvent) => {
@@ -62,8 +57,6 @@ export function ResizeHandle({
         return;
       }
 
-      setDragging(true);
-
       pointerStatesRef.current.set(pointerId, {
         containerSize,
         pointerStart:
@@ -83,7 +76,6 @@ export function ResizeHandle({
 
       function cleanup() {
         pointerStatesRef.current.delete(pointerId);
-        setDragging(pointerStatesRef.current.size > 0);
         if (pointerStatesRef.current.size === 0) {
           document.body.style.cursor = cursorBeforeDragRef.current ?? "";
           cursorBeforeDragRef.current = null;
@@ -138,35 +130,12 @@ export function ResizeHandle({
     [direction, groupId, index, onResizeSplit, sizes],
   );
 
-  const handlePointerEnter = useCallback(() => {
-    hoverTimerRef.current = setTimeout(() => {
-      setActive(true);
-    }, 150);
-  }, []);
-
-  const handlePointerLeave = useCallback(() => {
-    if (hoverTimerRef.current) {
-      clearTimeout(hoverTimerRef.current);
-      hoverTimerRef.current = null;
-    }
-    setActive(false);
-  }, []);
-
   const handleStyle = useMemo(
     () => [
       styles.handle,
       direction === "horizontal" ? styles.handleHorizontal : styles.handleVertical,
-      { backgroundColor: theme.colors.border },
     ],
-    [direction, theme.colors.border],
-  );
-  const highlightStyle = useMemo(
-    () => [
-      styles.highlight,
-      direction === "horizontal" ? styles.highlightHorizontal : styles.highlightVertical,
-      { backgroundColor: theme.colors.accent },
-    ],
-    [direction, theme.colors.accent],
+    [direction],
   );
   const hitAreaStyle = useMemo(
     () => [
@@ -181,48 +150,32 @@ export function ResizeHandle({
   );
 
   return (
-    <View style={handleStyle}>
-      {highlighted && <View pointerEvents="none" style={highlightStyle} />}
+    <View style={handleStyle} pointerEvents="box-none">
       <View
         role="separator"
         aria-orientation={direction === "horizontal" ? "vertical" : "horizontal"}
         style={hitAreaStyle}
         onPointerDown={handlePointerDown}
-        onPointerEnter={handlePointerEnter}
-        onPointerLeave={handlePointerLeave}
       />
     </View>
   );
 }
 
 const styles = StyleSheet.create((_theme) => ({
+  // Invisible layout anchor: no permanent divider and no hover highlight.
+  // Drag-to-resize lives entirely on the wider absolute hit area.
   handle: {
     position: "relative",
     flexShrink: 0,
+    backgroundColor: "transparent",
   },
   handleHorizontal: {
-    width: 1,
+    width: 0,
     alignSelf: "stretch",
   },
   handleVertical: {
-    height: 1,
+    height: 0,
     width: "100%",
-  },
-  highlight: {
-    position: "absolute",
-    zIndex: 5,
-  },
-  highlightHorizontal: {
-    top: 0,
-    bottom: 0,
-    width: 3,
-    left: -1,
-  },
-  highlightVertical: {
-    left: 0,
-    right: 0,
-    height: 3,
-    top: -1,
   },
   hitArea: {
     position: "absolute",

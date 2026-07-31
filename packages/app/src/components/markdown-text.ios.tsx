@@ -88,7 +88,9 @@ const MARKDOWN_PARAGRAPH_RESET: ViewStyle = {};
 // <= the native render width, so the re-wrap can never produce more lines than
 // were measured. The bottom slack prevents the final glyph row from losing
 // descenders when TextKit rounds the measured height down.
-const MARKDOWN_PARAGRAPH_RENDER_SLACK: ViewStyle = { paddingRight: 2, paddingBottom: 1 };
+// Extra slack on narrow mobile widths where code_inline pills and CJK re-wrap
+// more aggressively than the pre-rounding Yoga measure.
+const MARKDOWN_PARAGRAPH_RENDER_SLACK: ViewStyle = { paddingRight: 4, paddingBottom: 4 };
 
 // iOS-only: paragraph wraps in UITextView so the entire paragraph is one
 // native text view. That's what unlocks cross-inline drag selection — handles

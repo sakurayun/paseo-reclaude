@@ -70,6 +70,70 @@ describe("loadAppSettingsFromStorage", () => {
     expect(result.workspaceTitleSource).toBe("title");
   });
 
+  it("defaults Grok usage refresh interval to 5 minutes when storage is empty", async () => {
+    const deps = makeDeps();
+
+    const result = await loadAppSettingsFromStorage(deps);
+
+    expect(result.grokUsageRefreshIntervalMinutes).toBe(5);
+  });
+
+  it("loads a configured Grok usage refresh interval", async () => {
+    const deps = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({ grokUsageRefreshIntervalMinutes: 15 }),
+      }),
+    });
+
+    const result = await loadAppSettingsFromStorage(deps);
+
+    expect(result.grokUsageRefreshIntervalMinutes).toBe(15);
+  });
+
+  it("drops an unknown Grok usage refresh interval back to the default", async () => {
+    const deps = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({ grokUsageRefreshIntervalMinutes: 7 }),
+      }),
+    });
+
+    const result = await loadAppSettingsFromStorage(deps);
+
+    expect(result.grokUsageRefreshIntervalMinutes).toBe(5);
+  });
+
+  it("defaults provider usage meter percentage mode to used", async () => {
+    const deps = makeDeps();
+
+    const result = await loadAppSettingsFromStorage(deps);
+
+    expect(result.providerUsageMeterPercentageMode).toBe("used");
+  });
+
+  it("loads remaining percentage mode for the usage meter", async () => {
+    const deps = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({ providerUsageMeterPercentageMode: "remaining" }),
+      }),
+    });
+
+    const result = await loadAppSettingsFromStorage(deps);
+
+    expect(result.providerUsageMeterPercentageMode).toBe("remaining");
+  });
+
+  it("drops an unknown provider usage meter percentage mode back to used", async () => {
+    const deps = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({ providerUsageMeterPercentageMode: "both" }),
+      }),
+    });
+
+    const result = await loadAppSettingsFromStorage(deps);
+
+    expect(result.providerUsageMeterPercentageMode).toBe("used");
+  });
+
   it("loads configured terminal scrollback lines from app settings", async () => {
     const deps = makeDeps({
       storage: createInMemoryKeyValueStorage({

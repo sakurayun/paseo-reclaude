@@ -148,15 +148,15 @@ export interface MessageInputProps {
   onHeightChange?: (height: number) => void;
   /** Extra styles merged onto the input wrapper (e.g. elevated background). */
   inputWrapperStyle?: import("react-native").ViewStyle;
-  /** Content rendered inside the bordered input surface, above the text input (e.g. attachment pills). */
+  /** Content rendered inside the input surface, above the text input (e.g. attachment pills). */
   attachmentSlot?: React.ReactNode;
-  /** Swaps the resting shadow for the purple Ultracode glow. */
+  /** Swaps the flat surface for the purple Ultracode glow. */
   isUltracodeActive?: boolean;
   /**
    * Panel/screen breakpoint from the composer. On wide (desktop) layouts the
-   * agent controls fold onto the toolbar row next to the attachment button and
-   * the divider above the secondary row is dropped; compact/mobile keeps the
-   * controls on their own divided row below. Defaults to compact when omitted.
+   * agent controls fold onto the toolbar row next to the attachment button;
+   * compact/mobile keeps the controls on their own row below the text input.
+   * Defaults to compact when omitted.
    */
   isCompactLayout?: boolean;
 }
@@ -458,18 +458,9 @@ function VoiceButtonIcon({
   );
 }
 
-function MessageInputSecondaryContent({
-  children,
-  inline = false,
-}: {
-  children: React.ReactNode;
-  /** Desktop: drop the top divider (agent controls live on the toolbar row instead). */
-  inline?: boolean;
-}) {
+function MessageInputSecondaryContent({ children }: { children: React.ReactNode }) {
   if (!children) return null;
-  return (
-    <View style={inline ? styles.secondaryContentPlain : styles.secondaryContent}>{children}</View>
-  );
+  return <View style={styles.secondaryContent}>{children}</View>;
 }
 
 /** Renders the agent controls inline on the toolbar row (desktop) or nothing (compact). */
@@ -485,8 +476,9 @@ function InlineToolbarControls({
 
 /**
  * The row below the toolbar. On desktop the agent controls have already moved up
- * to the toolbar row, so this only carries the context/footer content with no
- * divider; on compact it keeps the controls and context together above a divider.
+ * to the toolbar row, so this only carries the context/footer content; on compact
+ * it keeps the agent controls and context together. No top divider — the row
+ * sits flush under the text input.
  */
 function MessageInputSecondaryRow({
   inline,
@@ -498,7 +490,7 @@ function MessageInputSecondaryRow({
   secondaryContent: React.ReactNode;
 }) {
   if (inline) {
-    return <MessageInputSecondaryContent inline>{secondaryContent}</MessageInputSecondaryContent>;
+    return <MessageInputSecondaryContent>{secondaryContent}</MessageInputSecondaryContent>;
   }
   return (
     <MessageInputSecondaryContent>
@@ -1273,7 +1265,7 @@ function extractErrorMessage(error: unknown): string | null {
   return null;
 }
 
-/** Composer surface chrome: resting shadow by default, animated Ultracode glow when active. */
+/** Composer surface chrome: flat #fafafa fill by default; Ultracode glow when active. */
 function useInputWrapperChrome(input: {
   isUltracodeActive: boolean;
   inputWrapperStyle: import("react-native").ViewStyle | undefined;
@@ -1287,7 +1279,7 @@ function useInputWrapperChrome(input: {
   const style = useMemo(
     () => [
       styles.inputWrapper,
-      isUltracodeActive ? styles.inputWrapperUltracodeGlow : styles.inputWrapperShadow,
+      isUltracodeActive ? styles.inputWrapperUltracodeGlow : null,
       inputWrapperStyle,
     ],
     [inputWrapperStyle, isUltracodeActive],
@@ -2090,12 +2082,13 @@ const styles = StyleSheet.create((theme: Theme) => ({
   container: {
     position: "relative",
   },
-  // Frosted glass: web uses CSS backdrop-filter; native gets a real BlurView
-  // child so the stream behind the composer stays visibly blurred.
+  // Flat solid fill — no glass blur, no border, no resting shadow.
   inputWrapper: {
     flexDirection: "column",
     gap: theme.spacing[3],
-    backgroundColor: isWeb ? theme.colors.surfaceGlass : "transparent",
+    backgroundColor: "#fafafa",
+    borderWidth: 0,
+    borderColor: "transparent",
     borderRadius: theme.borderRadius["2xl"],
     paddingVertical: {
       xs: theme.spacing[2],
@@ -2105,22 +2098,17 @@ const styles = StyleSheet.create((theme: Theme) => ({
       xs: theme.spacing[3],
       md: theme.spacing[4],
     },
+    // Explicitly clear any inherited / platform shadow.
     ...(isWeb
-      ? ({
-          backdropFilter: "blur(20px) saturate(1.5)",
-          WebkitBackdropFilter: "blur(20px) saturate(1.5)",
-        } as object)
-      : {}),
+      ? ({ boxShadow: "none" } as object)
+      : {
+          shadowColor: "transparent",
+          shadowOffset: { width: 0, height: 0 },
+          shadowOpacity: 0,
+          shadowRadius: 0,
+          elevation: 0,
+        }),
   },
-  inputWrapperShadow: isWeb
-    ? { boxShadow: "0 3px 18px rgba(0, 0, 0, 0.14)" }
-    : {
-        shadowColor: "#000000",
-        shadowOffset: { width: 0, height: 3 },
-        shadowOpacity: 0.16,
-        shadowRadius: 12,
-        elevation: 5,
-      },
   // On web the flowing glow is driven by the injected keyframes (see
   // ensureUltracodeGlowStyle); native gets a static halo. Colors come from the
   // theme's ultracodeGlow token (violet by default, terracotta on Claude Light).
@@ -2166,24 +2154,15 @@ const styles = StyleSheet.create((theme: Theme) => ({
         } as object)
       : {}),
   },
+  // Agent controls + context meters under the text input. No top divider —
+  // the row sits flush under the composer field.
   secondaryContent: {
     flexDirection: "row",
     alignItems: "center",
     flexWrap: "wrap",
     gap: theme.spacing[1],
-    borderTopWidth: theme.shell.chromeDivider,
-    borderTopColor: theme.colors.borderAccent,
     marginHorizontal: -theme.spacing[3],
     paddingHorizontal: theme.spacing[3],
-    paddingTop: theme.spacing[1],
-  },
-  // Desktop variant of secondaryContent: same row layout, no top divider (the
-  // agent controls have folded onto the toolbar row above it).
-  secondaryContentPlain: {
-    flexDirection: "row",
-    alignItems: "center",
-    flexWrap: "wrap",
-    gap: theme.spacing[1],
     paddingTop: theme.spacing[1],
   },
   buttonRow: {

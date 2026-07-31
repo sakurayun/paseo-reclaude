@@ -26,6 +26,10 @@ const TERMINAL_OSC_COLOR_QUERY_RESPONSES = new Map<number, string>([
   [11, "rgb:0b0b/0b0b/0b0b"],
   [12, "rgb:e6e6/e6e6/e6e6"],
 ]);
+// XTVERSION identity reported to apps that probe CSI > 0 q. Keep this honest
+// (we are not the Kitty binary); Kitty-compatible protocols still opt in via
+// TERM_PROGRAM=kitty + the client OSC/APC handlers.
+const TERMINAL_XTVERSION_NAME = "paseo";
 
 export interface TerminalExitInfo {
   exitCode: number | null;
@@ -1215,6 +1219,27 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
   terminal.parser.registerCsiHandler({ final: "c" }, (params) => {
     if (params.length === 0 || (params.length === 1 && params[0] === 0)) {
       backend.write("\x1b[?62;4;9;22c");
+      return true;
+    }
+    return false;
+  });
+  // DA2 (CSI > c / CSI > 0 c). Modern TUIs (Grok Build, etc.) probe secondary device
+  // attributes during feature negotiation. Report an xterm-compatible DA2: Pp=0
+  // (VT100 family), Pv=software version, Pc=0 (no keyboard ROM).
+  terminal.parser.registerCsiHandler({ prefix: ">", final: "c" }, (params) => {
+    if (params.length === 0 || (params.length === 1 && params[0] === 0)) {
+      backend.write("\x1b[>0;276;0c");
+      return true;
+    }
+    return false;
+  });
+  // XTVERSION (CSI > 0 q / CSI > q) → DCS > | name(version) ST.
+  // Grok Build and similar full-screen TUIs wait on this reply before enabling
+  // overlay UI (slash menus, selection boxes, sticky headers). Without a reply
+  // they time out and degrade those surfaces.
+  terminal.parser.registerCsiHandler({ prefix: ">", final: "q" }, (params) => {
+    if (params.length === 0 || (params.length === 1 && params[0] === 0)) {
+      backend.write(`\x1bP>|${TERMINAL_XTVERSION_NAME}\x1b\\`);
       return true;
     }
     return false;

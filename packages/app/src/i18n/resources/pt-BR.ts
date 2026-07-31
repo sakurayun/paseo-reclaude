@@ -2269,12 +2269,29 @@ export const ptBR: TranslationResources = {
       codexChatgptAuthRequired:
         "Os limites oficiais do Codex exigem login no ChatGPT. Com API key / Base URL personalizada (NewAPI / Sub2API / CPA), o uso é lido do gateway.",
     },
+    meter: {
+      accessibilityUsed: "Uso do plano {{percentage}}% usado",
+      accessibilityRemaining: "Uso do plano {{percentage}}% restante",
+      percentageMode: {
+        label: "Porcentagem do anel de uso",
+        description: "Mostrar porcentagem usada ou restante no anel de uso do compositor.",
+        used: "Usado",
+        remaining: "Restante",
+      },
+    },
     grok: {
       sync: "Sincronizar uso",
       syncing: "Sincronizando…",
       syncError: "Falha na sincronização",
       authenticated: "Credenciais do Grok Build encontradas",
       needAuth: "Entre com `grok login` ou defina XAI_API_KEY",
+      refreshInterval: {
+        label: "Atualização automática do Grok",
+        description:
+          "Com que frequência o anel de uso do Grok no compositor busca dados de faturamento.",
+        off: "Desligado",
+        minutes: "{{count}} min",
+      },
     },
   },
   review: {

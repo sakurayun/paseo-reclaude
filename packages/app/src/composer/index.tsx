@@ -40,6 +40,7 @@ import {
   type DraftAgentControlsProps,
 } from "@/composer/agent-controls";
 import { ContextWindowMeter } from "@/components/context-window-meter";
+import { ProviderUsageMeter } from "@/provider-usage/usage-meter";
 import { useImageAttachmentPicker } from "@/hooks/use-image-attachment-picker";
 import { useSessionStore } from "@/stores/session-store";
 import { useFilePicker } from "@/hooks/use-file-picker";
@@ -156,6 +157,10 @@ function resolveComposerButtonIconSize(): number {
   return isWeb ? ICON_SIZE.md : ICON_SIZE.lg;
 }
 
+// Filled stop square reads heavier than stroke icons at the same size; keep it
+// smaller than the circular 28px hit target so it doesn't fill the button.
+const STOP_SQUARE_ICON_SIZE = ICON_SIZE.xs;
+
 function resolveIsComposerLocked(
   submitBehavior: "clear" | "preserve-and-lock",
   isSubmitLoading: boolean,
@@ -241,8 +246,6 @@ function renderContextWindowMeter(
   contextWindowUsedTokens: number | null,
   totalCostUsd: number | null,
   showPercentage: boolean,
-  serverId: string,
-  provider: string | null,
   pending: boolean,
   glyphSize: number,
 ): ReactElement | null {
@@ -256,11 +259,24 @@ function renderContextWindowMeter(
       usedTokens={contextWindowUsedTokens}
       totalCostUsd={totalCostUsd}
       showPercentage={showPercentage}
-      serverId={serverId}
-      provider={provider}
       pending={pending}
       glyphSize={glyphSize}
     />
+  );
+}
+
+function renderComposerMeters(
+  contextWindowMeter: ReactElement | null,
+  providerUsageMeter: ReactElement | null,
+): ReactElement | null {
+  if (!contextWindowMeter && !providerUsageMeter) {
+    return null;
+  }
+  return (
+    <View style={styles.composerMeters}>
+      {contextWindowMeter}
+      {providerUsageMeter}
+    </View>
   );
 }
 
@@ -908,7 +924,6 @@ function resolveContextWindowValues(
 }
 
 interface ComposerCancelButtonProps {
-  buttonIconSize: number;
   cancelButtonStyle: (object | undefined)[];
   handleCancelAgent: () => void;
   isConnected: boolean;
@@ -918,7 +933,6 @@ interface ComposerCancelButtonProps {
 }
 
 function ComposerCancelButton({
-  buttonIconSize,
   cancelButtonStyle,
   handleCancelAgent,
   isConnected,
@@ -932,7 +946,7 @@ function ComposerCancelButton({
   const icon = isCancellingAgent ? (
     <LoadingSpinner size="small" color="white" />
   ) : (
-    <Square size={buttonIconSize} color="white" fill="white" />
+    <Square size={STOP_SQUARE_ICON_SIZE} color="white" fill="white" />
   );
   const shortcutNode = agentInterruptKeys ? <Shortcut chord={agentInterruptKeys} /> : null;
   return (
@@ -1838,7 +1852,6 @@ export function Composer({
         isAgentRunning={isAgentRunning}
         hasSendableContent={hasSendableContent}
         isProcessing={isProcessing}
-        buttonIconSize={buttonIconSize}
         cancelButtonStyle={cancelButtonStyle}
         handleCancelAgent={handleCancelAgent}
         isConnected={isConnected}
@@ -1849,7 +1862,6 @@ export function Composer({
     ),
     [
       agentInterruptKeys,
-      buttonIconSize,
       cancelButtonStyle,
       handleCancelAgent,
       hasSendableContent,
@@ -1926,8 +1938,6 @@ export function Composer({
         contextWindowUsedTokens,
         agentState.totalCostUsd,
         false,
-        serverId,
-        agentState.provider,
         contextWindowPending,
         contextWindowMeterGlyphSize,
       ),
@@ -1935,15 +1945,27 @@ export function Composer({
       contextWindowMaxTokens,
       contextWindowUsedTokens,
       agentState.totalCostUsd,
-      serverId,
-      agentState.provider,
       contextWindowPending,
       contextWindowMeterGlyphSize,
     ],
   );
+  const providerUsageMeter = useMemo(
+    () => (
+      <ProviderUsageMeter
+        serverId={serverId}
+        provider={agentState.provider}
+        glyphSize={contextWindowMeterGlyphSize}
+      />
+    ),
+    [serverId, agentState.provider, contextWindowMeterGlyphSize],
+  );
+  const composerMeters = useMemo(
+    () => renderComposerMeters(contextWindowMeter, providerUsageMeter),
+    [contextWindowMeter, providerUsageMeter],
+  );
   const { beforeVoiceContent, footerInlineContent } = useMemo(
-    () => resolveContextWindowPlacement(contextWindowMeter, isCompactLayout),
-    [contextWindowMeter, isCompactLayout],
+    () => resolveContextWindowPlacement(composerMeters, isCompactLayout),
+    [composerMeters, isCompactLayout],
   );
 
   const hasGithubAttachment = useMemo(
@@ -2377,6 +2399,12 @@ const styles = StyleSheet.create((theme: Theme) => ({
     flexShrink: 0,
     alignItems: "center",
     justifyContent: "center",
+  },
+  composerMeters: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexShrink: 0,
+    gap: theme.spacing[1],
   },
   realtimeVoiceButton: {
     width: 28,

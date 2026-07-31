@@ -1,13 +1,16 @@
-import { useCallback, useState } from "react";
+import { useState } from "react";
 import { Pressable, Text, View } from "react-native";
-import Svg, { Circle } from "react-native-svg";
-import { StyleSheet, useUnistyles } from "react-native-unistyles";
+import { StyleSheet } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
+import {
+  clampMeterPercentage,
+  MeterRingContainer,
+  MeterRingGlyph,
+  meterVariantFromPercentage,
+  METER_SVG_SIZE,
+  METER_STROKE_WIDTH,
+} from "@/components/meter-ring";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { ProviderUsageTooltipSection } from "@/provider-usage/tooltip-section";
-import { useGrok } from "@/provider-usage/use-grok";
-import { useProviderUsage } from "@/provider-usage/use-provider-usage";
-import { useReclaude } from "@/provider-usage/use-reclaude";
 import { formatTokenCount } from "./context-window-meter.utils";
 
 interface ContextWindowMeterProps {
@@ -15,22 +18,13 @@ interface ContextWindowMeterProps {
   usedTokens: number | null;
   totalCostUsd?: number | null;
   showPercentage?: boolean;
-  serverId?: string;
-  /** The Paseo provider key, e.g. "claude", "gemini", "codex" */
-  provider?: string | null;
   /** Reserve the meter footprint and show a loading ring while usage is pending. */
   pending?: boolean;
   /** Optional glyph envelope for icon-toolbar alignment. */
   glyphSize?: number;
 }
 
-const SVG_SIZE = 14;
 const COMPACT_SVG_SIZE = 12;
-const COMPACT_CENTER = COMPACT_SVG_SIZE / 2;
-const COMPACT_RADIUS = 5;
-const STROKE_WIDTH = 2;
-const COMPACT_STROKE_WIDTH = 1.75;
-const COMPACT_CIRCUMFERENCE = 2 * Math.PI * COMPACT_RADIUS;
 
 function isValidMaxTokens(value: number): boolean {
   return Number.isFinite(value) && value > 0;
@@ -47,10 +41,6 @@ function getUsagePercentage(maxTokens: number, usedTokens: number): number | nul
   return (usedTokens / maxTokens) * 100;
 }
 
-function clampPercentage(value: number): number {
-  return Math.max(0, Math.min(100, value));
-}
-
 function formatSessionCost(value: number): string | null {
   if (!Number.isFinite(value) || value <= 0) {
     return null;
@@ -61,180 +51,79 @@ function formatSessionCost(value: number): string | null {
   return `$${value.toFixed(2)}`;
 }
 
-function getMeterColors(
-  percentage: number,
-  theme: ReturnType<typeof useUnistyles>["theme"],
-): { progress: string; track: string } {
-  const track = theme.colors.surface3;
-  if (percentage > 90) {
-    return { progress: theme.colors.destructive, track };
-  }
-  if (percentage >= 70) {
-    return { progress: theme.colors.palette.amber[500], track };
-  }
-  return { progress: theme.colors.foregroundMuted, track };
-}
-
-function getMeterGeometry(showPercentage: boolean, glyphSize?: number) {
-  if (showPercentage) {
-    return {
-      svgSize: COMPACT_SVG_SIZE,
-      center: COMPACT_CENTER,
-      radius: COMPACT_RADIUS,
-      strokeWidth: COMPACT_STROKE_WIDTH,
-      circumference: COMPACT_CIRCUMFERENCE,
-      containerStyle: styles.containerWithLabel,
-    };
-  }
-  const resolvedSize = glyphSize ?? SVG_SIZE;
-  const resolvedStrokeWidth = glyphSize ? 2 : STROKE_WIDTH;
-  return {
-    svgSize: resolvedSize,
-    center: resolvedSize / 2,
-    radius: (resolvedSize - resolvedStrokeWidth) / 2,
-    strokeWidth: resolvedStrokeWidth,
-    circumference: Math.PI * (resolvedSize - resolvedStrokeWidth),
-    containerStyle: styles.container,
-  };
-}
-
 export function ContextWindowMeter({
   maxTokens,
   usedTokens,
   totalCostUsd,
   showPercentage = false,
-  serverId,
-  provider,
   pending = false,
   glyphSize,
 }: ContextWindowMeterProps) {
-  const { theme } = useUnistyles();
   const { t } = useTranslation();
   const [isTooltipOpen, setIsTooltipOpen] = useState(false);
-  const { view: providerUsageView, refresh: refreshProviderUsage } = useProviderUsage(
-    serverId ?? null,
-    { enabled: isTooltipOpen },
-  );
-  const {
-    active: reclaudeActive,
-    loggedIn: reclaudeLoggedIn,
-    syncUsage: syncReclaudeUsage,
-  } = useReclaude(serverId ?? null);
-  const { supported: grokUsageSupported, syncUsage: syncGrokUsage } = useGrok(serverId ?? null);
-  // For a reclaude-backed Claude agent, opening the meter triggers a one-shot
-  // ReClaude usage sync (server-throttled to once per 5 min) instead of the
-  // generic list refresh, so the tooltip shows fresh ReClaude data without
-  // re-fetching other providers. Same pattern for Grok Build.
-  const isReclaudeClaude = provider === "claude" && reclaudeActive && reclaudeLoggedIn;
-  const isGrok = provider === "grok" && grokUsageSupported;
+
   const percentage =
     maxTokens !== null && usedTokens !== null ? getUsagePercentage(maxTokens, usedTokens) : null;
-  const handleTooltipOpenChange = useCallback(
-    (nextOpen: boolean) => {
-      setIsTooltipOpen(nextOpen);
-      if (!nextOpen) {
-        return;
-      }
-      if (isReclaudeClaude) {
-        void syncReclaudeUsage().catch(() => undefined);
-      } else if (isGrok) {
-        void syncGrokUsage().catch(() => undefined);
-      } else {
-        void refreshProviderUsage().catch(() => {});
-      }
-    },
-    [isGrok, isReclaudeClaude, refreshProviderUsage, syncGrokUsage, syncReclaudeUsage],
-  );
 
-  const geometry = getMeterGeometry(showPercentage, glyphSize);
-
-  // No usage yet: reserve the footprint with a track-only ring while a session is
-  // active so the real ring fades in without shifting siblings. Render nothing when
-  // no usage is expected.
+  // Compact labeled mode keeps a smaller ring + percentage text.
+  // Icon-toolbar mode reuses the shared ring glyph.
   if (percentage === null || maxTokens === null || usedTokens === null) {
     if (!pending) {
       return null;
     }
+    if (showPercentage) {
+      return (
+        <View style={styles.containerWithLabel}>
+          <MeterRingGlyph percentage={null} variant="pending" glyphSize={COMPACT_SVG_SIZE} />
+          <View style={styles.skeletonLabel} />
+        </View>
+      );
+    }
     return (
-      <View style={geometry.containerStyle}>
-        <Svg
-          width={geometry.svgSize}
-          height={geometry.svgSize}
-          viewBox={`0 0 ${geometry.svgSize} ${geometry.svgSize}`}
-          style={styles.svg}
-          accessibilityElementsHidden
-          importantForAccessibility="no-hide-descendants"
-        >
-          <Circle
-            cx={geometry.center}
-            cy={geometry.center}
-            r={geometry.radius}
-            fill="none"
-            stroke={theme.colors.surface3}
-            strokeWidth={geometry.strokeWidth}
-          />
-        </Svg>
-        {showPercentage ? <View style={styles.skeletonLabel} /> : null}
-      </View>
+      <MeterRingContainer>
+        <MeterRingGlyph percentage={null} variant="pending" glyphSize={glyphSize} />
+      </MeterRingContainer>
     );
   }
 
-  const clampedPercentage = clampPercentage(percentage);
+  const clampedPercentage = clampMeterPercentage(percentage);
   const roundedPercentage = Math.round(percentage);
-  const { svgSize, center, radius, strokeWidth, circumference, containerStyle } = geometry;
-  const dashOffset = circumference - (clampedPercentage / 100) * circumference;
-  const colors = getMeterColors(clampedPercentage, theme);
+  const variant = meterVariantFromPercentage(clampedPercentage);
   const formattedSessionCost =
     typeof totalCostUsd === "number" ? formatSessionCost(totalCostUsd) : null;
+
+  const triggerBody = showPercentage ? (
+    <View style={styles.containerWithLabel}>
+      <MeterRingGlyph
+        percentage={clampedPercentage}
+        variant={variant}
+        glyphSize={COMPACT_SVG_SIZE}
+      />
+      <Text style={styles.percentageLabel}>{`${roundedPercentage}%`}</Text>
+    </View>
+  ) : (
+    <MeterRingContainer>
+      <MeterRingGlyph percentage={clampedPercentage} variant={variant} glyphSize={glyphSize} />
+    </MeterRingContainer>
+  );
 
   return (
     <Tooltip
       open={isTooltipOpen}
-      onOpenChange={handleTooltipOpenChange}
+      onOpenChange={setIsTooltipOpen}
       delayDuration={0}
       enabledOnDesktop
       enabledOnMobile
     >
       <TooltipTrigger asChild triggerRefProp="ref">
         <Pressable
-          style={containerStyle}
           testID="context-window-meter"
           accessibilityRole="image"
           accessibilityLabel={t("contextWindow.accessibility", {
             percentage: roundedPercentage,
           })}
         >
-          <Svg
-            width={svgSize}
-            height={svgSize}
-            viewBox={`0 0 ${svgSize} ${svgSize}`}
-            style={styles.svg}
-            accessibilityElementsHidden
-            importantForAccessibility="no-hide-descendants"
-          >
-            <Circle
-              cx={center}
-              cy={center}
-              r={radius}
-              fill="none"
-              stroke={colors.track}
-              strokeWidth={strokeWidth}
-            />
-            <Circle
-              cx={center}
-              cy={center}
-              r={radius}
-              fill="none"
-              stroke={colors.progress}
-              strokeWidth={strokeWidth}
-              strokeLinecap="round"
-              strokeDasharray={circumference}
-              strokeDashoffset={dashOffset}
-            />
-          </Svg>
-          {showPercentage ? (
-            <Text style={styles.percentageLabel}>{`${roundedPercentage}%`}</Text>
-          ) : null}
+          {triggerBody}
         </Pressable>
       </TooltipTrigger>
       <TooltipContent side="top" align="center" offset={8}>
@@ -254,21 +143,16 @@ export function ContextWindowMeter({
               {t("contextWindow.sessionCost", { cost: formattedSessionCost })}
             </Text>
           ) : null}
-          <ProviderUsageTooltipSection view={providerUsageView} activeProviderId={provider} />
         </View>
       </TooltipContent>
     </Tooltip>
   );
 }
 
+// Keep size constants exported for any layout callers that still import them.
+export { METER_SVG_SIZE as SVG_SIZE, METER_STROKE_WIDTH as STROKE_WIDTH };
+
 const styles = StyleSheet.create((theme) => ({
-  container: {
-    width: 28,
-    height: 28,
-    borderRadius: theme.borderRadius.full,
-    alignItems: "center",
-    justifyContent: "center",
-  },
   containerWithLabel: {
     height: 28,
     flexDirection: "row",
@@ -276,9 +160,6 @@ const styles = StyleSheet.create((theme) => ({
     justifyContent: "center",
     gap: theme.spacing[1],
     borderRadius: theme.borderRadius.full,
-  },
-  svg: {
-    transform: [{ rotate: "-90deg" }],
   },
   percentageLabel: {
     color: theme.colors.foregroundMuted,

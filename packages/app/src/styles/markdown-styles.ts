@@ -175,12 +175,21 @@ export function createMarkdownStyles(theme: Theme) {
       backgroundColor: theme.colors.surface2,
       color: theme.colors.foreground,
       paddingHorizontal: theme.spacing[1],
-      paddingVertical: 2,
+      // Vertical padding on nested Text inflates the line box past the parent
+      // paragraph measure on native (UITextView / Android Text), clipping the
+      // last glyph row. Web can keep a 1px optical inset.
+      paddingVertical: isWeb ? 1 : 0,
       borderRadius: theme.borderRadius.md,
       borderWidth: 0,
       fontFamily: theme.fontFamily.mono,
       fontSize: theme.fontSize.code,
-      lineHeight: Math.round(theme.fontSize.code * 1.45),
+      // Share the prose line box so nested pills don't force a taller re-wrap
+      // that falls outside the measured paragraph height on mobile.
+      lineHeight: lh(theme.fontSize.base, PROSE_LINE_HEIGHT),
+      // Long file paths must shrink/wrap inside list items and bubbles.
+      flexShrink: 1,
+      minWidth: 0,
+      ...(isWeb ? ({ overflowWrap: "anywhere", wordBreak: "break-all" } as const) : {}),
       ...monoLigatureTextStyle(theme.monoLigatures),
     },
 
@@ -190,6 +199,9 @@ export function createMarkdownStyles(theme: Theme) {
       color: theme.colors.foreground,
       padding: theme.spacing[3],
       borderRadius: theme.borderRadius.md,
+      // Override react-native-markdown-display defaults (borderWidth: 1 / #CCC).
+      borderWidth: 0,
+      borderColor: "transparent",
       fontFamily: theme.fontFamily.mono,
       fontSize: theme.fontSize.code,
       marginVertical: theme.spacing[2],
@@ -202,8 +214,10 @@ export function createMarkdownStyles(theme: Theme) {
       color: theme.colors.foreground,
       padding: theme.spacing[3],
       borderRadius: theme.borderRadius.md,
-      // borderless card (new theme)
-      ...theme.shadow.sm,
+      // Override react-native-markdown-display defaults (borderWidth: 1 / #CCC).
+      // No stroke and no soft shadow — surface fill alone separates the block.
+      borderWidth: 0,
+      borderColor: "transparent",
       fontFamily: theme.fontFamily.mono,
       fontSize: theme.fontSize.code,
       marginVertical: theme.spacing[3],
@@ -299,16 +313,20 @@ export function createMarkdownStyles(theme: Theme) {
       flexDirection: "row" as const,
       alignItems: "flex-start" as const,
       flexShrink: 1,
+      minWidth: 0,
+      width: "100%" as const,
     },
 
     bullet_list_content: {
       flex: 1,
       flexShrink: 1,
+      minWidth: 0,
     },
 
     ordered_list_content: {
       flex: 1,
       flexShrink: 1,
+      minWidth: 0,
     },
 
     bullet_list_icon: {
@@ -366,7 +384,10 @@ export function createMarkdownStyles(theme: Theme) {
     // BREAKS
     // =========================================================================
 
+    // Full-width break so flex-row paragraphs (Android / image paragraphs) put
+    // the next span on a new line instead of joining "one\ntwo" → "onetwo".
     hardbreak: {
+      width: "100%" as const,
       height: theme.spacing[2],
     },
 

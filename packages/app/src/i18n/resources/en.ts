@@ -2237,12 +2237,28 @@ export const en = {
       codexChatgptAuthRequired:
         "Codex needs a ChatGPT login for official rate limits. For API-key / custom base URL gateways, usage is read from NewAPI, Sub2API, or CPA instead.",
     },
+    meter: {
+      accessibilityUsed: "Plan usage {{percentage}}% used",
+      accessibilityRemaining: "Plan usage {{percentage}}% remaining",
+      percentageMode: {
+        label: "Usage ring percentage",
+        description: "Show used or remaining percent on the composer plan-usage ring.",
+        used: "Used",
+        remaining: "Remaining",
+      },
+    },
     grok: {
       sync: "Sync usage",
       syncing: "Syncing…",
       syncError: "Sync failed",
       authenticated: "Grok Build credentials found",
       needAuth: "Sign in with `grok login` or set XAI_API_KEY",
+      refreshInterval: {
+        label: "Grok usage auto-refresh",
+        description: "How often the composer Grok usage ring pulls live billing data.",
+        off: "Off",
+        minutes: "{{count}} min",
+      },
     },
   },
   review: {

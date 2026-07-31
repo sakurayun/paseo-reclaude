@@ -77,20 +77,36 @@ describe("createMarkdownStyles", () => {
     expect(styles.code_inline).toMatchObject({
       fontFamily: darkTheme.fontFamily.mono,
       fontSize: darkTheme.fontSize.code,
-      lineHeight: Math.round(darkTheme.fontSize.code * 1.45),
+      flexShrink: 1,
+      minWidth: 0,
+      lineHeight: Math.round(darkTheme.fontSize.base * 1.4),
     });
     expect(styles.code_block).toMatchObject({
       fontFamily: darkTheme.fontFamily.mono,
       fontSize: darkTheme.fontSize.code,
+      borderWidth: 0,
+      borderColor: "transparent",
     });
     expect(styles.fence).toMatchObject({
       fontFamily: darkTheme.fontFamily.mono,
       fontSize: darkTheme.fontSize.code,
+      borderWidth: 0,
+      borderColor: "transparent",
+    });
+    expect(styles.fence).not.toHaveProperty("shadowColor");
+    expect(styles.fence).not.toHaveProperty("elevation");
+    expect(styles.hardbreak).toMatchObject({
+      width: "100%",
+    });
+    expect(styles.list_item).toMatchObject({
+      minWidth: 0,
+      width: "100%",
     });
     expect(compactStyles.code_inline).toMatchObject({
       fontFamily: darkTheme.fontFamily.mono,
       fontSize: darkTheme.fontSize.code,
-      lineHeight: Math.round(darkTheme.fontSize.code * 1.45),
+      flexShrink: 1,
+      minWidth: 0,
     });
   });
 });

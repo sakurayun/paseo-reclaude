@@ -2199,12 +2199,28 @@ export const zhCN: TranslationResources = {
       codexChatgptAuthRequired:
         "Codex 官方限额需要 ChatGPT 登录。若使用 API Key 或自定义 Base URL（NewAPI / Sub2API / CPA），将从网关查询额度。",
     },
+    meter: {
+      accessibilityUsed: "套餐用量已使用 {{percentage}}%",
+      accessibilityRemaining: "套餐用量剩余 {{percentage}}%",
+      percentageMode: {
+        label: "用量圆环百分比",
+        description: "输入框套餐用量圆环显示已使用或剩余百分比。",
+        used: "已用",
+        remaining: "剩余",
+      },
+    },
     grok: {
       sync: "同步用量",
       syncing: "同步中…",
       syncError: "同步失败",
       authenticated: "已检测到 Grok Build 凭据",
       needAuth: "请先运行 `grok login` 或设置 XAI_API_KEY",
+      refreshInterval: {
+        label: "Grok 用量自动刷新",
+        description: "输入框中 Grok 用量圆环拉取实时账单数据的间隔。",
+        off: "关闭",
+        minutes: "{{count}} 分钟",
+      },
     },
   },
   review: {

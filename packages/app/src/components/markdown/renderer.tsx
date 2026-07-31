@@ -28,6 +28,7 @@ import { MarkdownParagraphView, MarkdownTextSpan } from "@/components/markdown-t
 import { MarkdownTableCellText } from "@/components/markdown-text-selection";
 import { getMarkdownListMarker, getMarkdownListSpacing } from "@/utils/markdown-list";
 import { markdownNodeContainsType } from "@/utils/markdown-ast";
+import { breakableMonoText } from "@/utils/breakable-mono-text";
 import { createCompactMarkdownStyles, createMarkdownStyles } from "@/styles/markdown-styles";
 import type { Theme } from "@/styles/theme";
 import { openExternalUrl } from "@/utils/open-external-url";
@@ -632,7 +633,7 @@ export function createSharedMarkdownRules(): RenderRules {
         textStyle={styles.code_inline}
         monoSurface
       >
-        {node.content ?? ""}
+        {breakableMonoText(node.content ?? "")}
       </MarkdownInheritedText>
     ),
     bullet_list: (

@@ -181,6 +181,8 @@ function relativizePathToWorkspace(filePath: string, workspaceRoot: string | und
 
 interface AssistantInlineCodePathLinkProps {
   content: string;
+  /** Optional display string (e.g. with ZWSP soft breaks for mobile wrap). */
+  displayContent?: string;
   inheritedStyles: TextStyle;
   codeInlineStyle: TextStyle;
   linkStyle: TextStyle;
@@ -188,6 +190,7 @@ interface AssistantInlineCodePathLinkProps {
 
 export function AssistantInlineCodePathLink({
   content,
+  displayContent,
   inheritedStyles,
   codeInlineStyle,
   linkStyle,
@@ -208,7 +211,7 @@ export function AssistantInlineCodePathLink({
       codeInlineStyle={codeInlineStyle}
       linkStyle={linkStyle}
     >
-      {content}
+      {displayContent ?? content}
     </AssistantMarkdownCodeLink>
   );
 }

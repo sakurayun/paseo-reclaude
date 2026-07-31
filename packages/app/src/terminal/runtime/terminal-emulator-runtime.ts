@@ -11,6 +11,10 @@ import {
   MONO_FALLBACK_LIGATURES,
   MONO_LIGATURE_FONT_FEATURE_SETTINGS_ON,
 } from "@/styles/mono-ligatures";
+import {
+  DEFAULT_TERMINAL_FONT_SIZE,
+  type TerminalFontZoomDirection,
+} from "./terminal-emulator-constants";
 import { findTerminalLigatureRanges } from "./terminal-ligature-ranges";
 import type { TerminalState } from "@getpaseo/protocol/messages";
 import {
@@ -28,6 +32,11 @@ import {
   shouldInterceptDomTerminalKey,
 } from "@/utils/terminal-keys";
 import { renderTerminalSnapshotToAnsi } from "./terminal-snapshot";
+
+export {
+  DEFAULT_TERMINAL_FONT_SIZE,
+  type TerminalFontZoomDirection,
+} from "./terminal-emulator-constants";
 import {
   buildDeleteSelectionSequence,
   buildMoveCursorToViewportCellSequence,
@@ -120,8 +129,6 @@ export interface TerminalEmulatorRuntimeCallbacks {
   onRequestFocus?: () => Promise<void> | void;
 }
 
-export type TerminalFontZoomDirection = "in" | "out" | "reset";
-
 // Ctrl+'=' counts as zoom-in ('+' needs Shift on most layouts); Ctrl+Shift+'-'
 // ('_') is deliberately NOT zoom-out — that chord is readline's undo (C-_).
 function resolveFontZoomDirection(event: KeyboardEvent): TerminalFontZoomDirection | null {
@@ -193,7 +200,6 @@ const isAppleHandheld =
   });
 
 const DEFAULT_TOUCH_SCROLL_LINE_HEIGHT_PX = 18;
-export const DEFAULT_TERMINAL_FONT_SIZE = 13;
 const FIT_TIMEOUT_DELAYS_MS = [0, 16, 48, 120, 250, 500, 1_000, 2_000];
 const OUTPUT_OPERATION_TIMEOUT_MS = 5_000;
 const EMPTY_TERMINAL_OUTPUT = new Uint8Array(0);

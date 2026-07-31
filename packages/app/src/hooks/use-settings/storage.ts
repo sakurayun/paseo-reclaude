@@ -17,10 +17,18 @@ export type ReleaseChannel = "stable" | "beta";
 export type ServiceUrlBehavior = "ask" | "in-app" | "external";
 export type WorkspaceTitleSource = "title" | "branch";
 export type ToolCallDetailLevel = "overview" | "detailed";
+/** Minutes between automatic Grok usage syncs from the composer meter. 0 = off. */
+export type GrokUsageRefreshIntervalMinutes = 0 | 1 | 5 | 15 | 30;
+/** Composer plan-usage ring: fill + center label show used or remaining %. */
+export type ProviderUsageMeterPercentageMode = "used" | "remaining";
 
 const VALID_THEMES = new Set<string>([...Object.keys(THEME_TO_UNISTYLES), "auto"]);
 const VALID_SERVICE_URL_BEHAVIORS = new Set<ServiceUrlBehavior>(["ask", "in-app", "external"]);
 const VALID_TOOL_CALL_DETAIL_LEVELS = new Set<ToolCallDetailLevel>(["overview", "detailed"]);
+const VALID_PROVIDER_USAGE_METER_PERCENTAGE_MODES = new Set<ProviderUsageMeterPercentageMode>([
+  "used",
+  "remaining",
+]);
 export const DEFAULT_TERMINAL_SCROLLBACK_LINES = 10_000;
 export const MIN_TERMINAL_SCROLLBACK_LINES = 0;
 export const MAX_TERMINAL_SCROLLBACK_LINES = 1_000_000;
@@ -52,6 +60,12 @@ export const DEFAULT_WINDOWS_LAUNCH_AS_ADMIN = true;
 // The redesigned floating UI is the only look — classic chrome is retired.
 // Kept as a constant for defaults / COMPAT reads; load always forces true.
 export const DEFAULT_NEW_THEME_ENABLED = true;
+export const DEFAULT_GROK_USAGE_REFRESH_INTERVAL_MINUTES: GrokUsageRefreshIntervalMinutes = 5;
+export const VALID_GROK_USAGE_REFRESH_INTERVAL_MINUTES = new Set<GrokUsageRefreshIntervalMinutes>([
+  0, 1, 5, 15, 30,
+]);
+export const DEFAULT_PROVIDER_USAGE_METER_PERCENTAGE_MODE: ProviderUsageMeterPercentageMode =
+  "used";
 
 export interface AppSettings {
   theme: ThemeName | "auto";
@@ -79,6 +93,10 @@ export interface AppSettings {
   autoExpandReasoning: boolean;
   toolCallDetailLevel: ToolCallDetailLevel;
   vimKeybindings: boolean;
+  /** How often the composer Grok usage meter auto-syncs (minutes). 0 disables. */
+  grokUsageRefreshIntervalMinutes: GrokUsageRefreshIntervalMinutes;
+  /** Composer plan-usage ring shows used % or remaining % (arc + center label). */
+  providerUsageMeterPercentageMode: ProviderUsageMeterPercentageMode;
 }
 
 export interface Settings extends AppSettings {
@@ -113,6 +131,8 @@ export const DEFAULT_CLIENT_SETTINGS: AppSettings = {
   autoExpandReasoning: false,
   toolCallDetailLevel: "detailed",
   vimKeybindings: false,
+  grokUsageRefreshIntervalMinutes: DEFAULT_GROK_USAGE_REFRESH_INTERVAL_MINUTES,
+  providerUsageMeterPercentageMode: DEFAULT_PROVIDER_USAGE_METER_PERCENTAGE_MODE,
 };
 
 export const DEFAULT_APP_SETTINGS: Settings = {
@@ -247,6 +267,19 @@ function parseWorkspaceTitleSource(value: unknown): WorkspaceTitleSource | null 
 
 // Workspace title source + always-on new theme, factored out of pickAppSettings
 // to keep its cyclomatic complexity under the lint ceiling.
+function parseGrokUsageRefreshIntervalMinutes(
+  value: unknown,
+): GrokUsageRefreshIntervalMinutes | null {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return null;
+  }
+  const rounded = Math.round(value) as GrokUsageRefreshIntervalMinutes;
+  if (!VALID_GROK_USAGE_REFRESH_INTERVAL_MINUTES.has(rounded)) {
+    return null;
+  }
+  return rounded;
+}
+
 function pickMiscAppSettings(stored: Partial<AppSettings>): Partial<AppSettings> {
   const result: Partial<AppSettings> = {};
   if (typeof stored.terminalLigaturesEnabled === "boolean") {
@@ -264,6 +297,18 @@ function pickMiscAppSettings(stored: Partial<AppSettings>): Partial<AppSettings>
   result.newThemeEnabled = true;
   if (typeof stored.autoExpandReasoning === "boolean") {
     result.autoExpandReasoning = stored.autoExpandReasoning;
+  }
+  const grokUsageRefreshIntervalMinutes = parseGrokUsageRefreshIntervalMinutes(
+    stored.grokUsageRefreshIntervalMinutes,
+  );
+  if (grokUsageRefreshIntervalMinutes !== null) {
+    result.grokUsageRefreshIntervalMinutes = grokUsageRefreshIntervalMinutes;
+  }
+  if (
+    typeof stored.providerUsageMeterPercentageMode === "string" &&
+    VALID_PROVIDER_USAGE_METER_PERCENTAGE_MODES.has(stored.providerUsageMeterPercentageMode)
+  ) {
+    result.providerUsageMeterPercentageMode = stored.providerUsageMeterPercentageMode;
   }
   return result;
 }

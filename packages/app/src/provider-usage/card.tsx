@@ -203,7 +203,7 @@ export function ProviderUsageCard({
           ))}
         </View>
       ) : null}
-      {footer ? <Text style={styles.footer}>{footer}</Text> : null}{" "}
+      {footer ? <Text style={styles.footer}>{footer}</Text> : null}
     </View>
   );
 }

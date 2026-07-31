@@ -196,6 +196,44 @@ process.stdin.on("data", (chunk) => {
 process.stdout.write("\\x1b]11;?\\x07");
 `;
 
+const DA2_HELPER_SCRIPT = `process.stdin.setRawMode(true);
+process.stdin.resume();
+let buf = "";
+const timer = setTimeout(() => {
+  process.stdout.write("DA2_TIMEOUT\\n");
+  process.exit(2);
+}, 2500);
+process.stdin.on("data", (chunk) => {
+  buf += chunk.toString("binary");
+  const m = buf.match(/\\x1b\\[>[\\d;]+c/);
+  if (m) {
+    clearTimeout(timer);
+    process.stdout.write("DA2_OK:" + m[0].slice(1) + "\\n");
+    process.exit(0);
+  }
+});
+process.stdout.write("\\x1b[>0c");
+`;
+
+const XTVERSION_HELPER_SCRIPT = `process.stdin.setRawMode(true);
+process.stdin.resume();
+let buf = "";
+const timer = setTimeout(() => {
+  process.stdout.write("XTVERSION_TIMEOUT\\n");
+  process.exit(2);
+}, 2500);
+process.stdin.on("data", (chunk) => {
+  buf += chunk.toString("binary");
+  const m = buf.match(/\\x1bP>\\|([^\\x1b]*)\\x1b\\\\/);
+  if (m) {
+    clearTimeout(timer);
+    process.stdout.write("XTVERSION_OK:" + m[1] + "\\n");
+    process.exit(0);
+  }
+});
+process.stdout.write("\\x1b[>0q");
+`;
+
 function writeDaHelper(prefix: string): string {
   const dir = mkdtempSync(join(tmpdir(), prefix));
   temporaryDirs.push(dir);
@@ -220,8 +258,32 @@ function writeOsc11Helper(prefix: string): string {
   return path;
 }
 
+function writeDa2Helper(prefix: string): string {
+  const dir = mkdtempSync(join(tmpdir(), prefix));
+  temporaryDirs.push(dir);
+  const path = join(dir, "helper.cjs");
+  writeFileSync(path, DA2_HELPER_SCRIPT);
+  return path;
+}
+
+function writeXtversionHelper(prefix: string): string {
+  const dir = mkdtempSync(join(tmpdir(), prefix));
+  temporaryDirs.push(dir);
+  const path = join(dir, "helper.cjs");
+  writeFileSync(path, XTVERSION_HELPER_SCRIPT);
+  return path;
+}
+
 function isDaOkLine(line: string): boolean {
   return line.startsWith("DA_OK:");
+}
+
+function isDa2OkLine(line: string): boolean {
+  return line.startsWith("DA2_OK:");
+}
+
+function isXtversionOkLine(line: string): boolean {
+  return line.startsWith("XTVERSION_OK:");
 }
 
 function isDsrOkLine(line: string): boolean {
@@ -234,6 +296,14 @@ function isOsc11OkLine(line: string): boolean {
 
 function hasDaOkLine(state: ReturnType<TerminalSession["getState"]>): boolean {
   return getLines(state).some(isDaOkLine);
+}
+
+function hasDa2OkLine(state: ReturnType<TerminalSession["getState"]>): boolean {
+  return getLines(state).some(isDa2OkLine);
+}
+
+function hasXtversionOkLine(state: ReturnType<TerminalSession["getState"]>): boolean {
+  return getLines(state).some(isXtversionOkLine);
 }
 
 function hasDsrOkLine(state: ReturnType<TerminalSession["getState"]>): boolean {
@@ -1066,6 +1136,46 @@ describe.skipIf(isPlatform("win32"))("terminal POSIX-only", () => {
 
       const ack = getLines(session.getState()).find(isOsc11OkLine) ?? "";
       expect(ack).toBe("OSC11_OK:ESC]11;rgb:0b0b/0b0b/0b0bESC\\");
+    });
+
+    it("delivers a DA2 reply to a foreground app on stdin", async () => {
+      const helperPath = writeDa2Helper("terminal-da2-helper-");
+
+      const session = trackSession(
+        await createTerminal({
+          workspaceId: "ws-test",
+          cwd: "/tmp",
+          shell: "/bin/sh",
+          env: { PS1: "$ " },
+        }),
+      );
+      await waitForLines(session, ["$"]);
+
+      session.send({ type: "input", data: `${process.execPath} ${helperPath}\r` });
+      await waitForState(session, hasDa2OkLine);
+
+      const ack = getLines(session.getState()).find(isDa2OkLine) ?? "";
+      expect(ack).toMatch(/^DA2_OK:\[>[\d;]+c$/);
+    });
+
+    it("delivers an XTVERSION reply to a foreground app on stdin", async () => {
+      const helperPath = writeXtversionHelper("terminal-xtversion-helper-");
+
+      const session = trackSession(
+        await createTerminal({
+          workspaceId: "ws-test",
+          cwd: "/tmp",
+          shell: "/bin/sh",
+          env: { PS1: "$ " },
+        }),
+      );
+      await waitForLines(session, ["$"]);
+
+      session.send({ type: "input", data: `${process.execPath} ${helperPath}\r` });
+      await waitForState(session, hasXtversionOkLine);
+
+      const ack = getLines(session.getState()).find(isXtversionOkLine) ?? "";
+      expect(ack).toBe("XTVERSION_OK:paseo");
     });
   });
 

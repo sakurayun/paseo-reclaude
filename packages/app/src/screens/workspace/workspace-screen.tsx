@@ -1361,12 +1361,15 @@ function WorkspaceHeaderTitleBar({
         </View>
       ) : (
         <View style={styles.headerTitleTextGroup}>
-          <ScreenTitle testID="workspace-header-title">{title}</ScreenTitle>
+          <ScreenTitle testID="workspace-header-title" style={styles.headerTitleText}>
+            {title}
+          </ScreenTitle>
           {showSubtitle ? (
             <Text
               testID="workspace-header-subtitle"
               style={styles.headerProjectTitle}
               numberOfLines={1}
+              ellipsizeMode="tail"
             >
               {subtitle}
             </Text>
@@ -4260,14 +4263,13 @@ const styles = StyleSheet.create((theme) => ({
     // header on the workspace bg (surfaceShell == surface0 in classic themes).
     backgroundColor: { xs: theme.colors.surfaceWorkspace, md: theme.colors.surfaceShell },
   },
-  // Workspace header overrides (passed to the shared ScreenHeader): on desktop new
-  // theme the header sits exposed on the #fafafa underlay with no bottom divider;
-  // classic + compact are byte-identical (surfaceShell == surface0, chromeDivider == 1).
+  // Workspace header overrides (passed to the shared ScreenHeader): exposed on the
+  // shell underlay on desktop new theme; no bottom divider under the control bar.
   workspaceHeaderSurface: {
     backgroundColor: { xs: theme.colors.surface0, md: theme.colors.surfaceShell },
   },
   workspaceHeaderRow: {
-    borderBottomWidth: { xs: theme.borderWidth[1], md: theme.shell.chromeDivider },
+    borderBottomWidth: 0,
     // New theme: a shorter, tighter header on desktop. Classic + mobile unchanged.
     height: {
       xs: HEADER_INNER_HEIGHT_MOBILE,
@@ -4303,8 +4305,9 @@ const styles = StyleSheet.create((theme) => ({
     flexShrink: 1,
   },
   headerTitleContainer: {
+    // Take all leftover header width after the sidebar toggle; menu cluster
+    // stays flexShrink:0 so text gets a stable, non-zero allocation.
     flex: 1,
-    flexShrink: 1,
     minWidth: 0,
     flexDirection: "row",
     alignItems: "center",
@@ -4312,22 +4315,19 @@ const styles = StyleSheet.create((theme) => ({
       xs: theme.spacing[1],
       md: theme.spacing[2],
     },
-    overflow: "hidden",
   },
   headerTitleTextGroup: {
+    // flex:1 (basis 0) so the group fills remaining space after the menu
+    // cluster — Text only ellipsizes against that real width, not content size.
+    flex: 1,
     minWidth: 0,
-    overflow: "hidden",
-    flexShrink: 1,
-    flexGrow: {
-      xs: 1,
-      md: 0,
-    },
     flexDirection: {
       xs: "column",
       md: "row",
     },
     alignItems: {
-      xs: "flex-start",
+      // Stretch so stacked mobile lines inherit the full group width.
+      xs: "stretch",
       md: "center",
     },
     justifyContent: "flex-start",
@@ -4336,15 +4336,31 @@ const styles = StyleSheet.create((theme) => ({
       md: theme.spacing[2],
     },
   },
+  // Prefer showing the primary title in full; only shrink after the project
+  // name has already given up free space (ScreenTitle defaults are more
+  // aggressive and cause needless ellipsis next to a flex sibling).
+  headerTitleText: {
+    flexGrow: 0,
+    flexShrink: 1,
+    flexBasis: "auto",
+    minWidth: 0,
+  },
   headerProjectTitle: {
     color: theme.colors.foregroundMuted,
     fontSize: {
       xs: theme.fontSize.sm,
       md: theme.fontSize.base,
     },
+    // Desktop: claim leftover row space after the title. Mobile: full-width
+    // under the title (parent alignItems:stretch). Ellipsis only when that
+    // allocated width is actually shorter than the string.
+    flexGrow: 1,
     flexShrink: 1,
+    flexBasis: {
+      xs: "auto",
+      md: 0,
+    },
     minWidth: 0,
-    maxWidth: "60%",
   },
   headerTitleSkeleton: {
     width: 220,
@@ -4383,6 +4399,7 @@ const styles = StyleSheet.create((theme) => ({
   compactHeaderMenuCluster: {
     flexDirection: "row",
     alignItems: "center",
+    flexShrink: 0,
     gap: {
       xs: 0,
       md: theme.spacing[2],

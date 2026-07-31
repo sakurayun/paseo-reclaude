@@ -42,7 +42,9 @@ interface MarkdownParagraphViewProps {
 
 const MARKDOWN_PARAGRAPH_RESET: ViewStyle = {};
 const MARKDOWN_TEXT_PARAGRAPH_RESET: TextStyle = {};
-const MARKDOWN_TEXT_PARAGRAPH_RENDER_SLACK: TextStyle = { paddingRight: 2, paddingBottom: 1 };
+// Extra slack on narrow widths where nested mono tokens re-wrap past the
+// measured paragraph height and clip the final glyph row.
+const MARKDOWN_TEXT_PARAGRAPH_RENDER_SLACK: TextStyle = { paddingRight: 4, paddingBottom: 4 };
 
 // Text-only paragraphs must be one native Text layout on Android. Rendering
 // inline marks as sibling Text nodes inside a wrapping View lets the last glyph
