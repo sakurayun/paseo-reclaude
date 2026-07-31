@@ -400,8 +400,8 @@ const styles = StyleSheet.create((theme) => ({
     paddingHorizontal: { xs: theme.spacing[3], md: theme.spacing[6] },
   },
   errorsBanner: {
-    borderWidth: 1,
-    borderColor: theme.colors.border,
+    // borderless card (new theme)
+    ...theme.shadow.sm,
     borderRadius: theme.borderRadius.lg,
     padding: theme.spacing[3],
     gap: theme.spacing[1],

@@ -157,7 +157,7 @@ export function CommitsSection({ serverId, cwd, onCommitPress }: CommitsSectionP
 
 const styles = StyleSheet.create((theme) => ({
   container: {
-    borderTopWidth: theme.borderWidth[1],
+    borderTopWidth: theme.shell.chromeDivider,
     borderTopColor: theme.colors.border,
   },
   header: {

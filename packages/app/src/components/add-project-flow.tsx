@@ -952,8 +952,7 @@ const styles = StyleSheet.create((theme) => ({
     width: 640,
     maxWidth: "92%",
     maxHeight: "80%",
-    borderWidth: 1,
-    borderColor: theme.colors.border,
+    // borderless card (new theme)
     borderRadius: theme.borderRadius.lg,
     backgroundColor: theme.colors.surface0,
     overflow: "hidden",
@@ -964,7 +963,7 @@ const styles = StyleSheet.create((theme) => ({
     paddingHorizontal: theme.spacing[4],
     paddingTop: theme.spacing[2],
     paddingBottom: theme.spacing[3],
-    borderBottomWidth: 1,
+    borderBottomWidth: theme.shell.chromeDivider,
     borderBottomColor: theme.colors.border,
     gap: theme.spacing[2],
   },
@@ -1049,7 +1048,7 @@ const styles = StyleSheet.create((theme) => ({
     flexWrap: "wrap",
     paddingHorizontal: theme.spacing[4],
     paddingVertical: theme.spacing[2],
-    borderTopWidth: 1,
+    borderTopWidth: theme.shell.chromeDivider,
     borderTopColor: theme.colors.border,
   },
   footerHint: {

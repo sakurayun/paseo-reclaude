@@ -379,7 +379,7 @@ const styles = StyleSheet.create((theme) => ({
     justifyContent: "space-between",
     gap: theme.spacing[2],
     paddingRight: theme.spacing[2],
-    borderBottomWidth: theme.borderWidth[1],
+    borderBottomWidth: theme.shell.chromeDivider,
     borderBottomColor: theme.colors.border,
     flexShrink: 0,
   },

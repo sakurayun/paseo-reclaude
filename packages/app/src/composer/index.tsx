@@ -2424,8 +2424,8 @@ const styles = StyleSheet.create((theme: Theme) => ({
     paddingVertical: theme.spacing[2],
     backgroundColor: theme.colors.surface1,
     borderRadius: theme.borderRadius.lg,
-    borderWidth: theme.borderWidth[1],
-    borderColor: theme.colors.border,
+    // borderless card (new theme)
+    ...theme.shadow.sm,
     gap: theme.spacing[2],
   },
   queueText: {

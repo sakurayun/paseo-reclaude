@@ -366,7 +366,7 @@ const styles = StyleSheet.create((theme) => ({
     justifyContent: "space-between",
     paddingHorizontal: theme.spacing[4],
     paddingVertical: theme.spacing[3],
-    borderBottomWidth: theme.borderWidth[1],
+    borderBottomWidth: theme.shell.chromeDivider,
     borderBottomColor: theme.colors.border,
   },
   toolbarTitle: {
@@ -378,8 +378,8 @@ const styles = StyleSheet.create((theme) => ({
     paddingHorizontal: theme.spacing[3],
     paddingVertical: theme.spacing[1],
     borderRadius: theme.borderRadius.full,
-    borderWidth: theme.borderWidth[1],
-    borderColor: theme.colors.border,
+    // borderless card (new theme)
+    ...theme.shadow.sm,
   },
   archivedToggleHovered: {
     backgroundColor: theme.colors.surface2,
@@ -412,8 +412,8 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[4],
   },
   section: {
-    borderWidth: theme.borderWidth[1],
-    borderColor: theme.colors.border,
+    // borderless card (new theme)
+    ...theme.shadow.sm,
     borderRadius: theme.borderRadius.lg,
     overflow: "hidden",
   },
@@ -465,7 +465,7 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[3],
     paddingHorizontal: theme.spacing[3],
     paddingVertical: theme.spacing[2],
-    borderTopWidth: theme.borderWidth[1],
+    borderTopWidth: theme.shell.chromeDivider,
     borderTopColor: theme.colors.border,
   },
   sessionRowHovered: {

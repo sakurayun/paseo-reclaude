@@ -186,8 +186,8 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.sm,
   },
   errorsBanner: {
-    borderWidth: 1,
-    borderColor: theme.colors.border,
+    // borderless card (new theme)
+    ...theme.shadow.sm,
     borderRadius: theme.borderRadius.lg,
     padding: theme.spacing[3],
     marginBottom: theme.spacing[3],

@@ -1083,7 +1083,7 @@ const styles = StyleSheet.create((theme) => ({
     paddingVertical: theme.spacing[2],
     borderRadius: theme.borderRadius.md,
     backgroundColor: theme.colors.surface2,
-    borderWidth: 1,
+    borderWidth: theme.shell.controlBorder,
     borderColor: theme.colors.destructive,
   },
   errorText: {

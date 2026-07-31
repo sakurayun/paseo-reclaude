@@ -572,8 +572,8 @@ const styles = StyleSheet.create((theme) => ({
     paddingHorizontal: theme.spacing[3],
     borderRadius: theme.borderRadius.md,
     backgroundColor: theme.colors.surface1,
-    borderWidth: theme.borderWidth[1],
-    borderColor: theme.colors.border,
+    // borderless card (new theme)
+    ...theme.shadow.sm,
   },
   filterTriggerHovered: {
     backgroundColor: theme.colors.surface2,

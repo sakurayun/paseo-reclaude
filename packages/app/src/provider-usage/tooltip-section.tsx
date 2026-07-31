@@ -56,7 +56,7 @@ export function ProviderUsageTooltipSection({
 
 const styles = StyleSheet.create((theme) => ({
   divider: {
-    height: 1,
+    height: theme.shell.chromeDivider,
     // Same token the popover draws its own outline with, so the rule reads as the
     // popover's edge. `border` is invisible here (equals the popover background).
     backgroundColor: theme.colors.borderAccent,

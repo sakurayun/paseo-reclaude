@@ -12,7 +12,7 @@ export function SidebarSeparator() {
 
 const styles = StyleSheet.create((theme) => ({
   line: {
-    borderBottomWidth: 1,
+    borderBottomWidth: theme.shell.chromeDivider,
     borderBottomColor: theme.colors.border,
   },
 }));

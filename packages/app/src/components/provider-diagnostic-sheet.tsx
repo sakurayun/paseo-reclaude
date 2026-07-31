@@ -884,8 +884,8 @@ const sheetStyles = StyleSheet.create((theme) => ({
     paddingHorizontal: theme.spacing[4],
     paddingVertical: theme.spacing[3],
     color: theme.colors.foreground,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
+    // borderless card (new theme)
+    ...theme.shadow.sm,
     fontSize: theme.fontSize.sm,
   },
   iconButton: {

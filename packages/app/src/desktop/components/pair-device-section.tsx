@@ -274,8 +274,8 @@ const styles = StyleSheet.create((theme) => ({
     width: 320,
     height: 320,
     borderRadius: theme.borderRadius.lg,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
+    // borderless card (new theme)
+    ...theme.shadow.sm,
     backgroundColor: theme.colors.surface0,
     padding: theme.spacing[2],
   },
@@ -291,8 +291,8 @@ const styles = StyleSheet.create((theme) => ({
   inputWrapper: {
     flex: 1,
     borderRadius: theme.borderRadius.md,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
+    // borderless card (new theme)
+    ...theme.shadow.sm,
     backgroundColor: theme.colors.surface0,
     overflow: "hidden",
   },

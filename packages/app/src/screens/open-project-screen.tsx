@@ -227,8 +227,8 @@ const styles = StyleSheet.create((theme) => ({
     minHeight: { xs: 0, md: 132 },
     padding: theme.spacing[4],
     backgroundColor: theme.colors.surface1,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
+    // borderless card (new theme)
+    ...theme.shadow.sm,
     borderRadius: theme.borderRadius.xl,
     gap: theme.spacing[3],
   },

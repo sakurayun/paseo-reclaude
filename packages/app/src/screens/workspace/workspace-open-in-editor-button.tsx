@@ -287,7 +287,7 @@ const styles = StyleSheet.create((theme) => ({
     flexDirection: "row",
     alignItems: "stretch",
     borderRadius: theme.borderRadius.md,
-    borderWidth: theme.borderWidth[1],
+    borderWidth: theme.shell.controlBorder,
     borderColor: theme.colors.borderAccent,
     overflow: "hidden",
   },
@@ -331,7 +331,7 @@ const styles = StyleSheet.create((theme) => ({
     width: 28,
     alignItems: "center",
     justifyContent: "center",
-    borderLeftWidth: theme.borderWidth[1],
+    borderLeftWidth: theme.shell.chromeDivider,
     borderLeftColor: theme.colors.borderAccent,
   },
   splitButtonCaretHovered: {

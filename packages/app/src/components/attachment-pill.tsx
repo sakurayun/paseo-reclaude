@@ -151,7 +151,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   frame: {
     borderRadius: theme.borderRadius.md,
-    borderWidth: theme.borderWidth[1],
+    borderWidth: theme.shell.controlBorder,
     borderColor: theme.colors.borderAccent,
     overflow: "hidden",
   },
@@ -198,8 +198,8 @@ const styles = StyleSheet.create((theme) => ({
     height: 24,
     borderRadius: 12,
     backgroundColor: theme.colors.surface2,
-    borderWidth: theme.borderWidth[1],
-    borderColor: theme.colors.border,
+    // borderless card (new theme)
+    ...theme.shadow.sm,
     alignItems: "center",
     justifyContent: "center",
     zIndex: 1,

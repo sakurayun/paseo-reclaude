@@ -512,7 +512,7 @@ export const sidebarWorkspaceRowStyles = StyleSheet.create((theme) => ({
     alignItems: "center",
     justifyContent: "center",
     borderRadius: theme.borderRadius.sm,
-    borderWidth: 1,
+    borderWidth: theme.shell.controlBorder,
     borderColor: theme.colors.surface2,
     backgroundColor: theme.colors.surface0,
     flexShrink: 0,
@@ -648,7 +648,7 @@ const styles = StyleSheet.create((theme) => ({
   statusDotOverlay: {
     position: "absolute",
     borderRadius: theme.borderRadius.full,
-    borderWidth: 1,
+    borderWidth: theme.shell.controlBorder,
   },
   standaloneStatusDot: {
     width: 8,

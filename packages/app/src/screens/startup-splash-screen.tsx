@@ -246,8 +246,8 @@ const styles = StyleSheet.create((theme) => ({
     height: 200,
     borderRadius: theme.borderRadius.xl,
     backgroundColor: theme.colors.surface1,
-    borderWidth: theme.borderWidth[1],
-    borderColor: theme.colors.border,
+    // borderless card (new theme)
+    ...theme.shadow.sm,
     overflow: "hidden",
   },
   logsScroll: {

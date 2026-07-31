@@ -78,11 +78,11 @@ const styles = StyleSheet.create((theme) => ({
     minHeight: 0,
     backgroundColor: theme.colors.surface1,
     borderRadius: theme.borderRadius.xl,
-    borderWidth: 1,
+    borderWidth: theme.shell.controlBorder,
     borderColor: theme.colors.surface2,
   },
   headerContainer: {
-    borderBottomWidth: 1,
+    borderBottomWidth: theme.shell.chromeDivider,
     borderBottomColor: theme.colors.surface2,
   },
   headerRow: {
@@ -141,7 +141,7 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[2],
     paddingHorizontal: theme.spacing[3],
     paddingVertical: theme.spacing[2],
-    borderBottomWidth: 1,
+    borderBottomWidth: theme.shell.chromeDivider,
     borderBottomColor: theme.colors.border,
   },
   inlineTitle: {
@@ -197,7 +197,7 @@ const styles = StyleSheet.create((theme) => ({
   footer: {
     paddingHorizontal: theme.spacing[SHEET_HORIZONTAL_PADDING_SCALE],
     paddingVertical: theme.spacing[3],
-    borderTopWidth: 1,
+    borderTopWidth: theme.shell.chromeDivider,
     borderTopColor: theme.colors.surface2,
     flexDirection: "row",
     alignItems: "center",

@@ -1043,8 +1043,8 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     justifyContent: "center",
     borderRadius: theme.borderRadius.sm,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
+    // borderless card (new theme)
+    ...theme.shadow.sm,
   },
   repoTooltipBody: {
     maxWidth: 280,
@@ -1071,8 +1071,8 @@ const styles = StyleSheet.create((theme) => ({
   },
   stateBadge: {
     borderRadius: theme.borderRadius.sm,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
+    // borderless card (new theme)
+    ...theme.shadow.sm,
     paddingHorizontal: theme.spacing[1],
     paddingVertical: 1,
   },
@@ -1129,8 +1129,8 @@ const styles = StyleSheet.create((theme) => ({
     paddingHorizontal: theme.spacing[2],
     paddingVertical: theme.spacing[1],
     borderRadius: theme.borderRadius.md,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
+    // borderless card (new theme)
+    ...theme.shadow.sm,
   },
   actionButtonPressed: {
     backgroundColor: theme.colors.surfaceSidebarHover,
@@ -1151,8 +1151,8 @@ const styles = StyleSheet.create((theme) => ({
     justifyContent: "center",
     paddingHorizontal: theme.spacing[3],
     borderRadius: theme.borderRadius.md,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
+    // borderless card (new theme)
+    ...theme.shadow.sm,
   },
   retryButtonText: {
     fontSize: theme.fontSize.sm,
@@ -1190,8 +1190,8 @@ const styles = StyleSheet.create((theme) => ({
   messageInput: {
     minHeight: 56,
     maxHeight: 120,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
+    // borderless card (new theme)
+    ...theme.shadow.sm,
     borderRadius: theme.borderRadius.md,
     paddingHorizontal: theme.spacing[2],
     paddingVertical: theme.spacing[2],
@@ -1268,8 +1268,8 @@ const styles = StyleSheet.create((theme) => ({
   listRowBadge: {
     fontSize: 10,
     color: theme.colors.foregroundMuted,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
+    // borderless card (new theme)
+    ...theme.shadow.sm,
     borderRadius: theme.borderRadius.sm,
     paddingHorizontal: theme.spacing[1],
     paddingVertical: 1,

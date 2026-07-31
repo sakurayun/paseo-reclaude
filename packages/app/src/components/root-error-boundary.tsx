@@ -121,7 +121,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   messageBox: {
     gap: theme.spacing[2],
-    borderWidth: 1,
+    borderWidth: theme.shell.controlBorder,
     borderColor: theme.colors.borderAccent,
     borderRadius: theme.borderRadius.lg,
     backgroundColor: theme.colors.surface1,

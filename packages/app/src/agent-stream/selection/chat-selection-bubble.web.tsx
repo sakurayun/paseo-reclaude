@@ -107,8 +107,8 @@ const styles = StyleSheet.create((theme: Theme) => ({
     flexDirection: "row",
     alignItems: "stretch",
     backgroundColor: theme.colors.surface1,
-    borderWidth: theme.borderWidth[1],
-    borderColor: theme.colors.border,
+    // borderless card (new theme)
+    ...theme.shadow.sm,
     borderRadius: theme.borderRadius.lg,
     overflow: "hidden",
     boxShadow: "0 4px 16px rgba(0, 0, 0, 0.18)",

@@ -1082,7 +1082,7 @@ const styles = StyleSheet.create((theme) => ({
     flex: 0,
     flexGrow: 0,
     flexShrink: 0,
-    borderLeftWidth: 1,
+    borderLeftWidth: theme.shell.chromeDivider,
     borderLeftColor: theme.colors.border,
   },
   splitResizeHandle: {
@@ -1103,7 +1103,7 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     justifyContent: "space-between",
     paddingRight: theme.spacing[3],
-    borderBottomWidth: 1,
+    borderBottomWidth: theme.shell.chromeDivider,
     borderBottomColor: theme.colors.border,
   },
   sortTrigger: {
@@ -1154,8 +1154,8 @@ const styles = StyleSheet.create((theme) => ({
   },
   retryButton: {
     borderRadius: theme.borderRadius.full,
-    borderWidth: theme.borderWidth[1],
-    borderColor: theme.colors.border,
+    // borderless card (new theme)
+    ...theme.shadow.sm,
     paddingHorizontal: theme.spacing[3],
     paddingVertical: theme.spacing[1],
   },
@@ -1292,7 +1292,7 @@ const styles = StyleSheet.create((theme) => ({
     justifyContent: "space-between",
     paddingHorizontal: theme.spacing[4],
     paddingVertical: theme.spacing[3],
-    borderBottomWidth: theme.borderWidth[1],
+    borderBottomWidth: theme.shell.chromeDivider,
     borderBottomColor: theme.colors.border,
   },
   sheetTitle: {

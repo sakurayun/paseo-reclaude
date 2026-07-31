@@ -84,8 +84,8 @@ const styles = StyleSheet.create((theme) => ({
     flexDirection: "row",
     alignItems: "flex-start",
     gap: theme.spacing[3],
-    borderWidth: theme.borderWidth[1],
-    borderColor: theme.colors.border,
+    // borderless card (new theme)
+    ...theme.shadow.sm,
     backgroundColor: "transparent",
     borderRadius: theme.borderRadius.xl,
     paddingVertical: theme.spacing[3],

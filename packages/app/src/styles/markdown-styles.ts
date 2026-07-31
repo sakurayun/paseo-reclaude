@@ -68,7 +68,7 @@ export function createMarkdownStyles(theme: Theme) {
       marginTop: theme.spacing[6],
       marginBottom: theme.spacing[3],
       lineHeight: lh(theme.fontSize["3xl"], HEADING_LINE_HEIGHT),
-      borderBottomWidth: 1,
+      borderBottomWidth: theme.shell.chromeDivider,
       borderBottomColor: theme.colors.border,
       paddingBottom: theme.spacing[2],
     },
@@ -81,7 +81,7 @@ export function createMarkdownStyles(theme: Theme) {
       marginTop: theme.spacing[6],
       marginBottom: theme.spacing[3],
       lineHeight: lh(theme.fontSize["2xl"], HEADING_LINE_HEIGHT),
-      borderBottomWidth: 1,
+      borderBottomWidth: theme.shell.chromeDivider,
       borderBottomColor: theme.colors.border,
       paddingBottom: theme.spacing[2],
     },
@@ -202,8 +202,8 @@ export function createMarkdownStyles(theme: Theme) {
       color: theme.colors.foreground,
       padding: theme.spacing[3],
       borderRadius: theme.borderRadius.md,
-      borderWidth: 1,
-      borderColor: theme.colors.border,
+      // borderless card (new theme)
+      ...theme.shadow.sm,
       fontFamily: theme.fontFamily.mono,
       fontSize: theme.fontSize.code,
       marginVertical: theme.spacing[3],
@@ -227,8 +227,8 @@ export function createMarkdownStyles(theme: Theme) {
     //    1px (tr marginRight: -1) so the rightmost cell's line is clipped by
     //    the table's overflow:hidden instead of doubling the frame.
     table: {
-      borderWidth: 1,
-      borderColor: theme.colors.border,
+      // borderless card (new theme)
+      ...theme.shadow.sm,
       borderRadius: theme.borderRadius.md,
       marginVertical: theme.spacing[3],
       overflow: "hidden" as const,
@@ -243,7 +243,7 @@ export function createMarkdownStyles(theme: Theme) {
     th: {
       ...webSelectableTextStyle,
       padding: theme.spacing[2],
-      borderRightWidth: 1,
+      borderRightWidth: theme.shell.chromeDivider,
       borderColor: theme.colors.border,
       backgroundColor: theme.colors.surface2,
       fontWeight: theme.fontWeight.semibold,
@@ -257,7 +257,7 @@ export function createMarkdownStyles(theme: Theme) {
       flexDirection: "row" as const,
       marginRight: -1,
       // react-native-markdown-display merges these styles over its defaults,
-      // and the default `tr` ships borderBottomWidth: 1 + black borderColor —
+      // and the default `tr` ships borderBottomWidth: theme.shell.chromeDivider + black borderColor —
       // zero it explicitly or every row grows a dark bottom line.
       borderBottomWidth: 0,
       borderColor: theme.colors.border,
@@ -266,8 +266,8 @@ export function createMarkdownStyles(theme: Theme) {
     td: {
       ...webSelectableTextStyle,
       padding: theme.spacing[2],
-      borderTopWidth: 1,
-      borderRightWidth: 1,
+      borderTopWidth: theme.shell.chromeDivider,
+      borderRightWidth: theme.shell.chromeDivider,
       borderColor: theme.colors.border,
       color: theme.colors.foreground,
       fontSize: theme.fontSize.sm,
@@ -343,7 +343,7 @@ export function createMarkdownStyles(theme: Theme) {
 
     hr: {
       backgroundColor: theme.colors.border,
-      height: 1,
+      height: theme.shell.chromeDivider,
       marginVertical: theme.spacing[6],
     },
 

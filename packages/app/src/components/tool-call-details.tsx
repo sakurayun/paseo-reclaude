@@ -1107,7 +1107,7 @@ const styles = StyleSheet.create((theme) => {
       backgroundColor: theme.colors.surface2,
     },
     jsonScrollError: {
-      borderWidth: theme.borderWidth[1],
+      borderWidth: theme.shell.controlBorder,
       borderColor: theme.colors.destructive,
     },
     jsonContent: {

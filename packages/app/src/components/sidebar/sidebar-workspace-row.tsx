@@ -482,8 +482,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   workspaceRowDragging: {
     backgroundColor: theme.colors.surface2,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
+    // borderless card (new theme)
     transform: [{ scale: 1.02 }],
     zIndex: 3,
     ...theme.shadow.md,

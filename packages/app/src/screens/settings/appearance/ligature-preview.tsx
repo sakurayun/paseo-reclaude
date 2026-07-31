@@ -205,7 +205,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   codeBlock: {
     borderRadius: theme.borderRadius.lg,
-    borderWidth: theme.borderWidth[1],
+    borderWidth: theme.shell.controlBorder,
     paddingVertical: theme.spacing[3],
     paddingHorizontal: theme.spacing[3],
     gap: theme.spacing[1],

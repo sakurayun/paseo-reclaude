@@ -277,8 +277,8 @@ const styles = StyleSheet.create((theme: Theme) => ({
   logScroll: {
     maxHeight: 260,
     borderRadius: theme.borderRadius.lg,
-    borderWidth: theme.borderWidth[1],
-    borderColor: theme.colors.border,
+    // borderless card (new theme)
+    ...theme.shadow.sm,
     backgroundColor: theme.colors.surface1,
   },
   logContent: {
@@ -294,8 +294,8 @@ const styles = StyleSheet.create((theme: Theme) => ({
     gap: theme.spacing[2],
     padding: theme.spacing[3],
     borderRadius: theme.borderRadius.lg,
-    borderWidth: theme.borderWidth[1],
-    borderColor: theme.colors.border,
+    // borderless card (new theme)
+    ...theme.shadow.sm,
     backgroundColor: theme.colors.surface1,
   },
   actionHeader: {
@@ -338,8 +338,8 @@ const styles = StyleSheet.create((theme: Theme) => ({
     paddingHorizontal: theme.spacing[4],
     paddingVertical: theme.spacing[2],
     borderRadius: theme.borderRadius.md,
-    borderWidth: theme.borderWidth[1],
-    borderColor: theme.colors.border,
+    // borderless card (new theme)
+    ...theme.shadow.sm,
   },
   secondaryButtonText: {
     fontSize: theme.fontSize.sm,

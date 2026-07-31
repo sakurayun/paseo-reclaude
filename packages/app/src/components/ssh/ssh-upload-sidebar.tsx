@@ -736,8 +736,8 @@ const styles = StyleSheet.create((theme) => ({
     paddingVertical: theme.spacing[2],
     borderRadius: theme.borderRadius.full,
     backgroundColor: theme.colors.surface1,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
+    // borderless card (new theme)
+    ...theme.shadow.sm,
   },
   floatingPillText: {
     color: theme.colors.foreground,

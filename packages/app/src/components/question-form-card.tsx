@@ -533,9 +533,10 @@ export function QuestionFormCard({ permission, onRespond, isResponding }: Questi
 const styles = StyleSheet.create((theme) => ({
   container: {
     padding: theme.spacing[3],
-    borderRadius: theme.spacing[2],
-    borderWidth: 1,
+    borderRadius: theme.borderRadius.xl,
+    backgroundColor: theme.colors.surface1,
     gap: theme.spacing[3],
+    ...theme.shadow.sm,
   },
   questionBlock: {
     gap: theme.spacing[2],
@@ -578,7 +579,7 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     justifyContent: "center",
     borderRadius: 999,
-    borderWidth: theme.borderWidth[1],
+    borderWidth: theme.shell.controlBorder,
   },
   questionNavText: {
     fontSize: theme.fontSize.xs,
@@ -618,7 +619,7 @@ const styles = StyleSheet.create((theme) => ({
     marginLeft: "auto",
   },
   otherInput: {
-    borderWidth: 1,
+    borderWidth: theme.shell.controlBorder,
     borderRadius: theme.borderRadius.lg,
     paddingHorizontal: theme.spacing[3],
     paddingVertical: theme.spacing[3],
@@ -637,7 +638,7 @@ const styles = StyleSheet.create((theme) => ({
     paddingHorizontal: theme.spacing[3],
     borderRadius: theme.borderRadius.md,
     alignItems: "center",
-    borderWidth: theme.borderWidth[1],
+    borderWidth: theme.shell.controlBorder,
   },
   actionContent: {
     flexDirection: "row",

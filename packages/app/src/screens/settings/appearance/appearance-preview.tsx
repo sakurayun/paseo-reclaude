@@ -181,8 +181,8 @@ const styles = StyleSheet.create((theme) => ({
   card: {
     backgroundColor: theme.colors.surface1,
     borderRadius: theme.borderRadius.lg,
-    borderWidth: theme.borderWidth[1],
-    borderColor: theme.colors.border,
+    // borderless card (new theme)
+    ...theme.shadow.sm,
     overflow: "hidden",
     paddingVertical: theme.spacing[2],
   },

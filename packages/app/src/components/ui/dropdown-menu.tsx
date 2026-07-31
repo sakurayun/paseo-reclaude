@@ -970,7 +970,7 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.foregroundMuted,
   },
   separator: {
-    height: 1,
+    height: theme.shell.chromeDivider,
     backgroundColor: theme.colors.border,
   },
   hintContainer: {
@@ -992,7 +992,7 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[2],
     paddingHorizontal: theme.spacing[3],
     paddingVertical: theme.spacing[2],
-    borderWidth: theme.borderWidth[1],
+    borderWidth: theme.shell.controlBorder,
     borderColor: "transparent",
   },
   itemHovered: {

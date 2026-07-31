@@ -167,8 +167,8 @@ const styles = StyleSheet.create((theme) => ({
     height: 32,
     borderRadius: 16,
     backgroundColor: theme.colors.surface2,
-    borderWidth: theme.borderWidth[1],
-    borderColor: theme.colors.border,
+    // borderless card (new theme)
+    ...theme.shadow.sm,
     alignItems: "center",
     justifyContent: "center",
     zIndex: 1,

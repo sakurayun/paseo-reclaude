@@ -245,7 +245,7 @@ const styles = StyleSheet.create((theme) => ({
     width: DEFAULT_STATUS_DOT_SIZE,
     height: DEFAULT_STATUS_DOT_SIZE,
     borderRadius: theme.borderRadius.full,
-    borderWidth: 1,
+    borderWidth: theme.shell.controlBorder,
   },
   statusDotBorderDefault: {
     borderColor: theme.colors.surface0,

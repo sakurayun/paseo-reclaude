@@ -1988,7 +1988,7 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     gap: theme.spacing[2],
     paddingHorizontal: theme.spacing[2],
-    borderBottomWidth: 1,
+    borderBottomWidth: theme.shell.chromeDivider,
     borderBottomColor: theme.colors.border,
     backgroundColor: theme.colors.surface0,
   },
@@ -2026,8 +2026,8 @@ const styles = StyleSheet.create((theme) => ({
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: theme.colors.surface1,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
+    // borderless card (new theme)
+    ...theme.shadow.sm,
   },
   urlInput: {
     flex: 1,
@@ -2039,7 +2039,7 @@ const styles = StyleSheet.create((theme) => ({
   errorRow: {
     paddingHorizontal: theme.spacing[2],
     paddingVertical: theme.spacing[1],
-    borderBottomWidth: 1,
+    borderBottomWidth: theme.shell.chromeDivider,
     borderBottomColor: theme.colors.border,
     backgroundColor: theme.colors.surface0,
   },
@@ -2082,8 +2082,8 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[2],
     padding: theme.spacing[3],
     borderRadius: theme.borderRadius.lg,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
+    // borderless card (new theme)
+    ...theme.shadow.sm,
     backgroundColor: theme.colors.surface0,
     shadowColor: "#000",
     shadowOpacity: 0.18,
@@ -2119,8 +2119,8 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.sm,
     color: theme.colors.foreground,
     borderRadius: theme.borderRadius.md,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
+    // borderless card (new theme)
+    ...theme.shadow.sm,
     backgroundColor: theme.colors.surface1,
     paddingHorizontal: theme.spacing[2],
     paddingVertical: theme.spacing[2],

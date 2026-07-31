@@ -231,9 +231,10 @@ const styles = StyleSheet.create((theme) => ({
   container: {
     marginVertical: theme.spacing[3],
     padding: theme.spacing[3],
-    borderRadius: theme.spacing[2],
-    borderWidth: 1,
+    borderRadius: theme.borderRadius.xl,
+    backgroundColor: theme.colors.surface1,
     gap: theme.spacing[2],
+    ...theme.shadow.sm,
   },
   containerCompact: {
     marginVertical: 0,

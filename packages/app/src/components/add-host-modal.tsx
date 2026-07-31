@@ -60,8 +60,8 @@ const styles = StyleSheet.create((theme) => ({
     paddingHorizontal: theme.spacing[4],
     paddingVertical: theme.spacing[3],
     color: theme.colors.foreground,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
+    // borderless card (new theme)
+    ...theme.shadow.sm,
   },
   portRow: {
     flexDirection: "row",
@@ -90,8 +90,8 @@ const styles = StyleSheet.create((theme) => ({
     justifyContent: "center",
     borderRadius: theme.borderRadius.lg,
     backgroundColor: theme.colors.surface2,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
+    // borderless card (new theme)
+    ...theme.shadow.sm,
   },
   checkboxRow: {
     flexDirection: "row",
@@ -102,8 +102,8 @@ const styles = StyleSheet.create((theme) => ({
     width: 22,
     height: 22,
     borderRadius: theme.borderRadius.sm,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
+    // borderless card (new theme)
+    ...theme.shadow.sm,
     alignItems: "center",
     justifyContent: "center",
   },

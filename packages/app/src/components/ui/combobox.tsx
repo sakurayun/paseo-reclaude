@@ -1672,7 +1672,7 @@ const styles = StyleSheet.create((theme) => ({
     // Transparent on web so the frosted panel shows through; the bottom sheet
     // on native keeps its opaque band.
     backgroundColor: IS_WEB ? "transparent" : theme.colors.surface1,
-    borderBottomWidth: 1,
+    borderBottomWidth: theme.shell.chromeDivider,
     borderBottomColor: theme.colors.border,
     ...(IS_WEB ? {} : { marginHorizontal: theme.spacing[1] }),
   },
@@ -1757,7 +1757,7 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.sm,
   },
   footer: {
-    borderTopWidth: 1,
+    borderTopWidth: theme.shell.chromeDivider,
     borderTopColor: theme.colors.border,
   },
   bottomSheetHeader: {

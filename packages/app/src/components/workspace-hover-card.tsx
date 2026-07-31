@@ -572,7 +572,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   card: {
     backgroundColor: theme.colors.surface1,
-    borderWidth: 1,
+    borderWidth: theme.shell.controlBorder,
     borderColor: theme.colors.borderAccent,
     borderRadius: theme.borderRadius.lg,
     paddingTop: theme.spacing[2],
@@ -623,7 +623,7 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.foreground,
   },
   separator: {
-    height: 1,
+    height: theme.shell.chromeDivider,
     backgroundColor: theme.colors.border,
   },
   listRowHovered: {

@@ -688,7 +688,7 @@ const styles = StyleSheet.create((theme) => ({
     width: 18,
     height: 18,
     marginTop: 2,
-    borderWidth: theme.borderWidth[1],
+    borderWidth: theme.shell.controlBorder,
     borderRadius: theme.borderRadius.sm,
     borderColor: theme.colors.foregroundMuted,
     backgroundColor: "transparent",

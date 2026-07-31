@@ -160,8 +160,8 @@ const styles = StyleSheet.create((theme) => ({
     padding: theme.spacing[4],
     borderRadius: theme.borderRadius.xl,
     backgroundColor: theme.colors.surface2,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
+    // borderless card (new theme)
+    ...theme.shadow.sm,
   },
   optionDisabled: {
     opacity: 0.5,
@@ -187,8 +187,8 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.sm,
   },
   destInput: {
-    borderWidth: 1,
-    borderColor: theme.colors.border,
+    // borderless card (new theme)
+    ...theme.shadow.sm,
     borderRadius: theme.borderRadius.lg,
     paddingHorizontal: theme.spacing[3],
     paddingVertical: theme.spacing[2],

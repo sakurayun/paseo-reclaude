@@ -727,8 +727,8 @@ export function createSharedMarkdownRules(): RenderRules {
 
 const detailsStyles = StyleSheet.create((theme) => ({
   container: {
-    borderWidth: 1,
-    borderColor: theme.colors.border,
+    // borderless card (new theme)
+    ...theme.shadow.sm,
     borderRadius: theme.borderRadius.md,
     marginBottom: theme.spacing[2],
     overflow: "hidden",

@@ -2032,7 +2032,7 @@ const styles = StyleSheet.create((theme) => ({
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: theme.spacing[1],
-    borderRightWidth: 1,
+    borderRightWidth: theme.shell.chromeDivider,
     borderRightColor: theme.colors.border,
   },
   inlineAddButton: {

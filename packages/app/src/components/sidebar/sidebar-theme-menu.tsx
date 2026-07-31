@@ -204,8 +204,8 @@ const styles = StyleSheet.create((theme) => ({
     width: ICON_SIZE.md,
     height: ICON_SIZE.md,
     borderRadius: ICON_SIZE.md / 2,
-    borderWidth: theme.borderWidth[1],
-    borderColor: theme.colors.border,
+    // borderless card (new theme)
+    ...theme.shadow.sm,
   },
   tooltipRow: {
     flexDirection: "row",

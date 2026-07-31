@@ -1416,7 +1416,7 @@ const expandableBadgeStylesheet = StyleSheet.create((theme, rt) => ({
   },
   pressable: {
     borderRadius: theme.borderRadius.xl,
-    borderWidth: theme.borderWidth[1],
+    borderWidth: theme.shell.controlBorder,
     borderColor: "transparent",
     paddingHorizontal: theme.spacing[2],
     paddingVertical: theme.spacing[1],
@@ -2362,8 +2362,8 @@ const activityLogStylesheet = StyleSheet.create((theme) => ({
     backgroundColor: "rgba(0, 0, 0, 0.5)",
     borderRadius: theme.borderRadius.base,
     padding: theme.spacing[2],
-    borderWidth: theme.borderWidth[1],
-    borderColor: theme.colors.border,
+    // borderless card (new theme)
+    ...theme.shadow.sm,
   },
   metadataText: {
     color: theme.colors.foreground,
@@ -2494,7 +2494,7 @@ const compactionStylesheet = StyleSheet.create((theme) => ({
   },
   line: {
     flex: 1,
-    height: 1,
+    height: theme.shell.chromeDivider,
     backgroundColor: theme.colors.border,
   },
   label: {

@@ -243,7 +243,7 @@ const styles = StyleSheet.create((theme) => ({
     minHeight: FIXED_MODEL_VIEWPORT_HEIGHT,
   },
   modelViewportDivider: {
-    height: 1,
+    height: theme.shell.chromeDivider,
     flexShrink: 0,
     backgroundColor: theme.colors.border,
   },

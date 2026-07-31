@@ -4417,8 +4417,8 @@ const styles = StyleSheet.create((theme) => ({
     width: 30,
     height: 30,
     borderRadius: theme.borderRadius.md,
-    borderWidth: theme.borderWidth[1],
-    borderColor: theme.colors.border,
+    // borderless card (new theme)
+    ...theme.shadow.sm,
     backgroundColor: theme.colors.surface1,
     alignItems: "center",
     justifyContent: "center",
@@ -4448,7 +4448,7 @@ const styles = StyleSheet.create((theme) => ({
   explorerTooltipShortcut: {},
   mobileTabsRow: {
     backgroundColor: theme.colors.surface0,
-    borderBottomWidth: theme.borderWidth[1],
+    borderBottomWidth: theme.shell.chromeDivider,
     borderBottomColor: theme.colors.border,
   },
   switcherTrigger: {
@@ -4496,7 +4496,7 @@ const styles = StyleSheet.create((theme) => ({
     height: 16,
   },
   tabsContainer: {
-    borderBottomWidth: 1,
+    borderBottomWidth: theme.shell.chromeDivider,
     borderBottomColor: theme.colors.border,
     backgroundColor: theme.colors.surface0,
     flexDirection: "row",

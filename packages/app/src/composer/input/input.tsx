@@ -2171,7 +2171,7 @@ const styles = StyleSheet.create((theme: Theme) => ({
     alignItems: "center",
     flexWrap: "wrap",
     gap: theme.spacing[1],
-    borderTopWidth: theme.borderWidth[1],
+    borderTopWidth: theme.shell.chromeDivider,
     borderTopColor: theme.colors.borderAccent,
     marginHorizontal: -theme.spacing[3],
     paddingHorizontal: theme.spacing[3],

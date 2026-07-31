@@ -836,8 +836,8 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor: theme.colors.surface0,
     borderTopLeftRadius: theme.borderRadius.xl,
     borderTopRightRadius: theme.borderRadius.xl,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
+    // borderless card (new theme)
+    ...theme.shadow.sm,
   },
   sheetHandle: {
     backgroundColor: theme.colors.surface2,
@@ -858,7 +858,7 @@ const styles = StyleSheet.create((theme) => ({
     letterSpacing: 0.6,
   },
   separator: {
-    height: 1,
+    height: theme.shell.chromeDivider,
     backgroundColor: theme.colors.border,
   },
   hintContainer: {
@@ -880,7 +880,7 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[2],
     paddingHorizontal: theme.spacing[3],
     paddingVertical: theme.spacing[2],
-    borderWidth: theme.borderWidth[1],
+    borderWidth: theme.shell.controlBorder,
     borderColor: "transparent",
   },
   itemHovered: {

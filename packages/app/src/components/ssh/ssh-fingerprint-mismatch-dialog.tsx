@@ -95,8 +95,8 @@ const styles = StyleSheet.create((theme: Theme) => ({
     padding: theme.spacing[3],
     borderRadius: theme.borderRadius.lg,
     backgroundColor: theme.colors.surface1,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
+    // borderless card (new theme)
+    ...theme.shadow.sm,
   },
   fingerprintLabel: {
     fontSize: theme.fontSize.xs,

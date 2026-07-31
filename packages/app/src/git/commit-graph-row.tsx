@@ -633,7 +633,7 @@ const styles = StyleSheet.create((theme) => ({
   badge: {
     maxWidth: 140,
     borderRadius: theme.borderRadius.sm,
-    borderWidth: 1,
+    borderWidth: theme.shell.controlBorder,
     paddingHorizontal: theme.spacing[1],
     paddingVertical: 1,
   },

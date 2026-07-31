@@ -310,6 +310,27 @@ all token-driven and classic-identical:
   `git/source-control-pane.tsx`, `git/pull-request-panel/pane.tsx`,
   `git/diff-pane.tsx`.
 
+## Global chrome: no card outlines, no structural dividers
+
+Broader pass (2026-07) so **every surface** matches the floating new-theme look,
+not only settings / sidebars:
+
+- **Card outlines** — resting `borderWidth: 1` + `borderColor: border` pairs on
+  panels/cards were removed. Separation is `surface1` fill + `theme.shadow.sm`
+  (or `settingsStyles.cardSurface` / `settingsStyles.row`). Prefer
+  `settingsStyles.card` + per-row cards over one big bordered box.
+- **Structural dividers** — horizontal and vertical chrome lines use
+  `theme.shell.chromeDivider` (always **0** under new-theme shell). That includes
+  headers, tab bars, pane splits, list separators, menu separators, and markdown
+  table rules. Whitespace / gap / cards replace the line.
+- **Control outlines** — inputs and similar resting outlines use
+  `theme.shell.controlBorder` (also **0**). Functional chips/badges that need a
+  closed shape may still use a 1px outline intentionally (e.g. outline buttons).
+- **When adding UI** — do not hardcode `borderWidth: 1` or `height: 1` dividers.
+  Use `chromeDivider` / `controlBorder` / `settingsStyles.cardSurface`. New
+  regions should be independent rounded cards with gap, not boxed lists with
+  internal hairlines.
+
 ## i18n
 
 `settings.appearance.newTheme.{title,label,hint,accessibilityLabel}` in all six

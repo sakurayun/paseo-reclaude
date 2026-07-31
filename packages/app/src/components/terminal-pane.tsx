@@ -1375,7 +1375,7 @@ const styles = StyleSheet.create((theme) => ({
   errorRow: {
     paddingHorizontal: theme.spacing[3],
     paddingVertical: theme.spacing[1],
-    borderTopWidth: 1,
+    borderTopWidth: theme.shell.chromeDivider,
     borderTopColor: theme.colors.border,
     backgroundColor: theme.colors.surface1,
   },
@@ -1384,7 +1384,7 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.xs,
   },
   keyboardContainer: {
-    borderTopWidth: 1,
+    borderTopWidth: theme.shell.chromeDivider,
     borderTopColor: theme.colors.border,
     backgroundColor: theme.colors.surface0,
     paddingHorizontal: theme.spacing[2],
@@ -1403,8 +1403,8 @@ const styles = StyleSheet.create((theme) => ({
     minWidth: 0,
     height: 34,
     borderRadius: theme.borderRadius.md,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
+    // borderless card (new theme)
+    ...theme.shadow.sm,
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: theme.spacing[1],

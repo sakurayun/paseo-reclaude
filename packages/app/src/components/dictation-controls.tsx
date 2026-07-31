@@ -273,8 +273,8 @@ const styles = StyleSheet.create((theme) => ({
     borderRadius: theme.borderRadius.full,
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: theme.borderWidth[1],
-    borderColor: theme.colors.border,
+    // borderless card (new theme)
+    ...theme.shadow.sm,
     backgroundColor: theme.colors.surface0,
   },
   activeContainer: {
@@ -302,7 +302,7 @@ const styles = StyleSheet.create((theme) => ({
     borderRadius: theme.borderRadius.full,
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: theme.borderWidth[1],
+    borderWidth: theme.shell.controlBorder,
   },
   actionButtonCancel: {
     borderColor: theme.colors.border,

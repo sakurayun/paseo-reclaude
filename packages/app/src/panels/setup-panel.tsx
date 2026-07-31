@@ -474,7 +474,7 @@ const styles = StyleSheet.create((theme) => ({
   hiddenStatus: {
     position: "absolute",
     width: 1,
-    height: 1,
+    height: theme.shell.chromeDivider,
     overflow: "hidden",
     opacity: 0,
   },
@@ -502,8 +502,8 @@ const styles = StyleSheet.create((theme) => ({
   },
   commandItem: {
     borderRadius: theme.borderRadius.lg,
-    borderWidth: theme.borderWidth[1],
-    borderColor: theme.colors.border,
+    // borderless card (new theme)
+    ...theme.shadow.sm,
     overflow: "hidden",
   },
   commandRow: {
@@ -515,7 +515,7 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor: theme.colors.surface1,
   },
   commandRowExpanded: {
-    borderBottomWidth: theme.borderWidth[1],
+    borderBottomWidth: theme.shell.chromeDivider,
     borderBottomColor: theme.colors.border,
   },
   commandRowPressed: {

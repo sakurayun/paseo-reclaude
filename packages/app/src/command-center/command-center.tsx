@@ -711,8 +711,7 @@ const styles = StyleSheet.create((theme) => ({
     width: 640,
     maxWidth: "92%",
     maxHeight: "80%",
-    borderWidth: 1,
-    borderColor: theme.colors.border,
+    // borderless card (new theme)
     borderRadius: theme.borderRadius.lg,
     overflow: "hidden",
     backgroundColor: theme.colors.surface0,
@@ -721,13 +720,13 @@ const styles = StyleSheet.create((theme) => ({
   header: {
     paddingHorizontal: theme.spacing[4],
     paddingVertical: theme.spacing[3],
-    borderBottomWidth: 1,
+    borderBottomWidth: theme.shell.chromeDivider,
     borderBottomColor: theme.colors.border,
   },
   bottomSheetHeader: {
     paddingHorizontal: theme.spacing[4],
     paddingVertical: theme.spacing[3],
-    borderBottomWidth: 1,
+    borderBottomWidth: theme.shell.chromeDivider,
     borderBottomColor: theme.colors.border,
   },
   input: {
@@ -744,7 +743,7 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.foregroundMuted,
   },
   sectionDivider: {
-    height: 1,
+    height: theme.shell.chromeDivider,
     marginTop: theme.spacing[2],
     marginBottom: theme.spacing[2],
     backgroundColor: theme.colors.border,

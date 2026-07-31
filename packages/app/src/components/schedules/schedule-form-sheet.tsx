@@ -1041,8 +1041,8 @@ const styles = StyleSheet.create((theme) => {
       flexDirection: "row",
       alignItems: "center",
       backgroundColor: theme.colors.surface2,
-      borderWidth: 1,
-      borderColor: theme.colors.border,
+      // borderless card (new theme)
+      ...theme.shadow.sm,
     },
     readonlyFieldSm: {
       ...geometry.formTextInputSm,

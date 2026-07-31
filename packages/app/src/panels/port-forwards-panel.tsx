@@ -346,8 +346,8 @@ const styles = StyleSheet.create((theme) => ({
     padding: theme.spacing[3],
     borderRadius: theme.borderRadius.lg,
     backgroundColor: theme.colors.surface1,
-    borderWidth: theme.borderWidth[1],
-    borderColor: theme.colors.border,
+    // borderless card (new theme)
+    ...theme.shadow.sm,
   },
   noticeText: {
     fontSize: theme.fontSize.sm,
@@ -375,8 +375,8 @@ const styles = StyleSheet.create((theme) => ({
     justifyContent: "center",
   },
   input: {
-    borderWidth: theme.borderWidth[1],
-    borderColor: theme.colors.border,
+    // borderless card (new theme)
+    ...theme.shadow.sm,
     borderRadius: theme.borderRadius.md,
     paddingHorizontal: theme.spacing[3],
     paddingVertical: theme.spacing[2],
@@ -414,8 +414,8 @@ const styles = StyleSheet.create((theme) => ({
     paddingHorizontal: theme.spacing[3],
     paddingVertical: theme.spacing[2],
     borderRadius: theme.borderRadius.lg,
-    borderWidth: theme.borderWidth[1],
-    borderColor: theme.colors.border,
+    // borderless card (new theme)
+    ...theme.shadow.sm,
     backgroundColor: theme.colors.surface1,
   },
   rowMain: {

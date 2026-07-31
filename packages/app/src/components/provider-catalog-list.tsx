@@ -188,8 +188,8 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[2],
     backgroundColor: theme.colors.surface2,
     borderRadius: theme.borderRadius.lg,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
+    // borderless card (new theme)
+    ...theme.shadow.sm,
     paddingHorizontal: theme.spacing[3],
     marginBottom: theme.spacing[3],
   },
@@ -206,8 +206,8 @@ const styles = StyleSheet.create((theme) => ({
   },
   list: {
     borderRadius: theme.borderRadius.lg,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
+    // borderless card (new theme)
+    ...theme.shadow.sm,
     overflow: "hidden",
   },
   row: {
@@ -215,7 +215,7 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     gap: theme.spacing[3],
     padding: theme.spacing[3],
-    borderBottomWidth: 1,
+    borderBottomWidth: theme.shell.chromeDivider,
     borderBottomColor: theme.colors.border,
   },
   iconFrame: {
@@ -271,8 +271,8 @@ const styles = StyleSheet.create((theme) => ({
   stateBox: {
     minHeight: 96,
     borderRadius: theme.borderRadius.lg,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
+    // borderless card (new theme)
+    ...theme.shadow.sm,
     backgroundColor: theme.colors.surface1,
     alignItems: "center",
     justifyContent: "center",

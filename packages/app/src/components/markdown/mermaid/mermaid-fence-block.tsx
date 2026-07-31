@@ -201,8 +201,8 @@ const fenceStyles = StyleSheet.create((theme) => ({
     padding: theme.spacing[1],
     borderRadius: theme.borderRadius.md,
     backgroundColor: theme.colors.surface1,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
+    // borderless card (new theme)
+    ...theme.shadow.sm,
   },
   segment: {
     flexDirection: "row",

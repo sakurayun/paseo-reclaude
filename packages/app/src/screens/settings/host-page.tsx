@@ -2354,8 +2354,8 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     justifyContent: "space-between",
     gap: theme.spacing[3],
-    borderWidth: 1,
-    borderColor: theme.colors.border,
+    // borderless card (new theme)
+    ...theme.shadow.sm,
     borderRadius: theme.borderRadius.md,
     paddingVertical: theme.spacing[3],
     paddingHorizontal: theme.spacing[3],
@@ -2383,8 +2383,8 @@ const styles = StyleSheet.create((theme) => ({
     paddingHorizontal: theme.spacing[2],
     paddingVertical: 2,
     borderRadius: theme.borderRadius.full,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
+    // borderless card (new theme)
+    ...theme.shadow.sm,
     backgroundColor: theme.colors.surface3,
   },
   dictationLangBadgeText: {
@@ -2438,7 +2438,7 @@ const styles = StyleSheet.create((theme) => ({
     paddingHorizontal: theme.spacing[2],
     paddingVertical: 3,
     borderRadius: theme.borderRadius.full,
-    borderWidth: 1,
+    borderWidth: theme.shell.controlBorder,
   },
   dictationStatusPillActive: {
     borderColor: theme.colors.foreground,
@@ -2519,8 +2519,8 @@ const styles = StyleSheet.create((theme) => ({
     paddingHorizontal: theme.spacing[2],
     paddingVertical: 4,
     borderRadius: theme.borderRadius.full,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
+    // borderless card (new theme)
+    ...theme.shadow.sm,
     backgroundColor: theme.colors.surface3,
     maxWidth: 200,
   },

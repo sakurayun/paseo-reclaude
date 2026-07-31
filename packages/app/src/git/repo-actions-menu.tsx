@@ -1027,7 +1027,7 @@ const styles = StyleSheet.create((theme) => ({
     minWidth: 28,
     paddingHorizontal: theme.spacing[1],
     borderRadius: theme.borderRadius.md,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
+    // borderless card (new theme)
+    ...theme.shadow.sm,
   },
 }));

@@ -102,8 +102,8 @@ const styles = StyleSheet.create((theme) => ({
     paddingHorizontal: theme.spacing[4],
     paddingVertical: OVERLAY_VERTICAL_PADDING,
     backgroundColor: theme.colors.surface1,
-    borderWidth: theme.borderWidth[1],
-    borderColor: theme.colors.border,
+    // borderless card (new theme)
+    ...theme.shadow.sm,
   },
   meterContainer: {
     flex: 1,
@@ -124,8 +124,8 @@ const styles = StyleSheet.create((theme) => ({
   },
   muteButton: {
     backgroundColor: theme.colors.surface0,
-    borderWidth: theme.borderWidth[1],
-    borderColor: theme.colors.border,
+    // borderless card (new theme)
+    ...theme.shadow.sm,
   },
   muteButtonMuted: {
     backgroundColor: theme.colors.palette.red[600],
@@ -133,7 +133,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   stopButton: {
     backgroundColor: theme.colors.palette.red[600],
-    borderWidth: theme.borderWidth[1],
+    borderWidth: theme.shell.controlBorder,
     borderColor: theme.colors.palette.red[800],
   },
   buttonDisabled: {

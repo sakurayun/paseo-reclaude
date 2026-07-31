@@ -1466,7 +1466,7 @@ const styles = StyleSheet.create((theme) => ({
     paddingTop: theme.spacing[2],
     gap: 2,
     paddingBottom: theme.spacing[1.5],
-    borderBottomWidth: 1,
+    borderBottomWidth: theme.shell.chromeDivider,
     borderBottomColor: theme.colors.border,
   },
   sidebarHeaderGroupBelowChrome: {
@@ -1568,7 +1568,7 @@ const styles = StyleSheet.create((theme) => ({
     height: HEADER_INNER_HEIGHT,
     flexDirection: "row",
     alignItems: "center",
-    borderBottomWidth: theme.borderWidth[1],
+    borderBottomWidth: theme.shell.chromeDivider,
     borderBottomColor: "transparent",
   },
   sidebarFooter: {
@@ -1577,7 +1577,7 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[2],
     paddingHorizontal: theme.spacing[2],
     paddingVertical: theme.spacing[3],
-    borderTopWidth: 1,
+    borderTopWidth: theme.shell.chromeDivider,
     borderTopColor: theme.colors.border,
   },
   sidebarFooterFlat: {

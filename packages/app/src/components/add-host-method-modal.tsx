@@ -15,8 +15,8 @@ const styles = StyleSheet.create((theme) => ({
     padding: theme.spacing[4],
     borderRadius: theme.borderRadius.xl,
     backgroundColor: theme.colors.surface2,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
+    // borderless card (new theme)
+    ...theme.shadow.sm,
   },
   optionText: {
     color: theme.colors.foreground,

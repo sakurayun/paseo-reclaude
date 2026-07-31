@@ -965,11 +965,11 @@ const styles = StyleSheet.create((theme) => ({
   },
   favoritesContainer: {
     backgroundColor: theme.colors.surface1,
-    borderBottomWidth: 1,
+    borderBottomWidth: theme.shell.chromeDivider,
     borderBottomColor: theme.colors.border,
   },
   separator: {
-    height: 1,
+    height: theme.shell.chromeDivider,
     backgroundColor: theme.colors.border,
   },
   sectionHeading: {

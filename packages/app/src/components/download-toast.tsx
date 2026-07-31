@@ -118,8 +118,7 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[3],
     backgroundColor: theme.colors.surface2,
     borderRadius: theme.borderRadius.lg,
-    borderWidth: theme.borderWidth[1],
-    borderColor: theme.colors.border,
+    // borderless card (new theme)
     paddingVertical: theme.spacing[3],
     paddingHorizontal: theme.spacing[4],
     ...theme.shadow.md,

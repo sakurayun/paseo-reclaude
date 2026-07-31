@@ -3362,8 +3362,8 @@ const styles = StyleSheet.create((theme) => ({
     marginBottom: theme.spacing[2],
     paddingHorizontal: theme.spacing[3],
     paddingVertical: theme.spacing[2],
-    borderWidth: 1,
-    borderColor: theme.colors.border,
+    // borderless card (new theme)
+    ...theme.shadow.sm,
     borderRadius: theme.borderRadius.md,
     backgroundColor: theme.colors.surface1,
   },
