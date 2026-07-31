@@ -1,5 +1,4 @@
 const { getDefaultConfig } = require("expo/metro-config");
-const { withReactNativeGrab } = require("react-native-grab/metro");
 const { resolve } = require("metro-resolver");
 const fs = require("fs");
 const path = require("path");
@@ -122,5 +121,14 @@ if (process.env.PASEO_SERVE_SIM_PREVIEW === "1") {
 }
 
 // Dev-only middleware for react-native-grab (element selection → clipboard
-// context for agents). Preserves the resolver/middleware configured above.
+// context for agents). Optional so clean CI installs without the package (or
+// production export paths) still load Metro.
+let withReactNativeGrab = (metroConfig) => metroConfig;
+try {
+  ({ withReactNativeGrab } = require("react-native-grab/metro"));
+} catch (error) {
+  if (error?.code !== "MODULE_NOT_FOUND") {
+    throw error;
+  }
+}
 module.exports = withReactNativeGrab(config);
