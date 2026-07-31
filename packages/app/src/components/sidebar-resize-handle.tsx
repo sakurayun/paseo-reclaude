@@ -77,13 +77,16 @@ const styles = StyleSheet.create((theme) => ({
   rightEdge: {
     right: -5,
   },
+  // Hover affordance without a hard vertical rule: a soft tint over the hit
+  // strip only. A 1px foreground line read as a permanent divider and looked
+  // harsh against the new-theme shell.
   highlight: {
     position: "absolute",
     top: 0,
     bottom: 0,
-    left: 5,
-    width: 1,
+    left: 0,
+    right: 0,
     backgroundColor: theme.colors.foreground,
-    opacity: 0.25,
+    opacity: 0.06,
   },
 }));

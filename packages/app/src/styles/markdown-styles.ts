@@ -218,20 +218,21 @@ export function createMarkdownStyles(theme: Theme) {
     // TABLES
     // =========================================================================
 
-    // Interior separators that can never double the outer frame, without
-    // :last-child support:
-    //  - Row lines are each body cell's TOP border — the first body row's top
-    //    edge is the header underline, and the last row ends with no bottom
-    //    line against the frame.
-    //  - Column lines are each cell's RIGHT border; rows overhang the frame by
-    //    1px (tr marginRight: -1) so the rightmost cell's line is clipped by
-    //    the table's overflow:hidden instead of doubling the frame.
+    // Borderless table card: react-native-markdown-display defaults ship a 1px
+    // black outer frame (`table.borderWidth: 1`, `borderColor: #000`). Override
+    // every edge to 0 and separate regions with surface fill + soft shadow.
     table: {
-      // borderless card (new theme)
-      ...theme.shadow.sm,
-      borderRadius: theme.borderRadius.md,
+      borderWidth: 0,
+      borderTopWidth: 0,
+      borderRightWidth: 0,
+      borderBottomWidth: 0,
+      borderLeftWidth: 0,
+      borderColor: "transparent",
+      backgroundColor: theme.colors.surface1,
+      borderRadius: theme.borderRadius.xl,
       marginVertical: theme.spacing[3],
       overflow: "hidden" as const,
+      ...theme.shadow.sm,
     },
 
     thead: {
@@ -243,8 +244,12 @@ export function createMarkdownStyles(theme: Theme) {
     th: {
       ...webSelectableTextStyle,
       padding: theme.spacing[2],
-      borderRightWidth: theme.shell.chromeDivider,
-      borderColor: theme.colors.border,
+      borderWidth: 0,
+      borderTopWidth: 0,
+      borderRightWidth: 0,
+      borderBottomWidth: 0,
+      borderLeftWidth: 0,
+      borderColor: "transparent",
       backgroundColor: theme.colors.surface2,
       fontWeight: theme.fontWeight.semibold,
       color: theme.colors.foreground,
@@ -255,20 +260,21 @@ export function createMarkdownStyles(theme: Theme) {
 
     tr: {
       flexDirection: "row" as const,
-      marginRight: -1,
-      // react-native-markdown-display merges these styles over its defaults,
-      // and the default `tr` ships borderBottomWidth: theme.shell.chromeDivider + black borderColor —
-      // zero it explicitly or every row grows a dark bottom line.
+      // Defaults use black bottom hairlines — kill them completely.
+      borderWidth: 0,
       borderBottomWidth: 0,
-      borderColor: theme.colors.border,
+      borderColor: "transparent",
     },
 
     td: {
       ...webSelectableTextStyle,
       padding: theme.spacing[2],
-      borderTopWidth: theme.shell.chromeDivider,
-      borderRightWidth: theme.shell.chromeDivider,
-      borderColor: theme.colors.border,
+      borderWidth: 0,
+      borderTopWidth: 0,
+      borderRightWidth: 0,
+      borderBottomWidth: 0,
+      borderLeftWidth: 0,
+      borderColor: "transparent",
       color: theme.colors.foreground,
       fontSize: theme.fontSize.sm,
       flex: 1,

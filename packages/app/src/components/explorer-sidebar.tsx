@@ -613,8 +613,10 @@ const explorerStaticStyles = RNStyleSheet.create({
 
 const styles = StyleSheet.create((theme) => ({
   desktopSidebarBorder: {
-    borderLeftWidth: theme.shell.chromeDivider,
-    borderLeftColor: theme.colors.border,
+    // No vertical chrome line next to the resize handle — separation is the
+    // floating content card / shell contrast, not a hairline divider.
+    borderLeftWidth: 0,
+    borderLeftColor: "transparent",
     backgroundColor: theme.colors.surfaceSidebar,
   },
   sidebarContent: {
