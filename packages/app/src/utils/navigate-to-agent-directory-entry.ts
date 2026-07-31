@@ -35,6 +35,10 @@ function buildDirectoryAgentDetail(entry: AgentDirectoryEntry): Agent {
     },
     title: entry.title,
     cwd: entry.cwd,
+    // History / sidebar rows already know the workspace. Keep it on the seeded
+    // detail so navigation and the full-screen agent resolver can open the tab
+    // without waiting on a live agents-map hydration.
+    workspaceId: entry.workspaceId,
     model: null,
     thinkingOptionId: null,
     requiresAttention: entry.requiresAttention,
@@ -43,6 +47,7 @@ function buildDirectoryAgentDetail(entry: AgentDirectoryEntry): Agent {
     archivedAt: entry.archivedAt,
     labels: entry.labels,
     parentAgentId: null,
+    projectPlacement: entry.projectPlacement,
   };
 }
 
@@ -72,6 +77,9 @@ export function navigateToAgentDirectoryEntry(entry: AgentDirectoryEntry): strin
   const route = navigateToAgent({
     serverId: entry.serverId,
     agentId: entry.id,
+    // Prefer the directory entry's workspace so history rows open the workspace
+    // tab immediately even when the live agent map has not hydrated yet.
+    workspaceId: entry.workspaceId ?? null,
     pin: needsPin,
   });
   // On compact layouts the workspace list renders as an overlay above the

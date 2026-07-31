@@ -184,6 +184,15 @@ function HostWorkspaceRouteContent() {
     workspaceId,
   ]);
 
+  // Prefer the pathname-derived selection, but always fall back to the local
+  // route params. Returning null when activeSelection is missing is a white
+  // screen — and on cold restore of a workspace route it can stick forever.
+  // Declared before any early return so hooks order stays stable.
+  const routeSelection = useMemo(
+    () => (serverId && workspaceId ? { serverId, workspaceId } : null),
+    [serverId, workspaceId],
+  );
+
   if (
     openValue &&
     !isOpenIntentWaitingForWorkspace &&
@@ -192,17 +201,26 @@ function HostWorkspaceRouteContent() {
     return null;
   }
 
-  return <WorkspaceDeck recoveryRequested={isAgentOpenIntent} recoveryAgentId={recoveryAgentId} />;
+  return (
+    <WorkspaceDeck
+      recoveryRequested={isAgentOpenIntent}
+      recoveryAgentId={recoveryAgentId}
+      routeSelection={routeSelection}
+    />
+  );
 }
 
 function WorkspaceDeck({
   recoveryRequested,
   recoveryAgentId,
+  routeSelection,
 }: {
   recoveryRequested: boolean;
   recoveryAgentId: string | null;
+  routeSelection: ActiveWorkspaceSelection | null;
 }) {
-  const activeSelection = useActiveWorkspaceSelection();
+  const pathSelection = useActiveWorkspaceSelection();
+  const activeSelection = pathSelection ?? routeSelection;
   const [mountedSelections, setMountedSelections] = useState<ActiveWorkspaceSelection[]>(() =>
     activeSelection ? [activeSelection] : [],
   );
@@ -235,6 +253,8 @@ function WorkspaceDeck({
   }, [mountedSelections, nextMountedSelections]);
 
   if (!activeSelection) {
+    // Still nothing to render (invalid/missing route params). Avoid a blank
+    // white frame by staying on a bootstrap splash until navigation recovers.
     return null;
   }
 

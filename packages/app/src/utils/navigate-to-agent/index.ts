@@ -9,6 +9,9 @@ export function navigateToAgent(input: NavigateToAgentInput): string {
   return resolveNavigateToAgent(input, {
     readAgentNavTarget: ({ serverId, agentId }) => {
       const session = useSessionStore.getState().sessions[serverId];
+      // Live agents first; fall back to seeded directory/history details so
+      // sessions opened from the list still resolve a workspace before the
+      // daemon hydrates the live map.
       const agent = session?.agents.get(agentId) ?? session?.agentDetails.get(agentId);
       return {
         agentWorkspaceId: agent?.workspaceId,
