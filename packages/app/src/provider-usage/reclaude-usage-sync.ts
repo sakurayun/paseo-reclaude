@@ -27,7 +27,11 @@ export function startReclaudeUsageSync(params: {
     const { active, loggedIn, email, usage } = msg.payload;
 
     // Reflect the shared auth state without a refetch.
-    appQueryClient.setQueryData(reclaudeStatusQueryKey(serverId), { active, loggedIn, email });
+    appQueryClient.setQueryData(reclaudeStatusQueryKey(serverId), {
+      active,
+      loggedIn,
+      email,
+    });
 
     // Patch just the Claude entry in the cached usage list, in place, so other
     // providers (e.g. Codex) are untouched — mirroring useReclaude's patchClaudeUsage.
@@ -48,7 +52,10 @@ export function startReclaudeUsageSync(params: {
           }
           return provider;
         });
-        return { ...prev, providers: found ? providers : [...providers, usage] };
+        return {
+          ...prev,
+          providers: found ? providers : [...providers, usage],
+        };
       },
     );
   });

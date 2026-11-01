@@ -1,5 +1,6 @@
+import { PressHighlight } from "@/components/ui/press-highlight";
 import { useCallback } from "react";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { ScrollView, Text, View } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { Fingerprint, Trash2 } from "lucide-react-native";
 import { useTranslation } from "react-i18next";
@@ -64,14 +65,14 @@ function KnownHostRow({
           {entry.keyType} · {entry.fingerprintSha256}
         </Text>
       </View>
-      <Pressable
+      <PressHighlight
         onPress={handleDelete}
         accessibilityRole="button"
         hitSlop={8}
         testID={`ssh-known-host-delete-${entry.id}`}
       >
         <ThemedTrash size={16} uniProps={mutedIconColor} />
-      </Pressable>
+      </PressHighlight>
     </View>
   );
 }

@@ -22,11 +22,16 @@
     "declarationMap": true,
     "sourceMap": true
   },
-  "include": ["src/server/**/*", "src/services/**/*", "src/terminal/**/*"],
+  "include": [
+    "src/server/**/*",
+    "src/services/**/*",
+    "src/terminal/**/*",
+    "src/executable-resolution/which.d.ts"
+  ],
   "exclude": [
     "node_modules",
     "dist",
-    "src/server/test-utils/**",
+    "src/server/**/test-utils/**",
     "src/server/daemon-e2e/**",
     "src/server/**/*.e2e.ts",
     "src/server/**/*.e2e.tsx",

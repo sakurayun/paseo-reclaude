@@ -1,5 +1,6 @@
+import { PressHighlight } from "@/components/ui/press-highlight";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from "react";
-import { Pressable, ScrollView, Text, View, type PressableStateCallbackType } from "react-native";
+import { ScrollView, Text, View, type PressableStateCallbackType } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { isWeb } from "@/constants/platform";
 import type { RulerMark, RulerMarkKind } from "./ruler-marks";
@@ -133,7 +134,7 @@ function RulerRow({
   );
 
   return (
-    <Pressable
+    <PressHighlight
       onPress={handlePress}
       disabled={!expanded}
       style={pressableStyle}
@@ -152,7 +153,7 @@ function RulerRow({
           {mark.label}
         </Text>
       ) : null}
-    </Pressable>
+    </PressHighlight>
   );
 }
 

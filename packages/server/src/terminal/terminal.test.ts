@@ -1,7 +1,12 @@
+import { TerminalInputModeTracker } from "@getpaseo/protocol/terminal-input-mode";
+import { createTerminalSerializer } from "./terminal-serializer.js";
+import { readTerminalState } from "./test-utils/terminal-state.js";
+import type { TerminalState } from "@getpaseo/protocol/messages";
 import { describe, it, expect, afterEach, vi } from "vitest";
 import { isPlatform } from "../test-utils/platform.js";
 import {
   buildTerminalEnvironment,
+  assertTerminalCommandCanStart,
   createTerminal,
   ensureNodePtySpawnHelperExecutableForCurrentPlatform,
   resolveDefaultTerminalShell,
@@ -9,7 +14,7 @@ import {
   humanizeProcessTitle,
   normalizeProcessTitle,
   resolveZshShellIntegrationDir,
-  type TerminalSession,
+  type LocalTerminalSession as TerminalSession,
 } from "./terminal.js";
 import {
   chmodSync,
@@ -23,13 +28,16 @@ import {
   writeFileSync,
 } from "node:fs";
 import { spawnSync } from "node:child_process";
-import { join } from "node:path";
+import * as pty from "node-pty";
+import xterm from "@xterm/headless";
+import { delimiter, join } from "node:path";
 import { tmpdir } from "node:os";
-import { setImmediate as waitForImmediate } from "node:timers/promises";
+import { setImmediate as waitForImmediate, setTimeout as delay } from "node:timers/promises";
+import { stripVTControlCharacters } from "node:util";
 
 const hasZsh = existsSync("/bin/zsh");
 
-type TerminalRow = ReturnType<TerminalSession["getState"]>["grid"][number];
+type TerminalRow = TerminalState["grid"][number];
 
 function rowToText(row: TerminalRow): string {
   return row
@@ -39,13 +47,17 @@ function rowToText(row: TerminalRow): string {
 }
 
 // Extract text from a single row
-function getRowText(state: ReturnType<TerminalSession["getState"]>, rowIndex: number): string {
+function getRowText(state: TerminalState, rowIndex: number): string {
   return rowToText(state.grid[rowIndex]);
 }
 
 // Extract all visible lines as array (trimmed, empty lines included)
-function getLines(state: ReturnType<TerminalSession["getState"]>): string[] {
+function getLines(state: TerminalState): string[] {
   return state.grid.map(rowToText);
+}
+
+function rowHasChar(row: TerminalRow, char: string): boolean {
+  return row.some((cell) => cell.char === char);
 }
 
 // Wait for terminal state to match expected lines
@@ -56,7 +68,7 @@ async function waitForLines(
 ): Promise<void> {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
-    const lines = getLines(session.getState());
+    const lines = getLines(await readTerminalState(session));
     let matches = true;
     for (let i = 0; i < expectedLines.length; i++) {
       if (lines[i] !== expectedLines[i]) {
@@ -69,7 +81,7 @@ async function waitForLines(
     }
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
-  const actual = getLines(session.getState()).slice(0, expectedLines.length);
+  const actual = getLines(await readTerminalState(session)).slice(0, expectedLines.length);
   throw new Error(
     `Timeout waiting for expected lines.\nExpected:\n${JSON.stringify(expectedLines, null, 2)}\nActual:\n${JSON.stringify(actual, null, 2)}`,
   );
@@ -77,12 +89,12 @@ async function waitForLines(
 
 async function waitForState(
   session: TerminalSession,
-  predicate: (state: ReturnType<TerminalSession["getState"]>) => boolean,
+  predicate: (state: TerminalState) => boolean,
   timeoutMs = 5000,
-): Promise<ReturnType<TerminalSession["getState"]>> {
+): Promise<TerminalState> {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
-    const state = session.getState();
+    const state = await readTerminalState(session);
     if (predicate(state)) {
       return state;
     }
@@ -116,16 +128,52 @@ if (isPlatform("win32") && !process.env.ComSpec && !process.env.COMSPEC) {
 const sessions: TerminalSession[] = [];
 const temporaryDirs: string[] = [];
 
+/**
+ * `kill()` only signals; the shell exits asynchronously and keeps writing on
+ * the way out (zsh drops a history file and a compdump into `$ZDOTDIR`).
+ * Deleting its directory before then loses the race as `ENOTEMPTY`: the
+ * recursive walk empties the directory, the dying shell recreates a file in it,
+ * and the final rmdir fails.
+ *
+ * Waiting for the exit shrinks that window but does not close it: some of those
+ * writes come from processes zsh forked, which outlive the pty and answer to
+ * nothing we hold. Retries alone did not close it either.
+ *
+ * The known post-retry `ENOTEMPTY` race is reported and tolerated because it
+ * belongs to a descendant shell outliving the tested terminal. Any other
+ * cleanup error still fails the test that owns the directory.
+ */
+async function waitForSessionExit(session: TerminalSession): Promise<void> {
+  const exited = new Promise<void>((resolve) => {
+    const dispose = session.onExit(() => {
+      dispose();
+      resolve();
+    });
+    session.kill();
+  });
+  await Promise.race([exited, delay(2_000)]);
+}
+
 afterEach(async () => {
   vi.useRealTimers();
-  for (const session of sessions) {
-    session.kill();
-  }
+  await Promise.all(sessions.map(waitForSessionExit));
   sessions.length = 0;
   while (temporaryDirs.length > 0) {
     const dir = temporaryDirs.pop();
     if (dir) {
-      rmSync(dir, { recursive: true, force: true });
+      try {
+        rmSync(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 25 });
+      } catch (error) {
+        if (
+          typeof error !== "object" ||
+          error === null ||
+          !("code" in error) ||
+          error.code !== "ENOTEMPTY"
+        ) {
+          throw error;
+        }
+        console.warn(`leaving temp dir behind after ENOTEMPTY retries: ${dir}`);
+      }
     }
   }
 });
@@ -216,6 +264,33 @@ describe("createTerminal", () => {
     expect(resolveExecutable).not.toHaveBeenCalled();
   });
 
+  it.runIf(isPlatform("linux", "darwin"))(
+    "passes an unescaped multi-line prompt through byte-for-byte on POSIX",
+    async () => {
+      // node-pty spawns directly via execve on POSIX (no shell), so a prompt
+      // substituted into `args` is never re-parsed by anything -- it must
+      // reach the target process exactly as typed, including raw newlines,
+      // quotes, and shell metacharacters that would be dangerous under a
+      // shell but are inert here.
+      const nastyPrompt =
+        'fix the bug\nwhere `git commit -m "wip"` fails\nif $HOME contains a & or | char';
+      const resolveExecutable = vi.fn(async () => "/usr/local/bin/claude");
+
+      const resolvedLinux = await resolveTerminalSpawnCommand("claude", [nastyPrompt], {
+        platform: "linux",
+        resolveExecutable,
+      });
+      const resolvedDarwin = await resolveTerminalSpawnCommand("claude", [nastyPrompt], {
+        platform: "darwin",
+        resolveExecutable,
+      });
+
+      expect(resolvedLinux).toEqual({ command: "claude", args: [nastyPrompt] });
+      expect(resolvedDarwin).toEqual({ command: "claude", args: [nastyPrompt] });
+      expect(resolveExecutable).not.toHaveBeenCalled();
+    },
+  );
+
   it("keeps the original command when it cannot be resolved on Windows", async () => {
     const resolved = await resolveTerminalSpawnCommand("claude", [], {
       platform: "win32",
@@ -233,9 +308,77 @@ describe("createTerminal", () => {
       resolveExecutable: async () => "C:\\npm\\claude.cmd",
     });
 
+    // The `.cmd` branch now hands node-pty a single pre-escaped command line
+    // (string) instead of an argv array, so that node-pty's own
+    // MSVCRT-style array quoting never runs a second time over an already
+    // cmd.exe-escaped argument. See escapeCmdExeArgument in terminal.ts.
     expect(resolved).toEqual({
       command: "C:\\Windows\\System32\\cmd.exe",
-      args: ["/c", "C:\\npm\\claude.cmd", "--foo"],
+      args: '/d /s /c "C:\\npm\\claude.cmd ^^^"--foo^^^""',
+    });
+  });
+
+  describe(".cmd shim argument escaping on Windows", () => {
+    async function resolveCmdShimArgs(promptArg: string): Promise<string> {
+      const resolved = await resolveTerminalSpawnCommand("claude", [promptArg], {
+        platform: "win32",
+        env: { ComSpec: "C:\\Windows\\System32\\cmd.exe" },
+        resolveExecutable: async () => "C:\\npm\\claude.cmd",
+      });
+      // A real narrow rather than a cast: the `.cmd` branch is the one case
+      // that returns a pre-escaped command line instead of argv, so if that
+      // contract ever changes these tests should fail loudly here rather than
+      // assert against a stringified array.
+      const { args } = resolved;
+      if (typeof args !== "string") {
+        throw new Error(`expected a cmd.exe command line, got ${JSON.stringify(args)}`);
+      }
+      return args;
+    }
+
+    // Each expected string is the exact cmd.exe command line the escaping
+    // must produce so a real `cmd.exe /c` invocation reconstructs the
+    // original prompt as a single argv element for the target process
+    // (modulo the documented newline-to-space normalization below).
+    it("neutralizes cmd.exe's own metacharacters instead of letting them execute", async () => {
+      expect(await resolveCmdShimArgs("a & b | c")).toBe(
+        '/d /s /c "C:\\npm\\claude.cmd ^^^"a^^^ ^^^&^^^ b^^^ ^^^|^^^ c^^^""',
+      );
+      expect(await resolveCmdShimArgs("100% done %PATH%")).toBe(
+        '/d /s /c "C:\\npm\\claude.cmd ^^^"100^^^%^^^ done^^^ ^^^%PATH^^^%^^^""',
+      );
+      expect(await resolveCmdShimArgs("a^b")).toBe('/d /s /c "C:\\npm\\claude.cmd ^^^"a^^^^b^^^""');
+    });
+
+    it("escapes embedded double quotes and backslash runs preceding them", async () => {
+      expect(await resolveCmdShimArgs('say "hello" now')).toBe(
+        '/d /s /c "C:\\npm\\claude.cmd ^^^"say^^^ \\^^^"hello\\^^^"^^^ now^^^""',
+      );
+      expect(await resolveCmdShimArgs('C:\\path\\ "quoted"')).toBe(
+        '/d /s /c "C:\\npm\\claude.cmd ^^^"C:\\path\\^^^ \\^^^"quoted\\^^^"^^^""',
+      );
+    });
+
+    // cmd.exe has no way to escape a literal CR/LF inside one command line
+    // -- its parser treats newlines as command separators regardless of
+    // quoting -- so a raw newline is normalized to a space before escaping.
+    // This is a deliberate choice, not an oversight: it avoids the prompt
+    // ever splitting into a second, attacker-controlled cmd.exe command, at
+    // the cost of losing the original line breaks.
+    it("normalizes embedded newlines to spaces instead of letting them split the command", async () => {
+      expect(await resolveCmdShimArgs("line one\nline two")).toBe(
+        '/d /s /c "C:\\npm\\claude.cmd ^^^"line^^^ one^^^ line^^^ two^^^""',
+      );
+      expect(await resolveCmdShimArgs("line one\r\nline two")).toBe(
+        '/d /s /c "C:\\npm\\claude.cmd ^^^"line^^^ one^^^ line^^^ two^^^""',
+      );
+    });
+
+    it("handles a multi-line prompt combining quotes, backslashes, and every cmd.exe metacharacter", async () => {
+      const prompt = 'multi\nline "quoted \\path\\" & piped | percent %VAR% ^caret';
+      expect(await resolveCmdShimArgs(prompt)).toBe(
+        '/d /s /c "C:\\npm\\claude.cmd ^^^"multi^^^ line^^^ \\^^^"quoted^^^ \\path\\\\\\^^^"^^^ ^^^&^^^ piped^^^ ^^^|^^^ percent^^^ ^^^%VAR^^^%^^^ ^^^^caret^^^""',
+      );
     });
   });
 
@@ -247,6 +390,40 @@ describe("createTerminal", () => {
 
     expect(resolved).toEqual({ command: "C:\\tools\\claude.exe", args: ["--foo"] });
   });
+
+  it.runIf(isPlatform("linux", "darwin"))(
+    "spawns without shell interpretation on POSIX, so argv reaches the child byte-for-byte",
+    async () => {
+      // The composer substitutes {{{prompt}}} directly into `args` before this
+      // ever reaches the daemon, so a raw multi-line prompt containing quotes,
+      // backslashes, and shell metacharacters must arrive at the spawned
+      // process exactly as typed. node-pty's POSIX backend spawns via execve
+      // with no shell, so per-arg escaping is unnecessary there -- this test
+      // proves that end-to-end through createTerminal (not just at the
+      // resolveTerminalSpawnCommand unit level) by reading the argv the
+      // spawned process actually received back out of the pty.
+      const nastyPrompt =
+        'line one\nline two: git commit -m "wip" && echo $HOME | grep ^x > out.txt';
+      const session = trackSession(
+        await createTerminal({
+          workspaceId: "ws-test",
+          cwd: realpathSync(tmpdir()),
+          cols: 500,
+          command: process.execPath,
+          // Keep the PTY alive until the screen assertion; exit disposes its parser.
+          args: [
+            "-e",
+            "process.stdout.write(JSON.stringify(process.argv.slice(1))); setInterval(() => {}, 100000)",
+            nastyPrompt,
+          ],
+        }),
+      );
+
+      const state = await waitForState(session, (s) => getRowText(s, 0).startsWith("["));
+
+      expect(JSON.parse(getRowText(state, 0))).toEqual([nastyPrompt]);
+    },
+  );
 
   it("creates a terminal session with an id, name, and cwd", async () => {
     const session = trackSession(
@@ -304,7 +481,7 @@ describe("createTerminal", () => {
       }),
     );
 
-    const state = session.getState();
+    const state = await readTerminalState(session);
     expect(state.rows).toBe(24);
     expect(state.cols).toBe(80);
   });
@@ -324,12 +501,12 @@ describe("createTerminal", () => {
       }),
     );
 
-    const state = session.getState();
+    const state = await readTerminalState(session);
     expect(state.rows).toBe(40);
     expect(state.cols).toBe(120);
   });
 
-  it("reports per-row soft-wrap flags only when wrap flags are requested", async () => {
+  it("preserves soft-wrap boundaries through public replay", async () => {
     const session = trackSession(
       await createTerminal({
         workspaceId: "ws-test",
@@ -344,21 +521,116 @@ describe("createTerminal", () => {
 
     const start = Date.now();
     while (Date.now() - start < 5000) {
-      if (rowToText(session.getState().grid[2]).startsWith("A")) {
+      if (rowToText((await readTerminalState(session)).grid[2]).startsWith("A")) {
         break;
       }
       await new Promise((resolve) => setTimeout(resolve, 50));
     }
 
     // Rows 0 and 1 continue onto the next row; row 2 is the end of the logical line.
-    const withFlags = session.getState({ includeWrapFlags: true });
+    const withFlags = await readTerminalState(session);
     expect(withFlags.gridWrapped?.slice(0, 3)).toEqual([true, true, false]);
+  });
 
-    // Back-compat gate: without the capability the daemon must not attach the new
-    // fields, so an old strict-schema client still parses the snapshot.
-    const withoutFlags = session.getState();
-    expect(withoutFlags.gridWrapped).toBeUndefined();
-    expect(withoutFlags.scrollbackWrapped).toBeUndefined();
+  it("restores CJK text without injected spaces when a snapshot round-trips through the client", async () => {
+    // Each Hangul syllable is a wide char: xterm stores it as a 2-cell pair
+    // whose second cell has no chars. Capturing that continuation as " " made
+    // every restored syllable three columns wide (paseo#3434).
+    const text = "통합 구현은 전체 테스트를 통과했습니다";
+    const session = trackSession(
+      await createTerminal({
+        workspaceId: "ws-test",
+        cwd: realpathSync(tmpdir()),
+        cols: 80,
+        rows: 10,
+        command: process.execPath,
+        args: [
+          "-e",
+          `process.stdout.write(${JSON.stringify(text)}); setInterval(() => {}, 100000);`,
+        ],
+      }),
+    );
+
+    const state = await waitForState(session, (current) => rowHasChar(current.grid[0], "다"));
+
+    // Replay the snapshot the way the client does on tab switch and read the
+    // row back the way a selection copy would.
+    const restored = new xterm.Terminal({ cols: 80, rows: 10, allowProposedApi: true });
+    try {
+      await new Promise<void>((resolve) => restored.write(session.serializeReplay().data, resolve));
+      expect(restored.buffer.active.getLine(0)?.translateToString(true)).toBe(text);
+    } finally {
+      restored.dispose();
+    }
+
+    // The continuation cell must stay empty so the restore path can skip it.
+    expect(state.grid[0][0].char).toBe("통");
+    expect(state.grid[0][1].char).toBe("");
+  });
+
+  it("reports the cursor column after an emoji cluster in DSR replies", async () => {
+    // Programs that measure the cursor (prompts, TUIs) must see the same
+    // column the client renders: an emoji occupies two cells.
+    const program = `
+      process.stdin.setRawMode(true);
+      process.stdin.once("data", (reply) => {
+        process.stdout.write("\\r\\nREPLY " + JSON.stringify(reply.toString()).slice(2, -1));
+      });
+      process.stdout.write("A😀\\x1b[6n");
+      setInterval(() => {}, 100000);
+    `;
+    const session = trackSession(
+      await createTerminal({
+        workspaceId: "ws-test",
+        cwd: realpathSync(tmpdir()),
+        cols: 40,
+        rows: 5,
+        command: process.execPath,
+        args: ["-e", program],
+      }),
+    );
+
+    const state = await waitForState(session, (current) =>
+      getRowText(current, 1).startsWith("REPLY"),
+    );
+
+    expect(getRowText(state, 1)).toBe("REPLY u001b[1;4R");
+  });
+
+  it("replays emoji clusters at their columns with the cursor after them", async () => {
+    const text = "A😀B❤️C👋🏽D👨‍👩‍👧E";
+    const session = trackSession(
+      await createTerminal({
+        workspaceId: "ws-test",
+        cwd: realpathSync(tmpdir()),
+        cols: 40,
+        rows: 5,
+        command: process.execPath,
+        args: [
+          "-e",
+          `process.stdout.write(${JSON.stringify(text)}); setInterval(() => {}, 100000);`,
+        ],
+      }),
+    );
+
+    const state = await waitForState(session, (current) => rowHasChar(current.grid[0], "E"));
+
+    expect(state.grid[0].slice(0, 13).map((cell) => cell.char)).toEqual([
+      "A",
+      "😀",
+      "",
+      "B",
+      "❤️",
+      "",
+      "C",
+      "👋🏽",
+      "",
+      "D",
+      "👨‍👩‍👧",
+      "",
+      "E",
+    ]);
+    expect(state.cursor).toEqual({ row: 0, col: 13 });
   });
 
   it("captures exit diagnostics from the terminal buffer", async () => {
@@ -408,11 +680,8 @@ describe("createTerminal", () => {
 
     // Poll the parsed buffer until the final line lands, so the exit summary
     // (which reads the headless buffer) can't race the async xterm parse.
-    const finalLineParsed = (): boolean => {
-      const state = session.getState();
-      const rowText = (row: { char: string }[]): string => row.map((cell) => cell.char).join("");
-      return [...state.scrollback, ...state.grid].some((row) => rowText(row).includes("line-2999"));
-    };
+    const finalLineParsed = (): boolean =>
+      session.captureLines({ start: -12 }).lines.some((line) => line.includes("line-2999"));
     const deadline = Date.now() + 10000;
     while (!finalLineParsed()) {
       if (Date.now() > deadline) {
@@ -431,6 +700,151 @@ describe("createTerminal", () => {
     expect(exitInfo.lastOutputLines.length).toBeGreaterThan(0);
     expect(exitInfo.lastOutputLines[exitInfo.lastOutputLines.length - 1]).toBe("line-2999");
   });
+
+  it.runIf(isPlatform("linux", "darwin"))(
+    "rejects a profile command that is not installed instead of opening a terminal",
+    async () => {
+      await expect(
+        createTerminal({
+          workspaceId: "ws-test",
+          cwd: realpathSync(tmpdir()),
+          name: "Codex",
+          command: "paseo-qa-absent-codex",
+          args: [],
+        }),
+      ).rejects.toThrow("paseo-qa-absent-codex: command not found");
+    },
+  );
+
+  it.runIf(isPlatform("linux", "darwin"))(
+    "opens a command found only on the PATH carried by the env option",
+    async () => {
+      // execve resolves the command against the child's PATH, which carries the
+      // per-cwd registered environment. A version-manager shim lives there and
+      // not necessarily on the daemon's own PATH.
+      const binDir = mkdtempSync(join(tmpdir(), "terminal-envpath-bin-"));
+      temporaryDirs.push(binDir);
+      const toolPath = join(binDir, "paseo-qa-envpath-tool");
+      writeFileSync(toolPath, "#!/usr/bin/env bash\nprintf 'paseo-launch-ok\\n'\nsleep 30\n");
+      chmodSync(toolPath, 0o755);
+
+      const session = trackSession(
+        await createTerminal({
+          workspaceId: "ws-test",
+          cwd: realpathSync(tmpdir()),
+          name: "Shim",
+          command: "paseo-qa-envpath-tool",
+          args: [],
+          env: { PATH: `${binDir}${delimiter}${process.env.PATH ?? ""}` },
+        }),
+      );
+
+      await waitForLines(session, ["paseo-launch-ok"]);
+      expect(getLines(await readTerminalState(session))[0]).toBe("paseo-launch-ok");
+    },
+  );
+
+  it.runIf(isPlatform("linux", "darwin"))(
+    "reports command not found when the command is on neither PATH",
+    async () => {
+      await expect(
+        createTerminal({
+          workspaceId: "ws-test",
+          cwd: realpathSync(tmpdir()),
+          name: "Codex",
+          command: "paseo-qa-absent-codex",
+          args: [],
+          env: { PATH: `/paseo-qa-empty${delimiter}${process.env.PATH ?? ""}` },
+        }),
+      ).rejects.toThrow("paseo-qa-absent-codex: command not found");
+    },
+  );
+
+  it.runIf(isPlatform("linux", "darwin"))(
+    "opens a relative command path resolved against the terminal cwd",
+    async () => {
+      // execve resolves a path-ish command against the child's cwd, never the
+      // daemon's own working directory.
+      const projectDir = mkdtempSync(join(tmpdir(), "terminal-relative-cmd-"));
+      temporaryDirs.push(projectDir);
+      mkdirSync(join(projectDir, "scripts"));
+      const scriptPath = join(projectDir, "scripts", "dev.sh");
+      writeFileSync(scriptPath, "#!/usr/bin/env bash\nprintf 'paseo-launch-ok\\n'\nsleep 30\n");
+      chmodSync(scriptPath, 0o755);
+
+      const session = trackSession(
+        await createTerminal({
+          workspaceId: "ws-test",
+          cwd: realpathSync(projectDir),
+          name: "Dev script",
+          command: "./scripts/dev.sh",
+          args: [],
+        }),
+      );
+
+      await waitForLines(session, ["paseo-launch-ok"]);
+      expect(getLines(await readTerminalState(session))[0]).toBe("paseo-launch-ok");
+    },
+  );
+
+  it.runIf(isPlatform("linux", "darwin"))("opens an absolute command path", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "terminal-absolute-cmd-"));
+    temporaryDirs.push(projectDir);
+    const scriptPath = join(projectDir, "run.sh");
+    writeFileSync(scriptPath, "#!/usr/bin/env bash\nprintf 'paseo-launch-ok\\n'\nsleep 30\n");
+    chmodSync(scriptPath, 0o755);
+
+    const session = trackSession(
+      await createTerminal({
+        workspaceId: "ws-test",
+        cwd: realpathSync(tmpdir()),
+        name: "Absolute",
+        command: scriptPath,
+        args: [],
+      }),
+    );
+
+    await waitForLines(session, ["paseo-launch-ok"]);
+    expect(getLines(await readTerminalState(session))[0]).toBe("paseo-launch-ok");
+  });
+
+  it("leaves the command check to the terminal itself on Windows", async () => {
+    // Windows resolves inside resolveTerminalSpawnCommand, which has its own
+    // shim handling and its own fallback for an unresolved command.
+    await expect(
+      assertTerminalCommandCanStart({
+        command: "paseo-qa-absent-codex",
+        cwd: realpathSync(tmpdir()),
+        env: { PATH: "/paseo-qa-empty" },
+        platform: "win32",
+      }),
+    ).resolves.toBeUndefined();
+  });
+
+  it.runIf(isPlatform("linux", "darwin"))(
+    "still opens a terminal for an installed command that exits non-zero",
+    async () => {
+      // A profile running a failing test suite must keep opening a tab with its
+      // output. Only a command that cannot start at all is reported as an error,
+      // and "exited non-zero" does not distinguish the two: a missing binary and
+      // `false` both surface as exit code 1 from node-pty.
+      const session = trackSession(
+        await createTerminal({
+          workspaceId: "ws-test",
+          cwd: realpathSync(tmpdir()),
+          name: "Failing suite",
+          command: "false",
+          args: [],
+        }),
+      );
+
+      const exitInfo = await new Promise<{ exitCode: number | null }>((resolve) => {
+        session.onExit((info) => resolve({ exitCode: info.exitCode }));
+      });
+
+      expect(exitInfo).toEqual({ exitCode: 1 });
+    },
+  );
 });
 
 describe.skipIf(isPlatform("win32"))("send input", () => {
@@ -455,7 +869,7 @@ describe.skipIf(isPlatform("win32"))("send input", () => {
     // Line 2: "$"
     await waitForLines(session, ["$ echo hello", "hello", "$"]);
 
-    const state = session.getState();
+    const state = await readTerminalState(session);
     expect(getRowText(state, 0)).toBe("$ echo hello");
     expect(getRowText(state, 1)).toBe("hello");
     expect(getRowText(state, 2)).toBe("$");
@@ -477,7 +891,7 @@ describe.skipIf(isPlatform("win32"))("send input", () => {
 
     await waitForLines(session, ["$ pwd", "/tmp", "$"]);
 
-    const state = session.getState();
+    const state = await readTerminalState(session);
     expect(getRowText(state, 0)).toBe("$ pwd");
     expect(getRowText(state, 1)).toBe("/tmp");
     expect(getRowText(state, 2)).toBe("$");
@@ -538,7 +952,6 @@ describe.skipIf(isPlatform("win32"))("terminal title", () => {
 
     expect(seenTitles).toContain("npm run dev");
     expect(session.getTitle()).toBe("npm run dev");
-    expect(session.getState().title).toBe("npm run dev");
 
     unsubscribeTitle();
   });
@@ -564,7 +977,6 @@ describe.skipIf(isPlatform("win32"))("terminal title", () => {
 
     expect(seenTitles).toContain("Build Log");
     expect(session.getTitle()).toBe("Build Log");
-    expect(session.getState().title).toBe("Build Log");
 
     unsubscribeTitle();
   });
@@ -585,7 +997,6 @@ describe.skipIf(isPlatform("win32"))("terminal title", () => {
     await new Promise((resolve) => setTimeout(resolve, 150));
 
     expect(session.getTitle()).toBe("typecheck");
-    expect(session.getState().title).toBe("typecheck");
   });
 
   it("emits command completion from VS Code OSC 633 without visible output", async () => {
@@ -614,7 +1025,7 @@ describe.skipIf(isPlatform("win32"))("terminal title", () => {
     await waitForState(session, () => commandCompletions.length === 1);
 
     expect(commandCompletions).toEqual([7]);
-    expect(getLines(session.getState()).join("\n")).not.toContain("633;D;7");
+    expect(getLines(await readTerminalState(session)).join("\n")).not.toContain("633;D;7");
 
     unsubscribeCommandFinished();
   });
@@ -648,7 +1059,7 @@ describe.skipIf(isPlatform("win32"))("terminal title", () => {
     await waitForState(session, () => commandCompletions.length === 1);
 
     expect(commandCompletions).toEqual([3]);
-    expect(getLines(session.getState()).join("\n")).not.toContain("633;D;garbage");
+    expect(getLines(await readTerminalState(session)).join("\n")).not.toContain("633;D;garbage");
 
     unsubscribeCommandFinished();
   });
@@ -803,7 +1214,7 @@ describe.skipIf(isPlatform("win32"))("terminal title", () => {
     await waitForState(session, () => commandCompletions.includes(1));
 
     expect(commandCompletions).toEqual([1]);
-    expect(getLines(session.getState()).join("\n")).not.toContain("633;D;1");
+    expect(getLines(await readTerminalState(session)).join("\n")).not.toContain("633;D;1");
 
     unsubscribeCommandFinished();
   });
@@ -837,7 +1248,6 @@ describe.skipIf(isPlatform("win32"))("terminal title", () => {
 
     expect(seenTitles).toEqual(["Build Log", "User terminal"]);
     expect(session.getTitle()).toBe("User terminal");
-    expect(session.getState().title).toBe("User terminal");
 
     unsubscribeTitle();
   });
@@ -867,7 +1277,6 @@ describe.skipIf(isPlatform("win32"))("terminal title", () => {
 
     expect(seenTitles).toEqual(["Build Log", "User terminal"]);
     expect(session.getTitle()).toBe("User terminal");
-    expect(session.getState().title).toBe("User terminal");
 
     unsubscribeTitle();
   });
@@ -896,7 +1305,6 @@ describe.skipIf(isPlatform("win32"))("terminal title", () => {
 
     expect(seenTitles).toEqual(["Build Log", "User terminal"]);
     expect(session.getTitle()).toBe("User terminal");
-    expect(session.getState().title).toBe("User terminal");
 
     unsubscribeTitle();
   });
@@ -920,7 +1328,7 @@ describe.skipIf(isPlatform("win32"))("colors", () => {
 
     await waitForLines(session, ["$ printf '\\033[31mRED\\033[0m'", "RED$"]);
 
-    const state = session.getState();
+    const state = await readTerminalState(session);
     const outputRow = state.grid[1];
 
     expect(outputRow[0].char).toBe("R");
@@ -950,7 +1358,7 @@ describe.skipIf(isPlatform("win32"))("colors", () => {
 
     await waitForLines(session, ["$ printf '\\033[38;2;255;128;64mRGB\\033[0m'", "RGB$"]);
 
-    const state = session.getState();
+    const state = await readTerminalState(session);
     const outputRow = state.grid[1];
 
     // Check R cell
@@ -979,7 +1387,7 @@ describe.skipIf(isPlatform("win32"))("colors", () => {
 
     await waitForLines(session, ["$ printf '\\033[41mBG\\033[0m'", "BG$"]);
 
-    const state = session.getState();
+    const state = await readTerminalState(session);
     const outputRow = state.grid[1];
 
     expect(outputRow[0].char).toBe("B");
@@ -1003,7 +1411,7 @@ describe("resize", () => {
 
     await new Promise((resolve) => setTimeout(resolve, 100));
 
-    const state = session.getState();
+    const state = await readTerminalState(session);
     expect(state.rows).toBe(40);
     expect(state.cols).toBe(120);
   });
@@ -1021,7 +1429,7 @@ describe("resize", () => {
     session.send({ type: "resize", rows: 10, cols: 40 });
     await new Promise((resolve) => setTimeout(resolve, 100));
 
-    const state = session.getState();
+    const state = await readTerminalState(session);
     expect(state.grid.length).toBe(10);
     expect(state.grid[0].length).toBe(40);
   });
@@ -1059,3 +1467,472 @@ describe("mouse events", () => {
     session.send({ type: "mouse", row: 0, col: 0, button: 0, action: "up" });
   });
 });
+
+describe("terminal activity interruption", () => {
+  it.each([
+    ["Ctrl-C", "\x03"],
+    ["Escape", "\x1b"],
+  ])("clears working activity when %s is sent", async (_name, data) => {
+    const session = trackSession(
+      await createTerminal({
+        workspaceId: "ws-test",
+        cwd: realpathSync(tmpdir()),
+      }),
+    );
+    session.setActivity("working");
+
+    session.send({ type: "input", data });
+
+    expect(session.getActivity()).toBeNull();
+  });
+
+  it.each([
+    ["an arrow sequence", "\x1b[A"],
+    ["pasted text containing Ctrl-C", "before\x03after"],
+    ["ordinary input", "hello"],
+  ])("keeps a working terminal active for %s", async (_name, data) => {
+    const session = trackSession(
+      await createTerminal({
+        workspaceId: "ws-test",
+        cwd: realpathSync(tmpdir()),
+      }),
+    );
+    session.setActivity("working");
+
+    session.send({ type: "input", data });
+
+    expect(session.getActivity()).toMatchObject({ state: "working" });
+  });
+});
+
+// The escaping tests above assert the command line we generate. This one runs
+// it: a real cmd.exe launches a real .cmd shim, which echoes the argv it was
+// handed. It is the only check that proves cmd.exe's tokenizer reconstructs
+// the prompt instead of executing part of it, which is the failure the
+// escaping exists to prevent (the CVE-2024-27980 class).
+describe.runIf(isPlatform("win32"))(".cmd shim argv round-trip on Windows", () => {
+  const argvMarker = "__PASEO_ARGV__";
+
+  function writeArgvEchoShim(): { dir: string; cmdPath: string } {
+    const dir = mkdtempSync(join(tmpdir(), "paseo-cmd-shim-"));
+    temporaryDirs.push(dir);
+    const cmdPath = join(dir, "echoargv.cmd");
+    const scriptPath = join(dir, "echoargv.js");
+    writeFileSync(
+      scriptPath,
+      `process.stdout.write(${JSON.stringify(argvMarker)} + JSON.stringify(process.argv.slice(2)) + "\\n");\n`,
+    );
+    writeFileSync(cmdPath, `@echo off\r\n"${process.execPath}" "${scriptPath}" %*\r\n`);
+    return { dir, cmdPath };
+  }
+
+  function runCommandLine(command: string, args: string, cwd: string): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const terminal = pty.spawn(command, args, { cwd, cols: 500, rows: 30 });
+      let output = "";
+      const dataDisposable = terminal.onData((data) => {
+        output += data;
+      });
+      const timeout = setTimeout(() => {
+        terminal.kill();
+        reject(new Error("Timed out waiting for cmd.exe fixture"));
+      }, 10_000);
+      timeout.unref();
+      terminal.onExit(({ exitCode }) => {
+        clearTimeout(timeout);
+        dataDisposable.dispose();
+        if (exitCode !== 0) {
+          reject(new Error(`cmd.exe fixture exited ${exitCode}: ${output}`));
+          return;
+        }
+        resolve(output);
+      });
+    });
+  }
+
+  async function roundTrip(promptArg: string): Promise<string[]> {
+    const { dir, cmdPath } = writeArgvEchoShim();
+    const resolved = await resolveTerminalSpawnCommand("echoargv", [promptArg], {
+      platform: "win32",
+      env: process.env,
+      resolveExecutable: async () => cmdPath,
+    });
+    if (typeof resolved.args !== "string") {
+      throw new Error(`expected a cmd.exe command line, got ${JSON.stringify(resolved.args)}`);
+    }
+    const output = await runCommandLine(resolved.command, resolved.args, dir);
+    const cleanOutput = stripVTControlCharacters(output);
+    const markerIndex = cleanOutput.lastIndexOf(argvMarker);
+    if (markerIndex === -1) {
+      throw new Error(`expected argv marker, got ${output}`);
+    }
+    const argvJson = cleanOutput.slice(markerIndex + argvMarker.length).split(/\r?\n/, 1)[0];
+    const argv: unknown = JSON.parse(argvJson);
+    if (!Array.isArray(argv) || !argv.every((arg) => typeof arg === "string")) {
+      throw new Error(`expected string argv, got ${output}`);
+    }
+    return argv;
+  }
+
+  it("passes cmd.exe metacharacters through as literal text", async () => {
+    expect(await roundTrip("a & b | c")).toEqual(["a & b | c"]);
+    expect(await roundTrip("100% done %PATH%")).toEqual(["100% done %PATH%"]);
+    expect(await roundTrip("a^b")).toEqual(["a^b"]);
+    expect(await roundTrip('say "hi"')).toEqual(['say "hi"']);
+    expect(await roundTrip("c:\\path\\to\\thing")).toEqual(["c:\\path\\to\\thing"]);
+  });
+
+  it("does not let a metacharacter start a second command", async () => {
+    expect(await roundTrip("safe & echo pwned")).toEqual(["safe & echo pwned"]);
+  });
+
+  it("normalizes newlines to spaces rather than splitting the command", async () => {
+    expect(await roundTrip("first\nsecond")).toEqual(["first second"]);
+  });
+});
+
+it.runIf(isPlatform("linux", "darwin"))(
+  "opens a profile command from a PATH entry relative to the terminal cwd",
+  async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "terminal-relative-path-"));
+    mkdirSync(join(projectDir, "bin"));
+    const script = join(projectDir, "bin", "paseo-relative-path-tool");
+    writeFileSync(script, "#!/bin/sh\nprintf 'paseo-launch-ok\\n'\nexec /bin/sleep 30\n");
+    chmodSync(script, 0o755);
+    let session: TerminalSession | undefined;
+    try {
+      session = await createTerminal({
+        workspaceId: "ws-test",
+        cwd: realpathSync(projectDir),
+        command: "paseo-relative-path-tool",
+        env: { PATH: "bin" },
+      });
+      await waitForLines(session, ["paseo-launch-ok"]);
+      expect(getLines(await readTerminalState(session))[0]).toBe("paseo-launch-ok");
+      expect(session.cwd).toBe(realpathSync(projectDir));
+      expect(session.getExitInfo()).toBeNull();
+    } finally {
+      await session?.killAndWait({ gracefulTimeoutMs: 1000, forceTimeoutMs: 500 });
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  },
+);
+
+it.runIf(isPlatform("linux", "darwin"))(
+  "checks the exact command rather than accepting a trimmed executable name",
+  async () => {
+    await expect(
+      createTerminal({
+        workspaceId: "ws-test",
+        cwd: realpathSync(tmpdir()),
+        command: " node ",
+      }),
+    ).rejects.toThrow(" node : command not found");
+  },
+);
+
+it.each([false, true])(
+  "serializes styled Unicode, cursor presentation and modes directly (alternate=%s)",
+  async (alternate) => {
+    // Exercise the serializer's input model directly. ConPTY renders program
+    // output: it consumes input modes and need not publish a hidden cursor move.
+    const terminal = new xterm.Terminal({
+      rows: 4,
+      cols: 16,
+      scrollback: 10000,
+      allowProposedApi: true,
+    });
+    const serialize = createTerminalSerializer(terminal);
+    const inputModes = new TerminalInputModeTracker();
+    const content =
+      Array.from({ length: 8 }, (_, i) => "normal-" + i + "\r\n").join("") +
+      (alternate ? "\x1b[?1049h\x1b[H" : "") +
+      "\x1b[38;2;255;128;64;4m界é🙂\x1b[0m\r\nVIEW-READY\x1b[?1h\x1b[?2004h\x1b[>1u\x1b[?9001h\x1b[?7l\x1b[?1000h\x1b[5 q\x1b[?25l";
+    const output = content + "\x1b[2;7H";
+    await new Promise<void>((resolve) => terminal.write(output, resolve));
+    inputModes.feed(output);
+    const data = serialize();
+    const ansi = new TextDecoder().decode(data);
+    expect(ansi).toContain("\x1b[?25l\x1b[5 q");
+    expect(ansi).not.toContain("NaN");
+    expect(terminal.buffer.normal.baseY).toBeGreaterThan(0);
+    const receiver = new xterm.Terminal({
+      rows: 4,
+      cols: 16,
+      scrollback: 10000,
+      allowProposedApi: true,
+    });
+    try {
+      await new Promise<void>((resolve) => receiver.write(data, resolve));
+      await new Promise<void>((resolve) => receiver.write(inputModes.getPreamble(), resolve));
+      expect(receiver.buffer.active.type).toBe(alternate ? "alternate" : "normal");
+      const lines = Array.from({ length: receiver.buffer.active.length }, (_, i) =>
+        receiver.buffer.active.getLine(i)!.translateToString(true),
+      );
+      expect(lines.join("\n")).toContain("界é🙂");
+      expect(lines.join("\n")).toContain("VIEW-READY");
+      const coloredIndex = lines.findIndex((line) => line.includes("界"));
+      const colored = receiver.buffer.active.getLine(coloredIndex)!.getCell(0)!;
+      expect(colored.getChars()).toBe("界");
+      expect(colored.getFgColor()).toBe(0xff8040);
+      expect(colored.isUnderline()).not.toBe(0);
+      expect(receiver.buffer.normal.getLine(0)!.translateToString(true)).toBe("normal-0");
+      expect({ row: receiver.buffer.active.cursorY, col: receiver.buffer.active.cursorX }).toEqual({
+        row: 1,
+        col: 6,
+      });
+      expect(receiver.modes).toMatchObject({
+        applicationCursorKeysMode: true,
+        bracketedPasteMode: true,
+        wraparoundMode: false,
+        mouseTrackingMode: "vt200",
+      });
+      const modes = new TerminalInputModeTracker();
+      modes.feed(ansi + inputModes.getPreamble());
+      expect(modes.getState()).toMatchObject({
+        kittyKeyboardFlags: 1,
+        win32InputMode: true,
+        applicationCursorKeys: true,
+        bracketedPaste: true,
+      });
+    } finally {
+      receiver.dispose();
+      terminal.dispose();
+    }
+  },
+);
+
+it.each([
+  { name: "unset", presentation: "", style: undefined, visible: true },
+  {
+    name: "reset to client default",
+    presentation: "\x1b[5 q\x1b[0 q",
+    style: undefined,
+    visible: true,
+  },
+  { name: "unset hidden", presentation: "\x1b[?25l", style: undefined, visible: false },
+  ...[1, 2, 3, 4, 5, 6].map((style) => ({
+    name: `explicit style ${style}`,
+    presentation: `\x1b[${style} q\x1b[?25l`,
+    style,
+    visible: false,
+  })),
+])("replays cursor presentation without replacing client defaults ($name)", async (input) => {
+  const session = trackSession(
+    await createTerminal({
+      cwd: realpathSync(tmpdir()),
+      workspaceId: "cursor-presentation",
+      command: process.execPath,
+      args: [
+        "-e",
+        `process.stdout.write(${JSON.stringify(input.presentation + "CURSOR-READY\r\n")});setInterval(()=>{},1000)`,
+      ],
+    }),
+  );
+  await waitForLines(session, ["CURSOR-READY"]);
+  const { data } = session.serializeReplay();
+  const ansi = new TextDecoder().decode(data);
+  const receiver = new xterm.Terminal({
+    cursorStyle: "bar",
+    cursorBlink: true,
+    allowProposedApi: true,
+  });
+  const styles: number[] = [];
+  receiver.parser.registerCsiHandler({ intermediates: " ", final: "q" }, (params) => {
+    styles.push(Number(params[0]));
+    return false;
+  });
+  try {
+    await new Promise<void>((resolve) => receiver.write(data, resolve));
+    expect(styles).toEqual(input.style === undefined ? [] : [input.style]);
+    expect(ansi).toContain(`\x1b[?25${input.visible ? "h" : "l"}`);
+  } finally {
+    receiver.dispose();
+  }
+});
+
+it("captures input modes at the same committed cut as serialized bytes", async () => {
+  const session = trackSession(
+    await createTerminal({
+      cwd: realpathSync(tmpdir()),
+      workspaceId: "mode-cut",
+      rows: 4,
+      cols: 80,
+      command: process.execPath,
+      args: [
+        "-e",
+        'process.stdin.on("data",()=>process.stdout.write("x".repeat(1024*1024)+"\x1b[?1hMODE-CUT"));setInterval(()=>{},1000)',
+      ],
+    }),
+  );
+  const mismatches: string[] = [];
+  let completed!: () => void;
+  const output = new Promise<void>((resolve) => {
+    completed = resolve;
+  });
+  const unsubscribe = session.subscribe((message) => {
+    if (message.type !== "output") return;
+    if (session.getReplayPreamble().includes("\x1b[?1h")) {
+      const cut = session.serializeReplay({ scrollbackLines: 0 });
+      if (!new TextDecoder().decode(cut.data).includes("\x1b[?1h"))
+        mismatches.push(cut.metadata.replayPreamble);
+    }
+    if (message.data.includes("MODE-CUT")) completed();
+  });
+  try {
+    session.send({ type: "input", data: "go\r" });
+    await Promise.race([
+      output,
+      delay(5000).then(() => {
+        throw new Error("mode cut did not complete");
+      }),
+    ]);
+    expect(mismatches).toEqual([]);
+  } finally {
+    unsubscribe();
+  }
+});
+
+it.each(
+  [false, true].flatMap((alternate) => [
+    {
+      alternate,
+      pendingWrap: false,
+      position: "\x1b[3;16H",
+      cursor: { row: 2, col: 15 },
+      after: { row: 2, col: 16 },
+    },
+    {
+      alternate,
+      pendingWrap: true,
+      position: "",
+      cursor: { row: 0, col: 16 },
+      after: { row: 1, col: 1 },
+    },
+  ]),
+)(
+  "replays a full-width row without losing cursor state ($alternate, pendingWrap=$pendingWrap)",
+  async (input) => {
+    const source = new xterm.Terminal({
+      rows: 4,
+      cols: 16,
+      scrollback: 10000,
+      allowProposedApi: true,
+    });
+    const serialize = createTerminalSerializer(source);
+    const receiver = new xterm.Terminal({
+      rows: 4,
+      cols: 16,
+      scrollback: 10000,
+      allowProposedApi: true,
+    });
+    try {
+      await new Promise<void>((resolve) =>
+        source.write(
+          (input.alternate ? "\x1b[?1049h" : "") + "x".repeat(16) + input.position,
+          resolve,
+        ),
+      );
+      expect({ row: source.buffer.active.cursorY, col: source.buffer.active.cursorX }).toEqual(
+        input.cursor,
+      );
+      await new Promise<void>((resolve) => receiver.write(serialize(), resolve));
+      expect({ row: receiver.buffer.active.cursorY, col: receiver.buffer.active.cursorX }).toEqual(
+        input.cursor,
+      );
+      await new Promise<void>((resolve) => receiver.write("Z", resolve));
+      expect({ row: receiver.buffer.active.cursorY, col: receiver.buffer.active.cursorX }).toEqual(
+        input.after,
+      );
+    } finally {
+      receiver.dispose();
+      source.dispose();
+    }
+  },
+);
+
+it.each([false, true])(
+  "replays the observed PTY projection including startup modes (alternate=%s)",
+  async (alternate) => {
+    const gate = mkdtempSync(join(tmpdir(), "terminal-projection-"));
+    temporaryDirs.push(gate);
+    const release = join(gate, "output");
+    const content =
+      Array.from({ length: 8 }, (_, i) => `normal-${i}\r\n`).join("") +
+      (alternate ? "\x1b[?1049h\x1b[H" : "") +
+      "\x1b[38;2;255;128;64;4m界é🙂\x1b[0m\r\nVIEW-READY\x1b[?1h\x1b[?2004h\x1b[>1u\x1b[?9001h\x1b[?7l\x1b[?1000h\x1b[5 q\x1b[?25l\x1b[2;7H";
+    const session = trackSession(
+      await createTerminal({
+        cwd: realpathSync(tmpdir()),
+        workspaceId: "projection",
+        rows: 4,
+        cols: 16,
+        command: process.execPath,
+        args: [
+          "-e",
+          `const fs=require("node:fs");let sent=false;
+      function emit(){if(!sent&&fs.existsSync(${JSON.stringify(release)})){sent=true;watcher.close();process.stdout.write(${JSON.stringify(content)});}}
+      const watcher=fs.watch(${JSON.stringify(gate)},emit);emit();setInterval(()=>{},1000);`,
+        ],
+      }),
+    );
+    const bootstrap = session.serializeReplay();
+    const output: string[] = [];
+    const unsubscribe = session.subscribe((message) => {
+      if (message.type === "output") output.push(message.data);
+    });
+    const reference = new xterm.Terminal({
+      rows: 4,
+      cols: 16,
+      scrollback: 10000,
+      allowProposedApi: true,
+    });
+    const receiver = new xterm.Terminal({
+      rows: 4,
+      cols: 16,
+      scrollback: 10000,
+      allowProposedApi: true,
+    });
+    try {
+      await new Promise<void>((resolve) => reference.write(bootstrap.data, resolve));
+      await new Promise<void>((resolve) =>
+        reference.write(bootstrap.metadata.replayPreamble, resolve),
+      );
+      writeFileSync(release, "release");
+      const deadline = Date.now() + 5000;
+      while (!session.captureLines().lines.some((line) => line.includes("VIEW-READY"))) {
+        if (Date.now() > deadline) throw new Error("PTY did not render fixture output");
+        await delay(20);
+      }
+      // Bootstrap and these committed output events cover precisely this source cut.
+      // Program bytes are not the oracle: ConPTY consumes modes and renders cells.
+      const replay = session.serializeReplay();
+      const committed = output.join("");
+      await new Promise<void>((resolve) => reference.write(committed, resolve));
+      await new Promise<void>((resolve) => receiver.write(replay.data, resolve));
+      await new Promise<void>((resolve) => receiver.write(replay.metadata.replayPreamble, resolve));
+      const text = (terminal: typeof receiver) =>
+        Array.from({ length: terminal.buffer.active.length }, (_, i) =>
+          terminal.buffer.active.getLine(i)!.translateToString(true).trimEnd(),
+        );
+      expect(text(receiver)).toEqual(text(reference));
+      expect(text(receiver).join("\n")).toContain("界é🙂");
+      expect(text(receiver).join("\n")).toContain("VIEW-READY");
+      expect(receiver.buffer.active.type).toBe(alternate ? "alternate" : "normal");
+      expect({ row: receiver.buffer.active.cursorY, col: receiver.buffer.active.cursorX }).toEqual({
+        row: reference.buffer.active.cursorY,
+        col: reference.buffer.active.cursorX,
+      });
+      expect(receiver.modes).toEqual(reference.modes);
+      const expectedModes = new TerminalInputModeTracker();
+      expectedModes.feed(bootstrap.metadata.replayPreamble + committed);
+      const actualModes = new TerminalInputModeTracker();
+      actualModes.feed(new TextDecoder().decode(replay.data) + replay.metadata.replayPreamble);
+      expect(actualModes.getState()).toEqual(expectedModes.getState());
+    } finally {
+      unsubscribe();
+      receiver.dispose();
+      reference.dispose();
+    }
+  },
+);

@@ -115,7 +115,7 @@ export function createSshConnectService(deps: SshConnectServiceDeps): SshConnect
     logId: string,
     placement: TerminalPlacement,
   ): Promise<SshConnectResult> {
-    const argv = buildFallbackSshArgv(host, {
+    const argv = await buildFallbackSshArgv(host, {
       hostStore: sshManager.hostStore,
       keyStore: sshManager.keyStore,
       sshHome,
@@ -131,7 +131,7 @@ export function createSshConnectService(deps: SshConnectServiceDeps): SshConnect
       trackSshTerminal(terminal, host, "fallback");
       // The temp key file must outlive spawn; drop it once the terminal exits.
       terminal.onExit(() => {
-        argv.cleanup();
+        void argv.cleanup();
         sshManager.logStore.complete(logId, { status: "closed" });
       });
       return {
@@ -144,7 +144,7 @@ export function createSshConnectService(deps: SshConnectServiceDeps): SshConnect
         },
       };
     } catch (error) {
-      argv.cleanup();
+      await argv.cleanup();
       const message = error instanceof Error ? error.message : String(error);
       sshManager.logStore.complete(logId, { status: "failed", error: message });
       return { outcome: "error", error: message };

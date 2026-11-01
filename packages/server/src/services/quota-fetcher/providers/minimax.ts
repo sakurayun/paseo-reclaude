@@ -1,4 +1,4 @@
-import { existsSync, promises as fs } from "node:fs";
+import { promises as fs } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { Logger } from "pino";
@@ -254,7 +254,13 @@ export class MiniMaxQuotaProvider implements ProviderUsageFetcher {
   }
 
   private async readCredentials(): Promise<z.infer<typeof MiniMaxCredentialsSchema> | null> {
-    if (!existsSync(this.credentialsPath)) return null;
+    if (
+      !(await fs.access(this.credentialsPath).then(
+        () => true,
+        () => false,
+      ))
+    )
+      return null;
     try {
       const raw = JSON.parse(await fs.readFile(this.credentialsPath, "utf8"));
       return MiniMaxCredentialsSchema.parse(raw);
@@ -264,7 +270,13 @@ export class MiniMaxQuotaProvider implements ProviderUsageFetcher {
   }
 
   private async readConfig(): Promise<z.infer<typeof MiniMaxConfigSchema> | null> {
-    if (!existsSync(this.configPath)) return null;
+    if (
+      !(await fs.access(this.configPath).then(
+        () => true,
+        () => false,
+      ))
+    )
+      return null;
     try {
       const raw = JSON.parse(await fs.readFile(this.configPath, "utf8"));
       return MiniMaxConfigSchema.parse(raw);

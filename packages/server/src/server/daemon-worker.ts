@@ -1,6 +1,7 @@
 import { appendFileSync, mkdirSync } from "node:fs";
 import path from "node:path";
-import { createPaseoDaemon } from "./bootstrap.js";
+import { initializeEnvironmentProxy } from "./network/index.js";
+import { createPaseoDaemon, formatListenTarget } from "./bootstrap.js";
 import { loadConfig } from "./config.js";
 import { resolvePaseoHome } from "./paseo-home.js";
 import { createRootLogger } from "./logger.js";
@@ -13,19 +14,18 @@ type SupervisorLifecycleMessage =
   | {
       type: "paseo:shutdown";
       reason: string;
+      keepTerminals: boolean;
     }
   | {
       type: "paseo:ready";
       listen: string;
+      serverId: string;
     }
   | {
       type: "paseo:restart";
       reason?: string;
+      keepTerminals: boolean;
     };
-
-interface SupervisorHeartbeatMessage {
-  type: "paseo:supervisor-heartbeat";
-}
 
 interface BootstrapResult {
   paseoHome: string;
@@ -84,28 +84,60 @@ function bootstrapFromEnvironment(): BootstrapResult {
 }
 
 function applyCliFlagOverrides(config: ReturnType<typeof loadConfig>): void {
+  const configReload = config.configReload;
+  if (!configReload) throw new Error("Loaded daemon config is missing reload metadata");
+  const cli = (configReload.cli ??= {});
+  const override = (configPath: string) => {
+    if (!configReload.overrideControlledPaths.includes(configPath)) {
+      configReload.overrideControlledPaths.push(configPath);
+    }
+  };
+  if (process.argv.includes("--relay")) {
+    config.relayEnabled = true;
+    config.relayEnabledMutable = false;
+    cli.relayEnabled = true;
+    override("daemon.relay.enabled");
+  }
   if (process.argv.includes("--no-relay")) {
     config.relayEnabled = false;
+    config.relayEnabledMutable = false;
+    cli.relayEnabled = false;
+    override("daemon.relay.enabled");
   }
   if (process.argv.includes("--relay-use-tls")) {
     config.relayUseTls = true;
+    cli.relayUseTls = true;
+    override("daemon.relay.useTls");
   }
   if (process.argv.includes("--no-mcp")) {
     config.mcpEnabled = false;
+    cli.mcpEnabled = false;
+    override("daemon.mcp.enabled");
   }
   if (process.argv.includes("--no-inject-mcp")) {
     config.mcpInjectIntoAgents = false;
+    cli.mcpInjectIntoAgents = false;
+    override("daemon.mcp.injectIntoAgents");
   }
   if (process.argv.includes("--web-ui")) {
     config.webUi = { ...(config.webUi ?? { distDir: null }), enabled: true };
+    cli.webUiEnabled = true;
+    override("features.webUi.enabled");
   }
   if (process.argv.includes("--no-web-ui")) {
     config.webUi = { ...(config.webUi ?? { distDir: null }), enabled: false };
+    cli.webUiEnabled = false;
+    override("features.webUi.enabled");
   }
 }
 
 async function main() {
   const { paseoHome, logger, config } = bootstrapFromEnvironment();
+  for (const variable of initializeEnvironmentProxy()) {
+    writeWorkerLifecycleLog(paseoHome, "Ignoring invalid or unsupported HTTP proxy variable", {
+      variable,
+    });
+  }
   let daemon: Awaited<ReturnType<typeof createPaseoDaemon>> | null = null;
   let shutdownPromise: Promise<number> | null = null;
   let exitHookInstalled = false;
@@ -127,12 +159,15 @@ async function main() {
     options?: {
       reason?: string;
       successExitCode?: number;
+      keepTerminals?: boolean;
     },
   ) => {
     const reason = options?.reason ?? `worker_received_${signal}`;
+    // Signals mean "stop and close terminals"; only an explicit keep request keeps them.
+    const keepTerminals = options?.keepTerminals === true;
     if (!shutdownPromise) {
       logger.info(
-        { signal, reason, ...getProcessDiagnostics() },
+        { signal, reason, keepTerminals, ...getProcessDiagnostics() },
         `${signal} received, shutting down gracefully...`,
       );
 
@@ -151,7 +186,7 @@ async function main() {
             clearTimeout(forceExit);
             return 1;
           }
-          await daemon.stop();
+          await daemon.stop({ keepTerminals });
           clearTimeout(forceExit);
           logger.info("Server closed");
           return options?.successExitCode ?? 0;
@@ -185,34 +220,51 @@ async function main() {
   };
 
   const handleLifecycleIntent = (intent: DaemonLifecycleIntent) => {
+    const fields = {
+      clientId: intent.clientId,
+      requestId: intent.requestId,
+      reason: intent.reason,
+      keepTerminals: intent.keepTerminals,
+    };
     if (intent.type === "shutdown") {
-      logger.warn(
-        { clientId: intent.clientId, requestId: intent.requestId, reason: intent.reason },
-        "Shutdown requested via websocket",
-      );
-      if (sendSupervisorLifecycleMessage({ type: "paseo:shutdown", reason: intent.reason })) {
+      logger.warn(fields, "Shutdown requested via websocket");
+      const sent = sendSupervisorLifecycleMessage({
+        type: "paseo:shutdown",
+        reason: intent.reason,
+        keepTerminals: intent.keepTerminals,
+      });
+      recordLifecycleIntentDispatched(intent.type, fields);
+      if (sent) {
         return;
       }
-      beginShutdown("shutdown lifecycle intent", { reason: intent.reason });
+      beginShutdown("shutdown lifecycle intent", {
+        reason: intent.reason,
+        keepTerminals: intent.keepTerminals,
+      });
       return;
     }
 
-    logger.warn(
-      { clientId: intent.clientId, requestId: intent.requestId, reason: intent.reason },
-      "Restart requested via websocket",
-    );
-    if (
-      sendSupervisorLifecycleMessage({
-        type: "paseo:restart",
-        ...(intent.reason ? { reason: intent.reason } : {}),
-      })
-    ) {
+    logger.warn(fields, "Restart requested via websocket");
+    const sent = sendSupervisorLifecycleMessage({
+      type: "paseo:restart",
+      ...(intent.reason ? { reason: intent.reason } : {}),
+      keepTerminals: intent.keepTerminals,
+    });
+    recordLifecycleIntentDispatched(intent.type, fields);
+    if (sent) {
       return;
     }
     beginShutdown("restart lifecycle intent", {
       reason: intent.reason,
       successExitCode: 0,
+      keepTerminals: intent.keepTerminals,
     });
+  };
+
+  // Written straight to daemon.log: the pino stream goes through the supervisor's pipe, which
+  // a paused or busy supervisor does not drain. Tests synchronize on this line.
+  const recordLifecycleIntentDispatched = (type: string, fields: Record<string, unknown>) => {
+    writeWorkerLifecycleLog(paseoHome, "Lifecycle intent dispatched", { type, ...fields });
   };
 
   const installSupervisorLivenessGuard = () => {
@@ -245,13 +297,20 @@ async function main() {
     };
 
     process.on("message", (message: unknown) => {
-      if (
-        typeof message === "object" &&
-        message !== null &&
-        "type" in message &&
-        (message as SupervisorHeartbeatMessage).type === "paseo:supervisor-heartbeat"
-      ) {
+      if (typeof message !== "object" || message === null || !("type" in message)) {
+        return;
+      }
+      const type = (message as { type?: unknown }).type;
+      if (type === "paseo:supervisor-heartbeat") {
         lastSupervisorHeartbeatAt = Date.now();
+        return;
+      }
+      if (type === "paseo:graceful-shutdown") {
+        const { reason, keepTerminals } = message as { reason?: unknown; keepTerminals?: unknown };
+        beginShutdown("Supervisor shutdown request", {
+          reason: typeof reason === "string" ? reason : "supervisor_requested_shutdown",
+          keepTerminals: keepTerminals === true,
+        });
       }
     });
     process.on("disconnect", () => exitAfterSupervisorLoss("ipc_disconnect_event"));
@@ -294,14 +353,15 @@ async function main() {
   try {
     await daemon.start();
     const listenTarget = daemon.getListenTarget();
-    const listen =
-      listenTarget?.type === "tcp"
-        ? `${listenTarget.host}:${listenTarget.port}`
-        : listenTarget?.path;
+    const listen = formatListenTarget(listenTarget);
     if (!listen) {
       throw new Error("Daemon did not expose a listen target after startup");
     }
-    sendSupervisorLifecycleMessage({ type: "paseo:ready", listen });
+    sendSupervisorLifecycleMessage({
+      type: "paseo:ready",
+      listen,
+      serverId: daemon.getServerId(),
+    });
   } catch (err) {
     logger.fatal({ err }, "Daemon failed to start listening");
     throw err;

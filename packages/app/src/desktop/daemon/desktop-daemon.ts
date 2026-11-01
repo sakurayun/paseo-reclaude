@@ -1,5 +1,8 @@
+import { i18n } from "@/i18n/i18next";
+import { confirmDialog } from "@/utils/confirm-dialog";
 import { getDesktopHost, isElectronRuntime } from "@/desktop/host";
 import { invokeDesktopCommand } from "@/desktop/electron/invoke";
+import type { AgentSkillSelection } from "@getpaseo/protocol/messages";
 
 export type DesktopDaemonState = "starting" | "running" | "stopped" | "errored";
 export type DesktopDaemonStopReason =
@@ -20,6 +23,8 @@ export interface DesktopDaemonStatus {
   home: string;
   version: string | null;
   desktopManaged: boolean;
+  ownedByDesktop: boolean;
+  startedAt: string | null;
   error: string | null;
 }
 
@@ -33,16 +38,45 @@ export interface DesktopAppLogs {
   contents: string;
 }
 
-export interface DesktopPairingOffer {
-  relayEnabled: boolean;
-  url: string | null;
-  qr: string | null;
+export interface DesktopUpdaterDiagnosticFile {
+  path: string;
+  exists: boolean;
+  modifiedAt: string | null;
+  contents: string;
+  error: string | null;
+}
+
+export interface DesktopUpdaterDiagnostics {
+  platform: string;
+  currentVersion: string;
+  targetVersion: string | null;
+  targetVersionError: string | null;
+  shipItDirectory: string | null;
+  state: DesktopUpdaterDiagnosticFile | null;
+  stdout: DesktopUpdaterDiagnosticFile | null;
+  stderr: DesktopUpdaterDiagnosticFile | null;
 }
 
 export interface LocalTransportTarget {
   [key: string]: unknown;
   transportType: "socket" | "pipe";
   transportPath: string;
+}
+
+export interface RemoteSshTransportTarget {
+  [key: string]: unknown;
+  transportType: "ssh";
+  host: string;
+  sshPort?: number;
+  daemonPort?: number;
+}
+
+export type DesktopDaemonTransportTarget = LocalTransportTarget | RemoteSshTransportTarget;
+
+export interface OpenLocalTransportSessionInput {
+  [key: string]: unknown;
+  sessionId: string;
+  target: DesktopDaemonTransportTarget;
 }
 
 interface LocalTransportEventPayload {
@@ -98,6 +132,8 @@ function parseDesktopDaemonStatus(raw: unknown): DesktopDaemonStatus {
     home: toStringOrNull(raw.home) ?? "",
     version: toStringOrNull(raw.version),
     desktopManaged: raw.desktopManaged === true,
+    ownedByDesktop: raw.ownedByDesktop === true,
+    startedAt: typeof raw.startedAt === "string" ? raw.startedAt : null,
     error: toStringOrNull(raw.error),
   };
 }
@@ -112,14 +148,33 @@ function parseDesktopDaemonLogs(raw: unknown): DesktopDaemonLogs {
   };
 }
 
-function parseDesktopPairingOffer(raw: unknown): DesktopPairingOffer {
+function parseDesktopUpdaterDiagnosticFile(raw: unknown): DesktopUpdaterDiagnosticFile | null {
+  if (raw === null) return null;
   if (!isRecord(raw)) {
-    throw new Error("Unexpected desktop daemon pairing response.");
+    throw new Error("Unexpected desktop updater diagnostic file response.");
   }
   return {
-    relayEnabled: raw.relayEnabled === true,
-    url: toStringOrNull(raw.url),
-    qr: toStringOrNull(raw.qr),
+    path: toStringOrNull(raw.path) ?? "",
+    exists: raw.exists === true,
+    modifiedAt: toStringOrNull(raw.modifiedAt),
+    contents: typeof raw.contents === "string" ? raw.contents : "",
+    error: toStringOrNull(raw.error),
+  };
+}
+
+function parseDesktopUpdaterDiagnostics(raw: unknown): DesktopUpdaterDiagnostics {
+  if (!isRecord(raw)) {
+    throw new Error("Unexpected desktop updater diagnostics response.");
+  }
+  return {
+    platform: toStringOrNull(raw.platform) ?? "unknown",
+    currentVersion: toStringOrNull(raw.currentVersion) ?? "unknown",
+    targetVersion: toStringOrNull(raw.targetVersion),
+    targetVersionError: toStringOrNull(raw.targetVersionError),
+    shipItDirectory: toStringOrNull(raw.shipItDirectory),
+    state: parseDesktopUpdaterDiagnosticFile(raw.state),
+    stdout: parseDesktopUpdaterDiagnosticFile(raw.stdout),
+    stderr: parseDesktopUpdaterDiagnosticFile(raw.stderr),
   };
 }
 
@@ -141,6 +196,33 @@ export async function stopDesktopDaemon(
   return parseDesktopDaemonStatus(await invokeDesktopCommand("stop_desktop_daemon", { reason }));
 }
 
+export async function confirmAndStopDesktopDaemon(): Promise<DesktopDaemonStatus | null> {
+  const captured = await getDesktopDaemonStatus();
+  if (!captured.pid || !captured.startedAt) return captured;
+  const ownership = captured.ownedByDesktop
+    ? i18n.t("desktop.daemon.lifecycle.ownedMessage")
+    : i18n.t("desktop.daemon.lifecycle.attachedMessage");
+  const confirmed = await confirmDialog({
+    title: i18n.t("desktop.daemon.lifecycle.stopTitle"),
+    message: i18n.t("desktop.daemon.lifecycle.stopMessage", {
+      ownership,
+      home: captured.home,
+      pid: captured.pid,
+    }),
+    confirmLabel: i18n.t("desktop.daemon.lifecycle.stop"),
+    cancelLabel: i18n.t("common.actions.cancel"),
+    destructive: true,
+  });
+  if (!confirmed) return null;
+  return parseDesktopDaemonStatus(
+    await invokeDesktopCommand("stop_desktop_daemon", {
+      reason: "manual_ipc",
+      pid: captured.pid,
+      startedAt: captured.startedAt,
+    }),
+  );
+}
+
 export async function restartDesktopDaemon(): Promise<DesktopDaemonStatus> {
   return parseDesktopDaemonStatus(await invokeDesktopCommand("restart_desktop_daemon"));
 }
@@ -160,8 +242,8 @@ export async function getDesktopAppLogs(): Promise<DesktopAppLogs> {
   };
 }
 
-export async function getDesktopDaemonPairing(): Promise<DesktopPairingOffer> {
-  return parseDesktopPairingOffer(await invokeDesktopCommand("desktop_daemon_pairing"));
+export async function getDesktopUpdaterDiagnostics(): Promise<DesktopUpdaterDiagnostics> {
+  return parseDesktopUpdaterDiagnostics(await invokeDesktopCommand("desktop_update_diagnostics"));
 }
 
 export async function getCliDaemonStatus(): Promise<string> {
@@ -199,12 +281,10 @@ export async function listenToLocalTransportEvents(
   return typeof unlisten === "function" ? unlisten : () => {};
 }
 
-export async function openLocalTransportSession(target: LocalTransportTarget): Promise<string> {
-  const raw = await invokeDesktopCommand<unknown>("open_local_daemon_transport", target);
-  if (typeof raw !== "string" || raw.trim().length === 0) {
-    throw new Error("Unexpected local transport session response.");
-  }
-  return raw;
+export async function openLocalTransportSession(
+  input: OpenLocalTransportSessionInput,
+): Promise<void> {
+  await invokeDesktopCommand("open_local_daemon_transport", input);
 }
 
 export async function sendLocalTransportMessage(input: {
@@ -246,67 +326,29 @@ export async function installCli(): Promise<InstallStatus> {
   return parseInstallStatus(await invokeDesktopCommand("install_cli"));
 }
 
-export type SkillsState = "not-installed" | "up-to-date" | "drift";
-
-export type SkillOp =
-  | { kind: "add"; name: string }
-  | { kind: "update"; name: string }
-  | { kind: "delete"; name: string };
-
-export interface SkillsStatus {
-  state: SkillsState;
-  ops: SkillOp[];
+// COMPAT(desktopSkillSelectionMigration): added in v0.4.0; remove after 2027-02-16.
+export function readLegacySkillSelection(): Promise<AgentSkillSelection | null> {
+  return invokeDesktopCommand("read_legacy_skill_selection") as Promise<AgentSkillSelection | null>;
 }
 
-function parseSkillsState(value: unknown): SkillsState {
-  switch (value) {
-    case "not-installed":
-    case "up-to-date":
-    case "drift":
-      return value;
-    default:
-      throw new Error(`Unexpected skills status state: ${String(value)}`);
+// COMPAT(desktopSkillSelectionMigration): added in v0.4.0; remove after 2027-02-16.
+export async function deleteLegacySkillSelection(): Promise<void> {
+  await invokeDesktopCommand("delete_legacy_skill_selection");
+}
+
+export interface DesktopSandboxDiagnostics {
+  enabled: boolean;
+  reason: string;
+}
+
+export async function getDesktopSandboxDiagnostics(): Promise<DesktopSandboxDiagnostics> {
+  const result: unknown = await invokeDesktopCommand("desktop_sandbox_diagnostics");
+  if (
+    !isRecord(result) ||
+    typeof result.enabled !== "boolean" ||
+    typeof result.reason !== "string"
+  ) {
+    throw new Error("Unexpected desktop sandbox diagnostics response.");
   }
-}
-
-function parseSkillOp(raw: unknown): SkillOp {
-  if (!isRecord(raw)) {
-    throw new Error("Unexpected skill op response.");
-  }
-  const name = toStringOrNull(raw.name);
-  if (!name) throw new Error("Skill op missing name.");
-  switch (raw.kind) {
-    case "add":
-      return { kind: "add", name };
-    case "update":
-      return { kind: "update", name };
-    case "delete":
-      return { kind: "delete", name };
-    default:
-      throw new Error(`Unexpected skill op kind: ${String(raw.kind)}`);
-  }
-}
-
-function parseSkillsStatus(raw: unknown): SkillsStatus {
-  if (!isRecord(raw)) {
-    throw new Error("Unexpected skills status response.");
-  }
-  const ops = Array.isArray(raw.ops) ? raw.ops.map(parseSkillOp) : [];
-  return { state: parseSkillsState(raw.state), ops };
-}
-
-export async function getSkillsStatus(): Promise<SkillsStatus> {
-  return parseSkillsStatus(await invokeDesktopCommand("get_skills_status"));
-}
-
-export async function installSkills(): Promise<SkillsStatus> {
-  return parseSkillsStatus(await invokeDesktopCommand("install_skills"));
-}
-
-export async function updateSkills(): Promise<SkillsStatus> {
-  return parseSkillsStatus(await invokeDesktopCommand("update_skills"));
-}
-
-export async function uninstallSkills(): Promise<SkillsStatus> {
-  return parseSkillsStatus(await invokeDesktopCommand("uninstall_skills"));
+  return { enabled: result.enabled, reason: result.reason };
 }

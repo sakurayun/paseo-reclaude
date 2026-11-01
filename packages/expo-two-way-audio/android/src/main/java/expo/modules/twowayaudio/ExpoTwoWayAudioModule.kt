@@ -33,8 +33,19 @@ class ExpoTwoWayAudioModule : Module() {
             }
         }
 
+         Function("releaseAudioSession") {
+             audioEngine?.releaseAudioSession()
+             null
+         }
+
          Function("isRecording") {
              audioEngine?.isRecording ?: false
+         }
+
+         Function("startDictation") {
+             val isRecording = audioEngine?.startDictation() ?: false
+             sendEvent(ON_RECORDING_CHANGE_EVENT, mapOf("data" to isRecording))
+             isRecording
          }
 
          Function("toggleRecording") { value: Boolean ->

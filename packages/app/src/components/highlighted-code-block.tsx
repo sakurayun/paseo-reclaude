@@ -1,7 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Pressable, View, type StyleProp, type TextStyle, type ViewStyle } from "react-native";
+import {
+  Pressable,
+  View,
+  Text,
+  type StyleProp,
+  type TextStyle,
+  type ViewStyle,
+} from "react-native";
 import { StyleSheet } from "react-native-unistyles";
-import { MarkdownTextSpan } from "@/components/markdown-text";
 import * as Clipboard from "expo-clipboard";
 import { Check, Copy } from "lucide-react-native";
 import { useTranslation } from "react-i18next";
@@ -11,6 +17,11 @@ import { useIsCompactFormFactor } from "@/constants/layout";
 import { syntaxTokenStyleFor } from "@/styles/syntax-token-styles";
 import { CODE_SURFACE_DATASET } from "@/styles/code-surface";
 import { highlightToKeyedLines, type KeyedLine } from "@/utils/highlight-cache";
+import {
+  markdownCopyCodeBlockDataSet,
+  markdownCopyDataSet,
+  TRAILING_CODE_LINE_BREAKS,
+} from "@/assistant-selection-copy/markup";
 
 interface HighlightedCodeBlockProps {
   code: string;
@@ -66,6 +77,10 @@ export const HighlightedCodeBlock = React.memo(function HighlightedCodeBlock({
     [inheritedStyles, textStyle],
   );
   const renderedCode = useMemo(() => stripTerminalFenceNewline(code), [code]);
+  const copyDataSet = useMemo(
+    () => ({ ...CODE_SURFACE_DATASET, ...markdownCopyCodeBlockDataSet(language) }),
+    [language],
+  );
 
   const keyedLines = useMemo<KeyedLine[] | null>(
     () => highlightToKeyedLines(renderedCode, fenceLanguageToExtension(language)),
@@ -77,12 +92,19 @@ export const HighlightedCodeBlock = React.memo(function HighlightedCodeBlock({
   const handlePointerEnter = useCallback(() => setIsHovered(true), []);
   const handlePointerLeave = useCallback(() => setIsHovered(false), []);
   const controlsVisible = isHovered || isNative || isCompact;
-  const getCode = useCallback(() => code, [code]);
+  // Copy the code without its trailing blank lines. A fence body ends in a newline,
+  // and ends in more than one when the author left a blank line before the closing
+  // fence; pasting any of them into a terminal runs the last line.
+  const getCode = useCallback(() => code.replace(TRAILING_CODE_LINE_BREAKS, ""), [code]);
 
   const codeBody = keyedLines ? (
-    <MarkdownTextSpan style={innerTextStyle}>{renderCodeSegments(keyedLines)}</MarkdownTextSpan>
+    <Text style={innerTextStyle} dataSet={markdownCopyDataSet.code}>
+      {renderCodeSegments(keyedLines)}
+    </Text>
   ) : (
-    <MarkdownTextSpan style={innerTextStyle}>{renderedCode}</MarkdownTextSpan>
+    <Text style={innerTextStyle} dataSet={markdownCopyDataSet.code}>
+      {renderedCode}
+    </Text>
   );
 
   if (bodyOnly) {
@@ -92,7 +114,7 @@ export const HighlightedCodeBlock = React.memo(function HighlightedCodeBlock({
   return (
     <View
       style={containerStyle}
-      dataSet={CODE_SURFACE_DATASET}
+      dataSet={copyDataSet}
       onPointerEnter={handlePointerEnter}
       onPointerLeave={handlePointerLeave}
     >
@@ -122,9 +144,7 @@ interface TokenSpanProps {
 
 const TokenSpan = React.memo(function TokenSpan({ token }: TokenSpanProps) {
   return (
-    <MarkdownTextSpan style={token.style ? syntaxTokenStyleFor(token.style) : undefined}>
-      {token.text}
-    </MarkdownTextSpan>
+    <Text style={token.style ? syntaxTokenStyleFor(token.style) : undefined}>{token.text}</Text>
   );
 });
 
@@ -133,7 +153,7 @@ interface CodeTextSpanProps {
 }
 
 const CodeTextSpan = React.memo(function CodeTextSpan({ text }: CodeTextSpanProps) {
-  return <MarkdownTextSpan>{text}</MarkdownTextSpan>;
+  return <Text>{text}</Text>;
 });
 
 interface SplitStyles {
@@ -204,6 +224,7 @@ const CopyButton = React.memo(function CopyButton({ getCode, visible }: CopyButt
       accessibilityRole="button"
       accessibilityLabel={copied ? t("message.actions.copied") : t("message.actions.copyCode")}
       hitSlop={8}
+      dataSet={markdownCopyDataSet.ignore}
     >
       {({ hovered }) => {
         const iconColor = hovered

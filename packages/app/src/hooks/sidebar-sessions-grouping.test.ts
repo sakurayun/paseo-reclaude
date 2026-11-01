@@ -222,7 +222,10 @@ describe("groupSidebarSessionsByProject", () => {
       session({
         id: "older",
         recencyMs: 10,
-        projectPlacement: placement({ projectKey: "p", workspaceName: "feature" }),
+        projectPlacement: placement({
+          projectKey: "p",
+          workspaceName: "feature",
+        }),
       }),
     ]);
     expect(groups).toHaveLength(1);
@@ -235,7 +238,10 @@ describe("groupSidebarSessionsByProject", () => {
       session({
         id: "a",
         recencyMs: 30,
-        projectPlacement: placement({ projectKey: "p", workspaceName: "feature" }),
+        projectPlacement: placement({
+          projectKey: "p",
+          workspaceName: "feature",
+        }),
       }),
       session({
         id: "b",
@@ -275,9 +281,21 @@ describe("groupSidebarSessionsByProject", () => {
 
   it("orders groups by first appearance (most-recent session leads)", () => {
     const groups = groupSidebarSessionsByProject([
-      session({ id: "a", recencyMs: 50, projectPlacement: placement({ projectKey: "p1" }) }),
-      session({ id: "b", recencyMs: 40, projectPlacement: placement({ projectKey: "p2" }) }),
-      session({ id: "c", recencyMs: 30, projectPlacement: placement({ projectKey: "p1" }) }),
+      session({
+        id: "a",
+        recencyMs: 50,
+        projectPlacement: placement({ projectKey: "p1" }),
+      }),
+      session({
+        id: "b",
+        recencyMs: 40,
+        projectPlacement: placement({ projectKey: "p2" }),
+      }),
+      session({
+        id: "c",
+        recencyMs: 30,
+        projectPlacement: placement({ projectKey: "p1" }),
+      }),
     ]);
     expect(groups.map((g) => g.key === "project:p1")).toEqual([true, false]);
     expect(groups[0].sessions.map((s) => s.id)).toEqual(["a", "c"]);
@@ -285,7 +303,12 @@ describe("groupSidebarSessionsByProject", () => {
 
   it("keeps an empty label when no placement is available for the header to localize", () => {
     const groups = groupSidebarSessionsByProject([
-      session({ id: "a", recencyMs: 10, projectPlacement: null, projectName: null }),
+      session({
+        id: "a",
+        recencyMs: 10,
+        projectPlacement: null,
+        projectName: null,
+      }),
     ]);
     expect(groups[0].label).toBe("");
     expect(groups[0].workspaceId).toBeNull();
@@ -305,6 +328,8 @@ function workspace(input: {
   const projectId = input.projectId ?? "remote:github.com/acme/repo";
   return {
     id: input.id,
+    createdAt: null,
+    lastUserMessageAt: null,
     projectId,
     projectDisplayName: input.projectDisplayName ?? "repo",
     projectCustomName: input.projectCustomName ?? null,
@@ -405,7 +430,10 @@ describe("mergeActiveWorkspacesIntoSidebarGroups", () => {
         id: "s1",
         recencyMs: 10,
         workspaceId: "ws-a",
-        projectPlacement: placement({ projectKey: "p-a", projectName: "Alpha" }),
+        projectPlacement: placement({
+          projectKey: "p-a",
+          projectName: "Alpha",
+        }),
       }),
     ]);
     const groups = mergeActiveWorkspacesIntoSidebarGroups({
@@ -429,7 +457,11 @@ describe("mergeActiveWorkspacesIntoSidebarGroups", () => {
     const [group] = mergeActiveWorkspacesIntoSidebarGroups({
       groups: [],
       workspaces: [
-        workspace({ id: "ws-empty", projectId: "p-empty", projectDisplayName: "Empty" }),
+        workspace({
+          id: "ws-empty",
+          projectId: "p-empty",
+          projectDisplayName: "Empty",
+        }),
       ],
     });
     expect(resolveSidebarSessionGroupWorkspaceTarget(group, "server")).toEqual({
@@ -519,8 +551,16 @@ describe("assignTerminalsToSidebarGroups", () => {
     const byWorkspace = { id: "t1", cwd: "/elsewhere", workspaceId: "ws-b" };
     // session() fixtures all use cwd "/repo": a terminal in a subdirectory of
     // that cwd resolves through ancestry to the first matching group.
-    const byCwd = { id: "t2", cwd: "/repo/sub", workspaceId: "standalone:/repo/sub" };
-    const orphan = { id: "t3", cwd: "/nowhere", workspaceId: "standalone:/nowhere" };
+    const byCwd = {
+      id: "t2",
+      cwd: "/repo/sub",
+      workspaceId: "standalone:/repo/sub",
+    };
+    const orphan = {
+      id: "t3",
+      cwd: "/nowhere",
+      workspaceId: "standalone:/nowhere",
+    };
 
     const assigned = assignTerminalsToSidebarGroups(groups, [byWorkspace, byCwd, orphan]);
 

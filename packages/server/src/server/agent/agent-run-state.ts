@@ -10,11 +10,18 @@ export interface ForegroundTurnWaiter {
   resolveSettled: () => void;
 }
 
+type ForegroundRunStart =
+  | { status: "pending" }
+  | { status: "started"; turnId: string }
+  | { status: "failed"; error: string };
+
 export interface PendingForegroundRun {
   token: string;
   kind: "foreground";
-  turnId: string | null;
-  started: boolean;
+  stagedEvents: AgentStreamEvent[];
+  start: ForegroundRunStart;
+  turnStartedPromise: Promise<void>;
+  resolveTurnStarted: () => void;
   settled: boolean;
   settledPromise: Promise<void>;
   resolveSettled: () => void;
@@ -51,6 +58,28 @@ export class AgentRunState {
     return run?.kind === "foreground" ? run : null;
   }
 
+  settleForegroundStart(
+    run: PendingForegroundRun,
+    start: Exclude<ForegroundRunStart, { status: "pending" }>,
+  ): void {
+    run.start = start;
+    if (start.status === "started") {
+      run.resolveTurnStarted();
+    }
+  }
+
+  /**
+   * Resolves once the agent's foreground run has a turn id or has ended. A failed start
+   * resolves only once its run is cleared, so callers never see a failed run still tracked.
+   */
+  async waitForForegroundStart(agentId: string): Promise<void> {
+    const run = this.getPendingRun(agentId);
+    if (run?.start.status !== "pending") {
+      return;
+    }
+    await Promise.race([run.turnStartedPromise, run.settledPromise]);
+  }
+
   hasPendingRun(agentId: string): boolean {
     return this.getPendingRun(agentId) !== null;
   }
@@ -63,13 +92,25 @@ export class AgentRunState {
     return this.runs.has(agentId);
   }
 
+  getTurnId(agentId: string): string | null {
+    const run = this.runs.get(agentId);
+    if (!run) return null;
+    if (run.kind === "autonomous") return run.turnId;
+    return run.start.status === "started" ? run.start.turnId : null;
+  }
+
   trackAutonomousRun(agentId: string, turnId: string | null): TrackedAgentRun {
     const current = this.runs.get(agentId);
     if (current) {
       return current;
     }
 
-    const run = createTrackedRun({ kind: "autonomous", turnId, started: true });
+    const run: AutonomousAgentRun = {
+      ...createTrackedRunState(),
+      kind: "autonomous",
+      turnId,
+      started: true,
+    };
     this.runs.set(agentId, run);
     return run;
   }
@@ -79,7 +120,10 @@ export class AgentRunState {
     if (!run) {
       return;
     }
-    if (run.kind === "foreground" && (run.turnId === null || run.turnId !== turnId)) {
+    if (
+      run.kind === "foreground" &&
+      (run.start.status !== "started" || run.start.turnId !== turnId)
+    ) {
       return;
     }
     if (
@@ -259,31 +303,32 @@ export class ForegroundTurnStream {
 }
 
 function createPendingForegroundRun(): PendingForegroundRun {
-  return createTrackedRun({ kind: "foreground", turnId: null, started: false });
+  let resolveTurnStarted!: () => void;
+  const turnStartedPromise = new Promise<void>((resolvePromise) => {
+    resolveTurnStarted = resolvePromise;
+  });
+  return {
+    ...createTrackedRunState(),
+    kind: "foreground",
+    start: { status: "pending" },
+    turnStartedPromise,
+    resolveTurnStarted,
+    stagedEvents: [],
+  };
 }
 
-function createTrackedRun(input: {
-  kind: "foreground";
-  turnId: null;
-  started: false;
-}): PendingForegroundRun;
-function createTrackedRun(input: {
-  kind: "autonomous";
-  turnId: string | null;
-  started: true;
-}): AutonomousAgentRun;
-function createTrackedRun(
-  input:
-    | { kind: "foreground"; turnId: null; started: false }
-    | { kind: "autonomous"; turnId: string | null; started: true },
-): TrackedAgentRun {
+function createTrackedRunState(): {
+  token: string;
+  settled: boolean;
+  settledPromise: Promise<void>;
+  resolveSettled: () => void;
+} {
   let resolveSettled!: () => void;
   const settledPromise = new Promise<void>((resolvePromise) => {
     resolveSettled = resolvePromise;
   });
   return {
     token: randomUUID(),
-    ...input,
     settled: false,
     settledPromise,
     resolveSettled,

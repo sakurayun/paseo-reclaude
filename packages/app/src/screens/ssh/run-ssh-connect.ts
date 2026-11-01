@@ -244,7 +244,7 @@ async function finishConnected(
   });
   if (key) {
     const layoutStore = useWorkspaceLayoutStore.getState();
-    const retargeted = layoutStore.retargetTab(key, connectingTabId(connectId), {
+    const retargeted = layoutStore.replaceTab(key, connectingTabId(connectId), {
       kind: "terminal",
       terminalId,
     });

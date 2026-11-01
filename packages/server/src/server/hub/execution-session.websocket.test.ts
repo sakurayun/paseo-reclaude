@@ -1,8 +1,6 @@
 import { afterEach, expect, test } from "vitest";
-import {
-  HubRelationshipHarness,
-  SetupFailingArchiveWatchFiles,
-} from "./test-utils/relationship-harness.js";
+import type { SessionOutboundMessage } from "../messages.js";
+import { HubRelationshipHarness } from "./test-utils/relationship-harness.js";
 
 let relationship: HubRelationshipHarness | null = null;
 
@@ -17,6 +15,13 @@ async function launchRelationship(): Promise<HubRelationshipHarness> {
   launched.connectLatestSocket();
   relationship = launched;
   return launched;
+}
+
+function createdAgentWorkspaceId(message: SessionOutboundMessage): string {
+  if (message.type !== "status" || message.payload.status !== "agent_created")
+    throw new Error("Agent was not created");
+  if (!message.payload.agent.workspaceId) throw new Error("Workspace was not created");
+  return message.payload.agent.workspaceId;
 }
 
 test("Hub retries one durable daemon execution across concurrency and reconstruction", async () => {
@@ -38,42 +43,237 @@ test("Hub retries one durable daemon execution across concurrency and reconstruc
   expect(reconstructed.durableAgentCount).toBe(1);
 });
 
-test("Hub denies trusted steering and browser dispatch", async () => {
+test("Hub execute can steer ordinary agents while unrelated administration stays denied", async () => {
   const hub = await launchRelationship();
-  const localAgentId = await hub.createUnrelatedLocalAgent();
-
-  const steeringDenial = await hub.deniedSteering(localAgentId);
-  const browserDenial = await hub.deniedBrowserDispatch();
-
-  expect(steeringDenial).toEqual({
-    requestId: "denied-steer",
-    requestType: "send_agent_message_request",
-    error: "Session is not authorized for send_agent_message_request",
-    code: "access_denied",
+  const agentId = await hub.createUnrelatedLocalAgent();
+  const response = await hub.requestOrdinary({
+    type: "send_agent_message_request",
+    requestId: "ordinary-steer",
+    agentId,
+    text: "hello",
+    messageId: "first-arrival",
+    activeTurnBehavior: "steer",
   });
-  expect(browserDenial).toEqual({
-    requestId: "browser-1",
-    requestType: "browser.automation.execute.response",
-    error: "Session is not authorized for browser.automation.execute.response",
-    code: "access_denied",
+  expect(response).toMatchObject({
+    type: "send_agent_message_response",
+    payload: { accepted: true },
   });
-  expect(hub.observedAgentIds()).not.toContain(localAgentId);
-  expect(hub.observedTrustedLifecycleMessages()).toEqual([]);
+  expect(await hub.deniedBrowserDispatch()).toMatchObject({ code: "access_denied" });
+  expect(hub.serverInfoPermissions()).toEqual([["hub.execute"]]);
 });
 
-test("Hub sockets reject trusted hello and capabilities", async () => {
+test("Hub execute can title the workspace created with an agent", async () => {
+  const hub = await launchRelationship();
+  const created = await hub.requestOrdinary({
+    type: "create_agent_request",
+    requestId: "create-for-title",
+    config: { provider: "codex", cwd: hub.repoRoot() },
+  });
+  expect(created).toMatchObject({
+    type: "status",
+    payload: { status: "agent_created", agent: { workspaceId: expect.any(String) } },
+  });
+  const workspaceId = createdAgentWorkspaceId(created);
+
+  expect(
+    await hub.requestOrdinary({
+      type: "workspace.title.set.request",
+      requestId: "title-created-workspace",
+      workspaceId,
+      title: "Hub execution",
+    }),
+  ).toMatchObject({
+    type: "workspace.title.set.response",
+    payload: { workspaceId, accepted: true, title: "Hub execution", error: null },
+  });
+
+  expect(
+    await hub.requestOrdinary({
+      type: "fetch_workspaces_request",
+      requestId: "read-created-workspace",
+    }),
+  ).toMatchObject({
+    type: "fetch_workspaces_response",
+    payload: {
+      entries: expect.arrayContaining([
+        expect.objectContaining({ id: workspaceId, title: "Hub execution" }),
+      ]),
+    },
+  });
+});
+
+test("ordinary Hub create and message retries do not duplicate agents or prompts", async () => {
+  const hub = await launchRelationship();
+  const create = {
+    type: "create_agent_request",
+    idempotencyKey: "ordinary-create",
+    config: { provider: "codex", cwd: hub.repoRoot() },
+  };
+  const responses = await Promise.all([
+    hub.requestOrdinary({ ...create, requestId: "create-first" }),
+    hub.requestOrdinary({ ...create, requestId: "create-duplicate" }),
+  ]);
+  const first = responses[0];
+  expect(first).toEqual({
+    type: "status",
+    payload: {
+      status: "agent_created",
+      requestId: "create-first",
+      agentId: expect.any(String),
+      agent: expect.objectContaining({
+        id: expect.any(String),
+        workspaceId: expect.any(String),
+        provider: "codex",
+        cwd: hub.repoRoot(),
+        status: "idle",
+      }),
+    },
+  });
+  if (first?.type !== "status" || first.payload.status !== "agent_created")
+    throw new Error("Agent was not created");
+  const agentId = first.payload.agentId;
+  expect(first.payload.agent.id).toBe(agentId);
+  expect(responses[1]).toEqual({
+    type: "status",
+    payload: {
+      status: "agent_created",
+      requestId: "create-duplicate",
+      agentId,
+      agent: first.payload.agent,
+    },
+  });
+  expect(
+    await hub.requestOrdinary({
+      type: "fetch_agents_request",
+      requestId: "observe-agents",
+      subscribe: { subscriptionId: "hub-agents" },
+    }),
+  ).toMatchObject({ type: "fetch_agents_response" });
+  expect(
+    await hub.requestOrdinary({
+      type: "agent.timeline.set_subscription.request",
+      requestId: "observe-timeline",
+      agentIds: [agentId],
+    }),
+  ).toMatchObject({ type: "agent.timeline.set_subscription.response" });
+  const message = {
+    type: "send_agent_message_request",
+    agentId,
+    messageId: "ordinary-arrival",
+    text: "hello",
+    activeTurnBehavior: "steer",
+  };
+  expect(await hub.requestOrdinary({ ...message, requestId: "message-first" })).toEqual({
+    type: "send_agent_message_response",
+    payload: { requestId: "message-first", agentId, accepted: true, error: null },
+  });
+  expect(await hub.requestOrdinary({ ...message, requestId: "message-duplicate" })).toEqual({
+    type: "send_agent_message_response",
+    payload: { requestId: "message-duplicate", agentId, accepted: true, error: null },
+  });
+  expect(
+    hub
+      .hubMessages()
+      .some((event) => event.type === "agent_stream" && event.payload.agentId === agentId),
+  ).toBe(true);
+  expect(hub.providerPromptTexts().filter((text) => text === "hello")).toHaveLength(1);
+  expect(
+    await hub.requestOrdinary({ ...message, text: "changed", requestId: "message-conflict" }),
+  ).toMatchObject({ payload: { accepted: false } });
+});
+
+test("ordinary Hub requests survive daemon restart and restore an archived workspace", async () => {
+  const hub = await launchRelationship();
+  const create = {
+    type: "create_agent_request",
+    idempotencyKey: "restorable-agent",
+    config: { provider: "codex", cwd: hub.repoRoot() },
+    worktree: { mode: "branch-off", newBranch: "ordinary-restoration" },
+  };
+  const response = await hub.requestOrdinary({ ...create, requestId: "restorable-create" });
+  if (response.type !== "status" || response.payload.status !== "agent_created")
+    throw new Error("Agent was not created");
+  const { agentId, agent } = response.payload;
+  if (!agent?.workspaceId) throw new Error("Workspace was not created");
+  const workspaceId = agent.workspaceId;
+  const message = {
+    type: "send_agent_message_request",
+    agentId,
+    messageId: "before-restart",
+    text: "hello",
+    activeTurnBehavior: "steer",
+  };
+  expect(await hub.requestOrdinary({ ...message, requestId: "before-restart-send" })).toMatchObject(
+    { payload: { accepted: true } },
+  );
+  await hub.restartDaemon();
+  await hub.socketDialed();
+  hub.connectLatestSocket();
+  expect(await hub.requestOrdinary({ ...create, requestId: "replayed-create" })).toMatchObject({
+    payload: { agentId },
+  });
+  expect(await hub.requestOrdinary({ ...message, requestId: "replayed-send" })).toMatchObject({
+    payload: { accepted: true },
+  });
+  expect(hub.providerPromptTexts().filter((text) => text === "hello")).toHaveLength(1);
+  expect(
+    await hub.requestOrdinary({
+      type: "archive_workspace_request",
+      workspaceId,
+      requestId: "ordinary-archive",
+    }),
+  ).toMatchObject({ payload: { error: null, archivedAt: expect.any(String) } });
+  expect((await hub.worktreeState(agent.cwd)).exists).toBe(false);
+  expect(
+    await hub.requestOrdinary({
+      type: "workspace.recovery.inspect.request",
+      workspaceId,
+      requestId: "inspect-recovery",
+    }),
+  ).toMatchObject({ payload: { state: { kind: "recoverable" } } });
+  expect(
+    await hub.requestOrdinary({
+      type: "workspace.recovery.restore.request",
+      workspaceId,
+      requestId: "restore-workspace",
+    }),
+  ).toMatchObject({ payload: { accepted: true } });
+  expect((await hub.worktreeState(agent.cwd)).exists).toBe(true);
+  expect(
+    await hub.requestOrdinary({
+      ...message,
+      text: "follow up",
+      messageId: "after-restore",
+      requestId: "after-restore-send",
+    }),
+  ).toMatchObject({ payload: { agentId, accepted: true } });
+  expect(hub.providerPromptTexts().filter((text) => text === "follow up")).toHaveLength(1);
+});
+
+test("Hub completes the standard hello before rejecting a second hello", async () => {
   const hub = await launchRelationship();
 
+  expect(hub.serverInfoPermissions()).toEqual([["hub.execute"]]);
   expect(hub.probeTrustedHello()).toBe(4002);
 });
 
-test("Hub sockets reject trusted binary frames", async () => {
-  const hub = await launchRelationship();
+test("legacy Hub wire behavior immediately enters the common Session bootstrap", async () => {
+  const launched = await HubRelationshipHarness.start();
+  await launched.beginConnect().result;
+  launched.connectLatestLegacySocket();
+  relationship = launched;
 
-  expect(hub.probeBinaryFrame()).toBe(4002);
+  expect(launched.observedTrustedLifecycleMessages()).toEqual(["server_info"]);
+  expect(launched.serverInfoPermissions()).toEqual([["hub.execute"]]);
 });
 
-test("Hub does not receive trusted broadcasts", async () => {
+test("Hub binary frames enter the standard active-session path", async () => {
+  const hub = await launchRelationship();
+
+  expect(hub.probeBinaryFrame()).toBeNull();
+});
+
+test("Hub receives standard server info but not broadcasts outside its scope", async () => {
   const hub = await launchRelationship();
 
   const trustedBroadcasts = await hub.trustedBroadcastCount();
@@ -81,10 +281,10 @@ test("Hub does not receive trusted broadcasts", async () => {
 
   expect(trustedBroadcasts).toBe(0);
   expect(trustedStatus).toMatchObject({ pid: process.pid, relay: { enabled: false } });
-  expect(hub.observedTrustedLifecycleMessages()).toEqual([]);
+  expect(hub.observedTrustedLifecycleMessages()).toEqual(["server_info"]);
 });
 
-test("Hub reconnects without retaining trusted session state", async () => {
+test("Hub reconnects through the standard resumable session bootstrap", async () => {
   const hub = await launchRelationship();
   const created = await hub.createOwnedConcurrently();
 
@@ -94,7 +294,8 @@ test("Hub reconnects without retaining trusted session state", async () => {
     executionId: "execution-1",
     agentId: created.first.agentId,
   });
-  expect(hub.observedTrustedLifecycleMessages()).toEqual([]);
+  expect(hub.observedTrustedLifecycleMessages()).toEqual(["server_info", "server_info"]);
+  expect(hub.serverInfoPermissions()).toEqual([["hub.execute"], ["hub.execute"]]);
 });
 
 test("Hub interrupts an owned running execution idempotently", async () => {
@@ -138,13 +339,21 @@ test("Hub control waits for an in-flight create of the same execution", async ()
 
   expect(created).toMatchObject({ payload: { success: true, agentId: expect.any(String) } });
   expect(archived).toMatchObject({ success: true, error: null, action: "archive" });
+  expect(created.payload.agent?.workspaceId).toEqual(expect.any(String));
   expect(await hub.ownedAgentArchivedAt(created.payload.agentId!)).toEqual(expect.any(String));
-}, 20_000);
+});
 
-test("Hub archives only the owned agent in a shared local checkout", async () => {
+test("Hub archives an execution workspace on a local checkout", async () => {
   const hub = await launchRelationship();
-  hub.beginOwnedCreate("local-create", "execution-local", { prompt: "sleep 30" });
+  const siblingWorkspaceId = await hub.createSiblingWorkspace(hub.repoRoot());
+  hub.beginOwnedCreate("local-create", "execution-local", {
+    workspaceId: siblingWorkspaceId,
+    prompt: "sleep 30",
+  });
   const created = await hub.ownedCreateResult("local-create");
+  const executionWorkspaceId = created.payload.agent?.workspaceId;
+  expect(executionWorkspaceId).toEqual(expect.any(String));
+  const terminalId = await hub.createWorkspaceTerminal(executionWorkspaceId!);
   await hub.ownedRunningUpdate(created.payload.agentId!);
 
   const archived = await hub.archiveExecution("execution-local", "archive-local");
@@ -152,9 +361,42 @@ test("Hub archives only the owned agent in a shared local checkout", async () =>
 
   expect(archived).toMatchObject({ success: true, error: null, action: "archive" });
   expect(duplicate).toMatchObject({ success: true, error: null, action: "archive" });
+  expect(executionWorkspaceId).not.toBe(siblingWorkspaceId);
   expect(await hub.ownedAgentArchivedAt(created.payload.agentId!)).toEqual(expect.any(String));
+  expect(await hub.ownedWorkspaceArchivedAt(created.payload.agentId!)).toEqual(expect.any(String));
+  expect(await hub.archivedWorkspaceAt(siblingWorkspaceId)).toBeNull();
+  expect(hub.terminalExists(terminalId)).toBe(false);
   expect(hub.ownedAgentIsRunning(created.payload.agentId!)).toBe(false);
   expect(hub.repoExists()).toBe(true);
+});
+
+test("Hub creates and archives distinct local workspaces for classifier and worker executions", async () => {
+  const hub = await launchRelationship();
+  hub.beginOwnedCreate("classifier-create", "execution-classifier", {
+    prompt: "Classify the request",
+    providerOptions: { sandbox_mode: "read-only" },
+  });
+  const classifier = await hub.ownedCreateResult("classifier-create");
+  hub.beginOwnedCreate("worker-create", "execution-worker", {
+    prompt: "Implement the request",
+    providerOptions: { sandbox_mode: "workspace-write" },
+  });
+  const worker = await hub.ownedCreateResult("worker-create");
+  const classifierWorkspaceId = classifier.payload.agent?.workspaceId;
+  const workerWorkspaceId = worker.payload.agent?.workspaceId;
+
+  expect(classifierWorkspaceId).toEqual(expect.any(String));
+  expect(workerWorkspaceId).toEqual(expect.any(String));
+  expect(classifierWorkspaceId).not.toBe(workerWorkspaceId);
+  expect(classifier.payload.agent?.cwd).toBe(hub.repoRoot());
+  expect(worker.payload.agent?.cwd).toBe(hub.repoRoot());
+
+  await hub.archiveExecution("execution-classifier", "archive-classifier");
+  expect(await hub.archivedWorkspaceAt(classifierWorkspaceId!)).toEqual(expect.any(String));
+  expect(await hub.archivedWorkspaceAt(workerWorkspaceId!)).toBeNull();
+
+  await hub.archiveExecution("execution-worker", "archive-worker");
+  expect(await hub.archivedWorkspaceAt(workerWorkspaceId!)).toEqual(expect.any(String));
 });
 
 test("Hub archives a running execution's Paseo-created worktree", async () => {
@@ -164,12 +406,11 @@ test("Hub archives a running execution's Paseo-created worktree", async () => {
     prompt: "sleep 30",
   });
   const worktreeCreated = await hub.ownedCreateResult("worktree-create");
+  const workspaceId = worktreeCreated.payload.agent?.workspaceId;
   const worktreeCwd = hub.latestCreatedCwd();
   await hub.ownedRunningUpdate(worktreeCreated.payload.agentId!);
   const duringRun = await hub.worktreeState(worktreeCwd!);
-  const archiveCompletion = hub.waitForOwnedArchiveCompletion(worktreeCreated.payload.agentId!);
   const response = await hub.archiveExecution("execution-worktree", "archive-worktree");
-  const archive = await archiveCompletion;
   const afterArchive = await hub.worktreeState(worktreeCwd!);
 
   expect(worktreeCreated).toMatchObject({
@@ -180,11 +421,12 @@ test("Hub archives a running execution's Paseo-created worktree", async () => {
   expect(duringRun).toEqual({ exists: true, listed: true });
   expect(response).toMatchObject({ success: true, error: null, action: "archive" });
   expect(afterArchive).toEqual({ exists: false, listed: false });
-  expect(archive).toEqual({
-    agentArchivedAt: expect.any(String),
-    workspaceArchivedAt: expect.any(String),
-  });
-}, 20_000);
+  expect(workspaceId).toEqual(expect.any(String));
+  expect(await hub.archivedWorkspaceAt(workspaceId!)).toEqual(expect.any(String));
+  expect(await hub.ownedAgentArchivedAt(worktreeCreated.payload.agentId!)).toEqual(
+    expect.any(String),
+  );
+});
 
 test("a sibling workspace keeps an archived execution's worktree directory alive", async () => {
   const hub = await launchRelationship();
@@ -193,18 +435,22 @@ test("a sibling workspace keeps an archived execution's worktree directory alive
     prompt: "sleep 30",
   });
   const created = await hub.ownedCreateResult("sibling-create");
+  const targetWorkspaceId = created.payload.agent?.workspaceId;
   const worktreeCwd = hub.latestCreatedCwd()!;
   await hub.ownedRunningUpdate(created.payload.agentId!);
-  await hub.createSiblingWorkspace(worktreeCwd);
+  const siblingWorkspaceId = await hub.createSiblingWorkspace(worktreeCwd);
 
   const response = await hub.archiveExecution("execution-sibling", "archive-sibling");
 
   expect(response).toMatchObject({ success: true, error: null });
+  expect(targetWorkspaceId).toEqual(expect.any(String));
+  expect(await hub.archivedWorkspaceAt(targetWorkspaceId!)).toEqual(expect.any(String));
+  expect(await hub.archivedWorkspaceAt(siblingWorkspaceId)).toBeNull();
   expect(await hub.worktreeState(worktreeCwd)).toEqual({ exists: true, listed: true });
   expect(await hub.ownedAgentArchivedAt(created.payload.agentId!)).toEqual(expect.any(String));
-}, 20_000);
+});
 
-test("archiving an execution in a reused worktree leaves the existing workspace intact", async () => {
+test("archiving a second same-slug execution leaves the first worktree intact", async () => {
   const hub = await launchRelationship();
   const worktree = {
     mode: "branch-off" as const,
@@ -217,6 +463,7 @@ test("archiving an execution in a reused worktree leaves the existing workspace 
   });
   const original = await hub.ownedCreateResult("original-worktree-create");
   const worktreeCwd = hub.latestCreatedCwd()!;
+  const originalWorkspaceId = original.payload.agent?.workspaceId;
   await hub.ownedTurnCompletion(original.payload.agentId!);
 
   hub.beginOwnedCreate("reused-worktree-create", "execution-reused-worktree", {
@@ -224,6 +471,8 @@ test("archiving an execution in a reused worktree leaves the existing workspace 
     prompt: "sleep 30",
   });
   const reused = await hub.ownedCreateResult("reused-worktree-create");
+  const secondWorktreeCwd = hub.latestCreatedCwd()!;
+  const reusedWorkspaceId = reused.payload.agent?.workspaceId;
   await hub.ownedRunningUpdate(reused.payload.agentId!);
 
   const response = await hub.archiveExecution(
@@ -232,11 +481,17 @@ test("archiving an execution in a reused worktree leaves the existing workspace 
   );
 
   expect(response).toMatchObject({ success: true, error: null });
-  expect(hub.pathsReferToSameLocation(reused.payload.agent!.cwd, worktreeCwd)).toBe(true);
+  expect(reusedWorkspaceId).toEqual(expect.any(String));
+  expect(reusedWorkspaceId).not.toBe(originalWorkspaceId);
+  expect(hub.pathsReferToSameLocation(reused.payload.agent!.cwd, worktreeCwd)).toBe(false);
+  expect(hub.pathsReferToSameLocation(reused.payload.agent!.cwd, secondWorktreeCwd)).toBe(true);
   expect(await hub.worktreeState(worktreeCwd)).toEqual({ exists: true, listed: true });
+  expect(await hub.worktreeState(secondWorktreeCwd)).toEqual({ exists: false, listed: false });
   expect(await hub.agentRemainsAvailable(original.payload.agentId!)).toBe(true);
   expect(await hub.ownedAgentArchivedAt(reused.payload.agentId!)).toEqual(expect.any(String));
-}, 20_000);
+  expect(await hub.ownedWorkspaceArchivedAt(reused.payload.agentId!)).toEqual(expect.any(String));
+  expect(await hub.ownedWorkspaceArchivedAt(original.payload.agentId!)).toBeNull();
+});
 
 test("Hub resolves persisted execution ownership after daemon restart", async () => {
   const hub = await launchRelationship();
@@ -245,6 +500,7 @@ test("Hub resolves persisted execution ownership after daemon restart", async ()
     prompt: "sleep 30",
   });
   const created = await hub.ownedCreateResult("restart-create");
+  const workspaceId = created.payload.agent?.workspaceId;
   const worktreeCwd = hub.latestCreatedCwd()!;
   await hub.ownedRunningUpdate(created.payload.agentId!);
 
@@ -255,6 +511,8 @@ test("Hub resolves persisted execution ownership after daemon restart", async ()
 
   expect(response).toMatchObject({ success: true, error: null });
   expect(await hub.ownedAgentArchivedAt(created.payload.agentId!)).toEqual(expect.any(String));
+  expect(workspaceId).toEqual(expect.any(String));
+  expect(await hub.archivedWorkspaceAt(workspaceId!)).toEqual(expect.any(String));
   expect(await hub.worktreeState(worktreeCwd)).toEqual({ exists: false, listed: false });
 }, 20_000);
 
@@ -274,20 +532,4 @@ test("Hub treats missing and foreign executions as already controlled without ex
     expect.objectContaining({ success: true, error: null }),
   ]);
   expect(await hub.agentRemainsAvailable(foreignAgentId)).toBe(true);
-});
-
-test("archive observation closes its first watcher when the second watcher cannot start", async () => {
-  const watchFiles = new SetupFailingArchiveWatchFiles(2);
-  const hub = await HubRelationshipHarness.start(watchFiles);
-  relationship = hub;
-  await hub.beginConnect().result;
-  hub.connectLatestSocket();
-  hub.beginOwnedCreate("watch-setup-create", "watch-setup-execution");
-  const created = await hub.ownedCreateResult("watch-setup-create");
-
-  await expect(hub.waitForOwnedArchiveCompletion(created.payload.agentId!)).rejects.toThrow(
-    "Cannot watch",
-  );
-
-  expect(watchFiles.activeDirectories()).toEqual([]);
 });

@@ -58,7 +58,22 @@ export function createRealpathAwarePathMatcher(target: string): (candidate: stri
   };
 }
 
+let pathContainmentChecks: number | null = null;
+
+// Containment is re-derived from scratch on every call. A tree walk that asks it per entry, or
+// per ancestor of every entry, costs more than reading the tree does, so tests count the calls.
+export function startPathContainmentMetrics(): void {
+  pathContainmentChecks = 0;
+}
+
+export function stopPathContainmentMetrics(): number {
+  const checks = pathContainmentChecks ?? 0;
+  pathContainmentChecks = null;
+  return checks;
+}
+
 export function isPathInsideRoot(root: string, candidate: string): boolean {
+  if (pathContainmentChecks !== null) pathContainmentChecks += 1;
   return getRelativePathInsideRoot(root, candidate) !== null;
 }
 
@@ -92,16 +107,24 @@ export function isRealpathInsideRoot(root: string, candidate: string): boolean {
   return getRealpathAwareRelativePath(root, candidate) !== null;
 }
 
-function getRelativePathInsideRoot(root: string, candidate: string): string | null {
+export function getRelativePathInsideRoot(root: string, candidate: string): string | null {
   const compareAsWindows = shouldCompareAsWindows(root, candidate);
   const platformPath = compareAsWindows ? nodePath.win32 : nodePath.posix;
   const normalizedRoot = normalizePathForComparison(root, compareAsWindows);
   const normalizedCandidate = normalizePathForComparison(candidate, compareAsWindows);
-  const relative = platformPath.relative(normalizedRoot, normalizedCandidate);
+  const comparableRelative = platformPath.relative(normalizedRoot, normalizedCandidate);
 
-  return relative === "" || (!relative.startsWith("..") && !platformPath.isAbsolute(relative))
-    ? relative
-    : null;
+  const isOutsideRoot =
+    comparableRelative === ".." ||
+    comparableRelative.startsWith(`..${platformPath.sep}`) ||
+    platformPath.isAbsolute(comparableRelative);
+  if (isOutsideRoot) {
+    return null;
+  }
+
+  const casePreservingRoot = normalizePathPreservingCase(root, compareAsWindows);
+  const casePreservingCandidate = normalizePathPreservingCase(candidate, compareAsWindows);
+  return platformPath.relative(casePreservingRoot, casePreservingCandidate);
 }
 
 function collectPathVariants(value: string): string[] {
@@ -131,7 +154,15 @@ function shouldCompareAsWindows(left: string, right: string): boolean {
   return looksLikeDefiniteWindowsPath(left) || looksLikeDefiniteWindowsPath(right);
 }
 
-function looksLikeDefiniteWindowsPath(value: string): boolean {
+/**
+ * True when `value`'s shape identifies it as a Windows path (drive letter,
+ * `\\?\` device namespace, or UNC), independent of the host platform. Callers
+ * that fold case for Windows-looking paths (this module's own comparisons,
+ * and `pruneKnownDirectories` in `workspace-git-service.ts`, which needs the
+ * same decision without paying for a realpath syscall) must all agree on this
+ * one rule — do not reimplement the pattern.
+ */
+export function looksLikeDefiniteWindowsPath(value: string): boolean {
   return (
     /^[a-zA-Z]:[\\/]/u.test(value) ||
     /^[/\\]{2}\?[/\\]/u.test(value) ||
@@ -140,15 +171,19 @@ function looksLikeDefiniteWindowsPath(value: string): boolean {
 }
 
 function normalizePathForComparison(value: string, compareAsWindows: boolean): string {
+  const normalized = normalizePathPreservingCase(value, compareAsWindows);
+  return compareAsWindows ? normalized.toLowerCase() : normalized;
+}
+
+export function normalizePathPreservingCase(value: string, compareAsWindows: boolean): string {
   const platformPath = compareAsWindows ? nodePath.win32 : nodePath.posix;
   const comparableValue = compareAsWindows ? stripWindowsNamespacePrefix(value) : value;
   const platformNormalized = platformPath.normalize(comparableValue);
-  const normalized = stripTrailingSeparators(
+  return stripTrailingSeparators(
     platformNormalized,
     platformPath.parse(platformNormalized).root,
     compareAsWindows,
   );
-  return compareAsWindows ? normalized.toLowerCase() : normalized;
 }
 
 function stripWindowsNamespacePrefix(value: string): string {

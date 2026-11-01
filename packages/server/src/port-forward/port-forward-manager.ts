@@ -1,3 +1,5 @@
+// 启动时只读取一次本地转发配置，保持同步工厂返回已加载状态；后续写入均为异步。
+// oxlint-disable-next-line paseo/no-sync-io
 import { readFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";

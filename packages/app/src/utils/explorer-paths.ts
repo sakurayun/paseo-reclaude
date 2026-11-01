@@ -44,3 +44,8 @@ export function buildRelativeExplorerPath(entryPath: string): string {
     .filter((segment) => segment.length > 0 && segment !== ".")
     .join("/");
 }
+
+export function parentExplorerPath(entryPath: string): string {
+  const separatorIndex = entryPath.lastIndexOf("/");
+  return separatorIndex > 0 ? entryPath.slice(0, separatorIndex) : ".";
+}

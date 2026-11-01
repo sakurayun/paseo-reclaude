@@ -42,7 +42,13 @@ describe("localizeProviderUsage", () => {
       fetchedAt: "2026-07-13T00:00:00.000Z",
       error: null,
       windows: [
-        { id: "weekly", label: "Weekly", usedPct: 64, tone: "ok", fullCountdown: true },
+        {
+          id: "weekly",
+          label: "Weekly",
+          usedPct: 64,
+          tone: "ok",
+          fullCountdown: true,
+        },
         { id: "monthly", label: "Monthly", usedPct: 12, tone: "ok" },
       ],
       balances: [

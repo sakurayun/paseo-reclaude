@@ -1,3 +1,5 @@
+// ACP 模型转换接口为同步契约；仅检查两个本地元数据文件，并按修改时间缓存解析结果。
+// oxlint-disable-next-line paseo/no-sync-io
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";

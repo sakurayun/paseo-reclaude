@@ -1,5 +1,6 @@
+import { PressHighlight } from "@/components/ui/press-highlight";
 import { useCallback } from "react";
-import { Pressable, Text, View } from "react-native";
+import { Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { FolderOpen } from "lucide-react-native";
@@ -52,7 +53,7 @@ export function ComposerRunDirTrigger({
   );
   return (
     <View style={styles.row}>
-      <Pressable
+      <PressHighlight
         ref={ref}
         testID="composer-run-dir-pill"
         accessibilityRole="button"
@@ -65,7 +66,7 @@ export function ComposerRunDirTrigger({
         <Text style={styles.label} numberOfLines={1}>
           {label}
         </Text>
-      </Pressable>
+      </PressHighlight>
     </View>
   );
 }

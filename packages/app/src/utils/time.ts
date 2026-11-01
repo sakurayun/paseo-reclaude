@@ -2,50 +2,141 @@ import { i18n } from "@/i18n/i18next";
 import { getActiveLocale } from "@/i18n/use-locale";
 
 /**
- * Format a date as a human-friendly relative time string
- * Examples: "just now", "5m ago", "2h ago", "3d ago", "Jan 15" (localized via active locale)
+ * How often a relative label can change, which is all a caller needs to know to keep it honest.
+ * `static` means it never will again.
  */
-export function formatTimeAgo(date: Date, now: Date = new Date()): string {
-  const diffMs = now.getTime() - date.getTime();
-  const diffSec = Math.floor(diffMs / 1000);
-  const diffMin = Math.floor(diffSec / 60);
-  const diffHour = Math.floor(diffMin / 60);
-  const diffDay = Math.floor(diffHour / 24);
+export type RelativeTimeResolution = "minute" | "hour" | "day" | "static";
 
-  if (diffSec < 10) {
-    return i18n.t("time.justNow");
-  }
-
-  if (diffMin < 1) {
-    return i18n.t("time.relative.secondsAgo", { value: diffSec });
-  }
-
-  if (diffHour < 1) {
-    return i18n.t("time.relative.minutesAgo", { value: diffMin });
-  }
-
-  if (diffDay < 1) {
-    return i18n.t("time.relative.hoursAgo", { value: diffHour });
-  }
-
-  if (diffDay < 7) {
-    return i18n.t("time.relative.daysAgo", { value: diffDay });
-  }
-
-  // For older dates, show abbreviated month and day in the active locale. Let the
-  // locale lay out month and day in a single call — hand-concatenating
-  // `${month} ${day}` drops the day suffix and word order some locales require:
-  // it rendered "6月 15" in Chinese instead of "6月15日", and "juin 15" instead of
-  // "15 juin".
-  return date.toLocaleDateString(getActiveLocale(), { month: "short", day: "numeric" });
+export interface RelativeTimeLabel {
+  label: string;
+  resolution: RelativeTimeResolution;
 }
 
-function isSameLocalDay(a: Date, b: Date): boolean {
-  return (
-    a.getFullYear() === b.getFullYear() &&
-    a.getMonth() === b.getMonth() &&
-    a.getDate() === b.getDate()
-  );
+const MINUTE_MS = 60_000;
+const HOUR_MS = 60 * MINUTE_MS;
+const DAY_MS = 24 * HOUR_MS;
+/** Past a week the elapsed count stops meaning anything; the date itself is more use. */
+const ABSOLUTE_AFTER_MS = 7 * DAY_MS;
+
+/**
+ * How long ago something was, before it's worded. The prose and compact formatters share this so
+ * their thresholds can't drift apart; they differ only in how much room they have to say it.
+ *
+ * `elapsed` takes an "ago" in prose, `now` and `date` read as absolutes and never do.
+ *
+ * Deliberately never sub-minute. A seconds label is only correct for the second it was rendered,
+ * so it either lies or forces a once-a-second re-render of a list that has nothing new to say.
+ * Everything under a minute is "now", which is both true and stable.
+ *
+ * The resolution comes back with the value so a caller can wake at the rate the label actually
+ * changes instead of guessing — see `useTimeAgo`.
+ */
+type Age =
+  | { kind: "now"; resolution: "minute" }
+  | {
+      kind: "elapsed";
+      value: string;
+      resolution: Exclude<RelativeTimeResolution, "static">;
+    }
+  | { kind: "date"; value: string; resolution: "static" };
+
+function describeAge(date: Date, now: Date): Age {
+  const elapsedMs = now.getTime() - date.getTime();
+
+  if (elapsedMs < MINUTE_MS) {
+    return { kind: "now", resolution: "minute" };
+  }
+  if (elapsedMs < HOUR_MS) {
+    return {
+      kind: "elapsed",
+      value: `${Math.floor(elapsedMs / MINUTE_MS)}m`,
+      resolution: "minute",
+    };
+  }
+  if (elapsedMs < DAY_MS) {
+    return {
+      kind: "elapsed",
+      value: `${Math.floor(elapsedMs / HOUR_MS)}h`,
+      resolution: "hour",
+    };
+  }
+  if (elapsedMs < ABSOLUTE_AFTER_MS) {
+    return {
+      kind: "elapsed",
+      value: `${Math.floor(elapsedMs / DAY_MS)}d`,
+      resolution: "day",
+    };
+  }
+
+  return {
+    kind: "date",
+    value: date.toLocaleDateString(getActiveLocale(), {
+      month: "short",
+      day: "numeric",
+    }),
+    resolution: "static",
+  };
+}
+
+/**
+ * A human-friendly relative time, with the resolution it changes at.
+ * Examples: "just now", "5m ago", "2h ago", "3d ago", "Jan 15".
+ */
+export function describeTimeAgo(date: Date, now: Date = new Date()): RelativeTimeLabel {
+  const age = describeAge(date, now);
+  if (age.kind === "now") return { label: i18n.t("time.justNow"), resolution: age.resolution };
+  if (age.kind === "elapsed")
+    return {
+      label: i18n.t(
+        {
+          minute: "time.relative.minutesAgo",
+          hour: "time.relative.hoursAgo",
+          day: "time.relative.daysAgo",
+        }[age.resolution],
+        { value: Number.parseInt(age.value, 10) },
+      ),
+      resolution: age.resolution,
+    };
+  return { label: age.value, resolution: age.resolution };
+}
+
+export function formatTimeAgo(date: Date, now: Date = new Date()): string {
+  return describeTimeAgo(date, now).label;
+}
+
+/**
+ * The same instant with the prose removed, for somewhere with no room for it — a dense list
+ * where the column is understood to be a timestamp and "ago" is the only word on the line.
+ * Examples: "now", "5m", "2h", "3d", "Jan 15".
+ */
+export function describeCompactTimeAgo(date: Date, now: Date = new Date()): RelativeTimeLabel {
+  const age = describeAge(date, now);
+  if (age.kind === "now") return { label: "now", resolution: age.resolution };
+  return { label: age.value, resolution: age.resolution };
+}
+
+export function formatCompactTimeAgo(date: Date, now: Date = new Date()): string {
+  return describeCompactTimeAgo(date, now).label;
+}
+
+/**
+ * A compact label put back into a sentence, for a tooltip or a line with room for prose:
+ * "now" → "just now", "5m" → "5m ago", "Jan 15" stays a date.
+ */
+export function formatCompactTimeAgoAsProse(label: string): string {
+  if (label === "now") return "just now";
+  if (/^\d/.test(label)) return `${label} ago`;
+  return label;
+}
+
+/**
+ * How many local midnights lie between two instants: 0 for the same day, 1 for yesterday.
+ * Counted on the calendar rather than in elapsed time, so six days and 23 hours ago on
+ * today's weekday is 7, and rounded so a DST day of 23 or 25 hours still counts as one.
+ */
+function localCalendarDaysBetween(earlier: Date, later: Date): number {
+  const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  return Math.round((startOfDay(later).getTime() - startOfDay(earlier).getTime()) / DAY_MS);
 }
 
 // Cached Intl formatters, keyed by active locale so switching language rebuilds them.
@@ -69,22 +160,26 @@ function getTimeFormatter(): Intl.DateTimeFormat {
   return formatter;
 }
 
+/** A clock time in the device's 12h/24h preference: "3:00 PM" or "15:00". */
+export function formatTimeOfDay(date: Date): string {
+  return getTimeFormatter().format(date);
+}
+
 /**
  * Format a chat-message timestamp for hover-revealed UI.
  * - Same day: "10:11 PM" or "22:11" depending on user preference
- * - Within ~6 days: "Wednesday 10:11 PM"
- * - Older: "14 May 2026, 10:11 PM"
+ * - The previous 6 calendar days: "Wednesday 10:11 PM"
+ * - Older, including today's weekday last week: "14 May 2026, 10:11 PM"
  */
 export function formatMessageTimestamp(date: Date, now: Date = new Date()): string {
-  const time = getTimeFormatter().format(date);
+  const time = formatTimeOfDay(date);
+  const daysAgo = localCalendarDaysBetween(date, now);
 
-  if (isSameLocalDay(date, now)) {
+  if (daysAgo === 0) {
     return time;
   }
 
-  const diffMs = now.getTime() - date.getTime();
-  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-  if (diffDays >= 0 && diffDays < 7) {
+  if (daysAgo > 0 && daysAgo < 7) {
     const weekday = date.toLocaleDateString(getActiveLocale(), { weekday: "long" });
     return `${weekday} ${time}`;
   }
@@ -116,7 +211,10 @@ export function formatDuration(durationMs: number): string {
     const seconds = Math.floor(totalSeconds) % 60;
     return seconds === 0
       ? i18n.t("time.duration.minutes", { value: totalMinutes })
-      : i18n.t("time.duration.minutesSeconds", { minutes: totalMinutes, seconds });
+      : i18n.t("time.duration.minutesSeconds", {
+          minutes: totalMinutes,
+          seconds,
+        });
   }
   const hours = Math.floor(totalMinutes / 60);
   const remMinutes = totalMinutes % 60;

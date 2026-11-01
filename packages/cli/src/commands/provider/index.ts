@@ -2,6 +2,7 @@ import { Command } from "commander";
 import { runLsCommand } from "./ls.js";
 import { runModelsCommand } from "./models.js";
 import { runFeaturesCommand } from "./features.js";
+import { runDiagnosticCommand } from "./diagnostic.js";
 import { withOutput } from "../../output/index.js";
 import { collectMultiple } from "../../utils/command-options.js";
 import { addJsonAndDaemonHostOptions } from "../../utils/command-options.js";
@@ -37,6 +38,13 @@ export function createProviderCommand(): Command {
         [],
       ),
   ).action(withOutput(runFeaturesCommand));
+
+  addJsonAndDaemonHostOptions(
+    provider
+      .command("diagnostic")
+      .description("Show provider installation, environment, and availability diagnostics")
+      .argument("<provider>", "Provider name"),
+  ).action(withOutput(runDiagnosticCommand));
 
   return provider;
 }

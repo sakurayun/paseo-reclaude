@@ -1,6 +1,8 @@
+import { PressHighlight as Pressable } from "@/components/ui/press-highlight";
+import { definePanel } from "@/panels/panel-registry";
 import { useCallback, useMemo, useRef, useState, type ComponentType } from "react";
-import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
-import type { TextInput } from "react-native";
+import { ActivityIndicator, ScrollView, Text, View } from "react-native";
+import type { EditingTextInputHandle } from "@/components/ui/text-input";
 import { CircleAlert, ShieldAlert } from "lucide-react-native";
 import { useTranslation } from "react-i18next";
 import invariant from "tiny-invariant";
@@ -53,7 +55,7 @@ function SshConnectingPanel() {
   const connectId = target.connectId;
 
   const [password, setPassword] = useState("");
-  const passwordRef = useRef<TextInput>(null);
+  const passwordRef = useRef<EditingTextInputHandle>(null);
   const logScrollRef = useRef<ScrollView>(null);
 
   const handleClose = useCallback(() => cancelSshConnect(connectId), [connectId]);
@@ -68,6 +70,7 @@ function SshConnectingPanel() {
     }
     retrySshConnect(connectId, password);
     setPassword("");
+    passwordRef.current?.reset();
   }, [connectId, password]);
 
   const logText = useMemo(
@@ -127,7 +130,7 @@ function SshConnectingPanel() {
           {state.error ? <Text style={styles.errorText}>{state.error}</Text> : null}
           <FormTextInput
             ref={passwordRef}
-            value={password}
+            initialValue=""
             onChangeText={setPassword}
             onSubmitEditing={handleSubmitPassword}
             placeholder={t("ssh.connect.passwordPlaceholder")}
@@ -221,18 +224,24 @@ function isHandshakeFailure(error: string | null | undefined, logText: string): 
   );
 }
 
-export const sshConnectingPanelRegistration: PanelRegistration<"ssh-connecting"> = {
-  kind: "ssh-connecting",
-  component: SshConnectingPanel,
-  useDescriptor: useSshConnectingPanelDescriptor,
-};
+export const sshConnectingPanelRegistration: PanelRegistration<"ssh-connecting"> = definePanel(
+  "ssh-connecting",
+  {
+    component: SshConnectingPanel,
+    useDescriptor: useSshConnectingPanelDescriptor,
+  },
+);
 
 const ThemedActivityIndicator = withUnistyles(ActivityIndicator);
 const ThemedCircleAlert = withUnistyles(CircleAlert);
 const ThemedShieldAlert = withUnistyles(ShieldAlert);
 
-const mutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
-const redColorMapping = (theme: Theme) => ({ color: theme.colors.palette.red[500] });
+const mutedColorMapping = (theme: Theme) => ({
+  color: theme.colors.foregroundMuted,
+});
+const redColorMapping = (theme: Theme) => ({
+  color: theme.colors.palette.red[500],
+});
 
 const styles = StyleSheet.create((theme: Theme) => ({
   container: {

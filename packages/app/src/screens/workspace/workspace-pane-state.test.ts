@@ -1,4 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+vi.mock("expo-router", () => ({
+  router: {},
+  useLocalSearchParams: () => ({}),
+  usePathname: () => "/",
+}));
 import {
   deriveWorkspacePaneState,
   getWorkspacePaneDescriptors,
@@ -16,6 +21,17 @@ function createTab(tabId: string, target: WorkspaceTab["target"]): WorkspaceTab 
 }
 
 describe("workspace-pane-state", () => {
+  it("preserves generated new-tab identities after workspace restoration", () => {
+    const state = deriveWorkspacePaneState({
+      tabs: [createTab("new-restored", { kind: "new_tab" })],
+      preferredTarget: { kind: "new_tab" },
+    });
+    expect(state.activeTabId).toBe("new-restored");
+    expect(state.tabs[0].descriptor.tabId).toBe("new-restored");
+    expect(
+      deriveWorkspacePaneState({ tabs: [], preferredTarget: { kind: "new_tab" } }).activeTabId,
+    ).toBeNull();
+  });
   it("selects the focused pane and keeps its tab order", () => {
     const tabs: WorkspaceTab[] = [
       createTab("agent_agent-a", { kind: "agent", agentId: "agent-a" }),

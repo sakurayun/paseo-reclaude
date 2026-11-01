@@ -68,7 +68,7 @@ export async function runAgentFeatureCommand(
   options: AgentFeatureOptions,
   _command: Command,
 ): Promise<AgentFeatureCommandResult> {
-  const host = getDaemonHost({ host: options.host });
+  const host = getDaemonHost({ target: options.daemonTarget });
   const normalizedFeatureId = featureId?.trim();
 
   if (!options.list && !normalizedFeatureId) {
@@ -77,7 +77,7 @@ export async function runAgentFeatureCommand(
 
   let client: Awaited<ReturnType<typeof connectToDaemon>> | undefined;
   try {
-    client = await connectToDaemon({ host: options.host });
+    client = await connectToDaemon({ target: options.daemonTarget });
     const fetchResult = await client.fetchAgent(id);
     if (!fetchResult) {
       throw {

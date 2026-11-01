@@ -1,4 +1,4 @@
-import { existsSync, promises as fs } from "node:fs";
+import { promises as fs } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
@@ -106,7 +106,13 @@ function extractTomlSectionBaseUrl(content: string, sectionName: string): string
 
 async function readCodexConfigBaseUrl(codexHome: string): Promise<string | null> {
   const configPath = join(codexHome, "config.toml");
-  if (!existsSync(configPath)) return null;
+  if (
+    !(await fs.access(configPath).then(
+      () => true,
+      () => false,
+    ))
+  )
+    return null;
   try {
     const content = await fs.readFile(configPath, "utf8");
     // Prefer the active model_provider section (e.g. model_provider = "custom"
@@ -129,7 +135,13 @@ async function readCodexAuthJson(codexHome: string): Promise<Record<string, unkn
     join(homedir(), ".config", "codex", "auth.json"),
   ];
   for (const path of candidates) {
-    if (!existsSync(path)) continue;
+    if (
+      !(await fs.access(path).then(
+        () => true,
+        () => false,
+      ))
+    )
+      continue;
     const raw = await readJsonFile(path);
     if (raw && typeof raw === "object" && !Array.isArray(raw)) {
       // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion
@@ -174,7 +186,13 @@ export async function isCodexChatgptAuth(codexHome?: string): Promise<boolean> {
 
 async function readClaudeSettingsEnv(claudeHome: string): Promise<Record<string, string>> {
   const settingsPath = join(claudeHome, "settings.json");
-  if (!existsSync(settingsPath)) return {};
+  if (
+    !(await fs.access(settingsPath).then(
+      () => true,
+      () => false,
+    ))
+  )
+    return {};
   const raw = await readJsonFile(settingsPath);
   const parsed = ClaudeSettingsSchema.safeParse(raw);
   if (!parsed.success || !parsed.data.env) return {};

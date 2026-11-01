@@ -1,3 +1,5 @@
+// SSH 存储同步工厂仅在启动时加载配置；变更后的持久化通过异步队列执行。
+// oxlint-disable-next-line paseo/no-sync-io
 import { readFileSync } from "node:fs";
 import type { z } from "zod";
 

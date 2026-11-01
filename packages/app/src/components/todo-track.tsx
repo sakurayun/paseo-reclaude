@@ -1,9 +1,9 @@
+import { PressHighlight } from "@/components/ui/press-highlight";
 import { useCallback, useMemo, useState, type ReactElement } from "react";
-import { Pressable, ScrollView, Text, View, type PressableStateCallbackType } from "react-native";
+import { ScrollView, Text, View, type PressableStateCallbackType } from "react-native";
 import { useTranslation } from "react-i18next";
 import { Check, ChevronDown, ChevronRight, ListTodo } from "lucide-react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
-import { MAX_CONTENT_WIDTH } from "@/constants/layout";
 import { GlassSurface } from "@/components/ui/glass-surface";
 import { useSessionStore } from "@/stores/session-store";
 import type { Theme } from "@/styles/theme";
@@ -83,7 +83,7 @@ export function TodoTrack({ items }: TodoTrackProps): ReactElement | null {
     <View style={styles.outer} testID="todo-track">
       <View style={styles.track}>
         <GlassSurface backdropStyle={styles.surfaceBackdrop} style={surfaceStyle}>
-          <Pressable
+          <PressHighlight
             accessibilityRole="button"
             accessibilityLabel={progressLabel}
             testID="todo-track-header"
@@ -100,7 +100,7 @@ export function TodoTrack({ items }: TodoTrackProps): ReactElement | null {
             <Text style={styles.headerLabel} numberOfLines={1}>
               {headerLabel}
             </Text>
-          </Pressable>
+          </PressHighlight>
           {expanded ? (
             <ScrollView
               style={styles.scroll}
@@ -148,7 +148,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   track: {
     width: "100%",
-    maxWidth: MAX_CONTENT_WIDTH,
+    maxWidth: theme.contentMaxWidth,
     marginBottom: -theme.spacing[4],
   },
   surface: {

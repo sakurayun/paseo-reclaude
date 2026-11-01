@@ -1,5 +1,6 @@
+import { PressHighlight } from "@/components/ui/press-highlight";
 import { useCallback, useEffect, useMemo } from "react";
-import { Modal, Pressable, View } from "react-native";
+import { Modal, View } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { X } from "lucide-react-native";
@@ -58,7 +59,7 @@ export function MermaidLightbox({ svg, onClose }: MermaidLightboxProps) {
   return (
     <Modal transparent animationType="fade" statusBarTranslucent visible onRequestClose={onClose}>
       <View style={styles.root}>
-        <Pressable
+        <PressHighlight
           accessibilityRole="button"
           accessibilityLabel={t("markdown.mermaid.closeFullscreen")}
           onPress={handleBackdropPress}
@@ -68,7 +69,7 @@ export function MermaidLightbox({ svg, onClose }: MermaidLightboxProps) {
           <View style={styles.diagramArea}>
             <MermaidZoomableView svg={svg} mode="fullscreen" />
           </View>
-          <Pressable
+          <PressHighlight
             accessibilityRole="button"
             accessibilityLabel={t("markdown.mermaid.closeFullscreen")}
             hitSlop={8}
@@ -76,7 +77,7 @@ export function MermaidLightbox({ svg, onClose }: MermaidLightboxProps) {
             style={closeButtonStyle}
           >
             <ThemedX size={16} uniProps={mutedIconColorMapping} />
-          </Pressable>
+          </PressHighlight>
         </View>
       </View>
     </Modal>

@@ -1,13 +1,14 @@
-import { realpathSync } from "node:fs";
-import { resolve, sep } from "path";
+import { resolve } from "path";
 import type pino from "pino";
 import type { SessionInboundMessage, SessionOutboundMessage } from "../../messages.js";
 import type { ProjectRegistry } from "../../workspace-registry.js";
 import {
   readPaseoConfigForEdit,
+  resolveProjectConfigRoot,
   writePaseoConfigForEdit,
   type ProjectConfigRpcError,
 } from "../../../utils/paseo-config-file.js";
+import { hasUncommittedWorktreeSetupChanges } from "./worktree-setup-commit-status.js";
 
 export interface ProjectConfigSessionHost {
   emit(msg: SessionOutboundMessage): void;
@@ -46,7 +47,7 @@ export class ProjectConfigSession {
       return;
     }
 
-    const result = readPaseoConfigForEdit(repoRoot);
+    const result = await readPaseoConfigForEdit(repoRoot);
     if (!result.ok) {
       this.logger.warn(
         { repoRoot, requestId: msg.requestId, outcome: result.error.code },
@@ -63,6 +64,8 @@ export class ProjectConfigSession {
       );
     }
 
+    const setupCommitStatus = await this.readSetupCommitStatus(repoRoot, result.config);
+
     this.host.emit({
       type: "read_project_config_response",
       payload: {
@@ -71,6 +74,9 @@ export class ProjectConfigSession {
         ok: true,
         config: result.config,
         revision: result.revision,
+        ...(setupCommitStatus === null
+          ? {}
+          : { hasUncommittedWorktreeSetupChanges: setupCommitStatus }),
       },
     });
   }
@@ -88,7 +94,7 @@ export class ProjectConfigSession {
       { repoRoot, requestId: msg.requestId, outcome: "write_attempt" },
       "Writing project config",
     );
-    const result = writePaseoConfigForEdit({
+    const result = await writePaseoConfigForEdit({
       repoRoot,
       config: msg.config,
       expectedRevision: msg.expectedRevision,
@@ -106,6 +112,7 @@ export class ProjectConfigSession {
       { repoRoot, requestId: msg.requestId, outcome: "written" },
       "Project config written",
     );
+    const setupCommitStatus = await this.readSetupCommitStatus(repoRoot, result.config);
     this.host.emit({
       type: "write_project_config_response",
       payload: {
@@ -114,8 +121,23 @@ export class ProjectConfigSession {
         ok: true,
         config: result.config,
         revision: result.revision,
+        ...(setupCommitStatus === null
+          ? {}
+          : { hasUncommittedWorktreeSetupChanges: setupCommitStatus }),
       },
     });
+  }
+
+  private async readSetupCommitStatus(
+    repoRoot: string,
+    config: Parameters<typeof hasUncommittedWorktreeSetupChanges>[0]["currentConfig"],
+  ): Promise<boolean | null> {
+    try {
+      return await hasUncommittedWorktreeSetupChanges({ repoRoot, currentConfig: config });
+    } catch (error) {
+      this.logger.debug({ repoRoot, error }, "Could not inspect committed worktree setup");
+      return null;
+    }
   }
 
   private emitProjectConfigReadFailure(
@@ -151,34 +173,21 @@ export class ProjectConfigSession {
   }
 
   private async resolveKnownProjectRoot(repoRoot: string): Promise<string | null> {
-    const requestedRoot = canonicalizeConfigRoot(repoRoot);
+    const requestedRoot = resolve(repoRoot);
     const projects = await this.projectRegistry.list();
-    for (const project of projects) {
-      if (project.archivedAt !== null) {
-        continue;
-      }
-      const projectRoot = canonicalizeConfigRoot(project.rootPath);
-      if (requestedRoot === projectRoot) {
-        return projectRoot;
-      }
-    }
-    return null;
+    const activeRoots = new Set(
+      projects
+        .filter((project) => project.archivedAt === null)
+        .map((project) => resolve(project.rootPath)),
+    );
+    const root = await resolveProjectConfigRoot(requestedRoot, activeRoots);
+    if (!root) return null;
+    // Authorization follows live registry state after alias IO, including archive/removal.
+    const current = await this.projectRegistry.list();
+    return current.some(
+      (project) => project.archivedAt === null && resolve(project.rootPath) === root,
+    )
+      ? root
+      : null;
   }
-}
-
-function canonicalizeConfigRoot(repoRoot: string): string {
-  const resolved = resolve(repoRoot);
-  try {
-    return stripTrailingPathSeparators(realpathSync(resolved));
-  } catch {
-    return stripTrailingPathSeparators(resolved);
-  }
-}
-
-function stripTrailingPathSeparators(path: string): string {
-  let normalized = path;
-  while (normalized.length > 1 && normalized.endsWith(sep)) {
-    normalized = normalized.slice(0, -1);
-  }
-  return normalized;
 }

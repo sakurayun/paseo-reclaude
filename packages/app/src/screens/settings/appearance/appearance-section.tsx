@@ -1,9 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Switch } from "react-native";
+import { DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
-import { Text, TextInput, View, type PressableStateCallbackType } from "react-native";
+import { Text, View } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
-import { ChevronDown, Monitor, Moon, Sun } from "lucide-react-native";
+import { Monitor, Moon, Sun } from "lucide-react-native";
 import {
   SYNTAX_THEME_OPTIONS,
   type SyntaxThemeId,
@@ -14,26 +16,38 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
-  DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Switch } from "@/components/ui/switch";
-import { SettingsSection } from "@/screens/settings/settings-section";
+import { DropdownTrigger } from "@/components/ui/dropdown-trigger";
+import { SettingsSection } from "@/components/settings/headings/settings-section";
+import { useContributedThemes } from "@/appearance/provider";
+import { Button } from "@/components/ui/button";
+import {
+  EditingTextInput as TextInput,
+  type EditingTextInputHandle,
+} from "@/components/ui/text-input";
 import {
   MAX_CODE_FONT_SIZE,
-  MAX_UI_FONT_SIZE,
+  MAX_CONTENT_FONT_SIZE,
+  MAX_UI_BASE_FONT_SIZE,
   MIN_CODE_FONT_SIZE,
-  MIN_UI_FONT_SIZE,
+  MIN_CONTENT_FONT_SIZE,
+  MIN_UI_BASE_FONT_SIZE,
   parseClampedFontSize,
   parseTerminalLetterSpacing,
   parseTerminalPadding,
+  parseContentMaxWidth,
+  resolveContentMaxWidth,
   sanitizeFontFamily,
   useAppSettings,
   type AppSettings,
+  DEFAULT_THEME_PREFERENCE,
 } from "@/hooks/use-settings";
 import {
   DEFAULT_MONO_FONT_STACK,
   DEFAULT_UI_FONT_STACK,
   ICON_SIZE,
+  PLUGIN_THEME_PREFERENCE,
+  THEME_OPTIONS,
   THEME_SWATCHES,
   type Theme,
 } from "@/styles/theme";
@@ -43,6 +57,7 @@ import {
   TERMINAL_COLOR_SCHEME_IDS,
   type TerminalColorSchemeId,
 } from "@/constants/terminal-color-presets";
+import type { PluginThemeOption } from "@/plugins/themes";
 import { settingsStyles } from "@/styles/settings";
 import { AppearancePreview } from "./appearance-preview";
 import { LigaturePreview } from "./ligature-preview";
@@ -56,51 +71,16 @@ import { LigaturePreview } from "./ligature-preview";
 const ThemedSun = withUnistyles(Sun);
 const ThemedMoon = withUnistyles(Moon);
 const ThemedMonitor = withUnistyles(Monitor);
-const ThemedChevronDown = withUnistyles(ChevronDown);
 
-const mutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
+const mutedColorMapping = (theme: Theme) => ({
+  color: theme.colors.foregroundMuted,
+});
 
-function getThemeLabel(t: TFunction, value: AppSettings["theme"]): string {
-  // Brand-name themes: keep the product spelling in every locale.
-  if (value === "claudeLight") return "Claude Light";
-  if (value === "catppuccinLatte") return "Catppuccin Latte";
-  if (value === "catppuccinFrappe") return "Catppuccin Frappé";
-  if (value === "catppuccinMacchiato") return "Catppuccin Macchiato";
-  if (value === "catppuccinMocha") return "Catppuccin Mocha";
-  const labelKeys: Record<
-    Exclude<
-      AppSettings["theme"],
-      | "claudeLight"
-      | "catppuccinLatte"
-      | "catppuccinFrappe"
-      | "catppuccinMacchiato"
-      | "catppuccinMocha"
-    >,
-    string
-  > = {
-    light: "settings.appearance.theme.options.light",
-    dark: "settings.appearance.theme.options.dark",
-    zinc: "settings.appearance.theme.options.zinc",
-    midnight: "settings.appearance.theme.options.midnight",
-    claude: "settings.appearance.theme.options.claude",
-    ghostty: "settings.appearance.theme.options.ghostty",
-    auto: "settings.appearance.theme.options.auto",
-  };
-  return t(labelKeys[value]);
+type BuiltInThemePreference = Exclude<AppSettings["theme"], typeof PLUGIN_THEME_PREFERENCE>;
+
+function getThemeLabel(t: TFunction, value: BuiltInThemePreference): string {
+  return t(`settings.appearance.theme.options.${value}`);
 }
-
-const PRIMARY_THEMES: readonly AppSettings["theme"][] = ["light", "dark", "auto"];
-const VARIANT_THEMES: readonly AppSettings["theme"][] = [
-  "claudeLight",
-  "catppuccinLatte",
-  "zinc",
-  "midnight",
-  "claude",
-  "ghostty",
-  "catppuccinFrappe",
-  "catppuccinMacchiato",
-  "catppuccinMocha",
-];
 
 // Platform default stacks can be the bare native tokens ("normal"/"monospace");
 // those read as a bug, so show a human label in the placeholder instead.
@@ -118,16 +98,12 @@ function sizeDraftToOverride(value: string): number | undefined {
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
-function dropdownTriggerStyle({ pressed }: PressableStateCallbackType) {
-  return [styles.trigger, pressed ? styles.triggerPressed : null];
-}
-
 // ---------------------------------------------------------------------------
 // Theme picker
 // ---------------------------------------------------------------------------
 
 interface ThemeLeadingProps {
-  themeValue: AppSettings["theme"];
+  themeValue: BuiltInThemePreference;
 }
 
 function ThemeLeading({ themeValue }: ThemeLeadingProps) {
@@ -153,9 +129,9 @@ function ThemeSwatch({ color }: ThemeSwatchProps) {
 }
 
 interface ThemeMenuItemProps {
-  themeValue: AppSettings["theme"];
+  themeValue: BuiltInThemePreference;
   selected: boolean;
-  onChange: (theme: AppSettings["theme"]) => void;
+  onChange: (theme: BuiltInThemePreference) => void;
 }
 
 function ThemeMenuItem({ themeValue, selected, onChange }: ThemeMenuItemProps) {
@@ -171,137 +147,91 @@ function ThemeMenuItem({ themeValue, selected, onChange }: ThemeMenuItemProps) {
   );
 }
 
-interface ThemeRowProps {
-  value: AppSettings["theme"];
-  onChange: (theme: AppSettings["theme"]) => void;
+interface PluginThemeMenuItemProps {
+  option: PluginThemeOption;
+  selected: boolean;
+  onSelect: (option: PluginThemeOption) => void;
 }
 
-function ThemeRow({ value, onChange }: ThemeRowProps) {
+function PluginThemeMenuItem({ option, selected, onSelect }: PluginThemeMenuItemProps) {
+  const handleSelect = useCallback(() => {
+    onSelect(option);
+  }, [onSelect, option]);
+  const leading = useMemo(() => <ThemeSwatch color={option.swatch} />, [option.swatch]);
+  return (
+    <DropdownMenuItem selected={selected} onSelect={handleSelect} leading={leading}>
+      {option.name}
+    </DropdownMenuItem>
+  );
+}
+
+interface ThemeRowProps {
+  value: AppSettings["theme"];
+  pluginThemes: PluginThemeOption[];
+  selectedPluginTheme: PluginThemeOption | null;
+  onChange: (theme: BuiltInThemePreference) => void;
+  onSelectPluginTheme: (option: PluginThemeOption) => void;
+}
+
+function ThemeRow({
+  value,
+  pluginThemes,
+  selectedPluginTheme,
+  onChange,
+  onSelectPluginTheme,
+}: ThemeRowProps) {
   const { t } = useTranslation();
-  const selectedLabel = getThemeLabel(t, value);
+  // A selected contribution that is no longer installed shows the fallback the app renders.
+  const builtInValue = value === PLUGIN_THEME_PREFERENCE ? DEFAULT_THEME_PREFERENCE : value;
+  const selectedLabel = selectedPluginTheme
+    ? selectedPluginTheme.name
+    : getThemeLabel(t, builtInValue);
+  const leading = useMemo(
+    () =>
+      selectedPluginTheme ? (
+        <ThemeSwatch color={selectedPluginTheme.swatch} />
+      ) : (
+        <ThemeLeading themeValue={builtInValue} />
+      ),
+    [builtInValue, selectedPluginTheme],
+  );
   return (
     <View style={settingsStyles.row}>
       <View style={settingsStyles.rowContent}>
         <Text style={settingsStyles.rowTitle}>{t("settings.appearance.theme.title")}</Text>
       </View>
       <DropdownMenu>
-        <DropdownMenuTrigger
-          style={dropdownTriggerStyle}
+        <DropdownTrigger
           accessibilityLabel={t("settings.appearance.theme.accessibilityLabel", {
             value: selectedLabel,
           })}
+          leading={leading}
         >
-          <ThemeLeading themeValue={value} />
-          <Text style={styles.triggerText}>{selectedLabel}</Text>
-          <ThemedChevronDown size={ICON_SIZE.sm} uniProps={mutedColorMapping} />
-        </DropdownMenuTrigger>
-        <DropdownMenuContent side="bottom" align="end" width={200}>
-          {PRIMARY_THEMES.map((themeValue) => (
-            <ThemeMenuItem
-              key={themeValue}
-              themeValue={themeValue}
-              selected={value === themeValue}
-              onChange={onChange}
-            />
-          ))}
-          <DropdownMenuSeparator />
-          {VARIANT_THEMES.map((themeValue) => (
-            <ThemeMenuItem
-              key={themeValue}
-              themeValue={themeValue}
-              selected={value === themeValue}
-              onChange={onChange}
-            />
-          ))}
-        </DropdownMenuContent>
-      </DropdownMenu>
-    </View>
-  );
-}
-
-interface AutoExpandReasoningRowProps {
-  value: boolean;
-  onChange: (value: boolean) => void;
-}
-
-function AutoExpandReasoningRow({ value, onChange }: AutoExpandReasoningRowProps) {
-  const { t } = useTranslation();
-  return (
-    <View style={settingsStyles.row}>
-      <View style={settingsStyles.rowContent}>
-        <Text style={settingsStyles.rowTitle}>
-          {t("settings.general.autoExpandReasoning.label")}
-        </Text>
-        <Text style={settingsStyles.rowHint}>
-          {t("settings.general.autoExpandReasoning.description")}
-        </Text>
-      </View>
-      <Switch value={value} onValueChange={onChange} />
-    </View>
-  );
-}
-
-const TOOL_CALL_DETAIL_LEVELS: readonly AppSettings["toolCallDetailLevel"][] = [
-  "detailed",
-  "overview",
-];
-
-function getToolCallDetailLevelLabel(
-  t: TFunction,
-  value: AppSettings["toolCallDetailLevel"],
-): string {
-  return t(`settings.general.toolCallDetail.options.${value}`);
-}
-
-interface ToolCallDetailMenuItemProps {
-  value: AppSettings["toolCallDetailLevel"];
-  selected: boolean;
-  onChange: (value: AppSettings["toolCallDetailLevel"]) => void;
-}
-
-function ToolCallDetailMenuItem({ value, selected, onChange }: ToolCallDetailMenuItemProps) {
-  const { t } = useTranslation();
-  const handleSelect = useCallback(() => onChange(value), [onChange, value]);
-  return (
-    <DropdownMenuItem selected={selected} onSelect={handleSelect}>
-      {getToolCallDetailLevelLabel(t, value)}
-    </DropdownMenuItem>
-  );
-}
-
-interface ToolCallDetailRowProps {
-  value: AppSettings["toolCallDetailLevel"];
-  onChange: (value: AppSettings["toolCallDetailLevel"]) => void;
-}
-
-function ToolCallDetailRow({ value, onChange }: ToolCallDetailRowProps) {
-  const { t } = useTranslation();
-  const selectedLabel = getToolCallDetailLevelLabel(t, value);
-  return (
-    <View style={[settingsStyles.row, settingsStyles.rowBorder]}>
-      <View style={settingsStyles.rowContent}>
-        <Text style={settingsStyles.rowTitle}>{t("settings.general.toolCallDetail.label")}</Text>
-        <Text style={settingsStyles.rowHint}>
-          {t("settings.general.toolCallDetail.description")}
-        </Text>
-      </View>
-      <DropdownMenu>
-        <DropdownMenuTrigger
-          style={dropdownTriggerStyle}
-          accessibilityLabel={t("settings.general.toolCallDetail.accessibilityLabel", {
-            value: selectedLabel,
+          {selectedLabel}
+        </DropdownTrigger>
+        <DropdownMenuContent side="bottom" align="end" width={200} scrollable>
+          {THEME_OPTIONS.map((option, index) => {
+            const previousOption = THEME_OPTIONS[index - 1];
+            return (
+              <Fragment key={option.name}>
+                {previousOption && previousOption.group !== option.group ? (
+                  <DropdownMenuSeparator />
+                ) : null}
+                <ThemeMenuItem
+                  themeValue={option.name}
+                  selected={selectedPluginTheme === null && builtInValue === option.name}
+                  onChange={onChange}
+                />
+              </Fragment>
+            );
           })}
-        >
-          <Text style={styles.triggerText}>{selectedLabel}</Text>
-          <ThemedChevronDown size={ICON_SIZE.sm} uniProps={mutedColorMapping} />
-        </DropdownMenuTrigger>
-        <DropdownMenuContent side="bottom" align="end" width={200}>
-          {TOOL_CALL_DETAIL_LEVELS.map((option) => (
-            <ToolCallDetailMenuItem
-              key={option}
-              value={option}
-              selected={value === option}
-              onChange={onChange}
+          {pluginThemes.length > 0 ? <DropdownMenuSeparator /> : null}
+          {pluginThemes.map((option) => (
+            <PluginThemeMenuItem
+              key={option.id}
+              option={option}
+              selected={selectedPluginTheme?.id === option.id}
+              onSelect={onSelectPluginTheme}
             />
           ))}
         </DropdownMenuContent>
@@ -315,14 +245,15 @@ function ToolCallDetailRow({ value, onChange }: ToolCallDetailRowProps) {
 // ---------------------------------------------------------------------------
 
 interface FontFamilyRowProps {
+  withBorder?: boolean;
   title: string;
-  hint: string;
+  hint?: string;
   accessibilityLabel: string;
   placeholder: string;
   value: string;
   draft: string;
   onChangeDraft: (value: string) => void;
-  onCommit: (value: string) => void;
+  onCommit: (value: string) => string;
 }
 
 function FontFamilyRow({
@@ -335,13 +266,16 @@ function FontFamilyRow({
   onChangeDraft,
   onCommit,
 }: FontFamilyRowProps) {
+  const inputRef = useRef<EditingTextInputHandle>(null);
   const handleCommit = useCallback(() => {
-    onCommit(draft);
+    const committed = onCommit(draft);
+    inputRef.current?.replaceText(committed);
   }, [draft, onCommit]);
 
   // Resync from the committed value when it changes elsewhere.
   useEffect(() => {
     onChangeDraft(value);
+    inputRef.current?.replaceText(value);
     // Only resync on external value changes, not on local keystrokes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value]);
@@ -353,7 +287,8 @@ function FontFamilyRow({
         <Text style={settingsStyles.rowHint}>{hint}</Text>
       </View>
       <TextInput
-        value={draft}
+        ref={inputRef}
+        initialValue={draft}
         onChangeText={onChangeDraft}
         onBlur={handleCommit}
         onSubmitEditing={handleCommit}
@@ -370,7 +305,9 @@ function FontFamilyRow({
 }
 
 interface FontSizeRowProps {
+  withBorder?: boolean;
   title: string;
+  hint?: string;
   accessibilityLabel: string;
   draft: string;
   onChangeDraft: (value: string) => void;
@@ -379,6 +316,7 @@ interface FontSizeRowProps {
 
 function FontSizeRow({
   title,
+  hint,
   accessibilityLabel,
   draft,
   onChangeDraft,
@@ -388,10 +326,11 @@ function FontSizeRow({
     <View style={settingsStyles.row}>
       <View style={settingsStyles.rowContent}>
         <Text style={settingsStyles.rowTitle}>{title}</Text>
+        <Text style={settingsStyles.rowHint}>{hint}</Text>
       </View>
       <View style={styles.sizeField}>
         <TextInput
-          value={draft}
+          initialValue={draft}
           onChangeText={onChangeDraft}
           onBlur={onCommit}
           onSubmitEditing={onCommit}
@@ -408,116 +347,66 @@ function FontSizeRow({
 }
 
 // ---------------------------------------------------------------------------
-// Terminal: ligatures toggle + fixed padding around the terminal content
+// Content width: numeric field (commit on blur/submit) + reset to the default
 // ---------------------------------------------------------------------------
 
-type TerminalPaddingField =
-  | "terminalPaddingTop"
-  | "terminalPaddingBottom"
-  | "terminalPaddingLeft"
-  | "terminalPaddingRight";
-
-interface TerminalPaddingRowProps {
-  field: TerminalPaddingField;
-  title: string;
-  accessibilityLabel: string;
-  value: number;
-  onCommit: (field: TerminalPaddingField, value: number) => void;
+interface ContentWidthRowProps {
+  value: AppSettings["contentMaxWidth"];
+  onChange: (value: AppSettings["contentMaxWidth"]) => void;
 }
 
-function TerminalPaddingRow({
-  field,
-  title,
-  accessibilityLabel,
-  value,
-  onCommit,
-}: TerminalPaddingRowProps) {
-  const [draft, setDraft] = useState(String(value));
+function ContentWidthRow({ value, onChange }: ContentWidthRowProps) {
+  const { t } = useTranslation();
+  const width = resolveContentMaxWidth({ contentMaxWidth: value });
+  // The field is uncontrolled, so a saved or reset width is written into it directly.
+  const input = useRef<EditingTextInputHandle>(null);
 
-  // Resync from the committed value when it changes elsewhere.
   useEffect(() => {
-    setDraft(String(value));
-  }, [value]);
+    input.current?.replaceText(String(width));
+  }, [width]);
 
-  const handleChangeDraft = useCallback((next: string) => {
-    setDraft(next.replace(/[^\d]/g, ""));
-  }, []);
-
-  const handleCommit = useCallback(() => {
-    const parsed = parseTerminalPadding(draft);
-    const next = parsed ?? value;
-    setDraft(String(next));
-    if (next !== value) {
-      onCommit(field, next);
+  const commit = useCallback(() => {
+    const next = parseContentMaxWidth(input.current?.getText()) ?? width;
+    input.current?.replaceText(String(next));
+    // Typing the width already in effect keeps following the default.
+    if (next !== width) {
+      onChange(next);
     }
-  }, [draft, field, onCommit, value]);
+  }, [onChange, width]);
 
-  return (
-    <FontSizeRow
-      title={title}
-      accessibilityLabel={accessibilityLabel}
-      draft={draft}
-      onChangeDraft={handleChangeDraft}
-      onCommit={handleCommit}
-    />
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Terminal letter spacing — unlike padding it accepts negatives, so it needs a
-// sign-permitting input rather than the digits-only FontSizeRow sanitizer.
-// ---------------------------------------------------------------------------
-
-interface TerminalLetterSpacingRowProps {
-  title: string;
-  accessibilityLabel: string;
-  value: number;
-  onCommit: (value: number) => void;
-}
-
-function TerminalLetterSpacingRow({
-  title,
-  accessibilityLabel,
-  value,
-  onCommit,
-}: TerminalLetterSpacingRowProps) {
-  const [draft, setDraft] = useState(String(value));
-
-  // Resync from the committed value when it changes elsewhere.
-  useEffect(() => {
-    setDraft(String(value));
-  }, [value]);
-
-  const handleChangeDraft = useCallback((next: string) => {
-    // Keep digits plus a single leading minus sign.
-    const cleaned = next.replace(/[^\d-]/g, "").replace(/(?!^)-/g, "");
-    setDraft(cleaned);
-  }, []);
-
-  const handleCommit = useCallback(() => {
-    const parsed = parseTerminalLetterSpacing(draft);
-    const next = parsed ?? value;
-    setDraft(String(next));
-    if (next !== value) {
-      onCommit(next);
-    }
-  }, [draft, onCommit, value]);
+  const reset = useCallback(() => {
+    onChange(null);
+  }, [onChange]);
 
   return (
     <View style={settingsStyles.row}>
       <View style={settingsStyles.rowContent}>
-        <Text style={settingsStyles.rowTitle}>{title}</Text>
+        <Text style={settingsStyles.rowTitle}>{t("settings.appearance.layout.contentWidth")}</Text>
+        <Text style={settingsStyles.rowHint}>
+          {t("settings.appearance.layout.contentWidthHint")}
+        </Text>
       </View>
       <View style={styles.sizeField}>
+        {value === null ? null : (
+          <Button
+            variant="ghost"
+            size="sm"
+            onPress={reset}
+            accessibilityLabel={t("settings.appearance.layout.resetAccessibility")}
+          >
+            {t("settings.appearance.layout.reset")}
+          </Button>
+        )}
         <TextInput
-          value={draft}
-          onChangeText={handleChangeDraft}
-          onBlur={handleCommit}
-          onSubmitEditing={handleCommit}
-          keyboardType="numbers-and-punctuation"
+          ref={input}
+          initialValue={String(width)}
+          onBlur={commit}
+          onSubmitEditing={commit}
+          keyboardType="number-pad"
+          inputMode="numeric"
           selectTextOnFocus
-          style={styles.sizeInput}
-          accessibilityLabel={accessibilityLabel}
+          style={styles.widthInput}
+          accessibilityLabel={t("settings.appearance.layout.contentWidthAccessibility")}
         />
         <Text style={styles.unit}>px</Text>
       </View>
@@ -570,15 +459,13 @@ function SyntaxRow({ value, onChange }: SyntaxRowProps) {
         </Text>
       </View>
       <DropdownMenu>
-        <DropdownMenuTrigger
-          style={dropdownTriggerStyle}
+        <DropdownTrigger
           accessibilityLabel={t("settings.appearance.syntax.highlightThemeAccessibility", {
             value: selectedLabel,
           })}
         >
-          <Text style={styles.triggerText}>{selectedLabel}</Text>
-          <ThemedChevronDown size={ICON_SIZE.sm} uniProps={mutedColorMapping} />
-        </DropdownMenuTrigger>
+          {selectedLabel}
+        </DropdownTrigger>
         <DropdownMenuContent side="bottom" align="end" width={200}>
           {SYNTAX_THEME_OPTIONS.map((option) => (
             <SyntaxMenuItem
@@ -673,14 +560,13 @@ function TerminalColorSchemeRow({ value, onChange }: TerminalColorSchemeRowProps
       </View>
       <DropdownMenu>
         <DropdownMenuTrigger
-          style={dropdownTriggerStyle}
+          style={styles.trigger}
           accessibilityLabel={t("settings.appearance.terminal.colorScheme.accessibilityLabel", {
             value: selectedLabel,
           })}
         >
           <TerminalSchemeLeading scheme={value} />
           <Text style={styles.triggerText}>{selectedLabel}</Text>
-          <ThemedChevronDown size={ICON_SIZE.sm} uniProps={mutedColorMapping} />
         </DropdownMenuTrigger>
         {/* 12 entries — scrollable so the bottom presets stay reachable on short viewports. */}
         <DropdownMenuContent side="bottom" align="end" width={220} scrollable maxHeight={360}>
@@ -705,26 +591,49 @@ function TerminalColorSchemeRow({ value, onChange }: TerminalColorSchemeRowProps
 export function AppearanceSection() {
   const { t } = useTranslation();
   const { settings, updateSettings } = useAppSettings();
-  const showFontFamilyRows = !isNative;
+  const {
+    options: pluginThemes,
+    selected: selectedPluginTheme,
+    select: selectPluginTheme,
+  } = useContributedThemes();
+  const showInterfaceFontFamilyRow = !isNative;
   const uiFontPlaceholder = resolveDefaultStackPlaceholder(t, DEFAULT_UI_FONT_STACK);
   const monoFontPlaceholder = resolveDefaultStackPlaceholder(t, DEFAULT_MONO_FONT_STACK);
 
   const [uiFontDraft, setUiFontDraft] = useState(settings.uiFontFamily);
   const [monoFontDraft, setMonoFontDraft] = useState(settings.monoFontFamily);
-  const [uiSizeDraft, setUiSizeDraft] = useState(String(settings.uiFontSize));
+  const [uiBaseSizeDraft, setUiBaseSizeDraft] = useState(String(settings.uiBaseFontSize));
+  const [contentSizeDraft, setContentSizeDraft] = useState(String(settings.contentFontSize));
   const [codeSizeDraft, setCodeSizeDraft] = useState(String(settings.codeFontSize));
 
   // Resync numeric drafts when the committed value changes elsewhere.
   useEffect(() => {
-    setUiSizeDraft(String(settings.uiFontSize));
-  }, [settings.uiFontSize]);
+    setUiBaseSizeDraft(String(settings.uiBaseFontSize));
+  }, [settings.uiBaseFontSize]);
+  useEffect(() => {
+    setContentSizeDraft(String(settings.contentFontSize));
+  }, [settings.contentFontSize]);
   useEffect(() => {
     setCodeSizeDraft(String(settings.codeFontSize));
   }, [settings.codeFontSize]);
 
   const handleThemeChange = useCallback(
-    (theme: AppSettings["theme"]) => {
+    (theme: BuiltInThemePreference) => {
       void updateSettings({ theme });
+    },
+    [updateSettings],
+  );
+
+  const handlePluginThemeChange = useCallback(
+    (option: PluginThemeOption) => {
+      selectPluginTheme(option);
+    },
+    [selectPluginTheme],
+  );
+
+  const handleContentMaxWidthChange = useCallback(
+    (contentMaxWidth: AppSettings["contentMaxWidth"]) => {
+      void updateSettings({ contentMaxWidth });
     },
     [updateSettings],
   );
@@ -743,31 +652,18 @@ export function AppearanceSection() {
     [updateSettings],
   );
 
-  const handleAutoExpandReasoningChange = useCallback(
-    (autoExpandReasoning: boolean) => {
-      void updateSettings({ autoExpandReasoning });
-    },
-    [updateSettings],
-  );
-
-  const handleToolCallDetailLevelChange = useCallback(
-    (toolCallDetailLevel: AppSettings["toolCallDetailLevel"]) => {
-      void updateSettings({ toolCallDetailLevel });
-    },
-    [updateSettings],
-  );
-
   const commitUiFontFamily = useCallback(
     (value: string) => {
       const sanitized = sanitizeFontFamily(value);
       if (sanitized === null) {
         setUiFontDraft(settings.uiFontFamily);
-        return;
+        return settings.uiFontFamily;
       }
       setUiFontDraft(sanitized);
       if (sanitized !== settings.uiFontFamily) {
         void updateSettings({ uiFontFamily: sanitized });
       }
+      return sanitized;
     },
     [settings.uiFontFamily, updateSettings],
   );
@@ -777,35 +673,40 @@ export function AppearanceSection() {
       const sanitized = sanitizeFontFamily(value);
       if (sanitized === null) {
         setMonoFontDraft(settings.monoFontFamily);
-        return;
+        return settings.monoFontFamily;
       }
       setMonoFontDraft(sanitized);
       if (sanitized !== settings.monoFontFamily) {
         void updateSettings({ monoFontFamily: sanitized });
       }
+      return sanitized;
     },
     [settings.monoFontFamily, updateSettings],
   );
 
-  const handleUiSizeChange = useCallback((value: string) => {
-    setUiSizeDraft(value.replace(/[^\d]/g, ""));
+  const handleUiBaseSizeChange = useCallback((value: string) => {
+    setUiBaseSizeDraft(value.replace(/[^\d]/g, ""));
   }, []);
 
   const handleCodeSizeChange = useCallback((value: string) => {
     setCodeSizeDraft(value.replace(/[^\d]/g, ""));
   }, []);
 
-  const commitUiSize = useCallback(() => {
-    const parsed = parseClampedFontSize(uiSizeDraft, {
-      min: MIN_UI_FONT_SIZE,
-      max: MAX_UI_FONT_SIZE,
+  const handleContentSizeChange = useCallback((value: string) => {
+    setContentSizeDraft(value.replace(/[^\d]/g, ""));
+  }, []);
+
+  const commitUiBaseSize = useCallback(() => {
+    const parsed = parseClampedFontSize(uiBaseSizeDraft, {
+      min: MIN_UI_BASE_FONT_SIZE,
+      max: MAX_UI_BASE_FONT_SIZE,
     });
-    const next = parsed ?? settings.uiFontSize;
-    setUiSizeDraft(String(next));
-    if (next !== settings.uiFontSize) {
-      void updateSettings({ uiFontSize: next });
+    const next = parsed ?? settings.uiBaseFontSize;
+    setUiBaseSizeDraft(String(next));
+    if (next !== settings.uiBaseFontSize) {
+      void updateSettings({ uiBaseFontSize: next });
     }
-  }, [settings.uiFontSize, uiSizeDraft, updateSettings]);
+  }, [settings.uiBaseFontSize, uiBaseSizeDraft, updateSettings]);
 
   const handleTerminalLigaturesChange = useCallback(
     (terminalLigaturesEnabled: boolean) => {
@@ -854,39 +755,46 @@ export function AppearanceSection() {
     }
   }, [codeSizeDraft, settings.codeFontSize, updateSettings]);
 
+  const commitContentSize = useCallback(() => {
+    const parsed = parseClampedFontSize(contentSizeDraft, {
+      min: MIN_CONTENT_FONT_SIZE,
+      max: MAX_CONTENT_FONT_SIZE,
+    });
+    const next = parsed ?? settings.contentFontSize;
+    setContentSizeDraft(String(next));
+    if (next !== settings.contentFontSize) {
+      void updateSettings({ contentFontSize: next });
+    }
+  }, [contentSizeDraft, settings.contentFontSize, updateSettings]);
+
   // Live-while-typing: the in-progress drafts drive the preview without
   // committing to the global theme. Empty/invalid fields fall back to the
   // theme value inside the preview.
   const previewOverrides = useMemo(
     () => ({
+      contentFontSize: sizeDraftToOverride(contentSizeDraft),
       monoFontFamily: monoFontDraft,
       codeFontSize: sizeDraftToOverride(codeSizeDraft),
     }),
-    [codeSizeDraft, monoFontDraft],
+    [codeSizeDraft, contentSizeDraft, monoFontDraft],
   );
 
   return (
     <View>
       <SettingsSection title={t("settings.appearance.theme.title")}>
         <View style={settingsStyles.card}>
-          <ThemeRow value={settings.theme} onChange={handleThemeChange} />
-        </View>
-      </SettingsSection>
-      <SettingsSection title={t("settings.appearance.detailLevel.title")}>
-        <View style={settingsStyles.card}>
-          <AutoExpandReasoningRow
-            value={settings.autoExpandReasoning}
-            onChange={handleAutoExpandReasoningChange}
-          />
-          <ToolCallDetailRow
-            value={settings.toolCallDetailLevel}
-            onChange={handleToolCallDetailLevelChange}
+          <ThemeRow
+            value={settings.theme}
+            pluginThemes={pluginThemes}
+            selectedPluginTheme={selectedPluginTheme}
+            onChange={handleThemeChange}
+            onSelectPluginTheme={handlePluginThemeChange}
           />
         </View>
       </SettingsSection>
       <SettingsSection title={t("settings.appearance.fonts.title")}>
         <View style={settingsStyles.card}>
-          {showFontFamilyRows ? (
+          {showInterfaceFontFamilyRow ? (
             <FontFamilyRow
               title={t("settings.appearance.fonts.interfaceFont")}
               hint={t("settings.appearance.fonts.interfaceFontHint")}
@@ -900,25 +808,35 @@ export function AppearanceSection() {
           ) : null}
           <FontSizeRow
             title={t("settings.appearance.fonts.interfaceSize")}
+            hint={t("settings.appearance.fonts.interfaceSizeHint")}
             accessibilityLabel={t("settings.appearance.fonts.interfaceSizeAccessibility")}
-            draft={uiSizeDraft}
-            onChangeDraft={handleUiSizeChange}
-            onCommit={commitUiSize}
+            draft={uiBaseSizeDraft}
+            withBorder={showInterfaceFontFamilyRow}
+            onChangeDraft={handleUiBaseSizeChange}
+            onCommit={commitUiBaseSize}
           />
-          {showFontFamilyRows ? (
-            <FontFamilyRow
-              title={t("settings.appearance.fonts.codeFont")}
-              hint={t("settings.appearance.fonts.codeFontHint")}
-              accessibilityLabel={t("settings.appearance.fonts.codeFontAccessibility")}
-              placeholder={monoFontPlaceholder}
-              value={settings.monoFontFamily}
-              draft={monoFontDraft}
-              onChangeDraft={setMonoFontDraft}
-              onCommit={commitMonoFontFamily}
-            />
-          ) : null}
+          <FontSizeRow
+            title={t("settings.appearance.fonts.contentSize")}
+            hint={t("settings.appearance.fonts.contentSizeHint")}
+            accessibilityLabel={t("settings.appearance.fonts.contentSizeAccessibility")}
+            draft={contentSizeDraft}
+            onChangeDraft={handleContentSizeChange}
+            onCommit={commitContentSize}
+          />
+          <FontFamilyRow
+            title={t("settings.appearance.fonts.codeFont")}
+            hint={t("settings.appearance.fonts.codeFontHint")}
+            accessibilityLabel={t("settings.appearance.fonts.codeFontAccessibility")}
+            placeholder={monoFontPlaceholder}
+            value={settings.monoFontFamily}
+            draft={monoFontDraft}
+            withBorder
+            onChangeDraft={setMonoFontDraft}
+            onCommit={commitMonoFontFamily}
+          />
           <FontSizeRow
             title={t("settings.appearance.fonts.codeSize")}
+            hint={t("settings.appearance.fonts.codeSizeHint")}
             accessibilityLabel={t("settings.appearance.fonts.codeSizeAccessibility")}
             draft={codeSizeDraft}
             onChangeDraft={handleCodeSizeChange}
@@ -1033,6 +951,14 @@ export function AppearanceSection() {
           </View>
         </View>
       </SettingsSection>
+      <SettingsSection title={t("settings.appearance.layout.title")}>
+        <View style={settingsStyles.card}>
+          <ContentWidthRow
+            value={settings.contentMaxWidth}
+            onChange={handleContentMaxWidthChange}
+          />
+        </View>
+      </SettingsSection>
       <SettingsSection title={t("settings.appearance.syntax.title")}>
         <View style={settingsStyles.card}>
           <SyntaxRow value={settings.syntaxTheme} onChange={handleSyntaxThemeChange} />
@@ -1065,6 +991,15 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.foreground,
     fontSize: theme.fontSize.sm,
   },
+  rowWithBorder: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: theme.spacing[4],
+    paddingHorizontal: theme.spacing[4],
+    borderTopWidth: theme.borderWidth[1],
+    borderTopColor: theme.colors.border,
+  },
   swatch: {
     width: ICON_SIZE.md,
     height: ICON_SIZE.md,
@@ -1082,7 +1017,7 @@ const styles = StyleSheet.create((theme) => ({
     borderRadius: theme.borderRadius.lg,
     backgroundColor: theme.colors.surface0,
     color: theme.colors.foreground,
-    fontSize: theme.fontSize.sm,
+    fontSize: theme.fontSize.base,
     textAlign: "left",
   },
   sizeField: {
@@ -1098,14 +1033,150 @@ const styles = StyleSheet.create((theme) => ({
     borderRadius: theme.borderRadius.lg,
     backgroundColor: theme.colors.surface0,
     color: theme.colors.foreground,
-    fontSize: theme.fontSize.sm,
+    fontSize: theme.fontSize.base,
+    textAlign: "right",
+  },
+  widthInput: {
+    width: 80,
+    minHeight: 36,
+    paddingVertical: theme.spacing[2],
+    paddingHorizontal: theme.spacing[3],
+    borderRadius: theme.borderRadius.md,
+    borderWidth: theme.borderWidth[1],
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.surface2,
+    color: theme.colors.foreground,
+    fontSize: theme.fontSize.base,
     textAlign: "right",
   },
   unit: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.sm,
+    fontSize: theme.fontSize.base,
   },
   placeholderColor: {
     color: theme.colors.foregroundMuted,
   },
 }));
+
+// ---------------------------------------------------------------------------
+// Terminal: ligatures toggle + fixed padding around the terminal content
+// ---------------------------------------------------------------------------
+
+type TerminalPaddingField =
+  | "terminalPaddingTop"
+  | "terminalPaddingBottom"
+  | "terminalPaddingLeft"
+  | "terminalPaddingRight";
+
+interface TerminalPaddingRowProps {
+  field: TerminalPaddingField;
+  title: string;
+  accessibilityLabel: string;
+  value: number;
+  onCommit: (field: TerminalPaddingField, value: number) => void;
+}
+
+function TerminalPaddingRow({
+  field,
+  title,
+  accessibilityLabel,
+  value,
+  onCommit,
+}: TerminalPaddingRowProps) {
+  const [draft, setDraft] = useState(String(value));
+
+  // Resync from the committed value when it changes elsewhere.
+  useEffect(() => {
+    setDraft(String(value));
+  }, [value]);
+
+  const handleChangeDraft = useCallback((next: string) => {
+    setDraft(next.replace(/[^\d]/g, ""));
+  }, []);
+
+  const handleCommit = useCallback(() => {
+    const parsed = parseTerminalPadding(draft);
+    const next = parsed ?? value;
+    setDraft(String(next));
+    if (next !== value) {
+      onCommit(field, next);
+    }
+  }, [draft, field, onCommit, value]);
+
+  return (
+    <FontSizeRow
+      title={title}
+      accessibilityLabel={accessibilityLabel}
+      draft={draft}
+      onChangeDraft={handleChangeDraft}
+      onCommit={handleCommit}
+    />
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Terminal letter spacing — unlike padding it accepts negatives, so it needs a
+// sign-permitting input rather than the digits-only FontSizeRow sanitizer.
+// ---------------------------------------------------------------------------
+
+interface TerminalLetterSpacingRowProps {
+  title: string;
+  accessibilityLabel: string;
+  value: number;
+  onCommit: (value: number) => void;
+}
+
+function TerminalLetterSpacingRow({
+  title,
+  accessibilityLabel,
+  value,
+  onCommit,
+}: TerminalLetterSpacingRowProps) {
+  const [draft, setDraft] = useState(String(value));
+  const inputRef = useRef<EditingTextInputHandle>(null);
+
+  // Resync from the committed value when it changes elsewhere.
+  useEffect(() => {
+    setDraft(String(value));
+    inputRef.current?.replaceText(String(value));
+  }, [value]);
+
+  const handleChangeDraft = useCallback((next: string) => {
+    // Keep digits plus a single leading minus sign.
+    const cleaned = next.replace(/[^\d-]/g, "").replace(/(?!^)-/g, "");
+    setDraft(cleaned);
+    inputRef.current?.replaceText(cleaned);
+  }, []);
+
+  const handleCommit = useCallback(() => {
+    const parsed = parseTerminalLetterSpacing(draft);
+    const next = parsed ?? value;
+    setDraft(String(next));
+    inputRef.current?.replaceText(String(next));
+    if (next !== value) {
+      onCommit(next);
+    }
+  }, [draft, onCommit, value]);
+
+  return (
+    <View style={settingsStyles.row}>
+      <View style={settingsStyles.rowContent}>
+        <Text style={settingsStyles.rowTitle}>{title}</Text>
+      </View>
+      <View style={styles.sizeField}>
+        <TextInput
+          ref={inputRef}
+          initialValue={String(value)}
+          onChangeText={handleChangeDraft}
+          onBlur={handleCommit}
+          onSubmitEditing={handleCommit}
+          keyboardType="numbers-and-punctuation"
+          selectTextOnFocus
+          style={styles.sizeInput}
+          accessibilityLabel={accessibilityLabel}
+        />
+        <Text style={styles.unit}>px</Text>
+      </View>
+    </View>
+  );
+}

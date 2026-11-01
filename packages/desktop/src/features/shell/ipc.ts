@@ -19,7 +19,7 @@ export function registerShellHandlers(
   options: {
     ipc?: IpcHandlerRegistry;
     revealPath?: (path: string) => void;
-    copyPaths?: (paths: readonly string[]) => boolean;
+    copyPaths?: (paths: readonly string[]) => boolean | Promise<boolean>;
   } = {},
 ): void {
   const ipc = options.ipc ?? ipcMain;

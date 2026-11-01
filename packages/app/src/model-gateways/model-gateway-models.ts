@@ -1,4 +1,3 @@
-import { buildFavoriteModelKey } from "@/hooks/use-form-preferences";
 import type { ProviderSelectorProvider } from "@/provider-selection/provider-selection";
 import type {
   AgentModelDefinition,
@@ -85,7 +84,7 @@ export function buildModelGatewaySelectorProviders(input: {
       modelSelection: {
         kind: "models",
         rows: input.models.map((model) => ({
-          favoriteKey: buildFavoriteModelKey({ provider, modelId: model.id }),
+          favoriteKey: `${provider}:${model.id}`,
           provider,
           providerLabel: input.providerLabel,
           modelId: model.id,

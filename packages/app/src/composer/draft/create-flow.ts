@@ -5,15 +5,16 @@ import {
   resolveComposerAttachmentSubmitFormat,
   splitComposerAttachmentsForSubmit,
 } from "@/composer/attachments/submit";
-import { useCreateFlowStore } from "@/stores/create-flow-store";
+import { isActiveCreateFlowForDraft, useCreateFlowStore } from "@/stores/create-flow-store";
+import { handoffCreatedAgentMessageSubmission } from "@/composer/submission/writer";
 import { useSessionStore } from "@/stores/session-store";
 import {
-  buildOptimisticUserMessage,
-  generateMessageId,
+  createUserMessage,
   type StreamItem,
   type UserMessageImageAttachment,
 } from "@/types/stream";
 import type { AgentAttachment } from "@getpaseo/protocol/messages";
+import type { PendingMessageSubmission } from "@/composer/submission/model";
 
 const EMPTY_STREAM_ITEMS: StreamItem[] = [];
 
@@ -25,23 +26,23 @@ interface CreateAttempt {
   attachments?: AgentAttachment[];
 }
 
-type DraftAgentMachineState =
+type DraftAgentMachineState<TDraftAgent> =
   | { tag: "draft"; errorMessage: string }
-  | { tag: "creating"; attempt: CreateAttempt };
+  | { tag: "creating"; attempt: CreateAttempt; draftAgent: TDraftAgent };
 
-type DraftAgentMachineEvent =
+type DraftAgentMachineEvent<TDraftAgent> =
   | { type: "DRAFT_SET_ERROR"; message: string }
-  | { type: "SUBMIT"; attempt: CreateAttempt }
+  | { type: "SUBMIT"; attempt: CreateAttempt; draftAgent: TDraftAgent }
   | { type: "CREATE_FAILED"; message: string };
 
 function assertNever(value: never): never {
   throw new Error(`Unhandled state: ${JSON.stringify(value)}`);
 }
 
-function reducer(
-  state: DraftAgentMachineState,
-  event: DraftAgentMachineEvent,
-): DraftAgentMachineState {
+function reducer<TDraftAgent>(
+  state: DraftAgentMachineState<TDraftAgent>,
+  event: DraftAgentMachineEvent<TDraftAgent>,
+): DraftAgentMachineState<TDraftAgent> {
   switch (event.type) {
     case "DRAFT_SET_ERROR": {
       if (state.tag !== "draft") {
@@ -50,7 +51,7 @@ function reducer(
       return { ...state, errorMessage: event.message };
     }
     case "SUBMIT": {
-      return { tag: "creating", attempt: event.attempt };
+      return { tag: "creating", attempt: event.attempt, draftAgent: event.draftAgent };
     }
     case "CREATE_FAILED": {
       if (state.tag !== "creating") {
@@ -60,6 +61,17 @@ function reducer(
     }
     default:
       return assertNever(event);
+  }
+}
+
+function prepareCreateAttempt<TDraftAgent>(
+  attempt: CreateAttempt,
+  buildDraftAgent: (attempt: CreateAttempt) => TDraftAgent,
+): DraftAgentMachineState<TDraftAgent> {
+  try {
+    return { tag: "creating", attempt, draftAgent: buildDraftAgent(attempt) };
+  } catch (error) {
+    return { tag: "draft", errorMessage: error instanceof Error ? error.message : String(error) };
   }
 }
 
@@ -110,30 +122,38 @@ export function useDraftAgentCreateFlow<TDraftAgent, TCreateResult>({
   onCreateError,
 }: UseDraftAgentCreateFlowOptions<TDraftAgent, TCreateResult>) {
   const { t } = useTranslation();
-  const [machine, dispatch] = useReducer(
-    reducer,
+  const [localMachine, dispatch] = useReducer(
+    reducer<TDraftAgent>,
     initialAttempt,
-    (attempt): DraftAgentMachineState =>
+    (attempt): DraftAgentMachineState<TDraftAgent> =>
       attempt
-        ? { tag: "creating", attempt }
+        ? prepareCreateAttempt(attempt, buildDraftAgent)
         : {
             tag: "draft",
             errorMessage: "",
           },
   );
 
+  const pending = useCreateFlowStore((state) => state.pendingByDraftId[draftId]);
+  // Remounts can precede model hydration. Rebuild the preview when its inputs
+  // arrive, and observe the original request's failure through shared state.
+  const machine = useMemo<DraftAgentMachineState<TDraftAgent>>(() => {
+    if (pending?.lifecycle === "abandoned") {
+      return { tag: "draft", errorMessage: pending.errorMessage ?? "" };
+    }
+    if (pending?.lifecycle === "active" && localMachine.tag === "draft" && initialAttempt) {
+      return prepareCreateAttempt(initialAttempt, buildDraftAgent);
+    }
+    return localMachine;
+  }, [pending, localMachine, initialAttempt, buildDraftAgent]);
+
   const setPendingCreateAttempt = useCreateFlowStore((state) => state.setPending);
   const updatePendingAgentId = useCreateFlowStore((state) => state.updateAgentId);
   const markPendingCreateLifecycle = useCreateFlowStore((state) => state.markLifecycle);
-  const clearPendingCreateAttempt = useCreateFlowStore((state) => state.clear);
-  const handoffCreatedAgentUserMessage = useSessionStore(
-    (state) => state.handoffCreatedAgentUserMessage,
-  );
-
   const formErrorMessage = machine.tag === "draft" ? machine.errorMessage : "";
   const isSubmitting = machine.tag === "creating";
 
-  const optimisticStreamItems = useMemo<StreamItem[]>(() => {
+  const submittedStreamItems = useMemo<StreamItem[]>(() => {
     if (machine.tag !== "creating") {
       return EMPTY_STREAM_ITEMS;
     }
@@ -147,8 +167,8 @@ export function useDraftAgentCreateFlow<TDraftAgent, TCreateResult>({
     }
 
     return [
-      buildOptimisticUserMessage({
-        id: machine.attempt.clientMessageId,
+      createUserMessage({
+        clientMessageId: machine.attempt.clientMessageId,
         text: machine.attempt.text,
         timestamp: machine.attempt.timestamp,
         images: machine.attempt.images,
@@ -156,13 +176,27 @@ export function useDraftAgentCreateFlow<TDraftAgent, TCreateResult>({
       }),
     ];
   }, [machine]);
+  const pendingMessageSubmissions = useMemo<readonly PendingMessageSubmission[]>(() => {
+    if (machine.tag !== "creating") return [];
+    return [
+      {
+        clientMessageId: machine.attempt.clientMessageId,
+      },
+    ];
+  }, [machine]);
 
-  const draftAgent = useMemo<TDraftAgent | null>(() => {
-    if (machine.tag !== "creating") {
-      return null;
-    }
-    return buildDraftAgent(machine.attempt);
-  }, [buildDraftAgent, machine]);
+  const draftAgent = machine.tag === "creating" ? machine.draftAgent : null;
+  const startCreateAttempt = useCallback(
+    (attempt: CreateAttempt) => {
+      const prepared = prepareCreateAttempt(attempt, buildDraftAgent);
+      if (prepared.tag === "draft") {
+        dispatch({ type: "DRAFT_SET_ERROR", message: prepared.errorMessage });
+        throw new Error(prepared.errorMessage);
+      }
+      dispatch({ type: "SUBMIT", attempt, draftAgent: prepared.draftAgent });
+    },
+    [buildDraftAgent],
+  );
 
   const runCreateAttempt = useCallback(
     async ({ attempt, cwd }: { attempt: CreateAttempt; cwd: string }) => {
@@ -173,15 +207,14 @@ export function useDraftAgentCreateFlow<TDraftAgent, TCreateResult>({
         throw error;
       }
 
-      await onBeforeSubmit?.({
-        attempt,
-        text: attempt.text,
-        images: attempt.images,
-        attachments: attempt.attachments,
-        cwd,
-      });
-
       try {
+        await onBeforeSubmit?.({
+          attempt,
+          text: attempt.text,
+          images: attempt.images,
+          attachments: attempt.attachments,
+          cwd,
+        });
         const createResult = await createRequest({
           attempt,
           text: attempt.text,
@@ -192,11 +225,11 @@ export function useDraftAgentCreateFlow<TDraftAgent, TCreateResult>({
 
         if (createResult.agentId) {
           updatePendingAgentId({ draftId, agentId: createResult.agentId });
-          handoffCreatedAgentUserMessage(
+          handoffCreatedAgentMessageSubmission(
             pendingServerId,
             createResult.agentId,
-            buildOptimisticUserMessage({
-              id: attempt.clientMessageId,
+            createUserMessage({
+              clientMessageId: attempt.clientMessageId,
               text: attempt.text,
               timestamp: attempt.timestamp,
               images: attempt.images,
@@ -211,15 +244,16 @@ export function useDraftAgentCreateFlow<TDraftAgent, TCreateResult>({
         const resolved =
           error instanceof Error ? error : new Error(t("composer.errors.failedToCreateAgent"));
         dispatch({ type: "CREATE_FAILED", message: resolved.message });
-        markPendingCreateLifecycle({ draftId, lifecycle: "abandoned" });
-        clearPendingCreateAttempt({ draftId });
+        markPendingCreateLifecycle({
+          draftId,
+          lifecycle: "abandoned",
+          errorMessage: resolved.message,
+        });
         onCreateError?.(resolved);
         throw error;
       }
     },
     [
-      handoffCreatedAgentUserMessage,
-      clearPendingCreateAttempt,
       createRequest,
       draftId,
       getPendingServerId,
@@ -234,7 +268,11 @@ export function useDraftAgentCreateFlow<TDraftAgent, TCreateResult>({
 
   const handleCreateFromInput = useCallback(
     async ({ text, attachments, cwd }: SubmitContext) => {
-      if (isSubmitting) {
+      const existing = useCreateFlowStore.getState().pendingByDraftId[draftId];
+      if (
+        isSubmitting ||
+        isActiveCreateFlowForDraft({ pending: existing, serverId: getPendingServerId(), draftId })
+      ) {
         throw new Error(t("composer.errors.alreadyLoading"));
       }
 
@@ -275,13 +313,14 @@ export function useDraftAgentCreateFlow<TDraftAgent, TCreateResult>({
       }
 
       const attempt: CreateAttempt = {
-        clientMessageId: generateMessageId(),
+        clientMessageId: `${draftId}:initial-message`,
         text: trimmedPrompt,
         timestamp: new Date(),
-        ...(images && images.length > 0 ? { images } : {}),
+        ...(images.length > 0 ? { images } : {}),
         ...(wirePayload.attachments.length > 0 ? { attachments: wirePayload.attachments } : {}),
       };
 
+      startCreateAttempt(attempt);
       setPendingCreateAttempt({
         draftId,
         serverId: pendingServerId,
@@ -295,7 +334,6 @@ export function useDraftAgentCreateFlow<TDraftAgent, TCreateResult>({
           : {}),
       });
 
-      dispatch({ type: "SUBMIT", attempt });
       onCreateStart?.();
       await runCreateAttempt({ attempt, cwd });
     },
@@ -307,6 +345,7 @@ export function useDraftAgentCreateFlow<TDraftAgent, TCreateResult>({
       onCreateStart,
       runCreateAttempt,
       setPendingCreateAttempt,
+      startCreateAttempt,
       t,
       validateBeforeSubmit,
     ],
@@ -315,18 +354,19 @@ export function useDraftAgentCreateFlow<TDraftAgent, TCreateResult>({
   const continueCreateFromAttempt = useCallback(
     async ({ attempt, cwd }: { attempt: CreateAttempt; cwd: string }) => {
       if (!isSubmitting) {
-        dispatch({ type: "SUBMIT", attempt });
+        startCreateAttempt(attempt);
       }
       await runCreateAttempt({ attempt, cwd });
     },
-    [isSubmitting, runCreateAttempt],
+    [isSubmitting, runCreateAttempt, startCreateAttempt],
   );
 
   return {
     machine,
     formErrorMessage,
     isSubmitting,
-    optimisticStreamItems,
+    submittedStreamItems,
+    pendingMessageSubmissions,
     draftAgent,
     handleCreateFromInput,
     continueCreateFromAttempt,

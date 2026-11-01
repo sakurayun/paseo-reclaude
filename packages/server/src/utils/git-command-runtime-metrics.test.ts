@@ -1,10 +1,13 @@
 import { describe, expect, test } from "vitest";
 import { GitCommandRuntimeMetricsWindow } from "./git-command-runtime-metrics.js";
 
-function createMetricsWindow(concurrencyLimit = 2) {
+function createMetricsWindow(concurrencyLimit = 2, maxProcessesPerSecond = 8) {
   let now = 1_000;
   return {
-    metrics: new GitCommandRuntimeMetricsWindow(concurrencyLimit, () => now),
+    metrics: new GitCommandRuntimeMetricsWindow(
+      { concurrencyLimit, maxProcessesPerSecond },
+      () => now,
+    ),
     advance(ms: number) {
       now += ms;
     },
@@ -34,14 +37,15 @@ describe("GitCommandRuntimeMetricsWindow", () => {
 
   test("reports live queue pressure across window resets", () => {
     const { metrics, advance } = createMetricsWindow(1);
-    const active = metrics.submit("fetch");
+    const active = metrics.submit("fetch", "background-fetch");
     metrics.start(active);
-    const pending = metrics.submit("rev-parse");
+    const pending = metrics.submit("rev-parse", "workspace-refresh:watch");
     metrics.observeLimiter(1, 1);
     advance(25);
 
     expect(metrics.snapshotAndReset()).toMatchObject({
       concurrencyLimit: 1,
+      maxProcessesPerSecond: 8,
       active: 1,
       pending: 1,
       peakActive: 1,
@@ -49,6 +53,12 @@ describe("GitCommandRuntimeMetricsWindow", () => {
       oldestPendingMs: 25,
       submitted: 2,
       started: 1,
+      provenanceTop: [
+        ["background-fetch", 1],
+        ["workspace-refresh:watch", 1],
+      ],
+      pendingProvenanceTop: [["workspace-refresh:watch", 1]],
+      activeProvenanceTop: [["background-fetch", 1]],
     });
 
     advance(10);
@@ -69,6 +79,9 @@ describe("GitCommandRuntimeMetricsWindow", () => {
       failed: 1,
       timedOut: 1,
       queueWaitMs: { count: 1, p50Ms: 35, p95Ms: 35, maxMs: 35 },
+      provenanceTop: [],
+      pendingProvenanceTop: [],
+      activeProvenanceTop: [],
     });
   });
 });

@@ -1,9 +1,9 @@
 import { randomUUID } from "node:crypto";
-import { mkdirSync, rmSync } from "node:fs";
+import { rm } from "node:fs/promises";
 import path from "node:path";
 
 import type { SshHostInfo } from "@getpaseo/protocol/messages";
-import { writePrivateFileAtomicSync } from "../server/private-files.js";
+import { writePrivateFileAtomic } from "../server/private-files.js";
 import type { SshHostStore } from "./ssh-host-store.js";
 import type { SshKeyStore } from "./ssh-key-store.js";
 
@@ -11,7 +11,7 @@ export interface FallbackCommand {
   command: string;
   args: string[];
   // Removes any temporary key file written for this invocation.
-  cleanup: () => void;
+  cleanup: () => Promise<void>;
 }
 
 export interface BuildFallbackDeps {
@@ -37,23 +37,25 @@ export function sshHostNeedsFallback(host: SshHostInfo): boolean {
 //   is not contaminated by unrelated agent identities
 // - agentForwarding: -A (ForwardAgent), which still needs a local agent even when
 //   login uses -i / password
-export function buildFallbackSshArgv(host: SshHostInfo, deps: BuildFallbackDeps): FallbackCommand {
+export async function buildFallbackSshArgv(
+  host: SshHostInfo,
+  deps: BuildFallbackDeps,
+): Promise<FallbackCommand> {
   const port = host.port ?? 22;
   const userHost = host.username ? `${host.username}@${host.address}` : host.address;
 
   let keyFile: string | null = null;
-  let cleanup = (): void => {};
+  let cleanup = async (): Promise<void> => {};
   if (host.keyId) {
     const material = deps.keyStore.getMaterial(host.keyId);
     if (material) {
       const dir = path.join(deps.sshHome, "tmp-keys");
-      mkdirSync(dir, { recursive: true, mode: 0o700 });
       keyFile = path.join(dir, `${randomUUID()}.key`);
-      writePrivateFileAtomicSync(keyFile, material.privateKey);
+      await writePrivateFileAtomic(keyFile, material.privateKey);
       const file = keyFile;
-      cleanup = () => {
+      cleanup = async () => {
         try {
-          rmSync(file, { force: true });
+          await rm(file, { force: true });
         } catch {
           // best-effort
         }

@@ -102,7 +102,7 @@ export function openSshTerminalAcrossServerWorkspaces(input: {
     if (focusId && workspaceId === focusId) {
       layoutStore.openTabFocused(key, target);
     } else {
-      layoutStore.openTabInBackground(key, target);
+      layoutStore.openTab({ workspaceKey: key, target, intent: "background" });
     }
   }
 }

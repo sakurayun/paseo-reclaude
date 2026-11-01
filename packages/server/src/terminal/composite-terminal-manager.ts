@@ -6,11 +6,7 @@ import type {
   TerminalWorkspaceContributionChangedListener,
 } from "./terminal-manager.js";
 import type { TerminalActivityState } from "@getpaseo/protocol/terminal-activity";
-import type {
-  TerminalSession,
-  TerminalStateSnapshot,
-  TerminalStateSnapshotOptions,
-} from "./terminal.js";
+import type { TerminalSession } from "./terminal.js";
 
 // Fork-owned wrapper that fronts the primary (worker-backed) terminal manager
 // with a secondary in-process manager for SSH sessions. Reads and lifecycle
@@ -62,11 +58,8 @@ export function createCompositeTerminalManager(
       return primary.getTerminal(id) ?? ssh.getTerminal(id);
     },
 
-    getTerminalState(
-      id,
-      options?: TerminalStateSnapshotOptions,
-    ): Promise<TerminalStateSnapshot | null> {
-      return (managerFor(id) ?? primary).getTerminalState(id, options);
+    replayTerminal(id, options, sink) {
+      return (managerFor(id) ?? primary).replayTerminal(id, options, sink);
     },
 
     setTerminalTitle(id, title): boolean {

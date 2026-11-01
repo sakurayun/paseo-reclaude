@@ -25,6 +25,7 @@ export interface DaemonDiagnosticsOptions {
   listWorkspaces: () => Promise<PersistedWorkspaceRecord[]>;
   listProviderAvailability: () => Promise<ProviderAvailability[]>;
   getWebSocketRuntimeMetrics: () => DaemonWebSocketRuntimeDiagnosticSnapshot | null;
+  getObservationMetrics?: () => Record<string, number>;
   logger: pino.Logger;
 }
 
@@ -68,6 +69,16 @@ export async function collectDaemonDiagnostics(options: DaemonDiagnosticsOptions
     ]),
   ];
 
+  if (options.getObservationMetrics)
+    sections.push(
+      formatSection(
+        "Session observations",
+        Object.entries(options.getObservationMetrics()).map(([label, value]) => ({
+          label,
+          value: String(value),
+        })),
+      ),
+    );
   sections.push(
     await safeSection("Daemon process", () => collectProcessEntries(options), options.logger),
   );
@@ -133,7 +144,7 @@ function collectProcessEntries(options: DaemonDiagnosticsOptions): DiagnosticEnt
 }
 
 function collectRuntimeConfigEntries(options: DaemonDiagnosticsOptions): DiagnosticEntry[] {
-  const relay = options.daemonRuntimeConfig?.relay ?? null;
+  const relay = options.daemonRuntimeConfig?.getRelayConfig() ?? null;
   return [
     { label: "Listen", value: formatListenKind(options.daemonRuntimeConfig?.listen ?? null) },
     { label: "Relay enabled", value: relay ? String(relay.enabled) : "false" },
@@ -227,7 +238,7 @@ async function collectProviderEntries(
 
 async function collectToolEntries(): Promise<DiagnosticEntry[]> {
   const [git, gh] = await Promise.all([
-    checkTool("git", ["--version"]),
+    checkTool("git", ["-c", "core.fsmonitor=false", "--version"]),
     checkTool("gh", ["--version"]),
   ]);
   return [
@@ -536,8 +547,8 @@ export function redactDiagnostic(
   let redacted = value;
   const sensitiveValues = [
     options?.daemonRuntimeConfig?.listen,
-    options?.daemonRuntimeConfig?.relay?.endpoint,
-    options?.daemonRuntimeConfig?.relay?.publicEndpoint,
+    options?.daemonRuntimeConfig?.getRelayConfig()?.endpoint,
+    options?.daemonRuntimeConfig?.getRelayConfig()?.publicEndpoint,
   ].filter((item): item is string => Boolean(item));
 
   for (const sensitive of sensitiveValues) {

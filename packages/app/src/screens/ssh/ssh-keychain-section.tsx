@@ -1,5 +1,6 @@
+import { PressHighlight } from "@/components/ui/press-highlight";
 import { useCallback, useMemo, useState } from "react";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { ScrollView, Text, View } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { KeyRound, Trash2 } from "lucide-react-native";
 import { useTranslation } from "react-i18next";
@@ -61,14 +62,14 @@ function KeyRow({
         </Text>
         <Text style={styles.rowSubtitle}>{sshKey.keyType ?? t("ssh.keychain.typeUnknown")}</Text>
       </View>
-      <Pressable
+      <PressHighlight
         onPress={handleDelete}
         accessibilityRole="button"
         hitSlop={8}
         testID={`ssh-key-delete-${sshKey.id}`}
       >
         <ThemedTrash size={16} uniProps={mutedIconColor} />
-      </Pressable>
+      </PressHighlight>
     </View>
   );
 }
@@ -133,7 +134,6 @@ function NewKeySheet({ serverId, onClose }: { serverId: string | null; onClose: 
           <FormTextInput
             size={controlSize}
             initialValue={label}
-            value={label}
             onChangeText={setLabel}
             autoCapitalize="none"
             autoCorrect={false}
@@ -143,7 +143,6 @@ function NewKeySheet({ serverId, onClose }: { serverId: string | null; onClose: 
           <FormTextInput
             size={controlSize}
             initialValue={privateKey}
-            value={privateKey}
             onChangeText={setPrivateKey}
             placeholder="-----BEGIN OPENSSH PRIVATE KEY-----"
             style={styles.multiline}
@@ -158,7 +157,6 @@ function NewKeySheet({ serverId, onClose }: { serverId: string | null; onClose: 
           <FormTextInput
             size={controlSize}
             initialValue={publicKey}
-            value={publicKey}
             onChangeText={setPublicKey}
             style={styles.multiline}
             multiline
@@ -172,7 +170,6 @@ function NewKeySheet({ serverId, onClose }: { serverId: string | null; onClose: 
           <FormTextInput
             size={controlSize}
             initialValue={passphrase}
-            value={passphrase}
             onChangeText={setPassphrase}
             secureTextEntry
             autoCapitalize="none"

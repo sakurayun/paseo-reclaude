@@ -18,6 +18,7 @@ function agent(overrides: Partial<AggregatedAgent> = {}): AggregatedAgent {
     serverLabel: "Host A",
     title: "Fix authentication",
     status: "idle",
+    turn: { phase: "idle", cancellationRequestId: null },
     lastActivityAt: new Date("2026-07-18T10:00:00.000Z"),
     cwd: "/repos/paseo",
     workspaceId: "workspace-a",

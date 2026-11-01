@@ -6,11 +6,14 @@ import {
 } from "./app-diagnostic-report";
 import type { HostRuntimeSnapshot } from "@/runtime/host-runtime";
 import type { HostProfile } from "@/types/host-connection";
+import { defaultHostAppearance } from "@/hosts/appearance";
 
 function makeHost(): HostProfile {
   return {
     serverId: "srv-secret",
+    password: "tcp-password",
     label: "Secret host",
+    appearance: defaultHostAppearance(),
     lifecycle: {},
     preferredConnectionId: "direct:secret.example.test:6767",
     createdAt: "2026-06-25T00:00:00.000Z",
@@ -21,7 +24,6 @@ function makeHost(): HostProfile {
         type: "directTcp",
         endpoint: "secret.example.test:6767",
         useTls: true,
-        password: "tcp-password",
       },
       {
         id: "relay:relay.secret.test:443",

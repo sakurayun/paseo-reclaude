@@ -1,4 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
+vi.mock("expo-router", () => ({
+  router: {},
+  useLocalSearchParams: () => ({}),
+  usePathname: () => "/",
+}));
 
 import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
 import {
@@ -50,8 +55,10 @@ function buildAgentLayout(agentIds: string[]): WorkspaceLayout {
     layout = openTabInLayoutFocused({
       layout,
       target: { kind: "agent", agentId },
+      placement: { mode: "focused" },
+      explorerSidebarPaneId: null,
       now: 1,
-    }).layout;
+    })!.layout;
   }
   return layout;
 }

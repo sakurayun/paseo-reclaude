@@ -10,11 +10,7 @@ const AGENT_ID = "agent-1";
 interface RecordedOpenedTab {
   key: string;
   target: WorkspaceTabTarget;
-}
-
-interface RecordedPin {
-  key: string;
-  agentId: string;
+  pin: boolean;
 }
 
 interface RecordedNavigation {
@@ -28,15 +24,23 @@ function createFakeLayout(input?: {
   busyDraftIds?: ReadonlySet<string>;
 }) {
   const openedTabs: RecordedOpenedTab[] = [];
-  const pinnedAgents: RecordedPin[] = [];
+  const pinnedAgents: { key: string; agentId: string }[] = [];
   const tabs = input?.tabs ?? [];
   const draftInputs = input?.draftInputs ?? {};
   const busyDraftIds = input?.busyDraftIds ?? new Set<string>();
   return {
     openedTabs,
     pinnedAgents,
-    openTabFocused: (key: string, target: WorkspaceTabTarget) => {
-      openedTabs.push({ key, target });
+    openTab: ({
+      workspaceKey: key,
+      target,
+      pin = false,
+    }: {
+      workspaceKey: string;
+      target: WorkspaceTabTarget;
+      pin?: boolean;
+    }) => {
+      openedTabs.push({ key, target, pin });
       return target.kind === "agent" ? target.agentId : null;
     },
     pinAgent: (key: string, agentId: string) => {
@@ -54,7 +58,10 @@ function createFakeNavigator() {
   return {
     navigations,
     navigateToWorkspace: (input: { serverId: string; workspaceId: string }) => {
-      navigations.push({ serverId: input.serverId, workspaceId: input.workspaceId });
+      navigations.push({
+        serverId: input.serverId,
+        workspaceId: input.workspaceId,
+      });
     },
   };
 }
@@ -74,9 +81,34 @@ describe("prepareWorkspaceTab", () => {
 
     expect(route).toBe("/h/server-1/workspace/b64_L3JlcG8vd29ya3RyZWU");
     expect(layout.openedTabs).toEqual([
-      { key: "server-1:/repo/worktree", target: { kind: "agent", agentId: AGENT_ID } },
+      {
+        key: "server-1:/repo/worktree",
+        target: { kind: "agent", agentId: AGENT_ID },
+        pin: false,
+      },
     ]);
-    expect(layout.pinnedAgents).toEqual([]);
+  });
+
+  it("requests pinned visibility in the same command that reveals an agent", () => {
+    const layout = createFakeLayout();
+
+    prepareWorkspaceTab(
+      {
+        serverId: SERVER_ID,
+        workspaceId: WORKSPACE_ID,
+        target: { kind: "agent", agentId: AGENT_ID },
+        pin: true,
+      },
+      layout,
+    );
+
+    expect(layout.openedTabs).toEqual([
+      {
+        key: "server-1:/repo/worktree",
+        target: { kind: "agent", agentId: AGENT_ID },
+        pin: true,
+      },
+    ]);
   });
 
   it("prepares a tab and navigates through the workspace navigation helper", () => {
@@ -93,8 +125,11 @@ describe("prepareWorkspaceTab", () => {
     );
 
     expect(route).toBe("/h/server-1/workspace/b64_L3JlcG8vd29ya3RyZWU");
-    expect(layout.openedTabs).toEqual([
-      { key: "server-1:/repo/worktree", target: { kind: "agent", agentId: AGENT_ID } },
+    expect(layout.openedTabs).toMatchObject([
+      {
+        key: "server-1:/repo/worktree",
+        target: { kind: "agent", agentId: AGENT_ID },
+      },
     ]);
     expect(navigator.navigations).toEqual([{ serverId: SERVER_ID, workspaceId: WORKSPACE_ID }]);
   });
@@ -112,9 +147,9 @@ describe("prepareWorkspaceTab", () => {
       },
       {
         ...layout,
-        openTabFocused: (key, target) => {
-          calls.push("openTabFocused");
-          return layout.openTabFocused(key, target);
+        openTab: (input) => {
+          calls.push("openTab");
+          return layout.openTab(input);
         },
         navigateToWorkspace: (_input: { serverId: string; workspaceId: string }) => {
           calls.push("navigateToWorkspace");
@@ -122,7 +157,7 @@ describe("prepareWorkspaceTab", () => {
       },
     );
 
-    expect(calls).toEqual(["navigateToWorkspace", "openTabFocused"]);
+    expect(calls).toEqual(["navigateToWorkspace", "openTab"]);
   });
 
   it("focuses an existing empty draft tab for a new-agent request", () => {
@@ -145,7 +180,7 @@ describe("prepareWorkspaceTab", () => {
       layout,
     );
 
-    expect(layout.openedTabs).toEqual([
+    expect(layout.openedTabs).toMatchObject([
       {
         key: "server-1:/repo/worktree",
         target: { kind: "draft", draftId: "draft-empty" },
@@ -180,7 +215,7 @@ describe("prepareWorkspaceTab", () => {
       layout,
     );
 
-    expect(layout.openedTabs).toEqual([
+    expect(layout.openedTabs).toMatchObject([
       {
         key: "server-1:/repo/worktree",
         target: { kind: "draft", draftId: "draft-created" },
@@ -222,7 +257,7 @@ describe("prepareWorkspaceTab", () => {
       layout,
     );
 
-    expect(layout.openedTabs).toEqual([
+    expect(layout.openedTabs).toMatchObject([
       {
         key: "server-1:/repo/worktree",
         target: { kind: "draft", draftId: "draft-created" },

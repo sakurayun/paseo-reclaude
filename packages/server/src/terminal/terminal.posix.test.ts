@@ -1,3 +1,5 @@
+import { readTerminalState } from "./test-utils/terminal-state.js";
+import type { TerminalState } from "@getpaseo/protocol/messages";
 // POSIX-only: node-pty + POSIX shell assertions
 /* eslint-disable max-nested-callbacks */
 import { describe, it, expect, afterEach } from "vitest";
@@ -6,7 +8,7 @@ import {
   buildTerminalEnvironment,
   createTerminal,
   resolveZshShellIntegrationDir,
-  type TerminalSession,
+  type LocalTerminalSession as TerminalSession,
 } from "./terminal.js";
 import {
   chmodSync,
@@ -28,7 +30,7 @@ if (isPlatform("win32") && !process.env.ComSpec && !process.env.COMSPEC) {
   process.env.ComSpec = "C:\\Windows\\System32\\cmd.exe";
 }
 
-type TerminalRow = ReturnType<TerminalSession["getState"]>["grid"][number];
+type TerminalRow = TerminalState["grid"][number];
 
 function rowToText(row: TerminalRow): string {
   return row
@@ -38,12 +40,12 @@ function rowToText(row: TerminalRow): string {
 }
 
 // Extract text from a single row
-function getRowText(state: ReturnType<TerminalSession["getState"]>, rowIndex: number): string {
+function getRowText(state: TerminalState, rowIndex: number): string {
   return rowToText(state.grid[rowIndex]);
 }
 
 // Extract all visible lines as array (trimmed, empty lines included)
-function getLines(state: ReturnType<TerminalSession["getState"]>): string[] {
+function getLines(state: TerminalState): string[] {
   return state.grid.map(rowToText);
 }
 
@@ -55,7 +57,7 @@ async function waitForLines(
 ): Promise<void> {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
-    const lines = getLines(session.getState());
+    const lines = getLines(await readTerminalState(session));
     let matches = true;
     for (let i = 0; i < expectedLines.length; i++) {
       if (lines[i] !== expectedLines[i]) {
@@ -68,7 +70,7 @@ async function waitForLines(
     }
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
-  const actual = getLines(session.getState()).slice(0, expectedLines.length);
+  const actual = getLines(await readTerminalState(session)).slice(0, expectedLines.length);
   throw new Error(
     `Timeout waiting for expected lines.\nExpected:\n${JSON.stringify(expectedLines, null, 2)}\nActual:\n${JSON.stringify(actual, null, 2)}`,
   );
@@ -76,12 +78,12 @@ async function waitForLines(
 
 async function waitForState(
   session: TerminalSession,
-  predicate: (state: ReturnType<TerminalSession["getState"]>) => boolean,
+  predicate: (state: TerminalState) => boolean,
   timeoutMs = 5000,
-): Promise<ReturnType<TerminalSession["getState"]>> {
+): Promise<TerminalState> {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
-    const state = session.getState();
+    const state = await readTerminalState(session);
     if (predicate(state)) {
       return state;
     }
@@ -196,44 +198,6 @@ process.stdin.on("data", (chunk) => {
 process.stdout.write("\\x1b]11;?\\x07");
 `;
 
-const DA2_HELPER_SCRIPT = `process.stdin.setRawMode(true);
-process.stdin.resume();
-let buf = "";
-const timer = setTimeout(() => {
-  process.stdout.write("DA2_TIMEOUT\\n");
-  process.exit(2);
-}, 2500);
-process.stdin.on("data", (chunk) => {
-  buf += chunk.toString("binary");
-  const m = buf.match(/\\x1b\\[>[\\d;]+c/);
-  if (m) {
-    clearTimeout(timer);
-    process.stdout.write("DA2_OK:" + m[0].slice(1) + "\\n");
-    process.exit(0);
-  }
-});
-process.stdout.write("\\x1b[>0c");
-`;
-
-const XTVERSION_HELPER_SCRIPT = `process.stdin.setRawMode(true);
-process.stdin.resume();
-let buf = "";
-const timer = setTimeout(() => {
-  process.stdout.write("XTVERSION_TIMEOUT\\n");
-  process.exit(2);
-}, 2500);
-process.stdin.on("data", (chunk) => {
-  buf += chunk.toString("binary");
-  const m = buf.match(/\\x1bP>\\|([^\\x1b]*)\\x1b\\\\/);
-  if (m) {
-    clearTimeout(timer);
-    process.stdout.write("XTVERSION_OK:" + m[1] + "\\n");
-    process.exit(0);
-  }
-});
-process.stdout.write("\\x1b[>0q");
-`;
-
 function writeDaHelper(prefix: string): string {
   const dir = mkdtempSync(join(tmpdir(), prefix));
   temporaryDirs.push(dir);
@@ -258,32 +222,8 @@ function writeOsc11Helper(prefix: string): string {
   return path;
 }
 
-function writeDa2Helper(prefix: string): string {
-  const dir = mkdtempSync(join(tmpdir(), prefix));
-  temporaryDirs.push(dir);
-  const path = join(dir, "helper.cjs");
-  writeFileSync(path, DA2_HELPER_SCRIPT);
-  return path;
-}
-
-function writeXtversionHelper(prefix: string): string {
-  const dir = mkdtempSync(join(tmpdir(), prefix));
-  temporaryDirs.push(dir);
-  const path = join(dir, "helper.cjs");
-  writeFileSync(path, XTVERSION_HELPER_SCRIPT);
-  return path;
-}
-
 function isDaOkLine(line: string): boolean {
   return line.startsWith("DA_OK:");
-}
-
-function isDa2OkLine(line: string): boolean {
-  return line.startsWith("DA2_OK:");
-}
-
-function isXtversionOkLine(line: string): boolean {
-  return line.startsWith("XTVERSION_OK:");
 }
 
 function isDsrOkLine(line: string): boolean {
@@ -294,27 +234,19 @@ function isOsc11OkLine(line: string): boolean {
   return line.startsWith("OSC11_OK:");
 }
 
-function hasDaOkLine(state: ReturnType<TerminalSession["getState"]>): boolean {
+function hasDaOkLine(state: TerminalState): boolean {
   return getLines(state).some(isDaOkLine);
 }
 
-function hasDa2OkLine(state: ReturnType<TerminalSession["getState"]>): boolean {
-  return getLines(state).some(isDa2OkLine);
-}
-
-function hasXtversionOkLine(state: ReturnType<TerminalSession["getState"]>): boolean {
-  return getLines(state).some(isXtversionOkLine);
-}
-
-function hasDsrOkLine(state: ReturnType<TerminalSession["getState"]>): boolean {
+function hasDsrOkLine(state: TerminalState): boolean {
   return getLines(state).some(isDsrOkLine);
 }
 
-function hasOsc11OkLine(state: ReturnType<TerminalSession["getState"]>): boolean {
+function hasOsc11OkLine(state: TerminalState): boolean {
   return getLines(state).some(isOsc11OkLine);
 }
 
-function lastNonEmptyLineIsPrompt(state: ReturnType<TerminalSession["getState"]>): boolean {
+function lastNonEmptyLineIsPrompt(state: TerminalState): boolean {
   const last =
     getLines(state)
       .toReversed()
@@ -341,7 +273,6 @@ describe.skipIf(isPlatform("win32"))("terminal POSIX-only", () => {
 
     expect(resolvedEnv.TERM).toBe("xterm-256color");
     expect(resolvedEnv.TERM_PROGRAM).toBe("kitty");
-    expect(resolvedEnv.COLORTERM).toBe("truecolor");
     expect(resolvedEnv.PASEO_ZSH_ZDOTDIR).toBe("/tmp/paseo-zdotdir");
     expect(resolvedEnv.ZDOTDIR).toBe(
       join(tmpdir(), `${userInfo().username || "unknown"}-paseo-zsh-${process.pid}`),
@@ -393,7 +324,7 @@ describe.skipIf(isPlatform("win32"))("terminal POSIX-only", () => {
       // Line 2: "$"
       await waitForLines(session, ["$ echo hello", "hello", "$"]);
 
-      const state = session.getState();
+      const state = await readTerminalState(session);
       expect(getRowText(state, 0)).toBe("$ echo hello");
       expect(getRowText(state, 1)).toBe("hello");
       expect(getRowText(state, 2)).toBe("$");
@@ -417,7 +348,7 @@ describe.skipIf(isPlatform("win32"))("terminal POSIX-only", () => {
       session.send({ type: "input", data: "echo second\r" });
       await waitForLines(session, ["$ echo first", "first", "$ echo second", "second", "$"]);
 
-      const state = session.getState();
+      const state = await readTerminalState(session);
       expect(getRowText(state, 0)).toBe("$ echo first");
       expect(getRowText(state, 1)).toBe("first");
       expect(getRowText(state, 2)).toBe("$ echo second");
@@ -441,7 +372,7 @@ describe.skipIf(isPlatform("win32"))("terminal POSIX-only", () => {
 
       await waitForLines(session, ["$ pwd", "/tmp", "$"]);
 
-      const state = session.getState();
+      const state = await readTerminalState(session);
       expect(getRowText(state, 0)).toBe("$ pwd");
       expect(getRowText(state, 1)).toBe("/tmp");
       expect(getRowText(state, 2)).toBe("$");
@@ -502,7 +433,7 @@ describe.skipIf(isPlatform("win32"))("terminal POSIX-only", () => {
 
       expect(seenTitles).toContain("npm run dev");
       expect(session.getTitle()).toBe("npm run dev");
-      expect(session.getState().title).toBe("npm run dev");
+      expect(session.getTitle()).toBe("npm run dev");
 
       unsubscribeTitle();
     });
@@ -528,7 +459,7 @@ describe.skipIf(isPlatform("win32"))("terminal POSIX-only", () => {
 
       expect(seenTitles).toContain("Build Log");
       expect(session.getTitle()).toBe("Build Log");
-      expect(session.getState().title).toBe("Build Log");
+      expect(session.getTitle()).toBe("Build Log");
 
       unsubscribeTitle();
     });
@@ -549,7 +480,7 @@ describe.skipIf(isPlatform("win32"))("terminal POSIX-only", () => {
       await new Promise((resolve) => setTimeout(resolve, 150));
 
       expect(session.getTitle()).toBe("typecheck");
-      expect(session.getState().title).toBe("typecheck");
+      expect(session.getTitle()).toBe("typecheck");
     });
 
     it("emits command completion from VS Code OSC 633 without visible output", async () => {
@@ -578,7 +509,7 @@ describe.skipIf(isPlatform("win32"))("terminal POSIX-only", () => {
       await waitForState(session, () => commandCompletions.length === 1);
 
       expect(commandCompletions).toEqual([7]);
-      expect(getLines(session.getState()).join("\n")).not.toContain("633;D;7");
+      expect(getLines(await readTerminalState(session)).join("\n")).not.toContain("633;D;7");
 
       unsubscribeCommandFinished();
     });
@@ -612,7 +543,7 @@ describe.skipIf(isPlatform("win32"))("terminal POSIX-only", () => {
       await waitForState(session, () => commandCompletions.length === 1);
 
       expect(commandCompletions).toEqual([3]);
-      expect(getLines(session.getState()).join("\n")).not.toContain("633;D;garbage");
+      expect(getLines(await readTerminalState(session)).join("\n")).not.toContain("633;D;garbage");
 
       unsubscribeCommandFinished();
     });
@@ -767,7 +698,7 @@ describe.skipIf(isPlatform("win32"))("terminal POSIX-only", () => {
       await waitForState(session, () => commandCompletions.includes(1));
 
       expect(commandCompletions).toEqual([1]);
-      expect(getLines(session.getState()).join("\n")).not.toContain("633;D;1");
+      expect(getLines(await readTerminalState(session)).join("\n")).not.toContain("633;D;1");
 
       unsubscribeCommandFinished();
     });
@@ -791,7 +722,7 @@ describe.skipIf(isPlatform("win32"))("terminal POSIX-only", () => {
 
       await waitForLines(session, ["$ printf '\\033[31mRED\\033[0m'", "RED$"]);
 
-      const state = session.getState();
+      const state = await readTerminalState(session);
       const outputRow = state.grid[1];
 
       expect(outputRow[0].char).toBe("R");
@@ -821,7 +752,7 @@ describe.skipIf(isPlatform("win32"))("terminal POSIX-only", () => {
 
       await waitForLines(session, ["$ printf '\\033[38;5;208mORG\\033[0m'", "ORG$"]);
 
-      const state = session.getState();
+      const state = await readTerminalState(session);
       const outputRow = state.grid[1];
 
       // Check O cell
@@ -847,7 +778,7 @@ describe.skipIf(isPlatform("win32"))("terminal POSIX-only", () => {
 
       await waitForLines(session, ["$ printf '\\033[38;2;255;128;64mRGB\\033[0m'", "RGB$"]);
 
-      const state = session.getState();
+      const state = await readTerminalState(session);
       const outputRow = state.grid[1];
 
       // Check R cell
@@ -876,7 +807,7 @@ describe.skipIf(isPlatform("win32"))("terminal POSIX-only", () => {
 
       await waitForLines(session, ["$ printf '\\033[41mBG\\033[0m'", "BG$"]);
 
-      const state = session.getState();
+      const state = await readTerminalState(session);
       const outputRow = state.grid[1];
 
       expect(outputRow[0].char).toBe("B");
@@ -886,7 +817,7 @@ describe.skipIf(isPlatform("win32"))("terminal POSIX-only", () => {
   });
 
   describe("subscribe", () => {
-    it("receives a snapshot on initial subscription", async () => {
+    it("receives readiness on initial subscription", async () => {
       const session = trackSession(
         await createTerminal({
           workspaceId: "ws-test",
@@ -902,7 +833,7 @@ describe.skipIf(isPlatform("win32"))("terminal POSIX-only", () => {
       await new Promise((resolve) => setTimeout(resolve, 100));
 
       expect(messages.length).toBeGreaterThan(0);
-      expect(messages[0].type).toBe("snapshot");
+      expect(messages[0].type).toBe("snapshotReady");
 
       unsubscribe();
     });
@@ -932,12 +863,14 @@ describe.skipIf(isPlatform("win32"))("terminal POSIX-only", () => {
       await waitForLines(session, ["$ echo test", "test", "$"]);
 
       expect(messages.some((message) => message.type === "output")).toBe(true);
-      expect(messages.some((message) => message.type === "snapshot")).toBe(false);
+      expect(
+        messages.every((message) => message.type === "output" || message.type === "titleChange"),
+      ).toBe(true);
 
       unsubscribe();
     });
 
-    it("does not emit snapshot messages for resize-only updates", async () => {
+    it("keeps resize updates in the live observation lifecycle", async () => {
       const session = trackSession(
         await createTerminal({
           workspaceId: "ws-test",
@@ -960,13 +893,15 @@ describe.skipIf(isPlatform("win32"))("terminal POSIX-only", () => {
       session.send({ type: "resize", rows: 30, cols: 100 });
       await new Promise((resolve) => setTimeout(resolve, 200));
 
-      expect(messages.some((message) => message.type === "snapshot")).toBe(false);
+      expect(
+        messages.every((message) => message.type === "output" || message.type === "titleChange"),
+      ).toBe(true);
       expect(session.getSize()).toEqual({ rows: 30, cols: 100 });
 
       unsubscribe();
     });
 
-    it("emits output only after getState reflects the new data", async () => {
+    it("emits output only after text capture reflects the new data", async () => {
       const session = trackSession(
         await createTerminal({
           workspaceId: "ws-test",
@@ -983,7 +918,7 @@ describe.skipIf(isPlatform("win32"))("terminal POSIX-only", () => {
             return;
           }
           unsubscribe();
-          const stateText = getLines(session.getState()).join("\n");
+          const stateText = session.captureLines().lines.join("\n");
           resolve(stateText.includes("state-after-output"));
         });
       });
@@ -1036,7 +971,7 @@ describe.skipIf(isPlatform("win32"))("terminal POSIX-only", () => {
       session.send({ type: "input", data: `${process.execPath} ${helperPath}\r` });
       await waitForState(session, hasDaOkLine);
 
-      const ack = getLines(session.getState()).find(isDaOkLine) ?? "";
+      const ack = getLines(await readTerminalState(session)).find(isDaOkLine) ?? "";
       expect(ack).toMatch(/^DA_OK:\[\?[\d;]+c$/);
     });
 
@@ -1074,7 +1009,7 @@ describe.skipIf(isPlatform("win32"))("terminal POSIX-only", () => {
       session.send({ type: "input", data: `${process.execPath} ${helperPath} cursor\r` });
       await waitForState(session, hasDsrOkLine);
 
-      const ack = getLines(session.getState()).find(isDsrOkLine) ?? "";
+      const ack = getLines(await readTerminalState(session)).find(isDsrOkLine) ?? "";
       expect(ack).toMatch(/^DSR_OK:\d+:\d+$/);
     });
 
@@ -1094,7 +1029,7 @@ describe.skipIf(isPlatform("win32"))("terminal POSIX-only", () => {
       session.send({ type: "input", data: `${process.execPath} ${helperPath} private-cursor\r` });
       await waitForState(session, hasDsrOkLine);
 
-      const ack = getLines(session.getState()).find(isDsrOkLine) ?? "";
+      const ack = getLines(await readTerminalState(session)).find(isDsrOkLine) ?? "";
       expect(ack).toMatch(/^DSR_OK:\d+:\d+$/);
     });
 
@@ -1114,7 +1049,7 @@ describe.skipIf(isPlatform("win32"))("terminal POSIX-only", () => {
       session.send({ type: "input", data: `${process.execPath} ${helperPath} status\r` });
       await waitForState(session, hasDsrOkLine);
 
-      const ack = getLines(session.getState()).find(isDsrOkLine) ?? "";
+      const ack = getLines(await readTerminalState(session)).find(isDsrOkLine) ?? "";
       expect(ack).toBe("DSR_OK:status");
     });
 
@@ -1134,48 +1069,8 @@ describe.skipIf(isPlatform("win32"))("terminal POSIX-only", () => {
       session.send({ type: "input", data: `${process.execPath} ${helperPath}\r` });
       await waitForState(session, hasOsc11OkLine);
 
-      const ack = getLines(session.getState()).find(isOsc11OkLine) ?? "";
+      const ack = getLines(await readTerminalState(session)).find(isOsc11OkLine) ?? "";
       expect(ack).toBe("OSC11_OK:ESC]11;rgb:0b0b/0b0b/0b0bESC\\");
-    });
-
-    it("delivers a DA2 reply to a foreground app on stdin", async () => {
-      const helperPath = writeDa2Helper("terminal-da2-helper-");
-
-      const session = trackSession(
-        await createTerminal({
-          workspaceId: "ws-test",
-          cwd: "/tmp",
-          shell: "/bin/sh",
-          env: { PS1: "$ " },
-        }),
-      );
-      await waitForLines(session, ["$"]);
-
-      session.send({ type: "input", data: `${process.execPath} ${helperPath}\r` });
-      await waitForState(session, hasDa2OkLine);
-
-      const ack = getLines(session.getState()).find(isDa2OkLine) ?? "";
-      expect(ack).toMatch(/^DA2_OK:\[>[\d;]+c$/);
-    });
-
-    it("delivers an XTVERSION reply to a foreground app on stdin", async () => {
-      const helperPath = writeXtversionHelper("terminal-xtversion-helper-");
-
-      const session = trackSession(
-        await createTerminal({
-          workspaceId: "ws-test",
-          cwd: "/tmp",
-          shell: "/bin/sh",
-          env: { PS1: "$ " },
-        }),
-      );
-      await waitForLines(session, ["$"]);
-
-      session.send({ type: "input", data: `${process.execPath} ${helperPath}\r` });
-      await waitForState(session, hasXtversionOkLine);
-
-      const ack = getLines(session.getState()).find(isXtversionOkLine) ?? "";
-      expect(ack).toBe("XTVERSION_OK:paseo");
     });
   });
 
@@ -1208,7 +1103,7 @@ describe.skipIf(isPlatform("win32"))("terminal POSIX-only", () => {
       unsubscribe();
     });
 
-    it("sends the current snapshot to a new subscriber instead of replaying raw output", async () => {
+    it("announces readiness for a fresh replay instead of replaying raw live output", async () => {
       const session = trackSession(
         await createTerminal({
           workspaceId: "ws-test",
@@ -1232,26 +1127,24 @@ describe.skipIf(isPlatform("win32"))("terminal POSIX-only", () => {
         "$",
       ]);
 
-      let snapshotText = "";
-      const unsubscribe = session.subscribe((message) => {
-        if (message.type !== "snapshot") {
-          return;
-        }
-        snapshotText = [...message.state.scrollback, ...message.state.grid]
-          .map(rowToText)
-          .join("\n");
+      let ready!: () => void;
+      const readiness = new Promise<void>((resolve) => {
+        ready = resolve;
       });
-
-      await new Promise((resolve) => setTimeout(resolve, 100));
-
-      expect(snapshotText).toContain("before-detach");
-      expect(snapshotText).toContain("after-detach");
+      const unsubscribe = session.subscribe((message) => {
+        if (message.type === "snapshotReady") ready();
+      });
+      await readiness;
+      const state = await readTerminalState(session);
+      const text = [...state.scrollback, ...state.grid].map(rowToText).join("\n");
+      expect(text).toContain("before-detach");
+      expect(text).toContain("after-detach");
       unsubscribe();
     });
   });
 
-  describe("getState", () => {
-    it("returns current terminal state with grid", async () => {
+  describe("ANSI replay observation", () => {
+    it("reconstructs current terminal state from ANSI", async () => {
       const session = trackSession(
         await createTerminal({
           workspaceId: "ws-test",
@@ -1263,7 +1156,7 @@ describe.skipIf(isPlatform("win32"))("terminal POSIX-only", () => {
         }),
       );
 
-      const state = session.getState();
+      const state = await readTerminalState(session);
 
       expect(state.rows).toBe(24);
       expect(state.cols).toBe(80);
@@ -1290,19 +1183,16 @@ describe.skipIf(isPlatform("win32"))("terminal POSIX-only", () => {
       await waitForLines(session, ["$"]);
       session.send({ type: "input", data: "printf '\\033[2 q\\033[?25l'\r" });
 
-      const state = await waitForState(
-        session,
-        (current) =>
-          current.cursor.style === "block" &&
-          current.cursor.blink === false &&
-          current.cursor.hidden === true,
+      const deadline = Date.now() + 5000;
+      while (
+        !new TextDecoder().decode(session.serializeReplay().data).includes("\x1b[?25l\x1b[2 q")
+      ) {
+        if (Date.now() > deadline) throw new Error("cursor presentation did not reach replay");
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+      expect(new TextDecoder().decode(session.serializeReplay().data)).toContain(
+        "\x1b[?25l\x1b[2 q",
       );
-
-      expect(state.cursor).toMatchObject({
-        style: "block",
-        blink: false,
-        hidden: true,
-      });
     });
 
     it("grid cells have char and color attributes", async () => {
@@ -1317,7 +1207,7 @@ describe.skipIf(isPlatform("win32"))("terminal POSIX-only", () => {
 
       await waitForLines(session, ["$"]);
 
-      const state = session.getState();
+      const state = await readTerminalState(session);
       // First cell should be "$"
       expect(state.grid[0][0].char).toBe("$");
       expect(state.grid[0][0]).toHaveProperty("fg");
@@ -1349,7 +1239,7 @@ describe.skipIf(isPlatform("win32"))("terminal POSIX-only", () => {
       // The visible area will show something like: 17, 18, 19, 20, $
       await waitForLines(session, ["17", "18", "19", "20", "$"]);
 
-      const state = session.getState();
+      const state = await readTerminalState(session);
 
       // Scrollback should contain the earlier output
       expect(state.scrollback.length).toBeGreaterThan(0);
@@ -1380,7 +1270,7 @@ describe.skipIf(isPlatform("win32"))("terminal POSIX-only", () => {
       session.kill();
 
       // Should not throw when trying to get state after kill
-      const state = session.getState();
+      const state = await readTerminalState(session);
       expect(state).toBeDefined();
     });
 

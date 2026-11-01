@@ -9,45 +9,24 @@ import { useReviewDraftStore, type ReviewDraftComment } from "./store";
 import { buildReviewableDiffTargetKey, type ReviewableDiffTarget } from "@/utils/diff-layout";
 import {
   getInlineReviewThreadState,
-  getInlineReviewThreadViewportStyle,
   getSplitInlineReviewThreadState,
+  type InlineReviewActions,
+} from "./geometry";
+import {
+  getInlineReviewThreadViewportStyle,
   groupInlineReviewCommentsByTarget,
   InlineReviewEditor,
   InlineReviewGutterCell,
   InlineReviewThread,
   SMALL_ACTION_HIT_SLOP,
   useInlineReviewController,
-  type InlineReviewActions,
-} from "./index";
+} from "./surface";
 
 void testI18n;
 
-const { theme, pressablePropsByLabel } = vi.hoisted(() => {
+const { pressablePropsByLabel } = vi.hoisted(() => {
   Object.assign(globalThis, { __DEV__: false });
-  return {
-    theme: {
-      spacing: { 1: 4, 2: 8, 3: 12 },
-      borderWidth: { 1: 1 },
-      borderRadius: { base: 4, md: 6, lg: 8, xl: 12, full: 999 },
-      opacity: { 50: 0.5 },
-      fontSize: { xs: 11, sm: 13 },
-      fontWeight: { normal: "400", medium: "500" },
-      lineHeight: { diff: 18 },
-      colors: {
-        accent: "#0a84ff",
-        accentForeground: "#fff",
-        border: "#555",
-        destructive: "#ff453a",
-        foreground: "#fff",
-        foregroundMuted: "#aaa",
-        surface1: "#111",
-        surface2: "#222",
-        surface3: "#333",
-        palette: { white: "#fff" },
-      },
-    },
-    pressablePropsByLabel: new Map<string, Record<string, unknown>>(),
-  };
+  return { pressablePropsByLabel: new Map<string, Record<string, unknown>>() };
 });
 
 vi.mock("react-native", async (importOriginal) => {
@@ -88,13 +67,16 @@ vi.mock("react-native", async (importOriginal) => {
   };
 });
 
-vi.mock("react-native-unistyles", () => ({
-  StyleSheet: {
-    create: (factory: unknown) => (typeof factory === "function" ? factory(theme) : factory),
-  },
-  withUnistyles: <T,>(component: T) => component,
-  useUnistyles: () => ({ theme }),
-}));
+vi.mock("react-native-unistyles", async () => {
+  const { darkTheme: theme } = await import("@/styles/theme");
+  return {
+    StyleSheet: {
+      create: (factory: unknown) => (typeof factory === "function" ? factory(theme) : factory),
+    },
+    withUnistyles: <T,>(component: T) => component,
+    useUnistyles: () => ({ theme, rt: { breakpoint: "md" } }),
+  };
+});
 
 vi.mock("@/constants/platform", () => ({
   getIsElectron: () => false,
@@ -102,19 +84,6 @@ vi.mock("@/constants/platform", () => ({
   isNative: false,
   isWeb: true,
 }));
-
-vi.mock("lucide-react-native", () => {
-  const createIcon = (name: string) => (props: Record<string, unknown>) =>
-    React.createElement("span", { ...props, "data-icon": name });
-  return {
-    Check: createIcon("Check"),
-    CircleDot: createIcon("CircleDot"),
-    Pencil: createIcon("Pencil"),
-    Plus: createIcon("Plus"),
-    Trash2: createIcon("Trash2"),
-    X: createIcon("X"),
-  };
-});
 
 function target(overrides: Partial<ReviewableDiffTarget> = {}): ReviewableDiffTarget {
   return {
@@ -147,6 +116,7 @@ function buildReviewActions(overrides: Partial<InlineReviewActions> = {}): Inlin
     onStartComment: vi.fn(),
     onEditComment: vi.fn(),
     onCancelEditor: vi.fn(),
+    onChangeEditorBody: () => {},
     onSaveEditor: vi.fn(),
     onDeleteComment: vi.fn(),
     ...overrides,
@@ -168,7 +138,7 @@ function comment(overrides: Partial<ReviewDraftComment> = {}): ReviewDraftCommen
 
 describe("useInlineReviewController", () => {
   beforeEach(() => {
-    useReviewDraftStore.setState({ drafts: {}, diffModeOverrides: {} });
+    useReviewDraftStore.setState({ drafts: {} });
   });
 
   afterEach(() => {
@@ -186,7 +156,11 @@ describe("useInlineReviewController", () => {
     );
 
     act(() => result.current.onStartComment(reviewTarget));
-    expect(result.current.editor).toEqual({ target: reviewTarget, commentId: null, body: "" });
+    expect(result.current.editor).toEqual({
+      target: reviewTarget,
+      commentId: null,
+      body: "",
+    });
 
     act(() => result.current.onSaveEditor(" first comment "));
     const savedComment = useReviewDraftStore.getState().drafts[firstKey]?.[0];
@@ -210,7 +184,10 @@ describe("useInlineReviewController", () => {
 
     act(() => result.current.onSaveEditor(" updated comment "));
     const updatedComment = useReviewDraftStore.getState().drafts[firstKey]?.[0];
-    expect(updatedComment).toMatchObject({ id: savedComment?.id, body: "updated comment" });
+    expect(updatedComment).toMatchObject({
+      id: savedComment?.id,
+      body: "updated comment",
+    });
 
     act(() => result.current.onEditComment(reviewTarget, updatedComment));
     act(() => result.current.onDeleteComment(updatedComment.id));
@@ -270,7 +247,16 @@ describe("git diff inline review helpers", () => {
 
     expect(rowState?.left).toBeNull();
     expect(rowState?.right?.comments).toEqual([rightComment]);
-    expect(rowState?.height).toBe(210);
+    expect(rowState?.height).toBe(226);
+  });
+
+  it("includes thread padding in the inline editor height", () => {
+    const reviewTarget = target();
+    const actions = buildReviewActions({
+      editor: { target: reviewTarget, commentId: null, body: "" },
+    });
+
+    expect(getInlineReviewThreadState({ reviewTarget, reviewActions: actions })?.height).toBe(148);
   });
 
   it("pins no-wrap review threads to the visible diff viewport", () => {
@@ -303,13 +289,13 @@ describe("git diff inline review helpers", () => {
 
   it("keeps gutter hover visual-only on web without mounting a plus icon", () => {
     const reviewTarget = target();
-    const { container, queryByText, rerender } = render(
+    const { container, queryByTestId, queryByText, rerender } = render(
       <InlineReviewGutterCell
+        actionTestID="add-comment-glyph"
         reviewTarget={reviewTarget}
         comments={EMPTY_COMMENTS}
         isEditorOpen={false}
         onStartComment={vi.fn()}
-        actionTestID="review-gutter-action"
       >
         <span>2</span>
       </InlineReviewGutterCell>,
@@ -319,7 +305,7 @@ describe("git diff inline review helpers", () => {
     expect(container.querySelector("[data-icon='Plus']")).toBeNull();
     expect(
       container
-        .querySelector("[data-testid='review-gutter-action']")
+        .querySelector("[data-testid='add-comment-glyph']")
         ?.getAttribute("data-paseo-inline-review-gutter-label"),
     ).toBe("true");
     expect(pressablePropsByLabel.get("Add review comment")?.onHoverIn).toBeUndefined();
@@ -333,42 +319,44 @@ describe("git diff inline review helpers", () => {
 
     rerender(
       <InlineReviewGutterCell
+        actionTestID="add-comment-glyph"
         reviewTarget={reviewTarget}
         comments={COMMENT_LIST}
         isEditorOpen={false}
         onStartComment={vi.fn()}
-        actionTestID="review-gutter-action"
       >
         <span>2</span>
       </InlineReviewGutterCell>,
     );
 
     expect(queryByText("2")).toBeTruthy();
+    expect(queryByTestId("add-comment-glyph")).not.toBeNull();
     expect(container.querySelector("[data-icon='Plus']")).toBeNull();
 
     rerender(
       <InlineReviewGutterCell
+        actionTestID="add-comment-glyph"
         reviewTarget={reviewTarget}
         comments={EMPTY_COMMENTS}
         isEditorOpen
         onStartComment={vi.fn()}
-        actionTestID="review-gutter-action"
       >
         <span>2</span>
       </InlineReviewGutterCell>,
     );
 
     expect(queryByText("2")).toBeTruthy();
+    expect(queryByTestId("add-comment-glyph")).not.toBeNull();
     expect(container.querySelector("[data-icon='Plus']")).toBeNull();
 
     rerender(
       <InlineReviewGutterCell
+        actionTestID="add-comment-glyph"
         reviewTarget={reviewTarget}
         comments={COMMENT_LIST}
         isEditorOpen={false}
         isLineHovered
         onStartComment={vi.fn()}
-        actionTestID="review-gutter-action"
       >
         <span>2</span>
       </InlineReviewGutterCell>,
@@ -398,7 +386,7 @@ describe("InlineReviewEditor", () => {
     const onCancel = vi.fn();
     const onSave = vi.fn();
     const { getByTestId } = render(
-      <InlineReviewEditor
+      <ReviewEditorFixture
         initialBody=" initial "
         onCancel={onCancel}
         onSave={onSave}
@@ -406,7 +394,9 @@ describe("InlineReviewEditor", () => {
       />,
     );
 
-    fireEvent.change(getByTestId("editor-input"), { target: { value: " updated comment " } });
+    fireEvent.change(getByTestId("editor-input"), {
+      target: { value: " updated comment " },
+    });
     fireEvent.click(getByTestId("editor-save"));
     expect(onSave).toHaveBeenCalledWith("updated comment");
 
@@ -418,7 +408,7 @@ describe("InlineReviewEditor", () => {
     const onCancel = vi.fn();
     const onSave = vi.fn();
     const { getByTestId } = render(
-      <InlineReviewEditor
+      <ReviewEditorFixture
         initialBody="ready"
         onCancel={onCancel}
         onSave={onSave}
@@ -435,14 +425,14 @@ describe("InlineReviewEditor", () => {
     expect(onSave).toHaveBeenCalledWith("ready");
   });
 
-  it("shows shared shortcut hints while focused on a fine-pointer screen", () => {
+  it("does not show shortcut hints in the action buttons", () => {
     window.matchMedia = vi.fn().mockReturnValue({
       matches: true,
       addEventListener: vi.fn(),
       removeEventListener: vi.fn(),
     });
-    const { getByTestId, getByText, queryByText } = render(
-      <InlineReviewEditor
+    const { getByTestId, queryByText } = render(
+      <ReviewEditorFixture
         initialBody="ready"
         onCancel={vi.fn()}
         onSave={vi.fn()}
@@ -451,11 +441,9 @@ describe("InlineReviewEditor", () => {
     );
     const input = getByTestId("editor-input");
 
-    expect(getByText("Esc")).toBeTruthy();
-    expect(getByText(/(?:⌘⏎|Ctrl\+⏎)/)).toBeTruthy();
-
-    fireEvent.blur(input);
+    fireEvent.focus(input);
     expect(queryByText("Esc")).toBeNull();
+    expect(queryByText(/(?:⌘⏎|Ctrl\+⏎)/)).toBeNull();
   });
 });
 
@@ -488,3 +476,13 @@ describe("InlineReviewThread", () => {
     expect(actions.onDeleteComment).toHaveBeenCalledWith("comment-1");
   });
 });
+
+function ReviewEditorFixture({
+  initialBody,
+  ...props
+}: Omit<React.ComponentProps<typeof InlineReviewEditor>, "body" | "onChangeBody"> & {
+  initialBody: string;
+}) {
+  const [body, onChangeBody] = React.useState(initialBody);
+  return <InlineReviewEditor {...props} body={body} onChangeBody={onChangeBody} />;
+}

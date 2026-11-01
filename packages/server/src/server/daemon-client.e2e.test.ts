@@ -13,6 +13,7 @@ import {
   DaemonClient,
 } from "./test-utils/index.js";
 import { createTestPaseoDaemon } from "./test-utils/paseo-daemon.js";
+import { createTestAgentClients } from "./test-utils/fake-agent-client.js";
 import { getFullAccessConfig, getAskModeConfig } from "./daemon-e2e/agent-configs.js";
 import { parsePcm16MonoWav, wordSimilarity } from "./test-utils/dictation-e2e.js";
 import type {
@@ -29,7 +30,7 @@ const openaiApiKey = process.env.OPENAI_API_KEY ?? null;
 const localModelsDir =
   process.env.PASEO_LOCAL_MODELS_DIR ?? path.join(homedir(), ".paseo", "models", "local-speech");
 const testFileDir = path.dirname(fileURLToPath(import.meta.url));
-const appE2eFixturesDir = path.resolve(testFileDir, "../../../app/e2e/fixtures");
+const appE2eFixturesDir = path.resolve(testFileDir, "../../../app/e2e/support/fixtures");
 
 function fixturePath(fileName: string): string {
   return path.join(appE2eFixturesDir, fileName);
@@ -120,7 +121,7 @@ test("createAgent without an initial prompt returns an idle snapshot", async () 
 
   try {
     await client.connect();
-    await client.fetchAgents({ subscribe: { subscriptionId: "create-no-prompt" } });
+    await client.fetchAgents({ subscribe: {} });
 
     const agent = await client.createAgent({
       provider: "codex",
@@ -156,15 +157,19 @@ test("DaemonClient uploads file bytes to daemon temp storage", async () => {
       chunkSize: 5,
     });
 
+    const uploadId = result.file?.id ?? "";
+    expect(uploadId).toMatch(
+      /^upload_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
+    );
     expect(result).toEqual({
       requestId: "req-upload-e2e",
       file: {
         type: "uploaded_file",
-        id: "upload_req-upload-e2e",
+        id: uploadId,
         fileName: "notes.txt",
         mimeType: "text/plain",
         size: 11,
-        path: path.join(daemon.paseoHome, "uploads", "upload_req-upload-e2e", "notes.txt"),
+        path: path.join(daemon.paseoHome, "uploads", uploadId, "notes.txt"),
       },
       error: null,
     });
@@ -184,7 +189,7 @@ test("createAgent with background initialPrompt returns a running snapshot befor
 
   try {
     await client.connect();
-    await client.fetchAgents({ subscribe: { subscriptionId: "create-background-prompt" } });
+    await client.fetchAgents({ subscribe: {} });
 
     const agent = await client.createAgent({
       provider: "codex",
@@ -315,6 +320,88 @@ class StubAgentClient implements AgentClient {
   }
 }
 
+class RecordingMcpResumeClient implements AgentClient {
+  readonly provider = "codex" as const;
+  readonly capabilities;
+  readonly resumeOverrides: Array<Partial<AgentSessionConfig> | undefined> = [];
+  private readonly inner = createTestAgentClients({ supportsMcpServers: true }).codex;
+
+  constructor() {
+    this.capabilities = this.inner.capabilities;
+  }
+
+  isAvailable() {
+    return this.inner.isAvailable();
+  }
+
+  createSession(config: AgentSessionConfig) {
+    return this.inner.createSession(config);
+  }
+
+  resumeSession(
+    handle: AgentPersistenceHandle,
+    overrides?: Partial<AgentSessionConfig>,
+  ): Promise<AgentSession> {
+    this.resumeOverrides.push(overrides);
+    return this.inner.resumeSession(handle, overrides);
+  }
+
+  fetchCatalog(...args: Parameters<AgentClient["fetchCatalog"]>) {
+    return this.inner.fetchCatalog(...args);
+  }
+}
+
+class UnsupportedMcpResumeSession extends StubAgentSession {
+  closed = false;
+
+  constructor() {
+    super({
+      sessionId: "unsupported-mcp-resume-session",
+      supportsStreaming: false,
+    });
+  }
+
+  override async close(): Promise<void> {
+    this.closed = true;
+  }
+}
+
+class RejectingMcpResumeClient implements AgentClient {
+  readonly provider = "codex" as const;
+  readonly capabilities;
+  readonly nativeArchiveCalls: string[] = [];
+  readonly replacement = new UnsupportedMcpResumeSession();
+  private readonly inner = createTestAgentClients({ supportsMcpServers: true }).codex;
+
+  constructor() {
+    this.capabilities = this.inner.capabilities;
+  }
+
+  isAvailable() {
+    return this.inner.isAvailable();
+  }
+
+  createSession(config: AgentSessionConfig) {
+    return this.inner.createSession(config);
+  }
+
+  async resumeSession(): Promise<AgentSession> {
+    return this.replacement;
+  }
+
+  fetchCatalog(...args: Parameters<AgentClient["fetchCatalog"]>) {
+    return this.inner.fetchCatalog(...args);
+  }
+
+  async archiveNativeSession(): Promise<void> {
+    this.nativeArchiveCalls.push("archive");
+  }
+
+  async unarchiveNativeSession(): Promise<void> {
+    this.nativeArchiveCalls.push("unarchive");
+  }
+}
+
 test("createAgent fails when the initial turn cannot start", async () => {
   const testAgent = new StubAgentClient({
     sessionId: "start-turn-failure-session",
@@ -332,7 +419,7 @@ test("createAgent fails when the initial turn cannot start", async () => {
 
   try {
     await client.connect();
-    await client.fetchAgents({ subscribe: { subscriptionId: "create-start-failure" } });
+    await client.fetchAgents({ subscribe: {} });
 
     await expect(
       client.createAgent({
@@ -748,6 +835,29 @@ test("send_agent_message auto-unarchives archived agents", async () => {
   }
 }, 180000);
 
+test("send_agent_message leaves an archived agent archived when its directory is gone", async () => {
+  const cwd = tmpCwd();
+  try {
+    const created = await ctx.client.createAgent({
+      config: {
+        ...getFullAccessConfig("codex"),
+        cwd,
+      },
+    });
+    const archived = await ctx.client.archiveAgent(created.id);
+    rmSync(cwd, { recursive: true, force: true });
+
+    await expect(ctx.client.sendMessage(created.id, "hello")).rejects.toThrow(
+      "Working directory does not exist",
+    );
+
+    const afterSend = await ctx.client.fetchAgent({ agentId: created.id });
+    expect(afterSend?.agent.archivedAt).toBe(archived.archivedAt);
+  } finally {
+    rmSync(cwd, { recursive: true, force: true });
+  }
+}, 30000);
+
 test("refresh_agent auto-unarchives archived agents", async () => {
   const cwd = tmpCwd();
   try {
@@ -859,6 +969,116 @@ test("resume_agent auto-unarchives archived agents", async () => {
     rmSync(cwd, { recursive: true, force: true });
   }
 }, 180000);
+
+test("resume_agent rehydrates the newest private MCP config from a redacted persistence handle", async () => {
+  const cwd = tmpCwd();
+  const provider = new RecordingMcpResumeClient();
+  const localCtx = await createDaemonTestContext({
+    agentClients: { codex: provider },
+  });
+  const bearerA = "durable-resume-bearer-a";
+  const bearerB = "durable-resume-bearer-b";
+  const externalMcpA = {
+    hub: {
+      type: "http" as const,
+      url: "https://hub.test/mcp/executions/durable-resume",
+      headers: { Authorization: `Bearer ${bearerA}` },
+    },
+  };
+  const externalMcpB = {
+    hub: {
+      ...externalMcpA.hub,
+      headers: { Authorization: `Bearer ${bearerB}` },
+    },
+  };
+
+  try {
+    const created = await localCtx.client.createAgent({
+      config: {
+        provider: "codex",
+        cwd,
+        mcpServers: externalMcpA,
+      },
+    });
+    const projectedHandle = created.persistence;
+    if (!projectedHandle) {
+      throw new Error("Expected a projected persistence handle");
+    }
+    expect(projectedHandle.metadata).not.toHaveProperty("mcpServers");
+    expect(JSON.stringify(projectedHandle)).not.toContain(bearerA);
+
+    await localCtx.client.archiveAgent(created.id);
+    const resumedWithOverride = await localCtx.client.resumeAgent(projectedHandle, {
+      mcpServers: externalMcpB,
+    });
+    const newestProjectedHandle = resumedWithOverride.persistence;
+    if (!newestProjectedHandle) {
+      throw new Error("Expected a projected persistence handle after resume");
+    }
+    expect(provider.resumeOverrides[0]?.mcpServers?.hub).toEqual(externalMcpB.hub);
+    expect(JSON.stringify(resumedWithOverride)).not.toContain(bearerA);
+    expect(JSON.stringify(resumedWithOverride)).not.toContain(bearerB);
+
+    await localCtx.client.archiveAgent(resumedWithOverride.id);
+    const resumedNewest = await localCtx.client.resumeAgent(newestProjectedHandle);
+
+    expect(provider.resumeOverrides).toHaveLength(2);
+    expect(provider.resumeOverrides[1]?.mcpServers?.hub).toEqual(externalMcpB.hub);
+    expect(provider.resumeOverrides[1]?.mcpServers?.hub).not.toEqual(externalMcpA.hub);
+    expect(resumedNewest.persistence?.metadata).not.toHaveProperty("mcpServers");
+    expect(JSON.stringify(resumedNewest)).not.toContain(bearerA);
+    expect(JSON.stringify(resumedNewest)).not.toContain(bearerB);
+  } finally {
+    await localCtx.cleanup();
+    rmSync(cwd, { recursive: true, force: true });
+  }
+});
+
+test("resume_agent restores archive state when an MCP-capable provider returns an unsupported session", async () => {
+  const cwd = tmpCwd();
+  const provider = new RejectingMcpResumeClient();
+  const localCtx = await createDaemonTestContext({
+    agentClients: { codex: provider },
+  });
+
+  try {
+    const created = await localCtx.client.createAgent({
+      config: {
+        provider: "codex",
+        cwd,
+        mcpServers: {
+          hub: {
+            type: "http",
+            url: "https://hub.test/mcp/executions/rejected-resume",
+            headers: { Authorization: "Bearer rejected-resume-secret" },
+          },
+        },
+      },
+    });
+    const handle = created.persistence;
+    if (!handle) {
+      throw new Error("Expected a projected persistence handle");
+    }
+    const archived = await localCtx.client.archiveAgent(created.id);
+
+    await expect(localCtx.client.resumeAgent(handle)).rejects.toMatchObject({
+      name: "DaemonRpcError",
+      code: "agent_resume_failed",
+      requestType: "resume_agent_request",
+    });
+
+    const archivedAgents = await localCtx.client.fetchAgents({
+      filter: { includeArchived: true },
+    });
+    const original = archivedAgents.entries.find((entry) => entry.agent.id === created.id)?.agent;
+    expect(original?.archivedAt).toBe(archived.archivedAt);
+    expect(provider.nativeArchiveCalls).toEqual(["archive", "unarchive", "archive"]);
+    expect(provider.replacement.closed).toBe(true);
+  } finally {
+    await localCtx.cleanup();
+    rmSync(cwd, { recursive: true, force: true });
+  }
+});
 
 test("update_agent persists unloaded title and labels across auto-unarchive", async () => {
   const cwd = tmpCwd();
@@ -995,6 +1215,42 @@ test("finds workspace files inside the OpenCode directory", async () => {
   }
 }, 30000);
 
+test("opens an exact gitignored workspace path without offering it as a suggestion", async () => {
+  const cwd = mkdtempSync(path.join(tmpdir(), "paseo-gitignored-suggestion-"));
+  const target = path.join(cwd, "generated", "notes.md");
+
+  try {
+    execSync("git init -q", { cwd });
+    writeFileSync(path.join(cwd, ".gitignore"), "generated/\n");
+    mkdirSync(path.dirname(target), { recursive: true });
+    writeFileSync(target, "generated notes\n");
+    writeFileSync(path.join(cwd, "notes.md"), "tracked notes\n");
+
+    const exactResult = await ctx.client.getDirectorySuggestions({
+      cwd,
+      query: "generated/notes.md",
+      includeFiles: true,
+      includeDirectories: false,
+      matchMode: "suffix",
+      limit: 1,
+    });
+    const discoveryResult = await ctx.client.getDirectorySuggestions({
+      cwd,
+      query: "notes",
+      includeFiles: true,
+      includeDirectories: false,
+      limit: 20,
+    });
+
+    expect(exactResult.error).toBeNull();
+    expect(exactResult.entries).toEqual([{ path: "generated/notes.md", kind: "file" }]);
+    expect(discoveryResult.error).toBeNull();
+    expect(discoveryResult.entries).toEqual([{ path: "notes.md", kind: "file" }]);
+  } finally {
+    rmSync(cwd, { recursive: true, force: true });
+  }
+}, 30000);
+
 test("receives server_info on websocket connect", async () => {
   const client = new DaemonClient({
     url: `ws://127.0.0.1:${ctx.daemon.port}/ws`,
@@ -1062,9 +1318,9 @@ test("emits disabled voice capability reasons on fresh daemon startup", async ()
     expect(voice).toBeTruthy();
 
     expect(voice?.dictation.enabled).toBe(false);
-    expect(voice?.dictation.reason).toBe("Dictation is disabled in daemon config.");
+    expect(voice?.dictation.reason).toBe("Dictation is off. Turn it on in Settings > Voice.");
     expect(voice?.voice.enabled).toBe(false);
-    expect(voice?.voice.reason).toBe("Realtime voice is disabled in daemon config.");
+    expect(voice?.voice.reason).toBe("Voice mode is off. Turn it on in Settings > Voice.");
   } finally {
     await client.close().catch(() => undefined);
     await isolatedCtx.cleanup();
@@ -1096,7 +1352,7 @@ test("creates agent and exercises lifecycle", async () => {
   const cwd = tmpCwd();
 
   await ctx.client.fetchAgents({
-    subscribe: { subscriptionId: "daemon-client-lifecycle" },
+    subscribe: {},
   });
 
   const agentUpdatePromise = waitForSignal(15000, (resolve) => {
@@ -1244,7 +1500,7 @@ test("creates agent and exercises lifecycle", async () => {
       sawAssistantMessage = true;
     }
   });
-  const unsubscribeRawStream = ctx.client.on("agent_stream", (message) => {
+  const unsubscribeRawStream = ctx.client.subscribeAgentTimeline(agent.id, (message) => {
     if (message.type !== "agent_stream") {
       return;
     }

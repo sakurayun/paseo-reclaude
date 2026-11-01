@@ -1,5 +1,6 @@
+import { PressHighlight } from "@/components/ui/press-highlight";
 import { useCallback, useMemo, useState } from "react";
-import { Pressable, Text, View } from "react-native";
+import { Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
 import { MeterRingGlyph, meterVariantFromTone } from "@/components/meter-ring";
@@ -33,7 +34,9 @@ export function ProviderUsageMeter({ serverId, provider, glyphSize }: ProviderUs
   const { t } = useTranslation();
   const percentageMode = useAppSettings().settings.providerUsageMeterPercentageMode;
   const [isTooltipOpen, setIsTooltipOpen] = useState(false);
-  const { view, refresh, canFetch } = useProviderUsage(serverId, { enabled: true });
+  const { view, refresh, canFetch } = useProviderUsage(serverId, {
+    enabled: true,
+  });
   const {
     active: reclaudeActive,
     loggedIn: reclaudeLoggedIn,
@@ -108,7 +111,7 @@ export function ProviderUsageMeter({ serverId, provider, glyphSize }: ProviderUs
       enabledOnMobile
     >
       <TooltipTrigger asChild triggerRefProp="ref">
-        <Pressable
+        <PressHighlight
           style={styles.trigger}
           testID="provider-usage-meter"
           accessibilityRole="image"
@@ -120,7 +123,7 @@ export function ProviderUsageMeter({ serverId, provider, glyphSize }: ProviderUs
           <Text style={styles.centerLabel} numberOfLines={1}>
             {roundedPercentage}
           </Text>
-        </Pressable>
+        </PressHighlight>
       </TooltipTrigger>
       <TooltipContent side="top" align="center" offset={8}>
         <View style={styles.tooltipContent}>

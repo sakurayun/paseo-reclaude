@@ -66,6 +66,34 @@ const PreviousHubAgentCreateWithAutoArchiveRequestSchema =
   });
 
 describe("Hub session protocol", () => {
+  test("round-trips named-agent validation", () => {
+    const request = {
+      type: "hub.execution.agent.validate.request" as const,
+      requestId: "validate-codex",
+      provider: "codex",
+      model: "gpt-5.5",
+      thinkingOptionId: "xhigh",
+      providerOptions: {
+        sandbox_workspace_write: {
+          writable_roots: ["/var/cache/npm"],
+          network_access: false,
+        },
+      },
+    };
+    const response = {
+      type: "hub.execution.agent.validate.response" as const,
+      payload: {
+        requestId: request.requestId,
+        valid: true,
+        issues: [],
+        error: null,
+      },
+    };
+
+    expect(SessionInboundMessageSchema.parse(request)).toEqual(request);
+    expect(SessionOutboundMessageSchema.parse(response)).toEqual(response);
+  });
+
   test("accepts the Hub execution create request", () => {
     const message = {
       type: "hub.execution.agent.create.request",
@@ -78,6 +106,85 @@ describe("Hub session protocol", () => {
     };
 
     expect(SessionInboundMessageSchema.parse(message)).toEqual(message);
+  });
+
+  test("keeps the retired Hub workspace selector wire-compatible", () => {
+    const message = {
+      type: "hub.execution.agent.create.request",
+      requestId: "request-retired-workspace",
+      executionId: "execution-retired-workspace",
+      provider: "codex",
+      cwd: "/workspace",
+      workspaceId: "caller-owned-workspace",
+      prompt: "Implement the requested change",
+    };
+
+    expect(SessionInboundMessageSchema.parse(message)).toEqual(message);
+  });
+
+  test("accepts an optional MCP server configuration on Hub creates", () => {
+    const message = {
+      type: "hub.execution.agent.create.request",
+      requestId: "request-mcp",
+      executionId: "execution-mcp",
+      provider: "codex",
+      cwd: "/workspace",
+      prompt: "Implement the requested change",
+      mcpServers: {
+        hub: {
+          type: "http",
+          url: "https://hub.example/mcp/executions/execution-mcp",
+          headers: { Authorization: "Bearer hub-execution-bearer" },
+        },
+      },
+    };
+
+    expect(SessionInboundMessageSchema.parse(message)).toEqual(message);
+    expect(PreviousHubAgentCreateRequestSchema.parse(message)).toEqual({
+      type: "hub.execution.agent.create.request",
+      requestId: "request-mcp",
+      executionId: "execution-mcp",
+      provider: "codex",
+      cwd: "/workspace",
+      prompt: "Implement the requested change",
+    });
+  });
+
+  test("round-trips native provider options and structured MCP preapproval", () => {
+    const message = {
+      type: "hub.execution.agent.create.request",
+      requestId: "request-policy",
+      executionId: "execution-policy",
+      provider: "codex",
+      cwd: "/workspace",
+      prompt: "Classify and finish",
+      providerOptions: {
+        sandbox_mode: "workspace-write",
+        sandbox_workspace_write: { writable_roots: ["/var/cache/npm"] },
+      },
+      mcpServers: {
+        hub: { type: "http", url: "https://hub.example/executions/policy" },
+      },
+      toolPolicy: {
+        preapproved: [{ kind: "mcp", server: "hub", tool: "finish_execution" }],
+      },
+    };
+
+    expect(SessionInboundMessageSchema.parse(message)).toEqual(message);
+  });
+
+  test.each(["Bash", "Edit", "Write"])("cannot encode native %s tool preapproval", (tool) => {
+    const message = {
+      type: "hub.execution.agent.create.request",
+      requestId: "request-native-tool",
+      executionId: "execution-native-tool",
+      provider: "claude",
+      cwd: "/workspace",
+      prompt: "Do work",
+      toolPolicy: { preapproved: [{ kind: "native", server: "claude", tool }] },
+    };
+
+    expect(SessionInboundMessageSchema.safeParse(message).success).toBe(false);
   });
 
   test.each([
@@ -228,9 +335,16 @@ describe("Hub session protocol", () => {
       requestId: "r1",
       hubUrl: "https://hub.example",
       token: "token",
+      permissions: [],
     },
     { type: "hub.management.daemon.get_status.request", requestId: "r2" },
     { type: "hub.management.daemon.disconnect.request", requestId: "r3", force: true },
+    {
+      type: "hub.management.daemon.permissions.update.request",
+      requestId: "r4",
+      grant: ["hub.execute"],
+      revoke: [],
+    },
   ])("accepts trusted management request $type", (message) => {
     expect(SessionInboundMessageSchema.parse(message)).toEqual(message);
   });
@@ -244,7 +358,7 @@ describe("Hub session protocol", () => {
           state: "connected",
           daemonId: "daemon-1",
           hubOrigin: "https://hub.example",
-          scopes: ["hub.execution.*"],
+          permissions: ["hub.execute"],
           connectedAt: "2026-07-13T00:00:00.000Z",
           lastError: null,
         },
@@ -258,7 +372,7 @@ describe("Hub session protocol", () => {
           state: "not_connected",
           daemonId: null,
           hubOrigin: null,
-          scopes: [],
+          permissions: [],
           connectedAt: null,
           lastError: null,
         },
@@ -272,11 +386,25 @@ describe("Hub session protocol", () => {
           state: "disconnecting",
           daemonId: "daemon-1",
           hubOrigin: "https://hub.example",
-          scopes: ["hub.execution.*"],
+          permissions: ["hub.execute"],
           connectedAt: null,
           lastError: "offline",
         },
         warning: "pending",
+      },
+    },
+    {
+      type: "hub.management.daemon.permissions.update.response",
+      payload: {
+        requestId: "r4",
+        status: {
+          state: "connected",
+          daemonId: "daemon-1",
+          hubOrigin: "https://hub.example",
+          permissions: ["hub.execute"],
+          connectedAt: "2026-07-13T00:00:00.000Z",
+          lastError: null,
+        },
       },
     },
   ])("accepts trusted management response $type", (message) => {

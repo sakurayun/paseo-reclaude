@@ -9,44 +9,66 @@ export function normalizeWorkspaceTabTarget(
   if (!value || typeof value !== "object" || typeof value.kind !== "string") {
     return null;
   }
-  switch (value.kind) {
-    case "draft": {
-      const draftId = trimNonEmpty(value.draftId);
-      if (!draftId) {
-        return null;
-      }
-      const setup = normalizeWorkspaceDraftTabSetup(value.setup);
-      return setup ? { kind: "draft", draftId, setup } : { kind: "draft", draftId };
+  if (value.kind === "draft") {
+    const draftId = trimNonEmpty(value.draftId);
+    if (!draftId) {
+      return null;
     }
+    const setup = normalizeWorkspaceDraftTabSetup(value.setup);
+    return setup ? { kind: "draft", draftId, setup } : { kind: "draft", draftId };
+  }
+  if (value.kind === "new_tab") {
+    return { kind: "new_tab" };
+  }
+  if (value.kind === "agent") {
+    const agentId = trimNonEmpty(value.agentId);
+    return agentId ? { kind: "agent", agentId } : null;
+  }
+  if (value.kind === "provider_subagent") {
+    const parentAgentId = trimNonEmpty(value.parentAgentId);
+    const subagentId = trimNonEmpty(value.subagentId);
+    return parentAgentId && subagentId
+      ? { kind: "provider_subagent", parentAgentId, subagentId }
+      : null;
+  }
+  if (value.kind === "file") {
+    return normalizeFileTabTarget(value);
+  }
+  if (value.kind === "working_diff") {
+    return normalizeWorkingDiffTabTarget(value);
+  }
+  if (value.kind === "plugin") {
+    return normalizePluginTabTarget(value);
+  }
+  if (["draft", "provider_subagent", "ssh-connecting", "file-diff"].includes(value.kind)) {
+    return normalizeDetailedWorkspaceTabTarget(value);
+  }
+  return normalizeSimpleWorkspaceTabTarget(value);
+}
+
+function normalizeSimpleWorkspaceTabTarget(value: WorkspaceTabTarget): WorkspaceTabTarget | null {
+  switch (value.kind) {
     case "agent": {
       const agentId = trimNonEmpty(value.agentId);
       return agentId ? { kind: "agent", agentId } : null;
     }
-    case "provider_subagent": {
-      const parentAgentId = trimNonEmpty(value.parentAgentId);
-      const subagentId = trimNonEmpty(value.subagentId);
-      return parentAgentId && subagentId
-        ? { kind: "provider_subagent", parentAgentId, subagentId }
-        : null;
-    }
+
     case "terminal": {
       const terminalId = trimNonEmpty(value.terminalId);
       return terminalId ? { kind: "terminal", terminalId } : null;
     }
-    case "ssh-connecting": {
-      const connectId = trimNonEmpty(value.connectId);
-      return connectId ? { kind: "ssh-connecting", connectId } : null;
-    }
+
     case "browser": {
       const browserId = trimNonEmpty(value.browserId);
       return browserId ? { kind: "browser", browserId } : null;
     }
     case "file":
       return normalizeFileTabTarget(value);
-    case "file-diff": {
-      const path = trimNonEmpty(value.path);
-      return path ? { kind: "file-diff", path } : null;
-    }
+
+    case "changes_tree":
+    case "files":
+    case "pull_request":
+      return { kind: value.kind };
     case "commit_diff": {
       const sha = trimNonEmpty(value.sha);
       return sha ? { kind: "commit_diff", sha } : null;
@@ -107,6 +129,24 @@ export function workspaceTabTargetsEqual(
   if (left.kind !== right.kind) {
     return false;
   }
+  if (left.kind === "agent" && right.kind === "agent") {
+    return left.agentId === right.agentId;
+  }
+  if (left.kind === "provider_subagent" && right.kind === "provider_subagent") {
+    return left.parentAgentId === right.parentAgentId && left.subagentId === right.subagentId;
+  }
+  if (left.kind === "terminal" && right.kind === "terminal") {
+    return left.terminalId === right.terminalId;
+  }
+  if (left.kind === "plugin" && right.kind === "plugin") {
+    return (
+      left.pluginId === right.pluginId &&
+      left.panelId === right.panelId &&
+      left.context === right.context &&
+      (left.context === "workspace" ||
+        (right.context === "agent" && left.agentId === right.agentId))
+    );
+  }
   switch (left.kind) {
     case "draft":
       return (
@@ -148,8 +188,40 @@ export function workspaceTabTargetsEqual(
         left.focusRequestId === right.focusRequestId
       );
     default:
-      return false;
+      return secondaryWorkspaceTabTargetsEqual(left, right);
   }
+  return secondaryWorkspaceTabTargetsEqual(left, right);
+}
+
+function secondaryWorkspaceTabTargetsEqual(
+  left: WorkspaceTabTarget,
+  right: WorkspaceTabTarget,
+): boolean {
+  if (left.kind === "browser" && right.kind === "browser") {
+    return left.browserId === right.browserId;
+  }
+  if (left.kind === "file" && right.kind === "file") {
+    return workspaceFileLocationsEqual(left, right);
+  }
+  if (left.kind === "working_diff" && right.kind === "working_diff") {
+    return left.focusPath === right.focusPath && left.focusRequestId === right.focusRequestId;
+  }
+  if (left.kind === "files" && right.kind === "files") {
+    return true;
+  }
+  if (left.kind === "changes_tree" && right.kind === "changes_tree") {
+    return true;
+  }
+  if (left.kind === "pull_request" && right.kind === "pull_request") {
+    return true;
+  }
+  if (left.kind === "setup" && right.kind === "setup") {
+    return left.workspaceId === right.workspaceId;
+  }
+  if (left.kind === "commit_diff" && right.kind === "commit_diff") {
+    return left.sha === right.sha;
+  }
+  return false;
 }
 
 function workspaceDraftTabSetupsEqual(
@@ -186,6 +258,9 @@ function recordsShallowEqual(
 }
 
 export function buildDeterministicWorkspaceTabId(target: WorkspaceTabTarget): string {
+  if (target.kind === "new_tab") {
+    throw new Error("New tabs do not have deterministic target identities");
+  }
   if (target.kind === "draft") {
     return target.draftId;
   }
@@ -222,7 +297,29 @@ export function buildDeterministicWorkspaceTabId(target: WorkspaceTabTarget): st
   if (target.kind === "working_diff") {
     return "working_diff";
   }
+  if (target.kind === "changes_tree" || target.kind === "files" || target.kind === "pull_request") {
+    return target.kind;
+  }
+  if (target.kind === "plugin") {
+    const identity = `${target.pluginId.length}_${target.pluginId}_${target.panelId.length}_${target.panelId}`;
+    return target.context === "workspace"
+      ? `plugin_workspace_${identity}`
+      : `plugin_agent_${identity}_${target.agentId.length}_${target.agentId}`;
+  }
   return `file_${target.path}`;
+}
+
+function normalizePluginTabTarget(
+  value: Extract<WorkspaceTabTarget, { kind: "plugin" }>,
+): WorkspaceTabTarget | null {
+  const pluginId = trimNonEmpty(value.pluginId);
+  const panelId = trimNonEmpty(value.panelId);
+  if (!pluginId || !panelId) return null;
+  if (value.context === "workspace") {
+    return { kind: "plugin", pluginId, panelId, context: "workspace" };
+  }
+  const agentId = trimNonEmpty(value.agentId);
+  return agentId ? { kind: "plugin", pluginId, panelId, context: "agent", agentId } : null;
 }
 
 function trimNonEmpty(value: string | null | undefined): string | null {
@@ -264,4 +361,34 @@ function trimOptionalString(value: string | null | undefined): string | null {
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function normalizeDetailedWorkspaceTabTarget(value: WorkspaceTabTarget): WorkspaceTabTarget | null {
+  switch (value.kind) {
+    case "draft": {
+      const draftId = trimNonEmpty(value.draftId);
+      if (!draftId) {
+        return null;
+      }
+      const setup = normalizeWorkspaceDraftTabSetup(value.setup);
+      return setup ? { kind: "draft", draftId, setup } : { kind: "draft", draftId };
+    }
+    case "provider_subagent": {
+      const parentAgentId = trimNonEmpty(value.parentAgentId);
+      const subagentId = trimNonEmpty(value.subagentId);
+      return parentAgentId && subagentId
+        ? { kind: "provider_subagent", parentAgentId, subagentId }
+        : null;
+    }
+    case "ssh-connecting": {
+      const connectId = trimNonEmpty(value.connectId);
+      return connectId ? { kind: "ssh-connecting", connectId } : null;
+    }
+    case "file-diff": {
+      const path = trimNonEmpty(value.path);
+      return path ? { kind: "file-diff", path } : null;
+    }
+    default:
+      return null;
+  }
 }

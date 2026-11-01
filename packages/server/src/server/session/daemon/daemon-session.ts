@@ -2,6 +2,7 @@ import type pino from "pino";
 import type { ProviderAvailability } from "../../agent/agent-manager.js";
 import type { SessionInboundMessage, SessionOutboundMessage } from "../../messages.js";
 import { getPidLockInfo } from "../../pid-lock.js";
+import { readUnconfirmedTerminalCleanup } from "../../../terminal/terminal-worker-reaper.js";
 import { generateLocalPairingOffer } from "../../pairing-offer.js";
 import {
   collectDaemonDiagnostics,
@@ -11,18 +12,20 @@ import { DaemonSelfUpdateSessionController } from "./daemon-self-update-session-
 import type { ManagedAgent } from "../../agent/agent-manager.js";
 import type { PersistedProjectRecord, PersistedWorkspaceRecord } from "../../workspace-registry.js";
 import type { HubRelationshipManagement } from "../../hub/relationship-controller.js";
+import type { DaemonConfigReloadResult } from "../../daemon-config-store.js";
 
 export interface DaemonRuntimeConfig {
   listen: string | null;
   worktreesRoot?: string;
   appBaseUrl?: string;
   desktopManaged?: boolean;
-  relay: {
+  getRelayConfig(): {
     enabled: boolean;
     endpoint: string;
     publicEndpoint: string;
     useTls: boolean;
     publicUseTls: boolean;
+    requireProtectedSecurity?: boolean;
   } | null;
 }
 
@@ -33,6 +36,7 @@ export interface DaemonSessionHost {
     clientId: string;
     requestId: string;
     reason: string;
+    keepTerminals: boolean;
   }): void;
 }
 
@@ -47,9 +51,13 @@ export interface DaemonSessionOptions {
   listProjects: () => Promise<PersistedProjectRecord[]>;
   listWorkspaces: () => Promise<PersistedWorkspaceRecord[]>;
   listProviderAvailability: () => Promise<ProviderAvailability[]>;
+  /** Why this host's terminals cannot be served (held by a newer Paseo's worker), if so. */
+  getTerminalsUnavailable?: () => string | null;
   getWebSocketRuntimeMetrics?: () => DaemonWebSocketRuntimeDiagnosticSnapshot | null;
+  getObservationMetrics?: () => Record<string, number>;
   logger: pino.Logger;
   hubRelationships?: HubRelationshipManagement;
+  reloadConfig: () => Promise<DaemonConfigReloadResult>;
 }
 
 /**
@@ -70,10 +78,13 @@ export class DaemonSession {
   private readonly listProjects: () => Promise<PersistedProjectRecord[]>;
   private readonly listWorkspaces: () => Promise<PersistedWorkspaceRecord[]>;
   private readonly listProviderAvailability: () => Promise<ProviderAvailability[]>;
+  private readonly getTerminalsUnavailable: () => string | null;
   private readonly getWebSocketRuntimeMetrics: () => DaemonWebSocketRuntimeDiagnosticSnapshot | null;
+  private readonly getObservationMetrics: DaemonSessionOptions["getObservationMetrics"];
   private readonly logger: pino.Logger;
   private readonly selfUpdate: DaemonSelfUpdateSessionController;
   private readonly hubRelationships: HubRelationshipManagement | null;
+  private readonly reloadConfig: () => Promise<DaemonConfigReloadResult>;
 
   constructor(options: DaemonSessionOptions) {
     this.host = options.host;
@@ -86,9 +97,12 @@ export class DaemonSession {
     this.listProjects = options.listProjects;
     this.listWorkspaces = options.listWorkspaces;
     this.listProviderAvailability = options.listProviderAvailability;
+    this.getTerminalsUnavailable = options.getTerminalsUnavailable ?? (() => null);
     this.getWebSocketRuntimeMetrics = options.getWebSocketRuntimeMetrics ?? (() => null);
+    this.getObservationMetrics = options.getObservationMetrics;
     this.logger = options.logger;
     this.hubRelationships = options.hubRelationships ?? null;
+    this.reloadConfig = options.reloadConfig;
     this.selfUpdate = new DaemonSelfUpdateSessionController({
       clientId: this.clientId,
       daemonVersion: this.daemonVersion ?? null,
@@ -106,7 +120,8 @@ export class DaemonSession {
         type:
           | "hub.management.daemon.connect.request"
           | "hub.management.daemon.get_status.request"
-          | "hub.management.daemon.disconnect.request";
+          | "hub.management.daemon.disconnect.request"
+          | "hub.management.daemon.permissions.update.request";
       }
     >,
   ): Promise<void> {
@@ -116,9 +131,21 @@ export class DaemonSession {
         const status = await this.hubRelationships.connect({
           hubUrl: msg.hubUrl,
           token: msg.token,
+          permissions: msg.permissions,
         });
         this.host.emit({
           type: "hub.management.daemon.connect.response",
+          payload: { requestId: msg.requestId, status },
+        });
+        return;
+      }
+      if (msg.type === "hub.management.daemon.permissions.update.request") {
+        const status = await this.hubRelationships.updatePermissions({
+          grant: msg.grant,
+          revoke: msg.revoke,
+        });
+        this.host.emit({
+          type: "hub.management.daemon.permissions.update.response",
           payload: { requestId: msg.requestId, status },
         });
         return;
@@ -152,6 +179,12 @@ export class DaemonSession {
   async handleGetStatusRequest(
     msg: Extract<SessionInboundMessage, { type: "daemon.get_status.request" }>,
   ): Promise<void> {
+    // Read outside the degraded-status fallback below: a status that cannot say whether
+    // terminal cleanup finished must fail the request, not report that nothing is left.
+    const terminalCleanupUnconfirmed = (await readUnconfirmedTerminalCleanup(this.paseoHome)).map(
+      ({ pid, role, reason, detail }) => ({ pid, role, reason, detail }),
+    );
+    const terminalsUnavailable = this.getTerminalsUnavailable();
     try {
       const pidInfo = await getPidLockInfo(this.paseoHome);
       const providers = (await this.listProviderAvailability()).map((p) => ({
@@ -169,8 +202,10 @@ export class DaemonSession {
           nodePath: process.execPath,
           startedAt: pidInfo?.startedAt ?? null,
           listen: this.daemonRuntimeConfig?.listen ?? null,
-          relay: this.daemonRuntimeConfig?.relay ?? null,
+          relay: this.daemonRuntimeConfig?.getRelayConfig() ?? null,
           providers,
+          terminalCleanupUnconfirmed,
+          ...(terminalsUnavailable ? { terminalsUnavailable } : {}),
         },
       });
     } catch (error) {
@@ -187,6 +222,8 @@ export class DaemonSession {
           listen: null,
           relay: null,
           providers: [],
+          terminalCleanupUnconfirmed,
+          ...(terminalsUnavailable ? { terminalsUnavailable } : {}),
         },
       });
     }
@@ -196,14 +233,15 @@ export class DaemonSession {
     msg: Extract<SessionInboundMessage, { type: "daemon.get_pairing_offer.request" }>,
   ): Promise<void> {
     try {
-      const relay = this.daemonRuntimeConfig?.relay;
+      const relay = this.daemonRuntimeConfig?.getRelayConfig();
       const pairing = await generateLocalPairingOffer({
         paseoHome: this.paseoHome,
-        relayEnabled: relay?.enabled ?? true,
+        relayEnabled: relay?.enabled ?? false,
         relayEndpoint: relay?.endpoint,
         relayPublicEndpoint: relay?.publicEndpoint,
         relayUseTls: relay?.useTls,
         relayPublicUseTls: relay?.publicUseTls,
+        relayRequireProtectedSecurity: relay?.requireProtectedSecurity ?? false,
         appBaseUrl: this.daemonRuntimeConfig?.appBaseUrl,
         includeQr: true,
         logger: this.logger,
@@ -230,6 +268,28 @@ export class DaemonSession {
     }
   }
 
+  async handleConfigReloadRequest(
+    msg: Extract<SessionInboundMessage, { type: "daemon.config.reload.request" }>,
+  ): Promise<void> {
+    try {
+      this.host.emit({
+        type: "daemon.config.reload.response",
+        payload: { requestId: msg.requestId, ...(await this.reloadConfig()) },
+      });
+    } catch (error) {
+      this.logger.error({ err: error }, "Failed to reload daemon config");
+      this.host.emit({
+        type: "rpc_error",
+        payload: {
+          requestId: msg.requestId,
+          requestType: msg.type,
+          error: error instanceof Error ? error.message : String(error),
+          code: "handler_error",
+        },
+      });
+    }
+  }
+
   async handleDiagnosticsRequest(
     msg: Extract<SessionInboundMessage, { type: "diagnostics.request" }>,
   ): Promise<void> {
@@ -244,6 +304,7 @@ export class DaemonSession {
         listWorkspaces: this.listWorkspaces,
         listProviderAvailability: this.listProviderAvailability,
         getWebSocketRuntimeMetrics: this.getWebSocketRuntimeMetrics,
+        getObservationMetrics: this.getObservationMetrics,
         logger: this.logger,
       });
       this.host.emit({

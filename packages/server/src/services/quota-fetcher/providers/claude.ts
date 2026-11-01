@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { existsSync, promises as fs } from "node:fs";
+import { promises as fs } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -441,7 +441,12 @@ export class ClaudeQuotaProvider implements ProviderUsageFetcher {
   private async readCredentials(): Promise<ClaudeCredentialRecord | null> {
     const credPath = join(this.claudeHome, ".credentials.json");
 
-    if (existsSync(credPath)) {
+    if (
+      await fs.access(credPath).then(
+        () => true,
+        () => false,
+      )
+    ) {
       try {
         const creds = ClaudeCredentialsSchema.parse(
           JSON.parse(await fs.readFile(credPath, "utf8")),

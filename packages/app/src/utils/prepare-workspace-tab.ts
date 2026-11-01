@@ -7,19 +7,26 @@ import {
   type WorkspaceTabTarget,
 } from "@/workspace-tabs/model";
 import { buildHostWorkspaceRoute } from "@/utils/host-routes";
+import type { WorkspaceTabPlacement } from "@/stores/workspace-layout-actions";
 
 export interface PrepareWorkspaceTabInput {
   serverId: string;
   workspaceId: string;
   target: WorkspaceTabTarget;
   pin?: boolean;
+  placement?: WorkspaceTabPlacement;
 }
 
 export type NavigateToPreparedWorkspaceTabInput = PrepareWorkspaceTabInput;
 
 export interface PrepareWorkspaceTabDeps {
-  openTabFocused: (workspaceKey: string, target: WorkspaceTabTarget) => string | null;
-  pinAgent: (workspaceKey: string, agentId: string) => void;
+  openTab: (input: {
+    workspaceKey: string;
+    target: WorkspaceTabTarget;
+    intent: "reveal";
+    pin?: boolean;
+    placement?: WorkspaceTabPlacement;
+  }) => string | null;
   getWorkspaceTabs?: (workspaceKey: string) => WorkspaceTab[];
   getDraftInput?: (draftKey: string) => DraftInput | undefined;
   isDraftBusy?: (input: WorkspaceDraftBusyInput) => boolean;
@@ -161,12 +168,13 @@ export function prepareWorkspaceTab(
     deps,
   });
 
-  deps.openTabFocused(key, target);
-
-  if (input.pin && target.kind === "agent") {
-    deps.pinAgent(key, target.agentId);
-  }
-
+  deps.openTab({
+    workspaceKey: key,
+    target,
+    intent: "reveal",
+    pin: input.pin === true && target.kind === "agent",
+    placement: input.placement,
+  });
   return buildHostWorkspaceRoute(input.serverId, input.workspaceId);
 }
 

@@ -1,9 +1,8 @@
-import { clipboard } from "electron";
+import { clipboard, ClipboardItem } from "electron";
 import { pathToFileURL } from "node:url";
 
 export interface FilePathClipboard {
-  writeBuffer(type: string, buffer: Buffer): void;
-  writeText(text: string): void;
+  write(items: Record<string, string | Blob>): Promise<void>;
 }
 
 function buildMacFilenamesPlist(paths: readonly string[]): Buffer {
@@ -39,28 +38,41 @@ function buildWindowsDropFiles(paths: readonly string[]): Buffer {
   return Buffer.concat([header, pathBytes]);
 }
 
-export function copyFilePathsToClipboard(
+export async function copyFilePathsToClipboard(
   paths: readonly string[],
   platform: NodeJS.Platform = process.platform,
-  fileClipboard: FilePathClipboard = clipboard,
-): boolean {
+  fileClipboard: FilePathClipboard = {
+    write: async (items) => {
+      await clipboard.write([new ClipboardItem(items)]);
+    },
+  },
+): Promise<boolean> {
   const normalized = paths.map((value) => value.trim()).filter((value) => value.length > 0);
   if (normalized.length === 0) {
     return false;
   }
 
   if (platform === "darwin") {
-    fileClipboard.writeBuffer("NSFilenamesPboardType", buildMacFilenamesPlist(normalized));
+    await fileClipboard.write({
+      'electron application/osclipboard;format="NSFilenamesPboardType"': new Blob([
+        new Uint8Array(buildMacFilenamesPlist(normalized)),
+      ]),
+    });
     return true;
   }
 
   if (platform === "win32") {
-    fileClipboard.writeBuffer("CF_HDROP", buildWindowsDropFiles(normalized));
+    await fileClipboard.write({
+      'electron application/osclipboard;format="CF_HDROP"': new Blob([
+        new Uint8Array(buildWindowsDropFiles(normalized)),
+      ]),
+    });
     return true;
   }
 
-  const uriList = normalized.map((filePath) => pathToFileURL(filePath).href).join("\n");
-  fileClipboard.writeBuffer("text/uri-list", Buffer.from(uriList, "utf8"));
-  fileClipboard.writeText(normalized.join("\n"));
+  const uriList = normalized
+    .map((filePath) => pathToFileURL(filePath, { windows: false }).href)
+    .join("\n");
+  await fileClipboard.write({ "text/uri-list": uriList, "text/plain": normalized.join("\n") });
   return true;
 }

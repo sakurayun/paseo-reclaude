@@ -25,13 +25,55 @@ function git(args: string[], cwd?: string): void {
 }
 
 function commit(repoDir: string, message: string): void {
-  git(["-c", "commit.gpgsign=false", "commit", "-m", message], repoDir);
+  git(
+    ["-c", "commit.gpgsign=false", "commit", "--author=Test User <test@test.com>", "-m", message],
+    repoDir,
+  );
 }
 
 function commitFile(repoDir: string, name: string, content: string, message: string): void {
   writeFileSync(join(repoDir, name), content);
   git(["add", "."], repoDir);
   commit(repoDir, message);
+}
+
+function importLinearHistory({
+  repoDir,
+  branch,
+  file,
+  subject,
+  count,
+}: {
+  repoDir: string;
+  branch: string;
+  file: string;
+  subject: string;
+  count: number;
+}): void {
+  const startingSha = execFileSync("git", ["rev-parse", "HEAD"], {
+    cwd: repoDir,
+    encoding: "utf8",
+  }).trim();
+  const commands: string[] = [];
+  let parent = startingSha;
+
+  for (let index = 1; index <= count; index += 1) {
+    const blobMark = index * 2 - 1;
+    const commitMark = index * 2;
+    const content = `${index}\n`;
+    const message = `${subject} ${index}`;
+    commands.push(
+      `blob\nmark :${blobMark}\ndata ${Buffer.byteLength(content)}\n${content}`,
+      `commit refs/heads/${branch}\nmark :${commitMark}\ncommitter Test User <test@test.com> ${1_700_000_000 + index} +0000\ndata ${Buffer.byteLength(message)}\n${message}\nfrom ${parent}\nM 100644 :${blobMark} ${file}\n\n`,
+    );
+    parent = `:${commitMark}`;
+  }
+
+  execFileSync("git", ["fast-import", "--quiet"], {
+    cwd: repoDir,
+    input: commands.join(""),
+  });
+  git(["reset", "--hard", branch], repoDir);
 }
 
 function initRepoOnMain(): { repoDir: string; tempDir: string } {
@@ -53,6 +95,30 @@ function addBareRemote(repoDir: string, tempDir: string): string {
 }
 
 describe("listCheckoutCommits", () => {
+  it("keeps fixture authors independent of command-scoped Git configuration", async () => {
+    const overrides = {
+      GIT_CONFIG_COUNT: "1",
+      GIT_CONFIG_KEY_0: "user.name",
+      GIT_CONFIG_VALUE_0: "Other User",
+    };
+    const previous = Object.fromEntries(
+      Object.keys(overrides).map((key) => [key, process.env[key]]),
+    );
+    let repoDir: string;
+    try {
+      Object.assign(process.env, overrides);
+      ({ repoDir } = initRepoOnMain());
+    } finally {
+      for (const [key, value] of Object.entries(previous)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
+
+    const { commits } = await listCheckoutCommits({ cwd: repoDir });
+    expect(commits[0]?.authorName).toBe("Test User");
+  });
+
   it("lists recent commits newest-first with on-remote flags and file stats", async () => {
     const { repoDir, tempDir } = initRepoOnMain();
     git(["checkout", "-b", "feature"], repoDir);
@@ -106,7 +172,7 @@ describe("listCheckoutCommits", () => {
     mkdirSync(join(worktreesRoot, "repo-hash"), { recursive: true });
     git(["worktree", "add", "-b", "feature", worktreeDir], repoDir);
     commitFile(worktreeDir, "feature.txt", "feature\n", "Feature work");
-    writePaseoWorktreeMetadata(worktreeDir, { baseRefName: "deleted-base" });
+    await writePaseoWorktreeMetadata(worktreeDir, { baseRefName: "deleted-base" });
 
     const { baseRef, commits } = await listCheckoutCommits({
       cwd: worktreeDir,
@@ -165,13 +231,21 @@ describe("listCheckoutCommits", () => {
 
   it("shows every workspace commit followed by at most 10 base commits", async () => {
     const { repoDir } = initRepoOnMain();
-    for (let index = 1; index <= 14; index += 1) {
-      commitFile(repoDir, "base-history.txt", `${index}\n`, `Base ${index}`);
-    }
+    importLinearHistory({
+      repoDir,
+      branch: "main",
+      file: "base-history.txt",
+      subject: "Base",
+      count: 14,
+    });
     git(["checkout", "-b", "feature"], repoDir);
-    for (let index = 1; index <= 24; index += 1) {
-      commitFile(repoDir, "workspace-history.txt", `${index}\n`, `Workspace ${index}`);
-    }
+    importLinearHistory({
+      repoDir,
+      branch: "feature",
+      file: "workspace-history.txt",
+      subject: "Workspace",
+      count: 24,
+    });
 
     const { commits } = await listCheckoutCommits({ cwd: repoDir });
 
@@ -207,9 +281,13 @@ describe("listCheckoutCommits", () => {
 
   it("limits base-branch history to 10 commits", async () => {
     const { repoDir } = initRepoOnMain();
-    for (let index = 1; index <= 14; index += 1) {
-      commitFile(repoDir, "history.txt", `${index}\n`, `Commit ${index}`);
-    }
+    importLinearHistory({
+      repoDir,
+      branch: "main",
+      file: "history.txt",
+      subject: "Commit",
+      count: 14,
+    });
 
     const { commits } = await listCheckoutCommits({ cwd: repoDir });
 

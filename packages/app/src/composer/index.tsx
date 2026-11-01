@@ -1,3 +1,12 @@
+import {
+  useComposerEditingSession,
+  useComposerFullscreen,
+  type ComposerEditingSession,
+} from "./editing-session";
+import type { ComposerTextSource } from "./text-source";
+import { createStore, type StoreApi } from "zustand/vanilla";
+import { useStore } from "zustand";
+import { getHostRuntimeStore } from "@/runtime/host-runtime";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import {
   View,
@@ -10,16 +19,20 @@ import type { TFunction } from "i18next";
 import {
   useState,
   useEffect,
+  useLayoutEffect,
   useRef,
   useCallback,
   useMemo,
+  useSyncExternalStore,
+  useImperativeHandle,
   memo,
   type ReactElement,
-  type ReactNode,
 } from "react";
 import { useTranslation } from "react-i18next";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { useIsCompactFormFactor } from "@/constants/layout";
+import { usePanelStore } from "@/stores/panel-store";
+import { useHasFinePointer } from "@/hooks/use-fine-pointer";
 import { useShallow } from "zustand/shallow";
 import {
   ArrowUp,
@@ -30,43 +43,51 @@ import {
   FileText,
   GitPullRequest,
   Image as ImageIcon,
+  ClipboardPaste,
   Paperclip,
 } from "lucide-react-native";
-import Animated from "react-native-reanimated";
-import { FOOTER_HEIGHT, MAX_CONTENT_WIDTH } from "@/constants/layout";
+import * as Clipboard from "expo-clipboard";
+import { FOOTER_HEIGHT } from "@/constants/layout";
 import {
   AgentControls,
   DraftAgentControls,
   type DraftAgentControlsProps,
 } from "@/composer/agent-controls";
 import { ContextWindowMeter } from "@/components/context-window-meter";
-import { ProviderUsageMeter } from "@/provider-usage/usage-meter";
 import { useImageAttachmentPicker } from "@/hooks/use-image-attachment-picker";
-import { useSessionStore } from "@/stores/session-store";
+import {
+  selectAgentSentMessages,
+  selectAgentTurnPresentation,
+  useSessionStore,
+} from "@/stores/session-store";
 import { useFilePicker } from "@/hooks/use-file-picker";
 import { useFileDrop } from "@/components/file-drop/use-file-drop";
 import type { DroppedItem } from "@/components/file-drop/types";
-import { MessageInput, type MessageInputRef, type AttachmentMenuItem } from "./input/input";
-import type { ImageAttachment, MessagePayload } from "./types";
+import {
+  MessageInput,
+  type AttachmentMenuItem,
+  type ComposerKeyPressEvent,
+  type MessageInputRef,
+} from "./input/input";
+import type { ImageAttachment, MessagePayload, TextReplacement } from "./types";
 import { ICON_SIZE, type Theme } from "@/styles/theme";
-import type { DraftCommandConfig } from "@/hooks/use-agent-commands-query";
+import type { DraftCommandTarget } from "@/agent-commands";
 import { encodeImages } from "@/utils/encode-images";
-import { isUltracodeFeatureEnabled } from "@/composer/agent-controls/utils";
 import { focusWithRetries } from "@/utils/web-focus";
 import {
   cancelComposerAgent,
   dispatchComposerAgentMessage,
   editQueuedComposerMessage,
-  findGithubItemByOption,
-  isAttachmentSelectedForGithubItem,
+  findForgeItemByOption,
+  isAttachmentSelectedForForgeItem,
   openComposerAttachment,
   pickAndPersistImages,
   queueComposerMessage,
   removeComposerAttachmentAtIndex,
   sendQueuedComposerMessageNow,
-  toggleGithubAttachmentFromPicker,
+  toggleForgeAttachmentFromPicker,
   uploadFileAttachments,
-  type AgentStreamWriter,
+  type AttachmentPersister,
   type QueueWriter,
   type QueuedComposerMessage,
 } from "@/composer/actions";
@@ -76,10 +97,13 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { Shortcut } from "@/components/ui/shortcut";
 import { useShortcutKeys } from "@/hooks/use-shortcut-keys";
 import { AutocompletePopover } from "@/components/ui/autocomplete-popover";
+import type { AutocompleteOption } from "@/components/ui/autocomplete";
 import { useAgentAutocomplete } from "@/hooks/use-agent-autocomplete";
-import { useHistoryPicker } from "@/hooks/use-history-picker";
-import { HistoryTrack } from "@/composer/history-track";
-import { useGlobalPromptHistoryStore } from "@/stores/prompt-history-store";
+import { usePluginClientSlashCommands } from "@/plugins/client-slash-commands";
+import {
+  executePluginClientSlashCommand,
+  resolvePluginClientSlashCommand,
+} from "@/plugins/client-slash-commands/model";
 import {
   useHostRuntimeAgentDirectoryStatus,
   useHostRuntimeClient,
@@ -88,17 +112,24 @@ import {
 import {
   deleteAttachments,
   persistAttachmentFromBlob,
-  persistAttachmentFromBytes,
+  persistAttachmentFromDataUrl,
   persistAttachmentFromFileUri,
 } from "@/attachments/service";
 import { resolveAgentControlsMode } from "@/composer/agent-controls/mode";
-import { useKeyboardShiftStyle } from "@/hooks/use-keyboard-shift-style";
+import { resolveComposerInputMode, type ComposerInputMode } from "@/composer/input-mode";
+import { resolveActiveSendBehavior } from "./input/state";
 import { useKeyboardActionHandler } from "@/hooks/use-keyboard-action-handler";
 import type { KeyboardActionDefinition } from "@/keyboard/keyboard-action-dispatcher";
 import type { MessageInputKeyboardActionKind } from "@/keyboard/actions";
 import { submitAgentInput } from "@/composer/submit";
-import { ComposerKeyboardScopeProvider } from "@/composer/keyboard-scope";
+import { isUltracodeFeatureEnabled } from "@/composer/agent-controls/utils";
+import { ComposerPresetsMenu } from "@/composer/prompt-presets-menu";
+import { ComposerRecall } from "@/composer/recall";
+import { createMessageSubmissionWriter } from "@/composer/submission/writer";
+import { ComposerKeyboardScopeProvider, useComposerKeyboardScope } from "@/composer/keyboard-scope";
 import { useAppSettings } from "@/hooks/use-settings";
+import { RenderProfile } from "@/utils/render-profiler";
+import { AfterPaintPublication } from "@/composer/after-paint-publication";
 import { isWeb, isNative } from "@/constants/platform";
 import type { ForgeSearchItem } from "@getpaseo/protocol/messages";
 import type {
@@ -108,19 +139,20 @@ import type {
   WorkspaceFileComposerAttachment,
   WorkspaceComposerAttachment,
 } from "@/attachments/types";
-import type { PickedFile } from "@/attachments/picked-file";
+import type { SelectedFile } from "@/attachments/selected-file";
 import { resolveComposerAttachmentSubmitFormat } from "@/composer/attachments/submit";
 import { composerWorkspaceAttachment } from "@/composer/attachments/workspace";
 import { useWorkspaceAttachmentsForScopes } from "@/attachments/workspace-attachments-store";
-import { droppedItemsToPickedFiles } from "@/composer/attachments/drop";
-import {
-  getFileTypeLabel,
-  isRasterImageMimeType,
-  isRasterImagePath,
-} from "@/attachments/file-types";
+import { droppedItemsToSelectedFiles } from "@/composer/attachments/drop";
+import { getFileTypeLabel } from "@/attachments/file-types";
 import { Combobox, ComboboxItem, type ComboboxOption } from "@/components/ui/combobox";
-import { AttachmentLabel, AttachmentPill, AttachmentThumbnail } from "@/components/attachment-pill";
-import { AttachmentLightbox } from "@/components/attachment-lightbox";
+import {
+  AttachmentFrame,
+  AttachmentLabel,
+  AttachmentPill,
+  AttachmentThumbnail,
+} from "@/components/attachment-pill";
+import { AttachmentLightbox, type ImageLightboxSource } from "@/components/attachment-lightbox";
 import { openExternalUrl } from "@/utils/open-external-url";
 import { useIsDictationReady } from "@/hooks/use-is-dictation-ready";
 import { useForgeSearchQuery } from "@/git/use-forge-search-query";
@@ -128,10 +160,11 @@ import { useCheckoutStatusQuery } from "@/git/use-status-query";
 import { useCheckoutPrStatusQuery } from "@/git/use-pr-status-query";
 import { getForgePresentation } from "@/git/forge";
 import { ForgeBrandIcon } from "@/git/forge-icon";
-import { useComposerGithubAutoAttach } from "./github/auto-attach";
+import { useComposerForgeAutoAttach } from "./forge-auto-attach";
+import { readClipboardImage } from "./clipboard-image";
+import { normalizeNativePastedImages, type NativePastedFile } from "./native-pasted-image";
+import { PluginResourceAttachmentPill, usePluginAttachmentPicker } from "@/plugins";
 import { resolveClientSlashCommand, type ClientSlashCommand } from "@/client-slash-commands";
-import { ComposerPresetsMenu } from "@/composer/prompt-presets-menu";
-import { useCommitMessagePresetsStore } from "@/git/commit-message-presets-store";
 import {
   appendWorkspaceFileAttachment,
   getWorkspaceFileAttachmentKey,
@@ -142,6 +175,15 @@ import {
   type WorkspaceFileDragPayload,
 } from "@/attachments/workspace-file-drag";
 
+const composerImageAttachmentPersister: Pick<
+  AttachmentPersister,
+  "persistFromBlob" | "persistFromDataUrl" | "persistFromFileUri"
+> = {
+  persistFromBlob: persistAttachmentFromBlob,
+  persistFromDataUrl: persistAttachmentFromDataUrl,
+  persistFromFileUri: persistAttachmentFromFileUri,
+};
+
 type QueuedMessage = QueuedComposerMessage;
 
 type AttachmentListUpdater =
@@ -149,6 +191,22 @@ type AttachmentListUpdater =
   | ((prev: UserComposerAttachment[]) => UserComposerAttachment[]);
 
 const EMPTY_ATTACHMENT_SCOPE_KEYS: readonly string[] = [];
+const EMPTY_WORKSPACE_ATTACHMENTS: readonly WorkspaceComposerAttachment[] = [];
+
+function ComposerPresetsBinding({
+  textSource,
+  onPick,
+}: {
+  textSource: ComposerTextSource;
+  onPick: (text: string) => void;
+}) {
+  const text = useSyncExternalStore(
+    textSource.subscribe,
+    textSource.getSnapshot,
+    textSource.getSnapshot,
+  );
+  return <ComposerPresetsMenu currentText={text} onPick={onPick} />;
+}
 
 function noop() {}
 const noopCallback = () => {};
@@ -156,10 +214,6 @@ const noopCallback = () => {};
 function resolveComposerButtonIconSize(): number {
   return isWeb ? ICON_SIZE.md : ICON_SIZE.lg;
 }
-
-// Filled stop square reads heavier than stroke icons at the same size; keep it
-// smaller than the circular 28px hit target so it doesn't fill the button.
-const STOP_SQUARE_ICON_SIZE = ICON_SIZE.xs;
 
 function resolveIsComposerLocked(
   submitBehavior: "clear" | "preserve-and-lock",
@@ -188,7 +242,21 @@ function resolveCompactLayout(override: boolean | undefined, formFactor: boolean
   return override ?? formFactor;
 }
 
-function resolveMessagePlaceholder(isDesktopWebBreakpoint: boolean, t: TFunction): string {
+function resolveMessagePlaceholder(
+  inputMode: ComposerInputMode,
+  isDesktopWebBreakpoint: boolean,
+  t: TFunction,
+  override: string | undefined,
+): string {
+  // A terminal placeholder names what it launches ("Prompt Codex", "Run a
+  // command"), which depends on the selected profile. Only the caller knows
+  // that, so it wins when supplied.
+  if (override !== undefined) {
+    return override;
+  }
+  if (inputMode === "terminal") {
+    return t("composer.placeholders.terminal");
+  }
   return isDesktopWebBreakpoint
     ? t("composer.placeholders.desktop")
     : t("composer.placeholders.mobile");
@@ -231,65 +299,13 @@ function buildAgentStateSelector(serverId: string, agentId: string) {
     const agent = state.sessions[serverId]?.agents?.get(agentId) ?? null;
     return {
       status: agent?.status ?? null,
+      features: agent?.features,
       contextWindowMaxTokens: agent?.lastUsage?.contextWindowMaxTokens ?? null,
       contextWindowUsedTokens: agent?.lastUsage?.contextWindowUsedTokens ?? null,
       totalCostUsd: agent?.lastUsage?.totalCostUsd ?? null,
       model: agent?.model ?? null,
-      provider: agent?.provider ?? null,
-      isUltracodeActive: isUltracodeFeatureEnabled(agent?.features),
     };
   };
-}
-
-function renderContextWindowMeter(
-  contextWindowMaxTokens: number | null,
-  contextWindowUsedTokens: number | null,
-  totalCostUsd: number | null,
-  showPercentage: boolean,
-  pending: boolean,
-  glyphSize: number,
-): ReactElement | null {
-  const hasData = contextWindowMaxTokens !== null && contextWindowUsedTokens !== null;
-  if (!hasData && !pending) {
-    return null;
-  }
-  return (
-    <ContextWindowMeter
-      maxTokens={contextWindowMaxTokens}
-      usedTokens={contextWindowUsedTokens}
-      totalCostUsd={totalCostUsd}
-      showPercentage={showPercentage}
-      pending={pending}
-      glyphSize={glyphSize}
-    />
-  );
-}
-
-function renderComposerMeters(
-  contextWindowMeter: ReactElement | null,
-  providerUsageMeter: ReactElement | null,
-): ReactElement | null {
-  if (!contextWindowMeter && !providerUsageMeter) {
-    return null;
-  }
-  return (
-    <View style={styles.composerMeters}>
-      {contextWindowMeter}
-      {providerUsageMeter}
-    </View>
-  );
-}
-
-function resolveContextWindowPlacement(
-  meter: ReactElement | null,
-  isCompact: boolean,
-): { beforeVoiceContent: ReactNode; footerInlineContent: ReactNode } {
-  // Desktop (wide) folds the context-window meter onto the toolbar row, before
-  // the voice button; compact keeps it on the secondary row below the toolbar.
-  if (!isCompact) {
-    return { beforeVoiceContent: meter, footerInlineContent: null };
-  }
-  return { beforeVoiceContent: null, footerInlineContent: meter };
 }
 
 interface RenderLeftContentArgs {
@@ -298,11 +314,12 @@ interface RenderLeftContentArgs {
   serverId: string;
   focusInput: () => void;
   isCompactLayout: boolean;
-  isPaneFocused: boolean;
+  showAgentControls: boolean;
 }
 
-function renderLeftContent(args: RenderLeftContentArgs): ReactElement {
-  const { agentControls, agentId, serverId, focusInput, isCompactLayout, isPaneFocused } = args;
+function renderLeftContent(args: RenderLeftContentArgs): ReactElement | null {
+  const { agentControls, agentId, serverId, focusInput, isCompactLayout } = args;
+  if (!args.showAgentControls) return null;
   if (resolveAgentControlsMode(agentControls) === "draft" && agentControls) {
     return <DraftAgentControls {...agentControls} isCompactLayout={isCompactLayout} />;
   }
@@ -310,19 +327,25 @@ function renderLeftContent(args: RenderLeftContentArgs): ReactElement {
     <AgentControls
       agentId={agentId}
       serverId={serverId}
-      isPaneFocused={isPaneFocused}
       onDropdownClose={focusInput}
       isCompactLayout={isCompactLayout}
     />
   );
 }
 
+interface PendingFileAttachment {
+  id: number;
+  file: SelectedFile;
+}
+
 interface RenderAttachmentTrayArgs {
+  serverId: string;
   selectedAttachments: ComposerAttachment[];
+  pendingFiles: PendingFileAttachment[];
+  isAttachmentOpenable: (attachment: WorkspaceComposerAttachment) => boolean;
   isComposerLocked: boolean;
   handleOpenAttachment: (attachment: ComposerAttachment) => void;
   handleRemoveAttachment: (index: number) => void;
-  isWorkspaceAttachmentOpenable: (attachment: WorkspaceComposerAttachment) => boolean;
   labels: {
     openImage: string;
     removeImage: string;
@@ -332,42 +355,40 @@ interface RenderAttachmentTrayArgs {
   };
 }
 
-function renderComposerSecondaryContent(
-  footer: ReactNode,
-  footerInlineContent: ReactNode,
-): ReactElement | null {
-  if (!footer && !footerInlineContent) return null;
-  return (
-    <View style={styles.secondaryControls}>
-      {footer}
-      {footerInlineContent}
-    </View>
-  );
-}
-
 function renderAttachmentTray(args: RenderAttachmentTrayArgs): ReactElement | null {
   const {
+    serverId,
     selectedAttachments,
+    pendingFiles,
     isComposerLocked,
     handleOpenAttachment,
     handleRemoveAttachment,
-    isWorkspaceAttachmentOpenable,
     labels,
   } = args;
-  if (selectedAttachments.length === 0) return null;
+  if (selectedAttachments.length === 0 && pendingFiles.length === 0) return null;
   return (
     <View style={styles.attachmentTray} testID="composer-attachment-tray">
       {selectedAttachments.map((attachment, index) =>
         renderComposerAttachmentPill({
+          serverId,
           attachment,
           index,
           disabled: isComposerLocked,
           onOpen: handleOpenAttachment,
           onRemove: handleRemoveAttachment,
-          isWorkspaceAttachmentOpenable,
           labels,
+          isAttachmentOpenable: args.isAttachmentOpenable,
         }),
       )}
+      {pendingFiles.map(({ id, file }) => (
+        <AttachmentFrame key={id} testID="composer-pending-file-attachment">
+          <AttachmentLabel
+            icon={pendingFilePillIcon}
+            title={file.fileName}
+            subtitle={getFileTypeLabel(file.fileName) ?? ""}
+          />
+        </AttachmentFrame>
+      ))}
     </View>
   );
 }
@@ -401,13 +422,14 @@ function renderQueueTrack(args: RenderQueueTrackArgs): ReactElement | null {
 }
 
 interface RenderComposerAttachmentPillArgs {
+  serverId: string;
   attachment: ComposerAttachment;
   index: number;
   disabled: boolean;
   onOpen: (attachment: ComposerAttachment) => void;
   onRemove: (index: number) => void;
-  isWorkspaceAttachmentOpenable: (attachment: WorkspaceComposerAttachment) => boolean;
   labels: RenderAttachmentTrayArgs["labels"];
+  isAttachmentOpenable: (attachment: WorkspaceComposerAttachment) => boolean;
 }
 
 function renderComposerAttachmentPill(args: RenderComposerAttachmentPillArgs): ReactElement {
@@ -457,8 +479,23 @@ function renderComposerAttachmentPill(args: RenderComposerAttachmentPillArgs): R
       disabled,
       onOpen,
       onRemove,
-      isOpenable: args.isWorkspaceAttachmentOpenable(attachment),
+      isOpenable: args.isAttachmentOpenable(attachment),
     });
+  }
+  if (attachment.kind === "plugin_resource") {
+    return (
+      <PluginResourceAttachmentPill
+        serverId={args.serverId}
+        key={`${attachment.pluginId}:${attachment.sourceId}:${attachment.item.id}`}
+        attachment={attachment}
+        index={index}
+        disabled={disabled}
+        onOpen={onOpen}
+        onRemove={onRemove}
+        openLabel={labels.openGithub}
+        removeLabel={labels.removeGithub}
+      />
+    );
   }
   return (
     <GithubAttachmentPill
@@ -563,6 +600,68 @@ function dispatchComposerKeyboardAction(args: DispatchComposerKeyboardActionArgs
     return result ?? false;
   }
   return true;
+}
+
+function ComposerKeyboardRegistration({
+  messageInputRef,
+  isAgentRunning,
+  isCancellingAgent,
+  isConnected,
+  handleCancelAgent,
+  focusMessageInputForKeyboardAction,
+  isMessageInputFocused,
+  handlerId,
+}: Omit<DispatchComposerKeyboardActionArgs, "action" | "isPaneFocused"> & {
+  isMessageInputFocused: boolean;
+  handlerId: string;
+}) {
+  const { isActiveComposer } = useComposerKeyboardScope();
+  const handleKeyboardAction = useCallback(
+    (action: KeyboardActionDefinition): boolean =>
+      dispatchComposerKeyboardAction({
+        action,
+        isPaneFocused: isActiveComposer,
+        messageInputRef,
+        isAgentRunning,
+        isCancellingAgent,
+        isConnected,
+        handleCancelAgent,
+        focusMessageInputForKeyboardAction,
+      }),
+    [
+      focusMessageInputForKeyboardAction,
+      handleCancelAgent,
+      isActiveComposer,
+      isAgentRunning,
+      isCancellingAgent,
+      isConnected,
+      messageInputRef,
+    ],
+  );
+
+  useKeyboardActionHandler({
+    handlerId,
+    actions: [
+      "agent.interrupt",
+      "message-input.focus",
+      "message-input.send",
+      "message-input.dictation-toggle",
+      "message-input.dictation-cancel",
+      "message-input.dictation-confirm",
+      "message-input.voice-toggle",
+      "message-input.voice-mute-toggle",
+    ],
+    enabled: isActiveComposer,
+    priority: resolveKeyboardPriority(isMessageInputFocused),
+    isActive: () => isActiveComposer,
+    handle: handleKeyboardAction,
+  });
+  return null;
+}
+
+function ComposerAutocomplete(props: React.ComponentProps<typeof AutocompletePopover>) {
+  const { isActiveComposer } = useComposerKeyboardScope();
+  return <AutocompletePopover {...props} visible={isActiveComposer && props.visible} />;
 }
 
 function resolveMessageInputPassthroughAction(
@@ -859,25 +958,24 @@ interface ComposerProps {
   submitIcon?: "arrow" | "return";
   /** Externally controlled loading state. When true, disables the submit button. */
   isSubmitLoading?: boolean;
-  /** When true, waits for pasted GitHub links to resolve before enabling submit. */
-  waitForGithubAutoAttachOnSubmit?: boolean;
+  /** When true, waits for pasted forge links to resolve before enabling submit. */
+  waitForForgeAutoAttachOnSubmit?: boolean;
   submitBehavior?: "clear" | "preserve-and-lock";
   /** When true, blurs the input immediately when submitting. */
   blurOnSubmit?: boolean;
-  value: string;
+  textSource: ComposerTextSource;
   onChangeText: (text: string) => void;
+  textReplacement: TextReplacement;
   attachments: UserComposerAttachment[];
-  /** Durable, caller-owned context attachments included alongside scoped transient attachments. */
-  persistentWorkspaceAttachments?: readonly WorkspaceComposerAttachment[];
   attachmentScopeKeys?: readonly string[];
-  onOpenWorkspaceAttachment?: (attachment: WorkspaceComposerAttachment) => void;
-  /** Enables a local preview for caller-owned, non-review workspace context. */
+  persistentWorkspaceAttachments?: readonly WorkspaceComposerAttachment[];
   canOpenWorkspaceAttachment?: (attachment: WorkspaceComposerAttachment) => boolean;
-  /** Called before removing a workspace attachment from the transient scope store. */
   onRemoveWorkspaceAttachment?: (attachment: WorkspaceComposerAttachment) => boolean;
+  enablePromptPresets?: boolean;
+  onOpenWorkspaceAttachment?: (attachment: WorkspaceComposerAttachment) => void;
   onChangeAttachments: (updater: AttachmentListUpdater) => void;
-  onGithubPrDetected?: () => void;
-  onGithubPrAutoAttach?: (item: ForgeSearchItem) => void;
+  onForgeChangeRequestDetected?: () => void;
+  onForgeChangeRequestAutoAttach?: (item: ForgeSearchItem) => void;
   cwd: string;
   clearDraft: (lifecycle: "sent" | "abandoned") => void;
   /** When true, auto-focuses the text input on web. */
@@ -886,8 +984,8 @@ interface ComposerProps {
   autoFocusKey?: string;
   /** Callback to expose a focus function to parent components (desktop only). */
   onFocusInput?: (focus: () => void) => void;
-  /** Optional draft context for listing commands before an agent exists. */
-  commandDraftConfig?: DraftCommandConfig;
+  /** Draft context for listing commands before an agent exists. Omitted for running agents. */
+  commandDraft?: DraftCommandTarget;
   /** Called when a message is about to be sent (any path: keyboard, dictation, queued). */
   onMessageSent?: () => void;
   onComposerHeightChange?: (height: number) => void;
@@ -897,33 +995,119 @@ interface ComposerProps {
   agentControls?: DraftAgentControlsProps;
   /** Extra styles merged onto the message input wrapper (e.g. elevated background). */
   inputWrapperStyle?: import("react-native").ViewStyle;
-  /** Rendered below the input, inside the keyboard-shifted container. */
-  footer?: ReactNode;
-  /** When true, a parent wrapper owns the keyboard shift, so the composer skips its own. */
-  externalKeyboardShift?: boolean;
   /** Optional panel/container layout breakpoint. Defaults to the screen breakpoint. */
   isCompactLayout?: boolean;
-  /** Shows the prompt-presets menu at the input's bottom-right (chat composers). */
-  enablePromptPresets?: boolean;
+  /**
+   * What this composer is for. Terminal drops the chat-agent affordances and
+   * uses the terminal font; see `@/composer/input-mode`. Callers set the mode
+   * and nothing else — never branch on it at the call site.
+   */
+  inputMode?: ComposerInputMode;
+  /** Renders the current text as static text on the same surface, for content there is nothing to type into. */
+  readOnly?: boolean;
+  /** Replaces the submit icon with this label, still inside the composer's own toolbar row. */
+  submitLabel?: string;
+  /** Overrides the mode's default placeholder, for text only the caller can build. */
+  placeholder?: string;
+  /**
+   * The host that also lays out the dock and chrome shares this session so its
+   * fullscreen state and the composer's agree. Defaults to the tab's session for
+   * `inputMode`.
+   */
+  editingSession?: ComposerEditingSession;
 }
 
-const MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024;
-
 const EMPTY_ARRAY: readonly QueuedMessage[] = [];
-const EMPTY_WORKSPACE_ATTACHMENTS: readonly WorkspaceComposerAttachment[] = [];
 const StableMessageInput = memo(MessageInput);
 
-function resolveContextWindowValues(
-  rawMax: number | null,
-  rawUsed: number | null,
-): { contextWindowMaxTokens: number | null; contextWindowUsedTokens: number | null } {
-  if (typeof rawMax === "number" && typeof rawUsed === "number") {
-    return { contextWindowMaxTokens: rawMax, contextWindowUsedTokens: rawUsed };
-  }
-  return { contextWindowMaxTokens: null, contextWindowUsedTokens: null };
+interface ComposerAutocompleteHandle {
+  onKeyPress: (event: ComposerKeyPressEvent) => boolean;
+}
+
+function ComposerAutocompleteBinding({
+  text,
+  cursor,
+  recall,
+  configuration,
+  inputRef,
+  children,
+  anchorStyle,
+  show,
+  ref,
+}: {
+  text: ComposerTextSource;
+  cursor: StoreApi<number>;
+  recall: ComposerRecall;
+  configuration: Omit<
+    Parameters<typeof useAgentAutocomplete>[0],
+    "userInput" | "cursorIndex" | "onAutocompleteApplied"
+  >;
+  inputRef: React.RefObject<MessageInputRef | null>;
+  children: React.ReactNode;
+  anchorStyle: React.ComponentProps<typeof View>["style"];
+  show: boolean;
+  ref: React.Ref<ComposerAutocompleteHandle>;
+}) {
+  const userInput = useSyncExternalStore(text.subscribe, text.getSnapshot, text.getSnapshot);
+  const cursorIndex = useStore(cursor);
+  const autocomplete = useAgentAutocomplete({
+    ...configuration,
+    userInput,
+    cursorIndex: Math.min(cursorIndex, userInput.length),
+    onAutocompleteApplied: () => inputRef.current?.focus(),
+  });
+  // A recalled message is sent as is; its leading `/command` must not open the picker.
+  const isShown = show && !recall.isShowing(userInput);
+  const handleKeyPress = autocomplete.onKeyPress;
+  useImperativeHandle(ref, () => ({ onKeyPress: (event) => isShown && handleKeyPress(event) }), [
+    isShown,
+    handleKeyPress,
+  ]);
+  const selectOption = autocomplete.onSelectOption;
+  const onSelect = useCallback(
+    (option: AutocompleteOption) => selectOption(option, inputRef.current?.getInputSnapshot()),
+    [selectOption, inputRef],
+  );
+  return (
+    <ComposerAutocomplete
+      visible={autocomplete.isVisible && isShown}
+      anchorStyle={anchorStyle}
+      options={autocomplete.options}
+      selectedIndex={autocomplete.selectedIndex}
+      onSelect={onSelect}
+      isLoading={autocomplete.isLoading}
+      errorMessage={autocomplete.errorMessage}
+      loadingText={autocomplete.loadingText}
+      emptyText={autocomplete.emptyText}
+    >
+      {children}
+    </ComposerAutocomplete>
+  );
+}
+
+function ComposerForgeBinding({
+  text,
+  configuration,
+  ref,
+  onResolvingChange,
+}: {
+  text: ComposerTextSource;
+  configuration: Omit<Parameters<typeof useComposerForgeAutoAttach>[0], "text">;
+  ref: React.Ref<ReturnType<typeof useComposerForgeAutoAttach>>;
+  onResolvingChange: (resolving: boolean) => void;
+}) {
+  const value = useSyncExternalStore(text.subscribe, text.getSnapshot, text.getSnapshot);
+  const binding = useComposerForgeAutoAttach({ ...configuration, text: value });
+  useImperativeHandle(ref, () => binding, [binding]);
+  useLayoutEffect(
+    () => onResolvingChange(binding.isResolving),
+    [binding.isResolving, onResolvingChange],
+  );
+  return null;
 }
 
 interface ComposerCancelButtonProps {
+  buttonIconSize: number;
   cancelButtonStyle: (object | undefined)[];
   handleCancelAgent: () => void;
   isConnected: boolean;
@@ -933,6 +1117,7 @@ interface ComposerCancelButtonProps {
 }
 
 function ComposerCancelButton({
+  buttonIconSize,
   cancelButtonStyle,
   handleCancelAgent,
   isConnected,
@@ -946,7 +1131,7 @@ function ComposerCancelButton({
   const icon = isCancellingAgent ? (
     <LoadingSpinner size="small" color="white" />
   ) : (
-    <Square size={STOP_SQUARE_ICON_SIZE} color="white" fill="white" />
+    <Square size={buttonIconSize} color="white" fill="white" />
   );
   const shortcutNode = agentInterruptKeys ? <Shortcut chord={agentInterruptKeys} /> : null;
   return (
@@ -970,22 +1155,6 @@ function ComposerCancelButton({
   );
 }
 
-interface ComposerCancelButtonSlotProps extends ComposerCancelButtonProps {
-  isAgentRunning: boolean;
-  hasSendableContent: boolean;
-  isProcessing: boolean;
-}
-
-function ComposerCancelButtonSlot({
-  isAgentRunning,
-  hasSendableContent,
-  isProcessing,
-  ...rest
-}: ComposerCancelButtonSlotProps) {
-  if (!isAgentRunning || hasSendableContent || isProcessing) return null;
-  return <ComposerCancelButton {...rest} />;
-}
-
 interface ComposerVoiceModeButtonProps {
   buttonIconSize: number;
   handleToggleRealtimeVoice: () => void;
@@ -1003,9 +1172,8 @@ interface ComposerRightControlsSlotProps extends ComposerVoiceModeButtonProps {
   hasAgent: boolean;
   isAgentRunning: boolean;
   hasSendableContent: boolean;
-  isProcessing: boolean;
   isCompact: boolean;
-  cancelButton: ReactElement;
+  showVoice: boolean;
 }
 
 function ComposerRightControlsSlot({
@@ -1013,20 +1181,17 @@ function ComposerRightControlsSlot({
   hasAgent,
   isAgentRunning,
   hasSendableContent,
-  isProcessing,
   isCompact,
-  cancelButton,
+  showVoice,
   ...voiceProps
 }: ComposerRightControlsSlotProps) {
   const hideVoiceForCompactInput = isCompact && hasSendableContent;
   const showVoiceModeButton =
-    !isVoiceModeForAgent && hasAgent && !isAgentRunning && !hideVoiceForCompactInput;
-  const shouldShowCancelButton = isAgentRunning && !hasSendableContent && !isProcessing;
-  if (!showVoiceModeButton && !shouldShowCancelButton) return null;
+    showVoice && !isVoiceModeForAgent && hasAgent && !isAgentRunning && !hideVoiceForCompactInput;
+  if (!showVoiceModeButton) return null;
   return (
     <View style={styles.rightControls}>
-      {showVoiceModeButton ? <ComposerVoiceModeButton {...voiceProps} /> : null}
-      {cancelButton}
+      <ComposerVoiceModeButton {...voiceProps} />
     </View>
   );
 }
@@ -1072,12 +1237,36 @@ function ComposerVoiceModeButton({
   );
 }
 
+export function Composer({ isPaneFocused, ...props }: ComposerProps) {
+  // A compact overlay panel (agent list, explorer) covers the pane without taking its
+  // focus. The composer gives up input from the moment the user asks for the panel,
+  // not when its motion settles, so the exit action and autocomplete never race it.
+  // Pane focus stays put, so the keyboard the panel dismisses is a blur in the
+  // user's own pane: closing the panel does not bring focus back.
+  const isCompact = useIsCompactFormFactor();
+  const overlayPanelRequested = usePanelStore((state) => state.mobilePanel.target !== "agent");
+  const coveredByOverlayPanel = isCompact && overlayPanelRequested;
+  return (
+    <ComposerKeyboardScopeProvider
+      isPaneFocused={isPaneFocused}
+      isActiveComposer={isPaneFocused && !coveredByOverlayPanel}
+    >
+      <RenderProfile id="ComposerContent">
+        <ComposerContent {...props} />
+      </RenderProfile>
+    </ComposerKeyboardScopeProvider>
+  );
+}
+
+type ComposerContentProps = Omit<ComposerProps, "isPaneFocused">;
+
+const ComposerContent = memo(ComposerContentImpl);
+
 // oxlint-disable-next-line complexity
-export function Composer({
+function ComposerContentImpl({
   agentId,
   serverId,
   workspaceId,
-  isPaneFocused,
   onSubmitMessage,
   onClientSlashCommand,
   hasExternalContent = false,
@@ -1086,37 +1275,42 @@ export function Composer({
   submitButtonTestID,
   submitIcon = "arrow",
   isSubmitLoading = false,
-  waitForGithubAutoAttachOnSubmit = false,
+  waitForForgeAutoAttachOnSubmit = false,
   submitBehavior = "clear",
   blurOnSubmit = false,
-  value,
+  textSource,
   onChangeText,
+  textReplacement,
   attachments,
-  persistentWorkspaceAttachments = EMPTY_WORKSPACE_ATTACHMENTS,
   attachmentScopeKeys = EMPTY_ATTACHMENT_SCOPE_KEYS,
-  onOpenWorkspaceAttachment,
+  persistentWorkspaceAttachments = EMPTY_WORKSPACE_ATTACHMENTS,
   canOpenWorkspaceAttachment,
   onRemoveWorkspaceAttachment,
+  enablePromptPresets = true,
+  onOpenWorkspaceAttachment,
   onChangeAttachments,
-  onGithubPrDetected,
-  onGithubPrAutoAttach,
+  onForgeChangeRequestDetected,
+  onForgeChangeRequestAutoAttach,
   cwd,
   clearDraft,
   autoFocus = false,
   autoFocusKey,
   onFocusInput,
-  commandDraftConfig,
+  commandDraft,
   onMessageSent,
   onComposerHeightChange,
   onAttentionInputFocus,
   onAttentionPromptSend,
   agentControls,
   inputWrapperStyle,
-  externalKeyboardShift,
   isCompactLayout: isCompactLayoutOverride,
-  enablePromptPresets = false,
-  footer,
-}: ComposerProps) {
+  inputMode = "chat",
+  editingSession: providedEditingSession,
+  readOnly = false,
+  submitLabel,
+  placeholder,
+}: ComposerContentProps) {
+  const mode = resolveComposerInputMode(inputMode);
   const { t } = useTranslation();
   const buttonIconSize = resolveComposerButtonIconSize();
   const client = useHostRuntimeClient(serverId);
@@ -1144,15 +1338,18 @@ export function Composer({
   const queuedMessages = queuedMessagesRaw ?? EMPTY_ARRAY;
 
   const setQueuedMessages = useSessionStore((state) => state.setQueuedMessages);
-  const setAgentStreamTail = useSessionStore((state) => state.setAgentStreamTail);
-  const setAgentStreamHead = useSessionStore((state) => state.setAgentStreamHead);
 
   const isCompactFormFactor = useIsCompactFormFactor();
   const isCompactLayout = resolveCompactLayout(isCompactLayoutOverride, isCompactFormFactor);
   const isDesktopWebBreakpoint = resolveIsDesktopWebBreakpoint(isCompactFormFactor);
+  const hasFinePointer = useHasFinePointer();
   const isDesktopLayout = resolveIsDesktopWebBreakpoint(isCompactLayout);
-  const messagePlaceholder = resolveMessagePlaceholder(isDesktopLayout, t);
-  const userInput = value;
+  const messagePlaceholder = resolveMessagePlaceholder(inputMode, isDesktopLayout, t, placeholder);
+  const hasText = useSyncExternalStore(
+    textSource.subscribe,
+    () => textSource.getSnapshot().trim().length > 0,
+    () => textSource.getSnapshot().trim().length > 0,
+  );
   const setUserInput = onChangeText;
   const scopedWorkspaceAttachments = useWorkspaceAttachmentsForScopes(attachmentScopeKeys);
   const workspaceAttachments = useMemo(
@@ -1165,10 +1362,10 @@ export function Composer({
   );
   const {
     selectedAttachments,
+    isAttachmentOpenable,
     buildOutgoingAttachments,
     removeAttachment,
     openAttachment,
-    isAttachmentOpenable,
     beginSubmit,
     clearSentAttachments,
     completeSubmit,
@@ -1185,23 +1382,49 @@ export function Composer({
   const supportsForgeSearch = useSessionStore(
     (state) => state.sessions[serverId]?.serverInfo?.features?.forgeSearch === true,
   );
-  const githubAutoAttach = useComposerGithubAutoAttach({
-    text: userInput,
-    remoteUrl: resolveCheckoutRemoteUrl(checkoutStatusQuery.status),
-    attachments,
-    client,
-    isConnected,
-    serverId,
-    cwd,
-    supportsForgeSearch,
-    setAttachments: setSelectedAttachments,
-    onPullRequestDetected: onGithubPrDetected,
-    onPullRequestAdded: onGithubPrAutoAttach,
-  });
-  const [cursorIndex, setCursorIndex] = useState(0);
+  const forgeAutoAttachRef = useRef<ReturnType<typeof useComposerForgeAutoAttach>>(null);
+  const [isForgeResolving, setIsForgeResolving] = useState(false);
+  const forgeConfiguration = useMemo(
+    () => ({
+      remoteUrl: resolveCheckoutRemoteUrl(checkoutStatusQuery.status),
+      attachments,
+      client,
+      isConnected,
+      serverId,
+      cwd,
+      supportsForgeSearch,
+      setAttachments: setSelectedAttachments,
+      onChangeRequestDetected: onForgeChangeRequestDetected,
+      onChangeRequestAdded: onForgeChangeRequestAutoAttach,
+    }),
+    [
+      checkoutStatusQuery.status,
+      attachments,
+      client,
+      isConnected,
+      serverId,
+      cwd,
+      supportsForgeSearch,
+      setSelectedAttachments,
+      onForgeChangeRequestDetected,
+      onForgeChangeRequestAutoAttach,
+    ],
+  );
+  const cursor = useMemo(() => createStore<number>(() => 0), []);
+  const cursorPublication = useMemo(
+    () => new AfterPaintPublication<number>((position) => cursor.setState(position)),
+    [cursor],
+  );
+  useEffect(() => () => cursorPublication.cancel(), [cursorPublication]);
+  const autocompleteRef = useRef<ComposerAutocompleteHandle>(null);
+  const recall = useMemo(() => new ComposerRecall(), []);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [isUploadingFile, setIsUploadingFile] = useState(false);
-  const [isCancellingAgent, setIsCancellingAgent] = useState(false);
+  const [pendingFiles, setPendingFiles] = useState<PendingFileAttachment[]>([]);
+  const nextPendingFileId = useRef(0);
+  const isUploadingFile = pendingFiles.length > 0;
+  const [pendingNativeImagePastes, setPendingNativeImagePastes] = useState(0);
+  const editingSession = useComposerEditingSession(inputMode, providedEditingSession);
+  const isFullscreen = useComposerFullscreen(editingSession);
   const [sendError, setSendError] = useState<string | null>(null);
   const [isMessageInputFocused, setIsMessageInputFocused] = useState(false);
   const [isGithubPickerOpen, setIsGithubPickerOpen] = useState(false);
@@ -1209,9 +1432,33 @@ export function Composer({
   const [lightboxMetadata, setLightboxMetadata] = useState<AttachmentMetadata | null>(null);
   const attachButtonRef = useRef<View | null>(null);
   const messageInputRef = useRef<MessageInputRef>(null);
+  const pluginAttachments = usePluginAttachmentPicker({
+    serverId,
+    client,
+    connected: isConnected,
+    attachments,
+    onChangeAttachments: setSelectedAttachments,
+    anchorRef: attachButtonRef,
+  });
+  const pluginClientSlashCommands = usePluginClientSlashCommands({
+    serverId,
+    workspaceId,
+    agentId,
+  });
   const isComposerLocked = resolveIsComposerLocked(submitBehavior, isSubmitLoading);
   const keyboardHandlerIdRef = useRef(
     `message-input:${serverId}:${agentId}:${Math.random().toString(36).slice(2)}`,
+  );
+
+  const replaceUserInput = useCallback(
+    (text: string, selection?: { start: number; end: number }) => {
+      if (messageInputRef.current) {
+        messageInputRef.current.replaceText(text, selection);
+        return;
+      }
+      onChangeText(text);
+    },
+    [onChangeText],
   );
 
   const runClientSlashCommand = useCallback(
@@ -1224,7 +1471,7 @@ export function Composer({
         messageInputRef.current?.blur();
       }
       clearDraft("sent");
-      setUserInput("");
+      replaceUserInput("");
       setSelectedAttachments([]);
       resetSuppression();
       setSendError(null);
@@ -1245,58 +1492,42 @@ export function Composer({
       onClientSlashCommand,
       resetSuppression,
       setSelectedAttachments,
-      setUserInput,
+      replaceUserInput,
     ],
   );
 
-  const autocomplete = useAgentAutocomplete({
-    userInput,
-    cursorIndex,
-    setUserInput,
-    serverId,
-    agentId,
-    draftConfig: commandDraftConfig,
-    canExecuteClientSlashCommand: buildOutgoingAttachments(attachments).length === 0,
-    onClientSlashCommand: runClientSlashCommand,
-    onAutocompleteApplied: () => {
-      messageInputRef.current?.focus();
-    },
-  });
-  const autocompleteOnKeyPressRef = useRef(autocomplete.onKeyPress);
-  autocompleteOnKeyPressRef.current = autocomplete.onKeyPress;
-
-  // Reachable from the history list via ArrowRight, but only in chat composers
-  // that also surface the presets menu (keeps both affordances in lockstep).
-  const promptPresets = useCommitMessagePresetsStore((s) => s.presets);
-  const historyPicker = useHistoryPicker({
-    value: userInput,
-    cursorIndex,
-    agentId,
-    serverId,
-    onApply: setUserInput,
-    presets: enablePromptPresets ? promptPresets : undefined,
-  });
-  const historyPickerOnKeyPressRef = useRef(historyPicker.onKeyPress);
-  historyPickerOnKeyPressRef.current = historyPicker.onKeyPress;
-  const historyPickerResetRef = useRef(historyPicker.reset);
-  historyPickerResetRef.current = historyPicker.reset;
-
-  // Clear send error when user edits the input
-  useEffect(() => {
-    if (sendError && userInput) {
+  const runPluginClientSlashCommand = useCallback(
+    (resolved: { command: (typeof pluginClientSlashCommands)[number]; args: string }): boolean => {
+      if (blurOnSubmit) messageInputRef.current?.blur();
+      clearDraft("sent");
+      replaceUserInput("");
+      setSelectedAttachments([]);
+      resetSuppression();
       setSendError(null);
-    }
-  }, [userInput, sendError]);
-
-  useEffect(() => {
-    setCursorIndex((current) => Math.min(current, userInput.length));
-  }, [userInput.length]);
+      executePluginClientSlashCommand({
+        command: resolved.command,
+        args: resolved.args,
+        onError(error) {
+          console.error("[Composer] Failed to run plugin client slash command:", error);
+          toastErrorRef.current(error instanceof Error ? error.message : String(error));
+        },
+      });
+      return true;
+    },
+    [blurOnSubmit, clearDraft, replaceUserInput, resetSuppression, setSelectedAttachments],
+  );
 
   const { pickImages } = useImageAttachmentPicker();
   const { pickFiles } = useFilePicker();
   const agentIdRef = useRef(agentId);
   const sendAgentMessageRef = useRef<
-    ((agentId: string, text: string, attachments: ComposerAttachment[]) => Promise<void>) | null
+    | ((
+        agentId: string,
+        text: string,
+        attachments: ComposerAttachment[],
+        activeTurnBehavior: "interrupt" | "steer",
+      ) => Promise<void>)
+    | null
   >(null);
   const onSubmitMessageRef = useRef(onSubmitMessage);
 
@@ -1347,17 +1578,6 @@ export function Composer({
     onFocusInput?.(focusInput);
   }, [focusInput, onFocusInput]);
 
-  // Fill the composer with a picked preset — appended below any existing draft
-  // text (mirrors the legacy composer-insert behavior), never sent.
-  const insertPromptPreset = useCallback(
-    (text: string) => {
-      const next = userInput.trim() ? `${userInput}\n${text}` : text;
-      setUserInput(next);
-      focusInput();
-    },
-    [focusInput, setUserInput, userInput],
-  );
-
   const submitMessage = useCallback(
     async (text: string, submitAttachments: ComposerAttachment[]) => {
       onMessageSent?.();
@@ -1368,9 +1588,14 @@ export function Composer({
       if (!sendAgentMessageRef.current) {
         throw new Error(t("workspace.terminal.hostDisconnected"));
       }
-      await sendAgentMessageRef.current(agentIdRef.current, text, submitAttachments);
+      await sendAgentMessageRef.current(
+        agentIdRef.current,
+        text,
+        submitAttachments,
+        appSettings.sendBehavior === "steer" ? "steer" : "interrupt",
+      );
     },
-    [cwd, onMessageSent, t],
+    [appSettings.sendBehavior, cwd, onMessageSent, t],
   );
 
   useEffect(() => {
@@ -1382,16 +1607,11 @@ export function Composer({
       targetAgentId: string,
       text: string,
       sendAttachments: ComposerAttachment[],
+      activeTurnBehavior: "interrupt" | "steer",
     ) => {
       if (!client) {
         throw new Error(t("workspace.terminal.hostDisconnected"));
       }
-      const stream: AgentStreamWriter = {
-        getTail: (id) => useSessionStore.getState().sessions[serverId]?.agentStreamTail?.get(id),
-        getHead: (id) => useSessionStore.getState().sessions[serverId]?.agentStreamHead?.get(id),
-        setHead: (updater) => setAgentStreamHead(serverId, updater),
-        setTail: (updater) => setAgentStreamTail(serverId, updater),
-      };
       await dispatchComposerAgentMessage({
         client,
         agentId: targetAgentId,
@@ -1401,30 +1621,46 @@ export function Composer({
           supportsForgeAttachments: supportsForgeSearch,
         }),
         encodeImages,
-        stream,
+        submission: createMessageSubmissionWriter(serverId),
+        activeTurnBehavior,
+        activeTurnId:
+          activeTurnBehavior === "steer"
+            ? (selectAgentTurnPresentation(
+                useSessionStore.getState().sessions[serverId],
+                targetAgentId,
+              ).turnId ?? undefined)
+            : undefined,
       });
       onAttentionPromptSend?.();
     };
-  }, [
-    client,
-    onAttentionPromptSend,
-    serverId,
-    setAgentStreamTail,
-    setAgentStreamHead,
-    supportsForgeSearch,
-    t,
-  ]);
+  }, [appSettings.sendBehavior, client, onAttentionPromptSend, serverId, supportsForgeSearch, t]);
 
   useEffect(() => {
     onSubmitMessageRef.current = onSubmitMessage;
   }, [onSubmitMessage]);
 
-  const isAgentRunning = agentState.status === "running";
-  const hasAgent = agentState.status !== null;
-  const isUltracodeActive = useMemo(
-    () => isUltracodeFeatureEnabled(agentControls?.features) || agentState.isUltracodeActive,
-    [agentControls, agentState.isUltracodeActive],
+  const hasActiveTurn = useSessionStore(
+    (state) => selectAgentTurnPresentation(state.sessions[serverId], agentId).isActive,
   );
+  const isCancellingAgent = useSessionStore(
+    (state) => selectAgentTurnPresentation(state.sessions[serverId], agentId).isCancelling,
+  );
+  const isAgentRunning = hasActiveTurn;
+  // Queueing behind a permission prompt would strand the message: the turn is
+  // parked until the request is answered.
+  const hasPendingPermission = useSessionStore((state) => {
+    const pendingPermissions = state.sessions[serverId]?.pendingPermissions;
+    if (!pendingPermissions) return false;
+    for (const permission of pendingPermissions.values()) {
+      if (permission.agentId === agentId) return true;
+    }
+    return false;
+  });
+  const activeSendBehavior = resolveActiveSendBehavior(
+    appSettings.sendBehavior,
+    hasPendingPermission,
+  );
+  const hasAgent = agentState.status !== null;
 
   const queueWriter = useMemo<QueueWriter>(
     () => ({
@@ -1444,7 +1680,7 @@ export function Composer({
       });
       if (!result.queued) return;
 
-      setUserInput("");
+      replaceUserInput("");
       setSelectedAttachments([]);
       resetSuppression();
       clearSentAttachments(queuedAttachments);
@@ -1455,7 +1691,7 @@ export function Composer({
       queueWriter,
       resetSuppression,
       setSelectedAttachments,
-      setUserInput,
+      replaceUserInput,
     ],
   );
 
@@ -1486,7 +1722,7 @@ export function Composer({
           await submitMessage(submitText, submitAttachments);
         },
         clearDraft,
-        setUserInput,
+        setUserInput: replaceUserInput,
         setAttachments: (nextAttachments) => {
           setSelectedAttachments(composerWorkspaceAttachment.userAttachmentsOnly(nextAttachments));
         },
@@ -1497,10 +1733,6 @@ export function Composer({
         },
         failedToSendMessage: t("composer.errors.failedToSend"),
       });
-      if (result === "submitted" || result === "queued") {
-        useGlobalPromptHistoryStore.getState().pushPrompt(outgoingMessage);
-        historyPickerResetRef.current();
-      }
       completeSubmit({
         result,
         outgoingAttachments,
@@ -1515,7 +1747,7 @@ export function Composer({
       isAgentRunning,
       queueMessage,
       setSelectedAttachments,
-      setUserInput,
+      replaceUserInput,
       submitBehavior,
       submitMessage,
       t,
@@ -1532,6 +1764,12 @@ export function Composer({
       if (clientSlashCommand && runClientSlashCommand(clientSlashCommand)) {
         return;
       }
+      const pluginSlashCommand = resolvePluginClientSlashCommand({
+        text: payload.text,
+        hasAttachments: outgoingAttachments.length > 0,
+        commands: pluginClientSlashCommands,
+      });
+      if (pluginSlashCommand && runPluginClientSlashCommand(pluginSlashCommand)) return;
 
       if (blurOnSubmit) {
         messageInputRef.current?.blur();
@@ -1543,6 +1781,8 @@ export function Composer({
       blurOnSubmit,
       buildOutgoingAttachments,
       runClientSlashCommand,
+      pluginClientSlashCommands,
+      runPluginClientSlashCommand,
       sendMessageWithContent,
     ],
   );
@@ -1550,61 +1790,68 @@ export function Composer({
   const handlePickImage = useCallback(async () => {
     const newImages = await pickAndPersistImages({
       pickImages,
-      persister: {
-        persistFromBlob: ({ blob, mimeType, fileName }) =>
-          persistAttachmentFromBlob({ blob, mimeType, fileName }),
-        persistFromFileUri: ({ uri, mimeType, fileName }) =>
-          persistAttachmentFromFileUri({ uri, mimeType, fileName }),
-      },
+      persister: composerImageAttachmentPersister,
     });
     if (newImages.length === 0) return;
     addImages(newImages);
   }, [addImages, pickImages]);
 
-  const uploadPickedFiles = useCallback(
-    async (files: PickedFile[]) => {
-      if (files.length === 0) return;
-
-      // Image files take the local image-attachment path so they render with an
-      // inline thumbnail that opens the lightbox — both here in the composer and
-      // in the sent message — and are sent inline as base64 (no daemon upload).
-      // Every other file type still uploads to the daemon as before.
-      const isImage = (file: PickedFile) =>
-        isRasterImageMimeType(file.mimeType) || isRasterImagePath(file.fileName);
-      const imageFiles = files.filter(isImage);
-      const otherFiles = files.filter((file) => !isImage(file));
-
-      if (imageFiles.length > 0) {
-        const imageAttachments = await Promise.all(
-          imageFiles.map((file) =>
-            persistAttachmentFromBytes({
-              bytes: file.bytes,
-              mimeType: file.mimeType,
-              fileName: file.fileName,
-            }),
-          ),
-        );
-        addImages(imageAttachments);
+  const handlePasteImage = useCallback(async () => {
+    try {
+      const newImages = await pickAndPersistImages({
+        pickImages: async () => {
+          const image = await readClipboardImage(Clipboard);
+          return image ? [image] : null;
+        },
+        persister: composerImageAttachmentPersister,
+      });
+      if (newImages.length === 0) {
+        toastErrorRef.current(t("composer.errors.noClipboardImage"));
+        return;
       }
+      addImages(newImages);
+    } catch (error) {
+      console.error("[Composer] Failed to paste clipboard image:", error);
+      toastErrorRef.current(t("composer.errors.pasteImageFailed"));
+    }
+  }, [addImages, t]);
 
-      if (otherFiles.length === 0) return;
+  const handleNativePasteImages = useCallback(
+    (files: readonly NativePastedFile[]) => {
+      setPendingNativeImagePastes((pending) => pending + 1);
+      void pickAndPersistImages({
+        pickImages: async () => normalizeNativePastedImages(files),
+        persister: composerImageAttachmentPersister,
+      })
+        .then((newImages) => {
+          if (newImages.length > 0) {
+            addImages(newImages);
+          }
+          return undefined;
+        })
+        .catch((error) => {
+          console.error("[Composer] Failed to persist pasted image:", error);
+          toastErrorRef.current(t("composer.errors.pasteImageFailed"));
+        })
+        .finally(() => {
+          setPendingNativeImagePastes((pending) => Math.max(0, pending - 1));
+        });
+    },
+    [addImages, t],
+  );
 
+  const uploadSelectedFiles = useCallback(
+    async (files: SelectedFile[]) => {
+      if (files.length === 0) return;
       if (!client) {
         toastErrorRef.current(t("composer.errors.daemonClientDisconnected"));
         return;
       }
 
-      const oversized = otherFiles.find((f) => f.bytes.byteLength > MAX_FILE_SIZE_BYTES);
-      if (oversized) {
-        toastErrorRef.current(
-          t("composer.errors.fileTooLarge", { size: "50MB", fileName: oversized.fileName }),
-        );
-        return;
-      }
-
-      setIsUploadingFile(true);
+      const placeholders = files.map((file) => ({ id: nextPendingFileId.current++, file }));
+      setPendingFiles((pending) => [...pending, ...placeholders]);
       try {
-        const uploaded = await uploadFileAttachments({ client, files: otherFiles });
+        const uploaded = await uploadFileAttachments({ client, files });
         addFiles(uploaded);
       } catch (error) {
         console.error("[Composer] Failed to upload file:", error);
@@ -1612,10 +1859,10 @@ export function Composer({
           error instanceof Error ? error.message : t("composer.errors.uploadFailed"),
         );
       } finally {
-        setIsUploadingFile(false);
+        setPendingFiles((pending) => pending.filter((entry) => !placeholders.includes(entry)));
       }
     },
-    [addFiles, addImages, client, t],
+    [addFiles, client, t],
   );
 
   const handlePickFile = useCallback(async () => {
@@ -1626,25 +1873,25 @@ export function Composer({
     try {
       const files = await pickFiles();
       if (!files) return;
-      await uploadPickedFiles(files);
+      await uploadSelectedFiles(files);
     } catch (error) {
-      console.error("[Composer] Failed to add file:", error);
+      console.error("[Composer] Failed to upload file:", error);
       toastErrorRef.current(
         error instanceof Error ? error.message : t("composer.errors.uploadFailed"),
       );
     }
-  }, [client, pickFiles, t, uploadPickedFiles]);
+  }, [client, pickFiles, t, uploadSelectedFiles]);
 
   const handleGenericFilesDropped = useCallback(
     async (items: DroppedItem[]) => {
       try {
-        const files = await droppedItemsToPickedFiles(items);
+        const files = droppedItemsToSelectedFiles(items);
         if (files.length === 0) return;
         if (!client || !isConnected) {
           toastErrorRef.current(t("composer.errors.daemonClientDisconnected"));
           return;
         }
-        await uploadPickedFiles(files);
+        await uploadSelectedFiles(files);
       } catch (error) {
         console.error("[Composer] Failed to upload dropped files:", error);
         toastErrorRef.current(
@@ -1652,12 +1899,12 @@ export function Composer({
         );
       }
     },
-    [client, isConnected, t, uploadPickedFiles],
+    [client, isConnected, t, uploadSelectedFiles],
   );
 
   const handleRemoveAttachment = useCallback(
     (index: number) => {
-      githubAutoAttach.markGithubAttachmentRemoved(selectedAttachments[index]);
+      forgeAutoAttachRef.current?.markForgeAttachmentRemoved(selectedAttachments[index]);
       const didRemoveWorkspaceAttachment = removeAttachment({
         selectedAttachments,
         index,
@@ -1669,7 +1916,7 @@ export function Composer({
         removeComposerAttachmentAtIndex({ attachments: prev, index, deleteAttachments }),
       );
     },
-    [githubAutoAttach, removeAttachment, selectedAttachments, setSelectedAttachments],
+    [removeAttachment, selectedAttachments, setSelectedAttachments],
   );
 
   const handleOpenAttachment = useCallback(
@@ -1686,80 +1933,33 @@ export function Composer({
     [openAttachment],
   );
 
-  useEffect(() => {
-    if (!isAgentRunning || !isConnected) {
-      setIsCancellingAgent(false);
-    }
-  }, [isAgentRunning, isConnected]);
-
   const handleCancelAgent = useCallback(() => {
-    const didCancel = cancelComposerAgent({
+    const targetAgentId = agentIdRef.current;
+    const cancellation = cancelComposerAgent({
       client,
-      agentId: agentIdRef.current,
+      agentId: targetAgentId,
       isAgentRunning,
       isCancellingAgent,
       isConnected,
-      onCancelFailed: (error) => {
-        setIsCancellingAgent(false);
+    });
+    if (!cancellation) return;
+    const requestId = getHostRuntimeStore().beginAgentCancellation(serverId, targetAgentId);
+    void cancellation
+      .catch((error) => {
         const message = resolveErrorMessage(error);
         if (message && message.trim().length > 0) {
           toastErrorRef.current(message);
         }
-      },
-    });
-    if (!didCancel) return;
-    setIsCancellingAgent(true);
+      })
+      .finally(() => {
+        getHostRuntimeStore().settleAgentCancellation(serverId, targetAgentId, requestId);
+      });
     messageInputRef.current?.focus();
-  }, [client, isAgentRunning, isCancellingAgent, isConnected]);
+  }, [client, isAgentRunning, isCancellingAgent, isConnected, serverId]);
 
   const focusMessageInputForKeyboardAction = useCallback(() => {
     focusMessageInputWithPlatformStrategy(messageInputRef);
   }, []);
-
-  const handleKeyboardAction = useCallback(
-    (action: KeyboardActionDefinition): boolean =>
-      dispatchComposerKeyboardAction({
-        action,
-        isPaneFocused,
-        messageInputRef,
-        isAgentRunning,
-        isCancellingAgent,
-        isConnected,
-        handleCancelAgent,
-        focusMessageInputForKeyboardAction,
-      }),
-    [
-      focusMessageInputForKeyboardAction,
-      handleCancelAgent,
-      isAgentRunning,
-      isCancellingAgent,
-      isConnected,
-      isPaneFocused,
-    ],
-  );
-
-  useKeyboardActionHandler({
-    handlerId: keyboardHandlerIdRef.current,
-    actions: [
-      "agent.interrupt",
-      "message-input.focus",
-      "message-input.send",
-      "message-input.dictation-toggle",
-      "message-input.dictation-cancel",
-      "message-input.dictation-confirm",
-      "message-input.voice-toggle",
-      "message-input.voice-mute-toggle",
-    ],
-    enabled: isPaneFocused,
-    priority: resolveKeyboardPriority(isMessageInputFocused),
-    isActive: () => isPaneFocused,
-    handle: handleKeyboardAction,
-  });
-
-  const { style: keyboardAnimatedStyle } = useKeyboardShiftStyle({
-    mode: "translate",
-    enabled: !externalKeyboardShift,
-  });
 
   const isVoiceModeForAgent = resolveIsVoiceModeForAgent(voice, serverId, agentId);
 
@@ -1782,10 +1982,10 @@ export function Composer({
         queue: queueWriter,
       });
       if (!result) return;
-      setUserInput(result.text);
+      replaceUserInput(result.text);
       setSelectedAttachments(result.attachments);
     },
-    [agentId, queueWriter, setSelectedAttachments, setUserInput],
+    [agentId, queueWriter, replaceUserInput, setSelectedAttachments],
   );
 
   const handleSendQueuedNow = useCallback(
@@ -1817,20 +2017,39 @@ export function Composer({
       if (clientSlashCommand && runClientSlashCommand(clientSlashCommand)) {
         return;
       }
+      const pluginSlashCommand = resolvePluginClientSlashCommand({
+        text: payload.text,
+        hasAttachments: outgoingAttachments.length > 0,
+        commands: pluginClientSlashCommands,
+      });
+      if (pluginSlashCommand && runPluginClientSlashCommand(pluginSlashCommand)) return;
       queueMessage(payload.text, outgoingAttachments);
     },
-    [attachments, buildOutgoingAttachments, queueMessage, runClientSlashCommand],
+    [
+      attachments,
+      buildOutgoingAttachments,
+      pluginClientSlashCommands,
+      queueMessage,
+      runClientSlashCommand,
+      runPluginClientSlashCommand,
+    ],
   );
 
-  const hasSendableContent = userInput.trim().length > 0 || selectedAttachments.length > 0;
+  const hasSendableContent = hasText || selectedAttachments.length > 0;
 
-  // Handle keyboard navigation for command autocomplete.
+  // An open autocomplete owns the arrows; otherwise they may recall sent messages.
   const handleCommandKeyPress = useCallback(
-    (event: { key: string; preventDefault: () => void }) => {
-      if (autocompleteOnKeyPressRef.current(event)) return true;
-      return historyPickerOnKeyPressRef.current(event);
+    (event: ComposerKeyPressEvent) => {
+      if (autocompleteRef.current?.onKeyPress(event)) return true;
+      const recalledText = recall.handleKeyPress(event, () =>
+        selectAgentSentMessages(useSessionStore.getState().sessions[serverId], agentId),
+      );
+      if (recalledText === null) return false;
+      event.preventDefault();
+      replaceUserInput(recalledText);
+      return true;
     },
-    [],
+    [agentId, recall, replaceUserInput, serverId],
   );
 
   const cancelButtonStyle = useMemo(
@@ -1846,12 +2065,10 @@ export function Composer({
     [isCompactLayout, voiceButtonDisabled],
   );
 
-  const cancelButton = useMemo(
+  const activeActionContent = useMemo(
     () => (
-      <ComposerCancelButtonSlot
-        isAgentRunning={isAgentRunning}
-        hasSendableContent={hasSendableContent}
-        isProcessing={isProcessing}
+      <ComposerCancelButton
+        buttonIconSize={buttonIconSize}
         cancelButtonStyle={cancelButtonStyle}
         handleCancelAgent={handleCancelAgent}
         isConnected={isConnected}
@@ -1862,110 +2079,74 @@ export function Composer({
     ),
     [
       agentInterruptKeys,
+      buttonIconSize,
       cancelButtonStyle,
       handleCancelAgent,
-      hasSendableContent,
-      isAgentRunning,
       isCancellingAgent,
       isConnected,
-      isProcessing,
       t,
     ],
   );
 
-  const promptPresetsMenu = useMemo(
-    () =>
-      enablePromptPresets ? (
-        <ComposerPresetsMenu currentText={userInput} onPick={insertPromptPreset} />
-      ) : null,
-    [enablePromptPresets, insertPromptPreset, userInput],
-  );
-
   const rightContent = useMemo(
     () => (
-      <>
-        {promptPresetsMenu}
-        <ComposerRightControlsSlot
-          isVoiceModeForAgent={isVoiceModeForAgent}
-          hasAgent={hasAgent}
-          isAgentRunning={isAgentRunning}
-          hasSendableContent={hasSendableContent}
-          isProcessing={isProcessing}
-          isCompact={isCompactLayout}
-          buttonIconSize={buttonIconSize}
-          handleToggleRealtimeVoice={handleToggleRealtimeVoice}
-          isConnected={isConnected}
-          isVoiceSwitching={isVoiceSwitching}
-          realtimeVoiceButtonStyle={realtimeVoiceButtonStyle}
-          voiceToggleKeys={voiceToggleKeys}
-          t={t}
-          cancelButton={cancelButton}
-        />
-      </>
+      <ComposerRightControlsSlot
+        isVoiceModeForAgent={isVoiceModeForAgent}
+        hasAgent={hasAgent}
+        isAgentRunning={isAgentRunning}
+        hasSendableContent={hasSendableContent}
+        isCompact={isCompactLayout}
+        showVoice={mode.showVoice}
+        buttonIconSize={buttonIconSize}
+        handleToggleRealtimeVoice={handleToggleRealtimeVoice}
+        isConnected={isConnected}
+        isVoiceSwitching={isVoiceSwitching}
+        realtimeVoiceButtonStyle={realtimeVoiceButtonStyle}
+        voiceToggleKeys={voiceToggleKeys}
+        t={t}
+      />
     ),
     [
-      promptPresetsMenu,
       buttonIconSize,
-      cancelButton,
       handleToggleRealtimeVoice,
       hasAgent,
       hasSendableContent,
       isAgentRunning,
       isConnected,
       isCompactLayout,
-      isProcessing,
       isVoiceModeForAgent,
       isVoiceSwitching,
+      mode.showVoice,
       realtimeVoiceButtonStyle,
       t,
       voiceToggleKeys,
     ],
   );
 
-  const { contextWindowMaxTokens, contextWindowUsedTokens } = resolveContextWindowValues(
-    agentState.contextWindowMaxTokens,
-    agentState.contextWindowUsedTokens,
-  );
-
-  const contextWindowPending =
-    agentState.status === "initializing" || agentState.status === "running";
   const contextWindowMeterGlyphSize = isCompactLayout ? ICON_SIZE.md : buttonIconSize;
-
-  const contextWindowMeter = useMemo(
+  const beforeVoiceContent = useMemo(
     () =>
-      renderContextWindowMeter(
-        contextWindowMaxTokens,
-        contextWindowUsedTokens,
-        agentState.totalCostUsd,
-        false,
-        contextWindowPending,
-        contextWindowMeterGlyphSize,
-      ),
+      hasAgent ? (
+        <View style={styles.contextWindowMeterSlot}>
+          <ContextWindowMeter
+            serverId={serverId}
+            agentId={agentId}
+            maxTokens={agentState.contextWindowMaxTokens}
+            usedTokens={agentState.contextWindowUsedTokens}
+            totalCostUsd={agentState.totalCostUsd}
+            glyphSize={contextWindowMeterGlyphSize}
+          />
+        </View>
+      ) : null,
     [
-      contextWindowMaxTokens,
-      contextWindowUsedTokens,
+      hasAgent,
+      serverId,
+      agentId,
+      agentState.contextWindowMaxTokens,
+      agentState.contextWindowUsedTokens,
       agentState.totalCostUsd,
-      contextWindowPending,
       contextWindowMeterGlyphSize,
     ],
-  );
-  const providerUsageMeter = useMemo(
-    () => (
-      <ProviderUsageMeter
-        serverId={serverId}
-        provider={agentState.provider}
-        glyphSize={contextWindowMeterGlyphSize}
-      />
-    ),
-    [serverId, agentState.provider, contextWindowMeterGlyphSize],
-  );
-  const composerMeters = useMemo(
-    () => renderComposerMeters(contextWindowMeter, providerUsageMeter),
-    [contextWindowMeter, providerUsageMeter],
-  );
-  const { beforeVoiceContent, footerInlineContent } = useMemo(
-    () => resolveContextWindowPlacement(composerMeters, isCompactLayout),
-    [composerMeters, isCompactLayout],
   );
 
   const hasGithubAttachment = useMemo(
@@ -2017,8 +2198,8 @@ export function Composer({
     [githubSearchItems, githubSearchQueryTrimmed],
   );
 
-  const attachmentMenuItems = useMemo<AttachmentMenuItem[]>(
-    () => [
+  const attachmentMenuItems = useMemo<AttachmentMenuItem[]>(() => {
+    const items: AttachmentMenuItem[] = [
       {
         id: "image",
         label: t("composer.attachments.addImage"),
@@ -2027,6 +2208,18 @@ export function Composer({
           void handlePickImage();
         },
       },
+    ];
+    if (isNative) {
+      items.push({
+        id: "paste-image",
+        label: t("composer.attachments.pasteImage"),
+        icon: <ThemedClipboardPaste size={ICON_SIZE.md} uniProps={iconForegroundMutedMapping} />,
+        onSelect: () => {
+          void handlePasteImage();
+        },
+      });
+    }
+    items.push(
       {
         id: "github",
         label: t("composer.attachments.addIssueOrPr", {
@@ -2037,6 +2230,7 @@ export function Composer({
           setIsGithubPickerOpen(true);
         },
       },
+      ...pluginAttachments.menuItems,
       {
         id: "file",
         label: t("composer.attachments.addFile"),
@@ -2045,28 +2239,30 @@ export function Composer({
           void handlePickFile();
         },
       },
-    ],
-    [handlePickImage, handlePickFile, t, forgePresentation],
-  );
+    );
+    return items;
+  }, [
+    forgePresentation,
+    handlePasteImage,
+    handlePickFile,
+    handlePickImage,
+    pluginAttachments.menuItems,
+    t,
+  ]);
 
   const handleToggleGithubItem = useCallback(
     (item: ForgeSearchItem) => {
-      const nextAttachments = toggleGithubAttachmentFromPicker({
+      const nextAttachments = toggleForgeAttachmentFromPicker({
         current: attachments,
         item,
-        markGithubAttachmentRemoved: githubAutoAttach.markGithubAttachmentRemoved,
+        markForgeAttachmentRemoved: (attachment) =>
+          forgeAutoAttachRef.current?.markForgeAttachmentRemoved(attachment),
       });
       setSelectedAttachments(nextAttachments);
       setIsGithubPickerOpen(false);
       setGithubSearchQuery("");
     },
-    [
-      attachments,
-      githubAutoAttach,
-      setSelectedAttachments,
-      setGithubSearchQuery,
-      setIsGithubPickerOpen,
-    ],
+    [attachments, setSelectedAttachments, setGithubSearchQuery, setIsGithubPickerOpen],
   );
 
   const leftContent = useMemo(
@@ -2077,27 +2273,31 @@ export function Composer({
         serverId,
         focusInput,
         isCompactLayout,
-        isPaneFocused,
+        showAgentControls: mode.showAgentControls,
       }),
-    [agentControls, agentId, focusInput, isCompactLayout, isPaneFocused, serverId],
+    [agentControls, agentId, focusInput, isCompactLayout, mode.showAgentControls, serverId],
   );
 
   const handleAttachButtonRef = useCallback((node: View | null) => {
     attachButtonRef.current = node;
   }, []);
 
-  const handleSelectionChange = useCallback((selection: { start: number; end: number }) => {
-    setCursorIndex(selection.start);
-  }, []);
+  const handleSelectionChange = useCallback(
+    (selection: { start: number; end: number }) => {
+      if (isWeb) {
+        cursorPublication.stage(selection.start);
+      } else {
+        cursor.setState(selection.start);
+      }
+    },
+    [cursorPublication, cursor],
+  );
 
   const handleFocusChange = useCallback(
     (focused: boolean) => {
       setIsMessageInputFocused(focused);
       if (focused) {
         onAttentionInputFocus?.();
-      } else {
-        // Dismiss the history picker when the input loses focus.
-        historyPickerResetRef.current();
       }
     },
     [onAttentionInputFocus],
@@ -2106,6 +2306,10 @@ export function Composer({
   const handleLightboxClose = useCallback(() => {
     setLightboxMetadata(null);
   }, []);
+  const lightboxSource = useMemo<ImageLightboxSource | null>(
+    () => (lightboxMetadata ? { type: "attachment", metadata: lightboxMetadata } : null),
+    [lightboxMetadata],
+  );
 
   const handleGithubPickerOpenChange = useCallback(
     (open: boolean) => {
@@ -2119,11 +2323,11 @@ export function Composer({
 
   const renderGithubPickerOption = useCallback(
     ({ option, active }: { option: ComboboxOption; selected: boolean; active: boolean }) => {
-      const item = findGithubItemByOption(githubSearchItems, option.id);
+      const item = findForgeItemByOption(githubSearchItems, option.id);
       if (!item) {
         return <View key={option.id} />;
       }
-      const selected = isAttachmentSelectedForGithubItem(selectedAttachments, item);
+      const selected = isAttachmentSelectedForForgeItem(selectedAttachments, item);
       return (
         <GithubPickerOption
           key={option.id}
@@ -2139,23 +2343,35 @@ export function Composer({
     [githubSearchItems, selectedAttachments, handleToggleGithubItem],
   );
 
-  const composerContainerStyle = useMemo(
-    () => [animatedStaticStyles.container, keyboardAnimatedStyle],
-    [keyboardAnimatedStyle],
-  );
+  // Fullscreen fills the dock slot: the chain down to the input stretches and drops
+  // the inline padding, which the fullscreen presentation supplies itself.
   const inputAreaContainerStyle = useMemo(
-    () => [styles.inputAreaContainer, isComposerLocked && styles.inputAreaLocked],
-    [isComposerLocked],
+    () => [
+      styles.inputAreaContainer,
+      isComposerLocked && styles.inputAreaLocked,
+      isFullscreen && styles.inputAreaFullscreen,
+    ],
+    [isComposerLocked, isFullscreen],
+  );
+  const inputAreaContentStyle = useMemo(
+    () => [styles.inputAreaContent, isFullscreen && styles.fullscreenFill],
+    [isFullscreen],
+  );
+  const messageInputContainerStyle = useMemo(
+    () => [styles.messageInputContainer, isFullscreen && styles.fullscreenFill],
+    [isFullscreen],
   );
 
   const attachmentTray = useMemo(
     () =>
       renderAttachmentTray({
+        serverId,
         selectedAttachments,
+        pendingFiles,
+        isAttachmentOpenable,
         isComposerLocked,
         handleOpenAttachment,
         handleRemoveAttachment,
-        isWorkspaceAttachmentOpenable: isAttachmentOpenable,
         labels: {
           openImage: t("composer.attachments.openImage"),
           removeImage: t("composer.attachments.removeImage"),
@@ -2169,9 +2385,11 @@ export function Composer({
     [
       handleOpenAttachment,
       handleRemoveAttachment,
-      isAttachmentOpenable,
       isComposerLocked,
+      serverId,
       selectedAttachments,
+      pendingFiles,
+      isAttachmentOpenable,
       t,
     ],
   );
@@ -2188,13 +2406,41 @@ export function Composer({
     [handleEditQueuedMessage, handleSendQueuedNow, queuedMessages, t],
   );
 
-  const messageInputContainerRef = useRef<View>(null);
+  const autocompleteConfiguration = useMemo(
+    () => ({
+      setUserInput: replaceUserInput,
+      serverId,
+      agentId,
+      draft: commandDraft,
+      canExecuteClientSlashCommand: buildOutgoingAttachments(attachments).length === 0,
+      onClientSlashCommand: runClientSlashCommand,
+      pluginClientSlashCommands,
+    }),
+    [
+      replaceUserInput,
+      serverId,
+      agentId,
+      commandDraft,
+      buildOutgoingAttachments,
+      attachments,
+      runClientSlashCommand,
+      pluginClientSlashCommands,
+    ],
+  );
 
-  const isSubmitBusy =
-    isProcessing ||
-    isSubmitLoading ||
-    isUploadingFile ||
-    (waitForGithubAutoAttachOnSubmit && githubAutoAttach.isResolving);
+  const rightContentWithPresets = (
+    <>
+      {enablePromptPresets && inputMode === "chat" ? (
+        <ComposerPresetsBinding textSource={textSource} onPick={replaceUserInput} />
+      ) : null}
+      {rightContent}
+    </>
+  );
+
+  const isSubmitLoadingVisible =
+    isProcessing || isSubmitLoading || isUploadingFile || pendingNativeImagePastes > 0;
+  const isSubmitDisabled =
+    isSubmitLoadingVisible || (waitForForgeAutoAttachOnSubmit && isForgeResolving);
 
   // Disable drops while submitting/uploading: the submit path clears and restores attachments,
   // so a drop in that window would be lost or land on a locked draft. `disabled` hides the
@@ -2205,107 +2451,121 @@ export function Composer({
       onGenericFiles: handleGenericFilesDropped,
       onWorkspaceFile: handleWorkspaceFileDropped,
     },
-    { disabled: isSubmitBusy },
+    { disabled: isSubmitLoadingVisible },
   );
 
-  const messageInputAutoFocus = autoFocus && isDesktopWebBreakpoint;
+  // Focusing the composer on a touch screen raises the on-screen keyboard over the conversation.
+  const messageInputAutoFocus = autoFocus && isDesktopWebBreakpoint && hasFinePointer;
   const submitLoadingPressHandler = isAgentRunning ? handleCancelAgent : undefined;
   const sendErrorNode = useMemo(
-    () => (sendError ? <Text style={styles.sendErrorText}>{sendError}</Text> : null),
+    () =>
+      sendError ? (
+        <Text accessibilityRole="alert" style={styles.sendErrorText}>
+          {sendError}
+        </Text>
+      ) : null,
     [sendError],
-  );
-  const secondaryContent = useMemo(
-    () => renderComposerSecondaryContent(footer, footerInlineContent),
-    [footer, footerInlineContent],
   );
   const githubEmptyText = githubSearchResultsQuery.isFetching
     ? t("composer.github.searching")
     : t("composer.github.noResults");
-  const autocompleteVisible = autocomplete.isVisible && isPaneFocused;
-  const historyPickerVisible = historyPicker.isVisible && isPaneFocused;
 
   return (
-    <ComposerKeyboardScopeProvider isActiveComposer={isPaneFocused}>
-      <Animated.View style={composerContainerStyle}>
-        <AttachmentLightbox metadata={lightboxMetadata} onClose={handleLightboxClose} />
+    <>
+      <ComposerKeyboardRegistration
+        handlerId={keyboardHandlerIdRef.current}
+        messageInputRef={messageInputRef}
+        isAgentRunning={isAgentRunning}
+        isCancellingAgent={isCancellingAgent}
+        isConnected={isConnected}
+        handleCancelAgent={handleCancelAgent}
+        focusMessageInputForKeyboardAction={focusMessageInputForKeyboardAction}
+        isMessageInputFocused={isMessageInputFocused}
+      />
+      <View
+        style={
+          isFullscreen ? animatedStaticStyles.fullscreenContainer : animatedStaticStyles.container
+        }
+      >
+        <AttachmentLightbox source={lightboxSource} onClose={handleLightboxClose} />
         {/* Input area */}
         <View style={inputAreaContainerStyle}>
-          <View style={styles.inputAreaContent}>
-            {queueList}
-            {sendErrorNode}
+          <View style={inputAreaContentStyle}>
+            {isFullscreen ? null : queueList}
+            {!isFullscreen && sendErrorNode}
 
-            {/* History picker: ArrowUp opens an inline list of past prompts (styled
-                like the todo track); highlight with Up/Down, Enter fills the input,
-                ArrowDown past the newest closes it. ArrowRight hops into the prompt
-                presets list (restarting from the bottom); ArrowLeft hops back. */}
-            {historyPickerVisible ? (
-              <HistoryTrack
-                options={historyPicker.options}
-                selectedIndex={historyPicker.selectedIndex}
-                onSelect={historyPicker.onSelectOption}
-                variant={historyPicker.mode}
-                canSwitch={historyPicker.canSwitch}
-              />
-            ) : null}
-
-            <View ref={messageInputContainerRef} style={styles.messageInputContainer}>
-              <AutocompletePopover
-                visible={autocompleteVisible}
-                anchorRef={messageInputContainerRef}
-                options={autocomplete.options}
-                selectedIndex={autocomplete.selectedIndex}
-                onSelect={autocomplete.onSelectOption}
-                isLoading={autocomplete.isLoading}
-                errorMessage={autocomplete.errorMessage}
-                loadingText={autocomplete.loadingText}
-                emptyText={autocomplete.emptyText}
+            <ComposerAutocompleteBinding
+              text={textSource}
+              cursor={cursor}
+              recall={recall}
+              inputRef={messageInputRef}
+              anchorStyle={messageInputContainerStyle}
+              show={mode.showAutocomplete && !isFullscreen}
+              ref={autocompleteRef}
+              configuration={autocompleteConfiguration}
+            >
+              <ComposerForgeBinding
+                text={textSource}
+                configuration={forgeConfiguration}
+                ref={forgeAutoAttachRef}
+                onResolvingChange={setIsForgeResolving}
               />
 
               {/* MessageInput handles everything: text, dictation, attachments, all buttons */}
-              <StableMessageInput
-                ref={messageInputRef}
-                value={userInput}
-                onChangeText={setUserInput}
-                onSubmit={handleSubmit}
-                hasExternalContent={hasExternalContent}
-                allowEmptySubmit={allowEmptySubmit}
-                submitButtonAccessibilityLabel={submitButtonAccessibilityLabel}
-                submitButtonTestID={submitButtonTestID}
-                submitIcon={submitIcon}
-                isSubmitDisabled={isSubmitBusy}
-                isSubmitLoading={isSubmitBusy}
-                preserveHeightOnSubmit={submitBehavior === "preserve-and-lock"}
-                attachments={selectedAttachments}
-                cwd={cwd}
-                attachmentMenuItems={attachmentMenuItems}
-                onAttachButtonRef={handleAttachButtonRef}
-                onAddImages={addImages}
-                client={client}
-                isReadyForDictation={isDictationReady}
-                placeholder={messagePlaceholder}
-                autoFocus={messageInputAutoFocus}
-                autoFocusKey={`${serverId}:${agentId}:${autoFocusKey ?? ""}`}
-                disabled={isSubmitLoading}
-                isPaneFocused={isPaneFocused}
-                isCompactLayout={isCompactLayout}
-                leftContent={leftContent}
-                secondaryContent={secondaryContent}
-                beforeVoiceContent={beforeVoiceContent}
-                rightContent={rightContent}
-                voiceServerId={serverId}
-                voiceAgentId={agentId}
-                isAgentRunning={isAgentRunning}
-                defaultSendBehavior={appSettings.sendBehavior}
-                onQueue={handleQueue}
-                onSubmitLoadingPress={submitLoadingPressHandler}
-                onKeyPress={handleCommandKeyPress}
-                onSelectionChange={handleSelectionChange}
-                onFocusChange={handleFocusChange}
-                onHeightChange={onComposerHeightChange}
-                inputWrapperStyle={inputWrapperStyle}
-                isUltracodeActive={isUltracodeActive}
-                attachmentSlot={attachmentTray}
-              />
+              <RenderProfile id="MessageInput">
+                <StableMessageInput
+                  ref={messageInputRef}
+                  editingSession={editingSession}
+                  isUltracodeActive={isUltracodeFeatureEnabled(
+                    agentControls?.features ?? agentState?.features,
+                  )}
+                  submissionError={sendErrorNode}
+                  value={textSource.getSnapshot()}
+                  onChangeText={setUserInput}
+                  onSubmit={handleSubmit}
+                  hasExternalContent={hasExternalContent}
+                  allowEmptySubmit={allowEmptySubmit}
+                  submitButtonAccessibilityLabel={submitButtonAccessibilityLabel}
+                  submitButtonTestID={submitButtonTestID}
+                  submitIcon={submitIcon}
+                  isSubmitDisabled={isSubmitDisabled}
+                  isSubmitLoading={isSubmitLoadingVisible}
+                  preserveHeightOnSubmit={submitBehavior === "preserve-and-lock"}
+                  attachments={selectedAttachments}
+                  cwd={cwd}
+                  attachmentMenuItems={attachmentMenuItems}
+                  onAttachButtonRef={handleAttachButtonRef}
+                  onAddImages={addImages}
+                  onPasteImages={handleNativePasteImages}
+                  client={client}
+                  isReadyForDictation={isDictationReady}
+                  placeholder={messagePlaceholder}
+                  autoFocus={messageInputAutoFocus}
+                  autoFocusKey={`${serverId}:${agentId}:${autoFocusKey ?? ""}`}
+                  disabled={isSubmitLoading}
+                  leftContent={leftContent}
+                  beforeVoiceContent={beforeVoiceContent}
+                  rightContent={rightContentWithPresets}
+                  activeActionContent={activeActionContent}
+                  voiceServerId={serverId}
+                  voiceAgentId={agentId}
+                  isAgentRunning={isAgentRunning}
+                  defaultSendBehavior={activeSendBehavior}
+                  sendShortcut={appSettings.sendShortcut}
+                  onQueue={handleQueue}
+                  onSubmitLoadingPress={submitLoadingPressHandler}
+                  onKeyPress={handleCommandKeyPress}
+                  onSelectionChange={handleSelectionChange}
+                  onFocusChange={handleFocusChange}
+                  onHeightChange={onComposerHeightChange}
+                  inputWrapperStyle={inputWrapperStyle}
+                  attachmentSlot={attachmentTray}
+                  inputMode={inputMode}
+                  readOnly={readOnly}
+                  textReplacement={textReplacement}
+                  submitLabel={submitLabel}
+                />
+              </RenderProfile>
               <Combobox
                 options={githubSearchOptions}
                 value=""
@@ -2326,17 +2586,26 @@ export function Composer({
                 emptyText={githubEmptyText}
                 renderOption={renderGithubPickerOption}
               />
-            </View>
+              {pluginAttachments.picker}
+            </ComposerAutocompleteBinding>
           </View>
         </View>
-      </Animated.View>
-    </ComposerKeyboardScopeProvider>
+      </View>
+    </>
   );
 }
 
 const animatedStaticStyles = RNStyleSheet.create({
   container: {
     flexDirection: "column",
+    // Propagate the viewport's height constraint down to the scrolling input.
+    flexShrink: 1,
+    position: "relative",
+  },
+  fullscreenContainer: {
+    flexDirection: "column",
+    flex: 1,
+    minHeight: 0,
     position: "relative",
   },
 });
@@ -2347,6 +2616,7 @@ const styles = StyleSheet.create((theme: Theme) => ({
     backgroundColor: theme.colors.border,
   },
   inputAreaContainer: {
+    flexShrink: 1,
     position: "relative",
     minHeight: FOOTER_HEIGHT,
     marginHorizontal: "auto",
@@ -2359,22 +2629,26 @@ const styles = StyleSheet.create((theme: Theme) => ({
   inputAreaLocked: {
     opacity: 0.6,
   },
+  inputAreaFullscreen: {
+    flex: 1,
+    minHeight: 0,
+    alignItems: "stretch",
+    paddingHorizontal: 0,
+    paddingBottom: 0,
+  },
+  fullscreenFill: {
+    flex: 1,
+    minHeight: 0,
+    maxWidth: "100%",
+  },
   inputAreaContent: {
+    flexShrink: 1,
     width: "100%",
-    maxWidth: MAX_CONTENT_WIDTH,
+    maxWidth: theme.contentMaxWidth,
     gap: theme.spacing[3],
   },
-  secondaryControls: {
-    flexDirection: "row",
-    alignItems: "center",
-    flexWrap: "wrap",
-    gap: theme.spacing[1],
-    paddingHorizontal: {
-      xs: 0,
-      md: theme.spacing[1],
-    },
-  },
   messageInputContainer: {
+    flexShrink: 1,
     position: "relative",
     width: "100%",
     gap: theme.spacing[3],
@@ -2399,12 +2673,6 @@ const styles = StyleSheet.create((theme: Theme) => ({
     flexShrink: 0,
     alignItems: "center",
     justifyContent: "center",
-  },
-  composerMeters: {
-    flexDirection: "row",
-    alignItems: "center",
-    flexShrink: 0,
-    gap: theme.spacing[1],
   },
   realtimeVoiceButton: {
     width: 28,
@@ -2434,7 +2702,7 @@ const styles = StyleSheet.create((theme: Theme) => ({
     gap: theme.spacing[2],
   },
   tooltipText: {
-    fontSize: theme.fontSize.sm,
+    fontSize: theme.fontSize.base,
     color: theme.colors.popoverForeground,
   },
   buttonDisabled: {
@@ -2452,8 +2720,8 @@ const styles = StyleSheet.create((theme: Theme) => ({
     paddingVertical: theme.spacing[2],
     backgroundColor: theme.colors.surface1,
     borderRadius: theme.borderRadius.lg,
-    // borderless card (new theme)
-    ...theme.shadow.sm,
+    borderWidth: theme.borderWidth[1],
+    borderColor: theme.colors.border,
     gap: theme.spacing[2],
   },
   queueText: {
@@ -2479,10 +2747,11 @@ const styles = StyleSheet.create((theme: Theme) => ({
   },
   sendErrorText: {
     color: theme.colors.palette.red[500],
-    fontSize: theme.fontSize.sm,
+    fontSize: theme.fontSize.base,
   },
 })) as unknown as Record<string, object>;
 
+const ThemedAttachmentSpinner = withUnistyles(LoadingSpinner);
 const ThemedPencil = withUnistyles(Pencil);
 const ThemedArrowUp = withUnistyles(ArrowUp);
 const ThemedGitPullRequest = withUnistyles(GitPullRequest);
@@ -2490,6 +2759,7 @@ const ThemedCircleDot = withUnistyles(CircleDot);
 const ThemedAudioLines = withUnistyles(AudioLines);
 const ThemedPaperclip = withUnistyles(Paperclip);
 const ThemedImageIcon = withUnistyles(ImageIcon);
+const ThemedClipboardPaste = withUnistyles(ClipboardPaste);
 const ThemedFileText = withUnistyles(FileText);
 const iconForegroundMapping = (theme: Theme) => ({ color: theme.colors.foreground });
 const iconForegroundMutedMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
@@ -2508,3 +2778,7 @@ const githubIssuePillIcon = (
   <ThemedCircleDot size={ICON_SIZE.sm} uniProps={iconForegroundMutedMapping} />
 );
 const filePillIcon = <ThemedFileText size={ICON_SIZE.sm} uniProps={iconForegroundMutedMapping} />;
+
+const pendingFilePillIcon = (
+  <ThemedAttachmentSpinner size={18} uniProps={iconForegroundMutedMapping} />
+);

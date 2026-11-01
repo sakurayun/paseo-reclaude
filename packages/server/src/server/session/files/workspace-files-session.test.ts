@@ -1,4 +1,12 @@
-import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { SessionDelivery } from "../owned-subscriptions/index.js";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
@@ -74,6 +82,227 @@ function uploadFrame(args: Parameters<typeof encodeFileTransferFrame>[0]): FileT
 }
 
 describe("WorkspaceFilesSession", () => {
+  test("creates an entry and emits the complete success response", async () => {
+    const cwd = makeDir("workspace-files-create-");
+    const { subsystem, emitted } = makeSubsystem();
+
+    await subsystem.handleFileEntryCreateRequest({
+      type: "fs.entry.create.request",
+      cwd,
+      parentPath: ".",
+      name: "notes.txt",
+      kind: "file",
+      requestId: "req-create",
+    });
+
+    expect(existsSync(join(cwd, "notes.txt"))).toBe(true);
+    expect(emitted).toEqual([
+      {
+        type: "fs.entry.create.response",
+        payload: {
+          cwd,
+          parentPath: ".",
+          path: "notes.txt",
+          success: true,
+          error: null,
+          requestId: "req-create",
+        },
+      },
+    ]);
+  });
+
+  test("passes entry creation errors through in the response", async () => {
+    const cwd = makeDir("workspace-files-create-error-");
+    writeFileSync(join(cwd, "notes.txt"), "existing");
+    const { subsystem, emitted } = makeSubsystem();
+
+    await subsystem.handleFileEntryCreateRequest({
+      type: "fs.entry.create.request",
+      cwd,
+      parentPath: ".",
+      name: "notes.txt",
+      kind: "file",
+      requestId: "req-create-error",
+    });
+
+    expect(emitted).toEqual([
+      {
+        type: "fs.entry.create.response",
+        payload: {
+          cwd,
+          parentPath: ".",
+          path: null,
+          success: false,
+          error: '"notes.txt" already exists',
+          requestId: "req-create-error",
+        },
+      },
+    ]);
+  });
+
+  test("renames an entry and emits the resulting path", async () => {
+    const cwd = makeDir("workspace-files-rename-");
+    writeFileSync(join(cwd, "notes.txt"), "rename me");
+    const { subsystem, emitted } = makeSubsystem();
+
+    await subsystem.handleFileEntryRenameRequest({
+      type: "fs.entry.rename.request",
+      cwd,
+      path: "notes.txt",
+      name: "renamed.txt",
+      requestId: "req-rename",
+    });
+
+    expect(existsSync(join(cwd, "notes.txt"))).toBe(false);
+    expect(existsSync(join(cwd, "renamed.txt"))).toBe(true);
+    expect(emitted).toEqual([
+      {
+        type: "fs.entry.rename.response",
+        payload: {
+          cwd,
+          path: "notes.txt",
+          renamedPath: "renamed.txt",
+          success: true,
+          error: null,
+          requestId: "req-rename",
+        },
+      },
+    ]);
+  });
+
+  test("passes entry rename errors through in the response", async () => {
+    const cwd = makeDir("workspace-files-rename-error-");
+    const { subsystem, emitted } = makeSubsystem();
+
+    await subsystem.handleFileEntryRenameRequest({
+      type: "fs.entry.rename.request",
+      cwd,
+      path: "missing.txt",
+      name: "renamed.txt",
+      requestId: "req-rename-error",
+    });
+
+    expect(emitted).toEqual([
+      {
+        type: "fs.entry.rename.response",
+        payload: {
+          cwd,
+          path: "missing.txt",
+          renamedPath: null,
+          success: false,
+          error: "File or folder no longer exists",
+          requestId: "req-rename-error",
+        },
+      },
+    ]);
+  });
+
+  test("duplicates an entry and emits the resulting path", async () => {
+    const cwd = makeDir("workspace-files-duplicate-");
+    writeFileSync(join(cwd, "notes.txt"), "duplicate me");
+    const { subsystem, emitted } = makeSubsystem();
+
+    await subsystem.handleFileEntryDuplicateRequest({
+      type: "fs.entry.duplicate.request",
+      cwd,
+      path: "notes.txt",
+      requestId: "req-duplicate",
+    });
+
+    expect(readFileSync(join(cwd, "notes copy.txt"), "utf8")).toBe("duplicate me");
+    expect(emitted).toEqual([
+      {
+        type: "fs.entry.duplicate.response",
+        payload: {
+          cwd,
+          path: "notes.txt",
+          duplicatedPath: "notes copy.txt",
+          success: true,
+          error: null,
+          requestId: "req-duplicate",
+        },
+      },
+    ]);
+  });
+
+  test("passes entry duplication errors through in the response", async () => {
+    const cwd = makeDir("workspace-files-duplicate-error-");
+    const { subsystem, emitted } = makeSubsystem();
+
+    await subsystem.handleFileEntryDuplicateRequest({
+      type: "fs.entry.duplicate.request",
+      cwd,
+      path: "missing.txt",
+      requestId: "req-duplicate-error",
+    });
+
+    expect(emitted).toEqual([
+      {
+        type: "fs.entry.duplicate.response",
+        payload: {
+          cwd,
+          path: "missing.txt",
+          duplicatedPath: null,
+          success: false,
+          error: "File or folder no longer exists",
+          requestId: "req-duplicate-error",
+        },
+      },
+    ]);
+  });
+
+  test("deletes an entry and emits the complete success response", async () => {
+    const cwd = makeDir("workspace-files-delete-");
+    writeFileSync(join(cwd, "notes.txt"), "delete me");
+    const { subsystem, emitted } = makeSubsystem();
+
+    await subsystem.handleFileEntryDeleteRequest({
+      type: "fs.entry.delete.request",
+      cwd,
+      path: "notes.txt",
+      requestId: "req-delete",
+    });
+
+    expect(existsSync(join(cwd, "notes.txt"))).toBe(false);
+    expect(emitted).toEqual([
+      {
+        type: "fs.entry.delete.response",
+        payload: {
+          cwd,
+          path: "notes.txt",
+          success: true,
+          error: null,
+          requestId: "req-delete",
+        },
+      },
+    ]);
+  });
+
+  test("passes entry deletion errors through in the response", async () => {
+    const cwd = makeDir("workspace-files-delete-error-");
+    const { subsystem, emitted } = makeSubsystem();
+
+    await subsystem.handleFileEntryDeleteRequest({
+      type: "fs.entry.delete.request",
+      cwd,
+      path: "missing.txt",
+      requestId: "req-delete-error",
+    });
+
+    expect(emitted).toEqual([
+      {
+        type: "fs.entry.delete.response",
+        payload: {
+          cwd,
+          path: "missing.txt",
+          success: false,
+          error: "File or folder no longer exists",
+          requestId: "req-delete-error",
+        },
+      },
+    ]);
+  });
+
   test("lists directory entries", async () => {
     const cwd = makeDir("workspace-files-list-");
     writeFileSync(join(cwd, "a.txt"), "alpha");
@@ -141,6 +370,30 @@ describe("WorkspaceFilesSession", () => {
       FileTransferOpcode.FileBegin,
       FileTransferOpcode.FileChunk,
       FileTransferOpcode.FileEnd,
+    ]);
+  });
+
+  test("rejects an over-budget file before opening a binary transfer", async () => {
+    const cwd = makeDir("workspace-files-read-budget-");
+    writeFileSync(join(cwd, "notes.txt"), "hello world");
+    const { subsystem, emitted, binary } = makeSubsystem({ hasBinaryChannel: true });
+
+    await subsystem.handleFileExplorerRequest({
+      type: "file_explorer_request",
+      cwd,
+      path: "notes.txt",
+      mode: "file",
+      requestId: "req-read-budget",
+      acceptBinary: true,
+      maxBytes: 5,
+    });
+
+    expect(binary).toEqual([]);
+    expect(emitted).toEqual([
+      expect.objectContaining({
+        type: "file_explorer_response",
+        payload: expect.objectContaining({ error: "File is too large to display" }),
+      }),
     ]);
   });
 
@@ -303,14 +556,22 @@ describe("WorkspaceFilesSession", () => {
   test("round-trips an upload through transfer frames", async () => {
     const { subsystem, emitted, paseoHome } = makeSubsystem();
 
-    subsystem.handleFileUploadRequest({
+    const source = {};
+    const ownership = new SessionDelivery((_source, message) => {
+      emitted.push(message);
+    });
+    ownership.attach(source, true);
+    const request = {
       type: "file.upload.request",
       fileName: "notes.txt",
       mimeType: "text/plain",
       size: 11,
       modifiedAt: "2026-05-02T00:00:00.000Z",
       requestId: "req-upload",
-    });
+    } as const;
+    await ownership.request(source, request, async () =>
+      subsystem.handleFileUploadRequest(request, ownership),
+    );
     await subsystem.handleFileTransferFrame(
       uploadFrame({
         opcode: FileTransferOpcode.FileBegin,
@@ -323,6 +584,7 @@ describe("WorkspaceFilesSession", () => {
           fileName: "notes.txt",
         },
       }),
+      source,
     );
     await subsystem.handleFileTransferFrame(
       uploadFrame({
@@ -330,9 +592,11 @@ describe("WorkspaceFilesSession", () => {
         requestId: "req-upload",
         payload: new TextEncoder().encode("hello world"),
       }),
+      source,
     );
     await subsystem.handleFileTransferFrame(
       uploadFrame({ opcode: FileTransferOpcode.FileEnd, requestId: "req-upload" }),
+      source,
     );
 
     const message = emitted.find((entry) => entry.type === "file.upload.response");
@@ -341,8 +605,10 @@ describe("WorkspaceFilesSession", () => {
     }
     expect(message.payload.error).toBeNull();
     expect(message.payload.file?.fileName).toBe("notes.txt");
-    expect(readFileSync(join(paseoHome, "uploads", "upload_req-upload", "notes.txt"), "utf8")).toBe(
-      "hello world",
-    );
+    const file = message.payload.file;
+    if (!file) throw new Error("Expected uploaded file");
+    expect(file.path.startsWith(join(paseoHome, "uploads"))).toBe(true);
+    expect(readFileSync(file.path, "utf8")).toBe("hello world");
+    await ownership.close();
   });
 });

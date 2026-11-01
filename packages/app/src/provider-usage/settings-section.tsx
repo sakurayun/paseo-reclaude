@@ -14,7 +14,7 @@ import {
   type ProviderUsageMeterPercentageMode,
 } from "@/hooks/use-settings";
 import { settingsStyles } from "@/styles/settings";
-import { SettingsSection } from "@/screens/settings/settings-section";
+import { SettingsSection } from "@/components/settings/headings/settings-section";
 import { useSessionStore } from "@/stores/session-store";
 import { ProviderUsageList } from "./list";
 import type { ProviderUsageView } from "./types";
@@ -174,10 +174,9 @@ function GrokAutoRefreshSettings({ serverId }: { serverId: string }) {
           <DropdownTrigger
             accessibilityRole="button"
             accessibilityLabel={selectedLabel}
-            style={styles.intervalTrigger}
             testID="grok-usage-refresh-interval-trigger"
           >
-            <Text style={styles.intervalTriggerText}>{selectedLabel}</Text>
+            {selectedLabel}
           </DropdownTrigger>
           <DropdownMenuContent side="bottom" align="end" width={180}>
             {GROK_INTERVAL_OPTIONS.map((value) => (

@@ -1,9 +1,17 @@
-import { type ChildProcess } from "node:child_process";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { app, ipcMain, powerMonitor } from "electron";
 import log from "electron-log/main";
-import { resolvePaseoHome, spawnProcess } from "@getpaseo/server";
+import {
+  resolvePaseoHome,
+  startDaemonInstance,
+  DaemonInstanceError,
+  stopDaemonInstance,
+  readDaemonInstance,
+  isSameDaemonInstance,
+  readLocalCredentialForTarget,
+  type DaemonInstance,
+} from "@getpaseo/server/daemon-control";
 import {
   copyAttachmentFileToManagedStorage,
   deleteManagedAttachmentFile,
@@ -24,12 +32,6 @@ import {
   installCli,
 } from "../integrations/cli-install/index.js";
 import {
-  getSkillsStatus,
-  installSkills,
-  uninstallSkills,
-  updateSkills,
-} from "../integrations/skills/index.js";
-import {
   openLocalTransportSession,
   sendLocalTransportMessage,
   closeLocalTransportSession,
@@ -41,7 +43,11 @@ import {
   closeTunnelListener,
 } from "./tunnel-listener.js";
 import { createNodeEntrypointInvocation, resolveDaemonRunnerEntrypoint } from "./runtime-paths.js";
-import { runExternalCliJsonCommand, runExternalCliTextCommand } from "./cli/external.js";
+import {
+  ExternalCliCommandError,
+  runExternalCliJsonCommand,
+  runExternalCliTextCommand,
+} from "./cli/external.js";
 import {
   createDesktopSettingsCommandHandlers,
   type DesktopCommandHandler,
@@ -49,13 +55,17 @@ import {
 import type { DesktopSettings } from "../settings/desktop-settings.js";
 import { getDesktopSettingsStore } from "../settings/desktop-settings-electron.js";
 import { isRunningUnderARM64Translation } from "../system/arm64-translation.js";
+import { describeSandbox } from "../diagnostics/sandbox.js";
 import { getDesktopAppLogs } from "../diagnostics/app-logs.js";
+import { getDesktopUpdaterDiagnostics } from "../diagnostics/updater.js";
+import {
+  deleteLegacySkillSelection,
+  readLegacySkillSelection,
+} from "../integrations/legacy-skill-selection.js";
 import { tailFile } from "../diagnostics/tail-file.js";
 
 const DAEMON_LOG_FILENAME = "daemon.log";
-const STARTUP_POLL_INTERVAL_MS = 200;
-const STARTUP_POLL_MAX_ATTEMPTS = 150;
-const DETACHED_STARTUP_GRACE_MS = 1200;
+let ownedLaunch: { home: string; instance: DaemonInstance } | null = null;
 
 type DesktopDaemonState = "starting" | "running" | "stopped" | "errored";
 const DESKTOP_DAEMON_STOP_REASON_VALUES = [
@@ -81,18 +91,14 @@ export interface DesktopDaemonStatus {
   home: string;
   version: string | null;
   desktopManaged: boolean;
+  ownedByDesktop: boolean;
+  startedAt: string | null;
   error: string | null;
 }
 
 interface DesktopDaemonLogs {
   logPath: string;
   contents: string;
-}
-
-interface DesktopPairingOffer {
-  relayEnabled: boolean;
-  url: string | null;
-  qr: string | null;
 }
 
 function parseReleaseChannel(
@@ -136,73 +142,19 @@ function logFilePath(): string {
 }
 
 export function isDesktopManagedDaemonRunningSync(): boolean {
+  if (!ownedLaunch) return false;
   try {
-    const raw = readFileSync(path.join(getPaseoHome(), "paseo.pid"), "utf-8");
-    const lock = JSON.parse(raw) as { pid?: unknown; desktopManaged?: unknown };
-    if (lock.desktopManaged !== true) return false;
-    if (typeof lock.pid !== "number" || !Number.isInteger(lock.pid)) return false;
-    return isProcessRunning(lock.pid);
+    const lock = JSON.parse(readFileSync(path.join(ownedLaunch.home, "paseo.pid"), "utf8"));
+    return isSameDaemonInstance(lock, ownedLaunch.instance) && isProcessRunning(lock.pid);
   } catch {
     return false;
   }
 }
 
-function summarizeDesktopDaemonStatus(status: DesktopDaemonStatus): Record<string, unknown> {
-  return {
-    status: status.status,
-    pid: status.pid,
-    listen: status.listen,
-    serverId: status.serverId || null,
-    version: status.version,
-    desktopManaged: status.desktopManaged,
-    error: status.error,
-  };
-}
-
-const DESKTOP_DAEMON_STOP_CLI_ARGS = [
-  "daemon",
-  "stop",
-  "--json",
-  "--timeout",
-  "5",
-  "--force",
-  "--kill-timeout",
-  "5",
-];
-
-async function runDesktopDaemonStopViaCli({
-  reason,
-  statusBefore,
-  resolveStatusAfter = false,
-}: {
-  reason: DesktopDaemonStopReason;
-  statusBefore?: DesktopDaemonStatus | null;
-  resolveStatusAfter?: boolean;
-}): Promise<{
-  cliResult: unknown;
-  statusAfter: DesktopDaemonStatus | null;
-}> {
-  logDesktopDaemonLifecycle("desktop daemon stop requested", {
-    reason,
-    statusBefore: statusBefore ? summarizeDesktopDaemonStatus(statusBefore) : null,
-  });
-
-  const cliResult = await runExternalCliJsonCommand(DESKTOP_DAEMON_STOP_CLI_ARGS);
-  const statusAfter = resolveStatusAfter ? await resolveDesktopDaemonStatus() : null;
-
-  logDesktopDaemonLifecycle("desktop daemon stop completed", {
-    reason,
-    cliResult,
-    statusAfter: statusAfter ? summarizeDesktopDaemonStatus(statusAfter) : null,
-  });
-
-  return { cliResult, statusAfter };
-}
-
 export async function stopDesktopDaemonViaCli(
   reason: DesktopDaemonStopReason = DEFAULT_DESKTOP_DAEMON_STOP_REASON,
 ): Promise<void> {
-  await runDesktopDaemonStopViaCli({ reason });
+  await stopDesktopDaemon(reason);
 }
 
 function isProcessRunning(pid: number): boolean {
@@ -217,12 +169,6 @@ function isProcessRunning(pid: number): boolean {
   }
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => {
-    setTimeout(resolve, ms);
-  });
-}
-
 function logDesktopDaemonLifecycle(message: string, details?: Record<string, unknown>): void {
   log.info("[desktop daemon]", message, {
     pid: process.pid,
@@ -230,16 +176,34 @@ function logDesktopDaemonLifecycle(message: string, details?: Record<string, unk
   });
 }
 
-function toTrimmedString(value: unknown): string | null {
-  if (typeof value !== "string") {
-    return null;
-  }
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : null;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+function statusFromDaemonProbe(
+  payload: Record<string, unknown>,
+  home: string,
+): DesktopDaemonStatus {
+  const local = typeof payload.localDaemon === "string" ? payload.localDaemon : "stopped";
+  const processAlive = local === "running" || local === "not_ready";
+  let status: DesktopDaemonState = "stopped";
+  if (local === "not_ready") status = "starting";
+  if (local === "running") status = "running";
+  return {
+    serverId: typeof payload.serverId === "string" ? payload.serverId : "",
+    status,
+    listen: typeof payload.listen === "string" ? payload.listen : null,
+    hostname:
+      status === "running" && typeof payload.hostname === "string" ? payload.hostname : null,
+    pid: processAlive && typeof payload.pid === "number" ? payload.pid : null,
+    home,
+    version: typeof payload.daemonVersion === "string" ? payload.daemonVersion : null,
+    desktopManaged: payload.desktopManaged === true,
+    startedAt: typeof payload.startedAt === "string" ? payload.startedAt : null,
+    ownedByDesktop: Boolean(
+      ownedLaunch &&
+      ownedLaunch.home === home &&
+      payload.pid === ownedLaunch.instance.pid &&
+      payload.startedAt === ownedLaunch.instance.startedAt,
+    ),
+    error: null,
+  };
 }
 
 function resolveDesktopAppVersion(): string {
@@ -270,48 +234,34 @@ export async function resolveDesktopDaemonStatus(): Promise<DesktopDaemonStatus>
   const home = getPaseoHome();
 
   try {
-    const payload = (await runExternalCliJsonCommand(["daemon", "status", "--json"])) as Record<
-      string,
-      unknown
-    >;
-    const localDaemon = typeof payload.localDaemon === "string" ? payload.localDaemon : "stopped";
-    const connectedDaemon =
-      typeof payload.connectedDaemon === "string" ? payload.connectedDaemon : "not_probed";
-    const hasRunningLocalProcess = localDaemon === "running";
-    const hasLocalProcess = hasRunningLocalProcess || localDaemon === "unresponsive";
-    const desktopManaged = payload.desktopManaged === true;
-    const apiReachable = connectedDaemon === "reachable";
-    let status: DesktopDaemonState = "stopped";
-    if (apiReachable || hasRunningLocalProcess) {
-      status = "running";
-    } else if (localDaemon === "unresponsive") {
-      status = "errored";
+    // The app polls this while no local daemon runs. Answer that case in-process,
+    // since launching the CLI once per poll keeps spawning processes while idle.
+    if (!(await readDaemonInstance(home))) {
+      return statusFromDaemonProbe({ localDaemon: "stopped" }, home);
     }
 
-    return {
-      serverId: typeof payload.serverId === "string" ? payload.serverId : "",
-      status,
-      listen: typeof payload.listen === "string" ? payload.listen : null,
-      hostname:
-        status === "running" && typeof payload.hostname === "string" ? payload.hostname : null,
-      pid: hasLocalProcess && typeof payload.pid === "number" ? payload.pid : null,
+    const payload = (await runExternalCliJsonCommand([
+      "daemon",
+      "status",
+      "--home",
       home,
-      version: typeof payload.daemonVersion === "string" ? payload.daemonVersion : null,
-      desktopManaged,
-      error: null,
-    };
+      "--json",
+    ])) as Record<string, unknown>;
+    return statusFromDaemonProbe(payload, home);
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
-    logDesktopDaemonLifecycle("resolveStatus CLI command failed", { error: errorMessage });
+    logDesktopDaemonLifecycle("resolveStatus failed", { error: errorMessage });
     return {
       serverId: "",
-      status: "stopped",
+      status: "errored",
       listen: null,
       hostname: null,
       pid: null,
       home,
       version: null,
       desktopManaged: false,
+      ownedByDesktop: false,
+      startedAt: null,
       error: errorMessage,
     };
   }
@@ -324,7 +274,7 @@ function normalizeVersion(version: string | null): string | null {
 }
 
 function shouldRestartForVersion(current: DesktopDaemonStatus): boolean {
-  if (!current.desktopManaged) return false;
+  if (!current.ownedByDesktop) return false;
   const appVersion = normalizeVersion(resolveDesktopAppVersion());
   const daemonVersion = normalizeVersion(current.version);
   return Boolean(appVersion && daemonVersion && appVersion !== daemonVersion);
@@ -334,40 +284,6 @@ function assertBuiltInDaemonManagementEnabled(settings: DesktopSettings): void {
   if (!settings.daemon.manageBuiltInDaemon) {
     throw new Error("Built-in daemon management is disabled.");
   }
-}
-
-function buildStartupFailureError(result: {
-  code: number | null;
-  signal: string | null;
-  error?: Error;
-}): Error {
-  const reason = result.error
-    ? result.error.message
-    : `exit code ${result.code ?? "unknown"}${result.signal ? ` (${result.signal})` : ""}`;
-  const parts = [`Daemon failed to start: ${reason}`];
-  const logs = tailFile(logFilePath(), 15);
-  if (logs) parts.push(`Recent logs (${logFilePath()}):\n${logs}`);
-  return new Error(parts.join("\n\n"));
-}
-
-async function pollForRunningDaemon(): Promise<DesktopDaemonStatus> {
-  async function poll(attempt: number): Promise<DesktopDaemonStatus> {
-    if (attempt >= STARTUP_POLL_MAX_ATTEMPTS) return resolveDesktopDaemonStatus();
-    const status = await resolveDesktopDaemonStatus();
-    if (attempt === 0 || attempt === STARTUP_POLL_MAX_ATTEMPTS - 1 || attempt % 10 === 9) {
-      logDesktopDaemonLifecycle("polling daemon status after detached start", {
-        attempt: attempt + 1,
-        status: status.status,
-        pid: status.pid,
-        listen: status.listen,
-        serverId: status.serverId || null,
-      });
-    }
-    if (status.status === "running" && status.serverId && status.listen) return status;
-    await sleep(STARTUP_POLL_INTERVAL_MS);
-    return poll(attempt + 1);
-  }
-  return poll(0);
 }
 
 // Racing callers (e.g. the renderer's boot flow invoking start twice within
@@ -399,7 +315,7 @@ async function startDaemonOnce(): Promise<DesktopDaemonStatus> {
     error: current.error,
     desktopManaged: current.desktopManaged,
   });
-  if (current.status === "running") {
+  if (current.status === "running" || current.status === "starting") {
     if (shouldRestartForVersion(current)) {
       logDesktopDaemonLifecycle("daemon version mismatch, restarting", {
         appVersion: normalizeVersion(resolveDesktopAppVersion()),
@@ -411,118 +327,135 @@ async function startDaemonOnce(): Promise<DesktopDaemonStatus> {
     }
   }
 
-  const daemonRunner = resolveDaemonRunnerEntrypoint();
-  const reclaimStalePidLock =
-    current.status === "errored" && current.desktopManaged && current.error === null;
+  const home = getPaseoHome();
   const invocation = createNodeEntrypointInvocation({
-    entrypoint: daemonRunner,
+    entrypoint: resolveDaemonRunnerEntrypoint(),
     argvMode: "node-script",
-    args: reclaimStalePidLock ? ["--reclaim-stale-pid-lock"] : [],
+    args: [],
     baseEnv: process.env,
   });
-
-  logDesktopDaemonLifecycle("starting detached daemon", {
-    appIsPackaged: app.isPackaged,
-    daemonRunnerEntry: daemonRunner.entryPath,
-    daemonRunnerExecArgv: daemonRunner.execArgv,
-    command: invocation.command,
-    args: invocation.args,
-    electronRunAsNode: invocation.env.ELECTRON_RUN_AS_NODE ?? null,
-    parentExecPath: process.execPath,
-    parentElectronRunAsNode: process.env.ELECTRON_RUN_AS_NODE ?? null,
-    electronVersion: process.versions.electron ?? null,
-    nodeVersion: process.versions.node,
-    platform: process.platform,
-    arch: process.arch,
-  });
-
-  const child: ChildProcess = spawnProcess(invocation.command, invocation.args, {
-    detached: true,
-    envMode: "internal",
-    env: invocation.env,
-    envOverlay: {
-      PASEO_DESKTOP_MANAGED: "1",
-      PASEO_CLI: getBundledCliShimPath(),
-      PASEO_WEB_UI_ENABLED: "false",
-    },
-    stdio: ["ignore", "ignore", "ignore"],
-  });
-
-  logDesktopDaemonLifecycle("detached spawn returned", {
-    childPid: child.pid ?? null,
-    spawnfile: child.spawnfile,
-    spawnargs: child.spawnargs,
-  });
-
-  child.unref();
-
-  type GraceResult =
-    | { exitedEarly: false }
-    | { exitedEarly: true; code: number | null; signal: string | null; error?: Error };
-
-  const result = await new Promise<GraceResult>((resolve) => {
-    let settled = false;
-    const finish = (value: GraceResult) => {
-      if (settled) return;
-      settled = true;
-      resolve(value);
-    };
-
-    const timer = setTimeout(() => finish({ exitedEarly: false }), DETACHED_STARTUP_GRACE_MS);
-
-    child.once("error", (error) => {
-      clearTimeout(timer);
-      finish({ exitedEarly: true, code: null, signal: null, error });
+  try {
+    await startDaemonInstance({
+      home,
+      timeoutMs: 30_000,
+      ...invocation,
+      env: { ...invocation.env, PASEO_CLI: getBundledCliShimPath() },
+      mode: "managed",
+      desktopManaged: true,
+      onAcquired: (instance) => {
+        ownedLaunch = { home, instance };
+      },
     });
-    child.once("exit", (code, signal) => {
-      clearTimeout(timer);
-      finish({ exitedEarly: true, code, signal });
-    });
-  });
-
-  logDesktopDaemonLifecycle("detached startup grace period completed", {
-    childPid: child.pid ?? null,
-    exitedEarly: result.exitedEarly,
-    ...(result.exitedEarly
-      ? {
-          exitCode: result.code,
-          signal: result.signal,
-          error: result.error?.message ?? null,
-        }
-      : {}),
-  });
-
-  if (result.exitedEarly) {
-    throw buildStartupFailureError(result);
+  } catch (error) {
+    if (!(error instanceof DaemonInstanceError && error.code === "DAEMON_NOT_READY")) throw error;
   }
-
-  return pollForRunningDaemon();
+  return resolveDesktopDaemonStatus();
 }
 
 export async function stopDesktopDaemon(
   reason: DesktopDaemonStopReason = DEFAULT_DESKTOP_DAEMON_STOP_REASON,
+  confirmedInstance?: { pid: number; startedAt: string },
 ): Promise<DesktopDaemonStatus> {
-  const status = await resolveDesktopDaemonStatus();
-  if (status.status !== "running") {
-    logDesktopDaemonLifecycle("desktop daemon stop skipped", {
-      reason,
-      statusBefore: summarizeDesktopDaemonStatus(status),
-    });
-    return status;
-  }
-
-  const { statusAfter } = await runDesktopDaemonStopViaCli({
+  const home = getPaseoHome();
+  const instance = await readDaemonInstance(home);
+  const owned = Boolean(
+    instance &&
+    ownedLaunch &&
+    ownedLaunch.home === home &&
+    isSameDaemonInstance(instance, ownedLaunch.instance),
+  );
+  const explicit =
+    reason === "manual_ipc" &&
+    confirmedInstance &&
+    instance &&
+    instance.pid === confirmedInstance.pid &&
+    instance.startedAt === confirmedInstance.startedAt;
+  if (confirmedInstance && !explicit)
+    throw new Error(
+      "Daemon changed since confirmation; inspect its current home and PID before stopping it.",
+    );
+  if (!instance || (!owned && !explicit)) return resolveDesktopDaemonStatus();
+  const keepTerminals = keepsTerminalsOnStop(reason, process.platform);
+  logDesktopDaemonLifecycle("stopping captured supervisor", {
     reason,
-    statusBefore: status,
-    resolveStatusAfter: true,
+    pid: instance.pid,
+    owned,
+    keepTerminals,
   });
-  return statusAfter ?? (await resolveDesktopDaemonStatus());
+  await stopCapturedDaemon({ home, instance, reason, keepTerminals });
+  if (owned) ownedLaunch = null;
+  return resolveDesktopDaemonStatus();
+}
+
+export interface StopCapturedDaemonInput {
+  home: string;
+  instance: DaemonInstance;
+  reason: DesktopDaemonStopReason;
+  keepTerminals: boolean;
+  stopInstance?: typeof stopDaemonInstance;
+  runCliJson?: typeof runExternalCliJsonCommand;
+  log?: typeof logDesktopDaemonLifecycle;
+}
+
+/** Stops the supervisor desktop captured, keeping its terminals when asked and supported. */
+export async function stopCapturedDaemon(input: StopCapturedDaemonInput): Promise<void> {
+  const stopInstance = input.stopInstance ?? stopDaemonInstance;
+  const runCliJson = input.runCliJson ?? runExternalCliJsonCommand;
+  const logLifecycle = input.log ?? logDesktopDaemonLifecycle;
+  const stop = (keep: boolean) =>
+    stopInstance(input.home, {
+      instance: input.instance,
+      timeoutMs: 15_000,
+      keepTerminals: keep,
+      requestShutdown: async (ready) => {
+        await runCliJson([
+          "daemon",
+          "stop",
+          "--host",
+          ready.listen,
+          ...(keep ? ["--keep-terminals"] : []),
+          "--json",
+        ]);
+      },
+    });
+  try {
+    await stop(input.keepTerminals);
+  } catch (error) {
+    // The CLI refuses a keep stop before sending anything when the daemon predates the feature;
+    // that daemon closes terminals on every stop, as every upgrade did before.
+    if (
+      !input.keepTerminals ||
+      !(error instanceof ExternalCliCommandError) ||
+      error.code !== "TERMINALS_KEEP_UNSUPPORTED"
+    ) {
+      throw error;
+    }
+    const version = typeof error.error?.version === "string" ? error.error.version : "unknown";
+    logLifecycle(`daemon v${version} cannot keep terminals; stopping it and closing them`, {
+      reason: input.reason,
+      pid: input.instance.pid,
+    });
+    await stop(false);
+  }
+}
+
+/**
+ * Whether a desktop stop keeps the daemon's terminals running for the daemon that replaces it.
+ * Only when one comes straight back (an app update, a version-mismatch restart), and never on
+ * Windows: a surviving terminal worker runs Paseo.exe and would lock the install folder the
+ * update replaces. Quit, Settings, host removal and manual stops close terminals.
+ */
+export function keepsTerminalsOnStop(
+  reason: DesktopDaemonStopReason,
+  platform: NodeJS.Platform,
+): boolean {
+  if (platform === "win32") return false;
+  return reason === "app_update" || reason === "version_mismatch";
 }
 
 async function restartDaemon(): Promise<DesktopDaemonStatus> {
-  assertBuiltInDaemonManagementEnabled(await getDesktopSettingsStore().get());
-  await stopDesktopDaemon("restart");
-  return startDaemon();
+  await runExternalCliJsonCommand(["daemon", "restart", "--home", getPaseoHome(), "--json"]);
+  return resolveDesktopDaemonStatus();
 }
 
 function getDaemonLogs(): DesktopDaemonLogs {
@@ -534,37 +467,7 @@ function getDaemonLogs(): DesktopDaemonLogs {
 }
 
 async function getCliDaemonStatus(): Promise<string> {
-  return await runExternalCliTextCommand(["daemon", "status"]);
-}
-
-async function getDaemonPairing(): Promise<DesktopPairingOffer> {
-  const status = await resolveDesktopDaemonStatus();
-  if (status.status !== "running") {
-    return {
-      relayEnabled: false,
-      url: null,
-      qr: null,
-    };
-  }
-
-  try {
-    const payload = await runExternalCliJsonCommand(["daemon", "pair", "--json"]);
-    if (!isRecord(payload)) {
-      throw new Error("Daemon pairing response was not an object.");
-    }
-
-    return {
-      relayEnabled: payload.relayEnabled === true,
-      url: toTrimmedString(payload.url),
-      qr: toTrimmedString(payload.qr),
-    };
-  } catch {
-    return {
-      relayEnabled: false,
-      url: null,
-      qr: null,
-    };
-  }
+  return await runExternalCliTextCommand(["daemon", "status", "--home", getPaseoHome()]);
 }
 
 async function getLocalDaemonVersion(): Promise<{ version: string | null; error: string | null }> {
@@ -596,12 +499,28 @@ export function createDaemonCommandHandlers(): Record<string, DesktopCommandHand
       runningUnderARM64Translation: isRunningUnderARM64Translation(),
     }),
     desktop_daemon_status: () => resolveDesktopDaemonStatus(),
+    desktop_local_credential: async (args) => {
+      const instance = await readDaemonInstance(getPaseoHome());
+      if (!instance?.desktopManaged || typeof args?.listen !== "string") return null;
+      return readLocalCredentialForTarget(getPaseoHome(), args.listen);
+    },
     start_desktop_daemon: () => startDaemon(),
-    stop_desktop_daemon: (args) => stopDesktopDaemon(parseDesktopDaemonStopReason(args)),
+    stop_desktop_daemon: (args) =>
+      stopDesktopDaemon(
+        parseDesktopDaemonStopReason(args),
+        typeof args?.pid === "number" && typeof args.startedAt === "string"
+          ? { pid: args.pid, startedAt: args.startedAt }
+          : undefined,
+      ),
     restart_desktop_daemon: () => restartDaemon(),
     desktop_daemon_logs: () => getDaemonLogs(),
+    desktop_sandbox_diagnostics: () =>
+      describeSandbox({
+        disabled: app.commandLine.hasSwitch("no-sandbox"),
+        launcherReason: process.env.PASEO_DESKTOP_SANDBOX_REASON,
+      }),
     desktop_app_logs: () => getDesktopAppLogs(),
-    desktop_daemon_pairing: () => getDaemonPairing(),
+    desktop_update_diagnostics: () => getDesktopUpdaterDiagnostics(),
     desktop_get_system_idle_time: () => powerMonitor.getSystemIdleTime() * 1000,
     cli_daemon_status: () => getCliDaemonStatus(),
     write_attachment_base64: (args) => writeAttachmentBase64(args ?? {}),
@@ -610,10 +529,7 @@ export function createDaemonCommandHandlers(): Record<string, DesktopCommandHand
     read_file_base64: (args) => readManagedFileBase64(args ?? {}),
     delete_attachment_file: (args) => deleteManagedAttachmentFile(args ?? {}),
     garbage_collect_attachment_files: (args) => garbageCollectManagedAttachmentFiles(args ?? {}),
-    open_local_daemon_transport: async (args) => {
-      const target = args as { transportType: "socket" | "pipe"; transportPath: string };
-      return await openLocalTransportSession(target);
-    },
+    open_local_daemon_transport: async (args) => await openLocalTransportSession(args),
     send_local_daemon_transport_message: async (args) => {
       await sendLocalTransportMessage(
         args as { sessionId: string; text?: string; binaryBase64?: string },
@@ -657,10 +573,8 @@ export function createDaemonCommandHandlers(): Record<string, DesktopCommandHand
     get_local_daemon_version: () => getLocalDaemonVersion(),
     install_cli: () => installCli(),
     get_cli_install_status: () => getCliInstallStatus(),
-    get_skills_status: () => getSkillsStatus(),
-    install_skills: () => installSkills(),
-    update_skills: () => updateSkills(),
-    uninstall_skills: () => uninstallSkills(),
+    read_legacy_skill_selection: () => readLegacySkillSelection(),
+    delete_legacy_skill_selection: () => deleteLegacySkillSelection(),
   };
 }
 

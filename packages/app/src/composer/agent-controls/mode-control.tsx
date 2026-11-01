@@ -1,38 +1,15 @@
-import {
-  useCallback,
-  useMemo,
-  useRef,
-  useState,
-  type ComponentType,
-  type ReactElement,
-} from "react";
+import { useCallback, useMemo, useRef, useState, type ReactElement } from "react";
 import { useTranslation } from "react-i18next";
 import { Text, View } from "react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { useShallow } from "zustand/shallow";
 import { useStoreWithEqualityFn } from "zustand/traditional";
-import {
-  Bot,
-  Shield,
-  ShieldAlert,
-  ShieldCheck,
-  ShieldEllipsis,
-  ShieldOff,
-  ShieldPlus,
-  ShieldQuestionMark,
-} from "lucide-react-native";
 import { type SheetHeader } from "@/components/adaptive-modal-sheet";
 import { Combobox, ComboboxItem, type ComboboxOption } from "@/components/ui/combobox";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Shortcut } from "@/components/ui/shortcut";
-import { useSessionStore } from "@/stores/session-store";
-import { useProvidersSnapshot } from "@/hooks/use-providers-snapshot";
-import { mergeProviderPreferences, useFormPreferences } from "@/hooks/use-form-preferences";
-import { resolveProviderDefinition } from "@/utils/provider-definitions";
-import { useToast } from "@/contexts/toast-context";
-import { toErrorMessage } from "@/utils/error-messages";
-import { showProviderNoticeToast } from "@/utils/provider-notice-toast";
-import { formatAgentModeLabel, getAgentControlHintKey } from "@/composer/agent-controls/utils";
+import { formatAgentModeLabel } from "@/agent-controls/labels";
+import { getAgentControlHintKey } from "@/composer/agent-controls/utils";
 import { useShortcutKeys } from "@/hooks/use-shortcut-keys";
 import { useKeyboardActionHandler } from "@/hooks/use-keyboard-action-handler";
 import type { KeyboardActionDefinition } from "@/keyboard/keyboard-action-dispatcher";
@@ -40,59 +17,16 @@ import { resolveNextAgentModeId } from "@/composer/agent-controls/mode";
 import { useComposerKeyboardScope } from "@/composer/keyboard-scope";
 import { useComposerControlLayout } from "@/composer/agent-controls/layout-context";
 import { AgentControlTrigger } from "@/composer/agent-controls/control";
-import { useIsCompactFormFactor } from "@/constants/layout";
-import type { Theme } from "@/styles/theme";
-import type { AgentMode, AgentProvider } from "@getpaseo/protocol/agent-types";
-import {
-  getModeVisuals,
-  type AgentModeColorTier,
-  type AgentProviderDefinition,
-} from "@getpaseo/protocol/provider-manifest";
-
-export type AgentModeControlPlacement = "toolbar" | "footer";
-
-function shouldRenderForPlacement(placement: AgentModeControlPlacement, isCompact: boolean) {
-  return placement === "footer" ? isCompact : !isCompact;
-}
-
-interface ModeIconProps {
-  size?: number;
-  color?: string;
-}
-
-const MODE_ICONS: Record<string, ComponentType<ModeIconProps>> = {
-  Bot,
-  Shield,
-  ShieldCheck,
-  ShieldAlert,
-  ShieldEllipsis,
-  ShieldOff,
-  ShieldPlus,
-  ShieldQuestionMark,
-};
-
-// Color the mode by what it does: red for bypass (dangerous), cyan for plan
-// (planning), purple for accept-file-edits, orange for the remaining
-// auto-approval tiers. "safe" modes keep the default muted styling (null).
-function getModeAccentColor(
-  modeId: string,
-  colorTier: AgentModeColorTier | undefined,
-  theme: Theme,
-): string | null {
-  if (colorTier?.startsWith("#")) return colorTier;
-  if (modeId === "acceptEdits") return theme.colors.statusMerged;
-  switch (colorTier) {
-    case "dangerous":
-      return theme.colors.statusDanger;
-    case "planning":
-      return theme.colors.statusPlanning;
-    case "moderate":
-      return theme.colors.statusWarning;
-    default:
-      return null;
-  }
-}
-
+import { useSessionStore } from "@/stores/session-store";
+import { useProvidersSnapshot } from "@/hooks/use-providers-snapshot";
+import { mergeProviderPreferences, useFormPreferences } from "@/hooks/use-form-preferences";
+import { resolveProviderDefinition } from "@/utils/provider-definitions";
+import { useToast } from "@/contexts/toast-context";
+import { toErrorMessage } from "@/utils/error-messages";
+import { showProviderNoticeToast } from "@/utils/provider-notice-toast";
+import type { AgentMode } from "@getpaseo/protocol/agent-types";
+import type { AgentProviderDefinition } from "@getpaseo/protocol/provider-manifest";
+import { getAgentModeIcon, getAgentModeOptionIcon } from "@/agent-controls/icons";
 interface ModeComboboxOptionProps {
   option: ComboboxOption;
   selected: boolean;
@@ -112,24 +46,14 @@ function ModeComboboxOption({
   providerDefinitions,
   iconColor,
 }: ModeComboboxOptionProps) {
-  const { theme } = useUnistyles();
-  const visuals = getModeVisuals(provider, option.id, providerDefinitions);
-  const accentColor = getModeAccentColor(option.id, visuals?.colorTier, theme);
-  const IconComponent = visuals?.icon ? MODE_ICONS[visuals.icon] : undefined;
-  const resolvedIconColor = accentColor ?? iconColor;
+  const IconComponent = getAgentModeOptionIcon(provider, option.id, providerDefinitions);
   const leadingSlot = useMemo(
-    () => (IconComponent ? <IconComponent size={16} color={resolvedIconColor} /> : null),
-    [IconComponent, resolvedIconColor],
-  );
-  const labelStyle = useMemo(
-    () =>
-      accentColor ? { color: accentColor, fontWeight: theme.fontWeight.bold as "bold" } : null,
-    [accentColor, theme.fontWeight.bold],
+    () => (IconComponent ? <IconComponent size={16} color={iconColor} /> : null),
+    [IconComponent, iconColor],
   );
   return (
     <ComboboxItem
       label={option.label}
-      labelStyle={labelStyle}
       selected={selected}
       active={active}
       onPress={onPress}
@@ -177,14 +101,8 @@ export function AgentModeControl({
     return modeOptions.find((m) => m.id === selectedModeId) ?? modeOptions[0];
   }, [modeOptions, selectedModeId]);
 
-  const visuals = selectedMode
-    ? getModeVisuals(provider, selectedMode.id, providerDefinitions)
-    : undefined;
-  const Icon = visuals?.icon ? (MODE_ICONS[visuals.icon] ?? Bot) : Bot;
-  const accentColor = selectedMode
-    ? getModeAccentColor(selectedMode.id, visuals?.colorTier, theme)
-    : null;
-  const iconColor = accentColor ?? theme.colors.foregroundMuted;
+  const Icon = getAgentModeIcon(provider, selectedMode?.id ?? "", providerDefinitions);
+  const iconColor = theme.colors.foregroundMuted;
   const selectedModeLabel = selectedMode ? formatAgentModeLabel(selectedMode) : "";
 
   const allOptions = useMemo<ComboboxOption[]>(
@@ -362,9 +280,7 @@ export function useLiveAgentModeControl(
         mergeProviderPreferences({
           preferences: current,
           provider: slice.provider,
-          updates: {
-            mode: modeId || undefined,
-          },
+          updates: { mode: modeId || undefined },
         }),
       ).catch((error) => {
         console.warn("[AgentModeControl] persist mode preference failed", error);
@@ -393,43 +309,6 @@ export function useLiveAgentModeControl(
   }, [availableModes, client, handleSelectMode, providerDefinitions, slice]);
 }
 
-export interface DraftAgentModeControlProps {
-  selectedProvider: AgentProvider | null;
-  providerDefinitions: AgentProviderDefinition[];
-  modeOptions: AgentMode[];
-  selectedMode: string;
-  onSelectMode: (modeId: string) => void;
-  disabled?: boolean;
-  placement: AgentModeControlPlacement;
-  isCompactLayout?: boolean;
-}
-
-export function DraftAgentModeControl({
-  selectedProvider,
-  providerDefinitions,
-  modeOptions,
-  selectedMode,
-  onSelectMode,
-  disabled,
-  placement,
-  isCompactLayout,
-}: DraftAgentModeControlProps) {
-  const isCompactFormFactor = useIsCompactFormFactor();
-  const isCompact = isCompactLayout ?? isCompactFormFactor;
-  if (!selectedProvider || modeOptions.length === 0) return null;
-  if (!shouldRenderForPlacement(placement, isCompact)) return null;
-  return (
-    <AgentModeControl
-      provider={selectedProvider}
-      providerDefinitions={providerDefinitions}
-      modeOptions={modeOptions}
-      selectedModeId={selectedMode}
-      onSelectMode={onSelectMode}
-      disabled={disabled}
-    />
-  );
-}
-
 const styles = StyleSheet.create((theme) => ({
   tooltipRow: {
     flexDirection: "row",
@@ -438,6 +317,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   tooltipText: {
     color: theme.colors.foreground,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.base,
+    lineHeight: theme.fontSize.base * 1.4,
   },
 }));

@@ -19,7 +19,28 @@ Root checkout dev is intentionally split across terminals:
 - `npm run dev:app` runs Expo on `http://localhost:8081` and connects to the dev daemon.
 - `npm run dev:desktop` runs its own Electron-flavored Expo server on the first free port from `8082` through `8089`. It never claims port `8081`.
 
+Desktop dev launches its desktop-managed daemon with `PASEO_NODE_ENV=development`,
+so development-only providers such as Mock Load Test are available. Packaged
+desktop launches always force the daemon to production mode.
+
+The web and desktop dev launchers pass the current Git branch to Metro as
+`EXPO_PUBLIC_PASEO_DEV_BUILD_LABEL`. The expanded desktop sidebar shows it in
+the titlebar row. Production builds leave the variable unset and show no label.
+
 `npm run dev` is only a shorthand for `npm run dev:server`. Keep `127.0.0.1:6767` for the packaged app and production-style `~/.paseo` state.
+
+## Nix desktop package
+
+The flake exposes `packages.<system>.desktop` on Linux and macOS:
+
+```bash
+nix build .#desktop
+```
+
+Linux produces the `paseo-desktop` launcher and desktop entry. macOS produces
+`Applications/Paseo.app` plus the `paseo-desktop` launcher. Both use the nixpkgs
+Electron runtime and the checkout's built daemon, client, and renderer rather
+than downloading a published desktop release.
 
 ### PASEO_HOME
 
@@ -110,10 +131,23 @@ The iOS simulator shares the Mac's loopback, so `localhost:<port>` reaches the h
 
 ### Desktop renderer profiling
 
-`npm run dev:desktop` starts Electron with Chromium remote debugging enabled on
-`http://127.0.0.1:9223` so renderer CPU profiles can be captured through CDP.
-It launches its own Electron-flavored Expo server and passes that URL to Electron.
-Override the CDP port with `PASEO_ELECTRON_REMOTE_DEBUGGING_PORT` when `9223` is busy.
+`npm run dev:desktop` starts Electron with Chromium remote debugging enabled so
+renderer CPU profiles can be captured through CDP. By default it passes
+`--remote-debugging-port=0`, so Chromium atomically asks the OS for an available
+port and prints the selected DevTools endpoint. Set
+`PASEO_ELECTRON_REMOTE_DEBUGGING_PORT` when a QA workflow requires a validated,
+fixed port.
+
+Desktop dev also scopes Electron `userData` to the current dev root. This prevents
+desktop-only environment inherited by terminals opened inside Paseo from coupling
+a new worktree instance to the parent desktop instance's profile or single-instance
+lock.
+
+The desktop workspace script `exec`s the dev runner so the terminal owns the runner
+PID. Terminal shutdown reaches the runner as `SIGHUP`; the runner stops Metro and
+asks Electron to quit through its normal app lifecycle. Do not add an npm wrapper or
+detach Electron: either change leaves an orphan holding the worktree's single-instance
+lock and broken output pipes.
 
 With desktop dev running, verify the real BrowserWindow, titlebar clearance, fullscreen
 transition, and 751-pixel settings split with:
@@ -123,8 +157,9 @@ npm run verify:electron-cdp --workspace=@getpaseo/desktop
 ```
 
 The verifier reads the same `EXPO_PORT` and
-`PASEO_ELECTRON_REMOTE_DEBUGGING_PORT` environment names as desktop dev. Set both when
-testing an isolated instance on non-default ports.
+`PASEO_ELECTRON_REMOTE_DEBUGGING_PORT` environment names as desktop dev. Set an
+explicit remote-debugging port for verifier runs, and set both when testing an
+isolated instance on non-default ports.
 
 When running a dedicated Electron QA instance against a non-default Expo port, set
 `EXPO_DEV_URL` explicitly. Desktop main defaults to `http://localhost:8081`, so
@@ -194,6 +229,98 @@ PASEO_PROFILE_IDLE_WAIT_MS=3000             # idle baseline before switching
 PASEO_PROFILE_DUMP_COMMITS=1                # include per-commit profiler samples
 ```
 
+For warm workspace switching, point the benchmark at an app backed by seeded
+daemon state:
+
+```bash
+PASEO_PROFILE_APP_URL=http://localhost:19010 \
+  npm run profile:workspace-switching --workspace=@getpaseo/app
+```
+
+The benchmark first warms `Cmd+1` through `Cmd+7`, then records a rapid seven-workspace
+burst. It separately warms the three-entry workspace deck LRU and records `Cmd+1` through
+`Cmd+3` without waits between keys. Both scenarios report keydown-to-activation latency and
+React commits on the same browser clock. Set `PASEO_PROFILE_WORKSPACE_DIGITS`,
+`PASEO_PROFILE_WORKSPACE_LRU_SIZE`, or `PASEO_PROFILE_WARM_QUIET_MS` to change the shape. Set
+`PASEO_PROFILE_DUMP_COMMITS=1` to include the nested component breakdown for every commit.
+Set `PASEO_PROFILE_RETAINED_REPEATS=5` to repeat the retained-LRU burst for a less noisy sample.
+Set `PASEO_PROFILE_CPU_PATH=/tmp/workspace-switch.cpuprofile` to run a separate retained-LRU
+capture after the latency scenarios and write a raw CDP CPU profile without contaminating their
+timings.
+Set `PASEO_PROFILE_TRACE_PATH=/tmp/workspace-switch.trace.json` to run another separate retained-LRU
+capture and write a Chromium Performance trace with User Timing marks and screenshots. Open the
+trace in the Chrome DevTools Performance panel. Set `PASEO_PROFILE_TRACE_INVALIDATIONS=1` only for a
+focused invalidation capture; React Native's generated stacks make that mode highly intrusive.
+Set `PASEO_PROFILE_TRACE_FOCUS=1` to include focus targets, durations, and JavaScript call stacks in
+the scenario report. This mode wraps `HTMLElement.focus`, so use it only for diagnosis.
+
+For the desktop Explorer sidebar toggle, run the app against the root checkout's daemon and use:
+
+```bash
+npm run profile:explorer-toggle --workspace=@getpaseo/app
+```
+
+The harness verifies port `6768`, opens the Paseo workspace, creates and warms the Explorer pane,
+records an idle control, then measures settled and 50 ms burst Cmd+E toggles. It reports
+input-to-DOM and input-to-paint latency, React commits, mounts, unmounts, and DOM mutations. Set
+`PASEO_PROFILE_TRACE_PATH=/tmp/explorer-toggle.trace.json` or
+`PASEO_PROFILE_CPU_PATH=/tmp/explorer-toggle.cpuprofile` for separate Chromium captures. Override
+the app URL, daemon port, workspace, or server with the corresponding `PASEO_PROFILE_*` variables.
+
+For sustained composer typing, run the paired composer-versus-textarea benchmark against a seeded
+daemon:
+
+```bash
+PASEO_PROFILE_APP_URL=http://localhost:19010 \
+  npm run profile:composer-typing --workspace=@getpaseo/app
+```
+
+The benchmark opens the first workspace, preserves its existing draft, and dispatches 300 printable
+keys at a fixed 16 ms cadence without waiting for each key to paint. It measures renderer
+`keydown` to the next paint opportunity, verifies that every character survived, alternates the
+composer and plain-textarea control across three runs, then restores the original draft. The report
+includes percentiles, frame coalescing, input processing, React work, long tasks, slow samples, and
+Playwright dispatch lateness. Set `PASEO_PROFILE_TYPING_KEYS`, `PASEO_PROFILE_TYPING_CADENCE_MS`,
+`PASEO_PROFILE_TYPING_REPEATS`, or `PASEO_PROFILE_WORKSPACE_DIGIT` to change the scenario. Optional
+`PASEO_PROFILE_CPU_PATH` and `PASEO_PROFILE_TRACE_PATH` captures run separately after the latency
+measurements so profiling overhead does not contaminate them.
+
+For diff layout, two benchmarks share one corpus
+(`packages/app/src/git/diff-document/benchmark-corpus.ts`: a real source file, a changelog with
+600-character lines, generated code with ligature punctuation, and JSON). The node bench runs the
+shared document model with the web and native measurers replaced by counters, so it reports how
+many strings each backend would have to shape, which is the cost that survives the move to canvas
+or Skia:
+
+```bash
+cd packages/app && npx vitest bench --project unit src/git/diff-document/model.bench.ts
+```
+
+The browser benchmark opens the same corpus as a working diff, toggles line wrap from the toolbar,
+and reports pointer-down to painted latency, the longest main-thread task, and the `DiffDocument`
+React commit time for cold and warm toggles, then scroll frame times in both modes:
+
+```bash
+cd packages/app && PASEO_DIFF_PERF_E2E=1 npx playwright test --project=browser \
+  e2e/browser/diff-performance.spec.ts -g "toggling line wrap"
+```
+
+Set `PASEO_PROFILE_TYPING_SCENARIO=height-growth` to alternate `Shift+Enter` and printable input.
+That report includes input and composer height changes plus React work grouped into composer,
+stream, and ancestor/root scopes. Ancestor/root timings include descendant work because the Profiler
+boundaries are nested. A printable key after an empty newline should not change either height.
+
+### Preview Windows and Linux window controls on macOS
+
+Desktop development can replace native macOS traffic lights with Paseo's custom controls:
+
+```bash
+PASEO_DESKTOP_WINDOW_CONTROLS=windows npm run dev:desktop
+PASEO_DESKTOP_WINDOW_CONTROLS=linux npm run dev:desktop
+```
+
+The override is rejected in packaged builds. Restart the desktop process when changing it.
+
 ### Desktop macOS compositor watchdog
 
 macOS display sleep can leave Chromium's GPU-process display link — the vsync
@@ -216,6 +343,22 @@ frames non-stop, pinning ProMotion displays at 120Hz forever and draining the
 battery while the app is idle — so do not re-add it. The probe's visibility
 guards already prevent throttling from causing a false stall.
 
+### Desktop Linux hidden-window fallback
+
+On Wayland (seen on ChromeOS Linux) a window created with `show: false` can sit
+forever without a single compositor frame: the renderer loads and runs, but
+`ready-to-show` never fires, so the window is never shown and the app looks like
+it did not start while every process is alive. `showWindowWhenReady`
+(`packages/desktop/src/window/show-when-ready.ts`) shows the main window when
+the document finishes loading if the event has not arrived. The fallback is
+Linux-only; macOS and Windows keep waiting for `ready-to-show`.
+
+Run the startup regression on Linux with an isolated display:
+
+```bash
+xvfb-run -a npm run test:e2e:window-startup --workspace=@getpaseo/desktop
+```
+
 ### Daemon logs
 
 Check `$PASEO_HOME/daemon.log` for daemon logs. The default level is `info`; set
@@ -226,6 +369,27 @@ The supervisor rotates `daemon.log`. Persisted `log.file.rotate` settings in
 `$PASEO_HOME/config.json` win first. Without persisted config, the optional
 `PASEO_LOG_ROTATE_SIZE` and `PASEO_LOG_ROTATE_COUNT` env vars override the
 defaults. The default rotation is `10m` x `3` files everywhere.
+
+### Git process pressure
+
+If Git refreshes consume too much CPU, disk, or antivirus capacity, especially on Windows, reduce
+the daemon-global Git process limits in `$PASEO_HOME/config.json`:
+
+```json
+{
+  "daemon": {
+    "git": {
+      "maxProcessesPerSecond": 5,
+      "maxProcessConcurrency": 4
+    }
+  }
+}
+```
+
+Reload the daemon with `paseo reload`. Environment-variable overrides still require a restart because
+the launch environment remains authoritative. Lower values reduce machine pressure but make Git-backed workspace state and
+Git RPCs wait longer. See [Git process limits](data-model.md#git-process-limits) for defaults,
+semantics, and environment-variable overrides.
 
 ### Agent Tool Catalog Measurement
 
@@ -240,6 +404,21 @@ tools, and the browser-tools delta. It defaults to the agent-scoped catalog; use
 `-- --scope=top-level` for the unaffiliated `/mcp/agents` shape and `-- --json`
 for machine-readable output.
 
+## Worktree starting refs
+
+A new worktree starts from the current branch's upstream, or the local branch when it has no
+upstream. This keeps unpushed local commits out of new workspaces by default. The picker collapses
+identical refs; divergent local or non-origin refs remain explicit, qualified choices.
+
+The daemon sends the exact upstream ref because the remote and branch names cannot be inferred.
+Worktrees retain that ref for comparisons and updates from base while exposing its branch name to
+the UI. Merging into base requires a mutable local target: `origin/main` maps to local `main`, while
+another remote fails closed until the worktree records an explicit local target. Older daemons omit
+the optional field and retain the previous local-first behavior; older worktree metadata without the
+exact ref also resolves through its stored branch name.
+
+Worktrees inherit committed Git state only; uncommitted source-checkout changes are not copied.
+
 ## paseo.json service scripts
 
 `worktree.setup` and `worktree.teardown` accept either a multiline shell script or an array
@@ -249,9 +428,9 @@ Lifecycle commands run in the worktree through a stable script shell: `bash`
 resolved from `PATH` on macOS/Linux, and PowerShell with `-NoProfile` on
 Windows. They inherit the daemon environment plus Paseo's lifecycle variables;
 login and interactive shell startup files are not loaded, and Bash's `BASH_ENV`
-hook is unset. Daemon-run loop verify checks and ACP single-string terminal
-commands use the same non-login Bash behavior on macOS/Linux, but preserve their
-existing `cmd.exe /c` string semantics on Windows. Service scripts are separate:
+hook is unset. ACP single-string terminal commands use the same non-login Bash
+behavior on macOS/Linux, but preserve their existing `cmd.exe /c` string semantics
+on Windows. Service scripts are separate:
 they launch in a terminal and receive the service environment described below.
 
 Because the shell differs per platform, a lifecycle command that must run
@@ -313,16 +492,17 @@ so the port may already be bound. `portScript` takes precedence when both values
 
 The daemon can optionally serve the browser web client from the same HTTP server. This is disabled by default.
 
-Enable it for a running daemon with:
+Enable it in persistent configuration:
 
 ```bash
-paseo daemon start --web-ui
+paseo daemon config set features.webUi.enabled true
+paseo daemon start
 ```
 
 Or set the environment variable:
 
 ```bash
-PASEO_WEB_UI_ENABLED=true paseo daemon start
+PASEO_WEB_UI_ENABLED=true paseo daemon run
 ```
 
 Or persist it in `config.json`:
@@ -382,6 +562,51 @@ For tighter loops, you can rebuild a single workspace:
 - Changed `packages/server/src/*`, `packages/cli/src/*`, `packages/relay/src/*`, or `packages/highlight/src/*`: `npm run build:server`.
 - Changed app build dependencies: `npm run build:app-deps`.
 
+## Dependency patches
+
+`patches/*.patch` are applied by `scripts/postinstall-patches.mjs` on every install. A patch only
+runs when its package is actually present, so add the package to that script's `patchedPackages`
+list when you introduce a new patch — otherwise the file sits in `patches/` and never applies.
+patch-package cannot apply a patch that changed after an earlier version was applied, so the
+script removes that package and fails the install; the next `npm install` reinstalls it clean
+with the current patch. Regenerate a patch with `npx patch-package <package>` after editing `node_modules/<package>`, and
+patch every build the consumers use: Metro resolves the `react-native` field of a package
+(`src/*.ts` for `react-native-svg`), while Node and Vitest resolve `main`/`module`
+(`lib/commonjs`, `lib/module`). Patching only `lib/` leaves the app bundle unfixed.
+
+## Dependency overrides and workspace tooling
+
+Root `package.json` `overrides` pin one Expo SDK across the tree (`expo`, `expo-router`,
+`react-native`, …). npm does not apply those overrides to packages it places under a
+workspace's own `node_modules`. When `expo-module-scripts` was declared in
+`packages/expo-two-way-audio`, npm nested it there and its `jest-expo` peer `expo@*` resolved to
+a second, newer Expo SDK and React Native: 200+ duplicate packages nothing imported (#7730).
+Declare tooling that peer-depends on `expo` or `react-native` in the root `devDependencies`,
+where the overrides apply; workspace scripts still find the binary through the root
+`node_modules/.bin`.
+
+## Dependency signature audit
+
+The `quality` CI job runs `npm audit signatures`. It verifies every lockfile package's registry
+signature and, for packages published with provenance, fetches
+`/-/npm/v1/attestations/<name>@<version>` from the registry. Cloudflare caches that document
+for a year. An edge that cached it in the seconds before the registry attached the publish
+attestation keeps serving a document with only the provenance bundle, and npm fails with:
+
+```
+npm error code EMISSINGSIGNATUREKEY
+npm error <name>@<version> has attestations but no corresponding public key(s) can be found
+```
+
+The same package's registry signature verified a moment earlier with the same keys, so the
+key list is intact. The failure names one package, repeats only for that package, and depends
+on the Azure region the runner landed in, because each region maps to one Cloudflare colo. A
+rerun passes only by landing elsewhere.
+
+To confirm, fetch the URL from several runners and compare `content-length`, the `cf-ray` colo
+suffix, and the number of `attestations` entries (#7730 has the probe). To fix, remove or
+replace that version in the lockfile and report the URL to npm so they purge it.
+
 ## ACP provider catalog versions
 
 The in-app ACP provider catalog pins package-runner entries (`npx`, `npm exec`,
@@ -403,7 +628,7 @@ install.
 
 Use `npm run cli` to run the in-repo CLI from source (`npx tsx packages/cli/src/index.ts`). The script wraps the CLI with `scripts/dev-home.sh`, so it automatically uses this checkout's `.dev/paseo-home` and dev daemon endpoint unless you pass an explicit override. The globally installed `paseo` binary on macOS is a symlink into the installed Paseo desktop app, not this checkout — use it to drive the desktop's built-in daemon, but use `npm run cli` when you want to talk to the CLI you are editing.
 
-Canonical automation uses `paseo workspace create/ls/archive`, `paseo heartbeat create/update/delete`, and the full `paseo schedule` group. MCP heartbeat automation is intentionally smaller: create and delete only. Detach remains an explicit user lifecycle action rather than an agent tool. `paseo run --new-workspace local|worktree` composes workspace creation with agent creation. The old `paseo worktree` and `paseo run --worktree` forms are hidden compatibility aliases.
+Canonical automation uses `paseo project create/ls/rename/delete`, `paseo workspace create/ls/rename/archive`, `paseo heartbeat create/update/delete`, and the full `paseo schedule` group. MCP heartbeat automation is intentionally smaller: create and delete only. Detach remains an explicit user lifecycle action rather than an agent tool. `paseo run --new-workspace local|worktree` composes workspace creation with agent creation. The old `paseo worktree` and `paseo run --worktree` forms are hidden compatibility aliases.
 
 ```bash
 npm run cli -- ls -a -g              # List all agents globally
@@ -415,11 +640,17 @@ npm run cli -- daemon status         # Check daemon status
 npm run cli -- clone owner/repo --dir ~/workspace # Clone GitHub repo and register project
 ```
 
-Use `--host <host:port>` to point the CLI at a different daemon:
+Use the global `--host` option to point the CLI at a different daemon:
 
 ```bash
 npm run cli -- --host localhost:7777 ls -a
+npm run cli -- --host ssh://user@host ls -a
 ```
+
+Set `PASEO_HOST` to use the same target across invocations. An explicit
+selector overrides both environment selectors. With both `PASEO_HOME` and `PASEO_HOST` set, pass an explicit selector. See [CLI target selection](../public-docs/cli.md#select-one-daemon).
+
+In an SSH URI, the URL port is the SSH server port. The remote daemon defaults to `127.0.0.1:6767`; use `?daemonPort=7777` to override it. The transport runs non-interactively through the local OpenSSH client and never installs, starts, or configures the remote daemon. User-facing setup and troubleshooting live in [public-docs/connectivity.md](../public-docs/connectivity.md#ssh).
 
 Desktop integrations can focus an existing agent without creating one or
 sending a message. Use `paseo://h/<server-id>/agent/<agent-id>`, or run

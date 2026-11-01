@@ -1,13 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
-import { Pressable, Text, TextInput, View } from "react-native";
-import { router } from "expo-router";
+import { Pressable, Text, View } from "react-native";
+import { useFocusEffect } from "expo-router/react-navigation";
 import { StyleSheet } from "react-native-unistyles";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Check, ChevronDown, MoreVertical, Pencil, Plus, X } from "lucide-react-native";
+import { ArrowLeft, MoreVertical, Pencil, Plus } from "lucide-react-native";
 import { ProjectIconView } from "@/components/project-icon-view";
-import { HostPicker as SharedHostPicker, HostStatusDotSlot } from "@/components/hosts/host-picker";
 import type {
   PaseoConfigRaw,
   PaseoConfigRevision,
@@ -27,13 +26,17 @@ import { ExternalLink } from "@/components/ui/external-link";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { Switch } from "@/components/ui/switch";
 import { AdaptiveModalSheet, type SheetHeader } from "@/components/adaptive-modal-sheet";
+import { ProjectEditSheet } from "@/components/project-edit-sheet";
+import { EditingTextInput as TextInput } from "@/components/ui/text-input";
 import { SettingsTextAreaCard } from "@/components/settings-textarea";
-import { SettingsGroup } from "@/screens/settings/settings-group";
-import { SettingsSection } from "@/screens/settings/settings-section";
+import { SettingsGroup } from "@/components/settings/headings/settings-group";
+import { SettingsSection } from "@/components/settings/headings/settings-section";
 import { settingsStyles } from "@/styles/settings";
 import { useProjects } from "@/hooks/use-projects";
-import { useProjectIcons } from "@/projects/icons";
 import { ProjectAppearanceSection } from "@/screens/project-settings/appearance-section";
+import type { ProjectEditFormSnapshot } from "@/projects/edit-form";
+import { useProjectIcons } from "@/projects/icons";
+import { createProjectIconTarget } from "@/projects/icon-target";
 import { useHostRuntimeClient, useHostRuntimeSnapshot } from "@/runtime/host-runtime";
 import { useHostFeature } from "@/runtime/host-features";
 import { useToast } from "@/contexts/toast-context";
@@ -47,13 +50,12 @@ import {
   type ProjectConfigDraft,
   type ProjectScriptDraft,
 } from "@/utils/project-config-form";
-import { buildProjectsSettingsRoute } from "@/utils/host-routes";
-import type { ProjectHostEntry, ProjectSummary } from "@/utils/projects";
-import { getProjectNameEditValue, resolveProjectNameSave } from "./project-settings-name-editor";
-import { getProjectHostEntry, getProjectSummaryForHostProject } from "@/utils/projects";
-import { useSessionStore } from "@/stores/session-store";
-import { selectProjectIdForServer } from "@/stores/session-store-hooks/selectors";
-import { resolveProjectSettingsHostTarget } from "@/screens/project-settings-host-selection";
+import {
+  getProjectHostEntry,
+  getProjectSummaryForHostProject,
+  type ProjectHostEntry,
+  type ProjectSummary,
+} from "@/utils/projects";
 
 const SCRIPT_SERVICE_TYPE = "service";
 
@@ -94,106 +96,88 @@ type ReadProjectConfigData = Awaited<ReturnType<DaemonClient["readProjectConfig"
 export interface ProjectSettingsScreenProps {
   serverId: string;
   projectId: string;
+  onBackToProjects: () => void;
+  showBackToProjects: boolean;
 }
 
-export default function ProjectSettingsScreen({ serverId, projectId }: ProjectSettingsScreenProps) {
+export default function ProjectSettingsScreen({
+  serverId,
+  projectId,
+  onBackToProjects,
+  showBackToProjects,
+}: ProjectSettingsScreenProps) {
   const { projects } = useProjects();
   const project = useMemo(
     () => getProjectSummaryForHostProject(projects, serverId, projectId),
     [projectId, projects, serverId],
   );
-  const editableHosts = useMemo(() => filterEditableHosts(project), [project]);
-  const routeKey = `${serverId}:${projectId}`;
-  const routeHost = getProjectHostEntry(project, serverId, projectId);
-  const defaultHost = routeHost?.isOnline ? routeHost : editableHosts[0];
-  const [hostSelection, setHostSelection] = useState({
-    routeKey: "",
-    serverId: "",
-    projectId: "",
-  });
-  const selectedTarget = resolveProjectSettingsHostTarget({
-    routeKey,
-    editableHosts,
-    defaultHost,
-    selection: hostSelection,
-  });
-  const selectedServerId = selectedTarget?.serverId ?? "";
-  const selectedProjectId = selectedTarget?.projectId ?? "";
-  const setSelectedServerId = useCallback(
-    (targetServerId: string) => {
-      const targetProjectId = selectProjectIdForServer(useSessionStore.getState(), {
-        sourceServerId: serverId,
-        projectId,
-        targetServerId,
-      });
-      if (targetProjectId) {
-        setHostSelection({ routeKey, serverId: targetServerId, projectId: targetProjectId });
-      }
-    },
-    [projectId, routeKey, serverId],
-  );
-
-  const selectedSnapshot = useHostRuntimeSnapshot(selectedServerId);
+  const selectedHost = getProjectHostEntry(project, serverId, projectId);
+  const selectedSnapshot = useHostRuntimeSnapshot(serverId);
   const isHostGone =
-    Boolean(selectedServerId) &&
+    Boolean(serverId) &&
     (selectedSnapshot?.connectionStatus === "offline" ||
       selectedSnapshot?.connectionStatus === "error");
 
-  const selectedHost = getProjectHostEntry(project, selectedServerId, selectedProjectId);
-  const client = useHostRuntimeClient(selectedHost?.serverId ?? "");
+  const client = useHostRuntimeClient(serverId);
+  const canEdit =
+    selectedHost?.isOnline === true &&
+    selectedHost.serverId.trim().length > 0 &&
+    selectedHost.repoRoot.trim().length > 0;
 
-  if (!project || editableHosts.length === 0 || !selectedHost || !client) {
-    return <NoEditableTarget />;
+  if (!project || !selectedHost || !client || !canEdit) {
+    return (
+      <NoEditableTarget
+        onBackToProjects={onBackToProjects}
+        showBackToProjects={showBackToProjects}
+      />
+    );
   }
 
   return (
     <ProjectSettingsBody
       project={project}
-      hosts={editableHosts}
       selectedHost={selectedHost}
-      onSelectHost={setSelectedServerId}
       client={client}
       isHostGone={isHostGone}
+      onBackToProjects={onBackToProjects}
+      showBackToProjects={showBackToProjects}
     />
   );
 }
 
-function filterEditableHosts(project: ProjectSummary | undefined): ProjectHostEntry[] {
-  if (!project) return [];
-  return project.hosts.filter(
-    (host) => host.isOnline && host.serverId.trim().length > 0 && host.repoRoot.trim().length > 0,
-  );
-}
-
-function navigateBackToProjects() {
-  router.navigate(buildProjectsSettingsRoute());
-}
-
-function NoEditableTarget() {
+function NoEditableTarget({
+  onBackToProjects,
+  showBackToProjects,
+}: {
+  onBackToProjects: () => void;
+  showBackToProjects: boolean;
+}) {
   const { t } = useTranslation();
   return (
     <View style={styles.noTargetContainer}>
-      <BackToProjectsButton />
+      {showBackToProjects ? <BackToProjectsButton onPress={onBackToProjects} /> : null}
       <Text style={styles.noTargetText}>{t("settings.project.noEditableTarget")}</Text>
-      <Button
-        testID="project-settings-back-button"
-        onPress={navigateBackToProjects}
-        variant="secondary"
-        size="md"
-      >
-        {t("settings.project.backToProjects")}
-      </Button>
+      {showBackToProjects ? (
+        <Button
+          testID="project-settings-back-button"
+          onPress={onBackToProjects}
+          variant="secondary"
+          size="md"
+        >
+          {t("settings.project.backToProjects")}
+        </Button>
+      ) : null}
     </View>
   );
 }
 
-function BackToProjectsButton() {
+function BackToProjectsButton({ onPress }: { onPress: () => void }) {
   const { t } = useTranslation();
   return (
     <Button
       testID="project-settings-back-link"
       accessibilityLabel={t("settings.project.backToProjects")}
-      onPress={navigateBackToProjects}
+      onPress={onPress}
       variant="ghost"
       size="sm"
       leftIcon={ArrowLeft}
@@ -206,21 +190,29 @@ function BackToProjectsButton() {
 
 interface ProjectSettingsBodyProps {
   project: ProjectSummary;
-  hosts: ProjectHostEntry[];
   selectedHost: ProjectHostEntry;
-  onSelectHost: (serverId: string) => void;
   client: DaemonClient;
   isHostGone: boolean;
+  onBackToProjects: () => void;
+  showBackToProjects: boolean;
 }
 
 function ProjectSettingsBody({
   project,
-  hosts,
   selectedHost,
-  onSelectHost,
   client,
   isHostGone,
+  onBackToProjects,
+  showBackToProjects,
 }: ProjectSettingsBodyProps) {
+  const { t } = useTranslation();
+  const [isEditSheetOpen, setIsEditSheetOpen] = useState(false);
+  const [editSessionId, setEditSessionId] = useState(0);
+  const openEditSheet = useCallback(() => {
+    setEditSessionId((id) => id + 1);
+    setIsEditSheetOpen(true);
+  }, []);
+  const closeEditSheet = useCallback(() => setIsEditSheetOpen(false), []);
   const queryKey = useMemo(
     () => ["project-config", selectedHost.serverId, selectedHost.repoRoot] as const,
     [selectedHost.serverId, selectedHost.repoRoot],
@@ -231,10 +223,18 @@ function ProjectSettingsBody({
     queryFn: () => client.readProjectConfig(selectedHost.repoRoot),
     retry: false,
   });
+  const refetchProjectConfig = readQuery.refetch;
+  useFocusEffect(
+    useCallback(() => {
+      void refetchProjectConfig();
+    }, [refetchProjectConfig]),
+  );
 
   const data = readQuery.data;
   const supportsAppearance = useHostFeature(selectedHost.serverId, "projectAppearance");
-  const appearanceKey = `${selectedHost.serverId}:${selectedHost.projectAppearance?.revision ?? "automatic"}`;
+  const appearanceKey = `${selectedHost.serverId}:${
+    selectedHost.projectAppearance?.revision ?? "automatic"
+  }`;
   const [colorPreview, setColorPreview] = useState<{
     appearanceKey: string;
     color: string | null;
@@ -255,79 +255,105 @@ function ProjectSettingsBody({
     (color: string | null) => setColorPreview({ appearanceKey, color }),
     [appearanceKey],
   );
-  const projectIconTargets = useMemo(
-    () => [
-      {
-        serverId: selectedHost.serverId,
-        projectKey: project.projectKey,
-        iconWorkingDir: selectedHost.repoRoot,
-        projectAppearance: selectedHost.projectAppearance,
-      },
-    ],
+  const supportsCustomIcon = useHostFeature(selectedHost.serverId, "projectCustomIcon");
+  const customIconRevision = selectedHost.customIconRevision ?? null;
+  const projectIconTargets = useMemo(() => {
+    const target = createProjectIconTarget({
+      projectViewKey: project.viewKey,
+      placement: { ...selectedHost, iconWorkingDir: selectedHost.repoRoot },
+    });
+    return target ? [target] : [];
+  }, [project.viewKey, selectedHost]);
+  const projectIcons = useProjectIcons({ projects: projectIconTargets });
+  const projectIconDataUri = projectIcons.get(project.viewKey) ?? null;
+  const editSnapshot = useMemo<ProjectEditFormSnapshot>(
+    () => ({
+      projectName: selectedHost.projectName,
+      projectCustomName: selectedHost.projectCustomName,
+      hasCustomIcon: customIconRevision !== null,
+      currentIconDataUri: projectIconDataUri,
+    }),
     [
-      project.projectKey,
-      selectedHost.projectAppearance,
-      selectedHost.repoRoot,
-      selectedHost.serverId,
+      customIconRevision,
+      projectIconDataUri,
+      selectedHost.projectCustomName,
+      selectedHost.projectName,
     ],
   );
-  const projectIcons = useProjectIcons({ projects: projectIconTargets });
-  const projectIconDataUri = projectIcons.get(project.projectKey) ?? null;
   const loadedConfig: PaseoConfigRaw | null = data?.ok ? (data.config ?? {}) : null;
   const loadedRevision: PaseoConfigRevision | null = data?.ok ? data.revision : null;
+  const hasUncommittedWorktreeSetupChanges =
+    data?.ok === true && data.hasUncommittedWorktreeSetupChanges === true;
   const readError: ProjectConfigRpcError | null = data && !data.ok ? data.error : null;
 
   const handleReload = useCallback(() => {
     void readQuery.refetch();
   }, [readQuery]);
 
-  const hasMultipleHosts = hosts.length > 1;
-
   return (
     <View role="main" style={styles.body}>
-      <BackToProjectsButton />
+      {showBackToProjects ? <BackToProjectsButton onPress={onBackToProjects} /> : null}
 
       <View style={styles.headerBlock}>
         <View style={styles.titleRow}>
           <ProjectTitleIcon
             iconDataUri={projectIconDataUri}
-            projectName={project.projectName}
-            projectKey={project.projectKey}
+            projectName={selectedHost.projectName}
+            projectViewKey={project.viewKey}
             appearance={previewAppearance}
           />
-          <ProjectNameEditor
-            key={`${selectedHost.serverId}:${selectedHost.projectId}`}
-            projectName={selectedHost.projectName}
-            projectCustomName={selectedHost.projectCustomName}
-            projectId={selectedHost.projectId}
-            client={client}
-          />
+          <Text style={styles.projectTitle} numberOfLines={1}>
+            {selectedHost.projectName}
+          </Text>
+          <Pressable
+            testID="project-edit-button"
+            accessibilityRole="button"
+            accessibilityLabel={t("settings.project.edit.title")}
+            onPress={openEditSheet}
+            hitSlop={8}
+            style={styles.editButton}
+          >
+            <Pencil size={ICON_SIZE} color={styles.iconColor.color} />
+          </Pressable>
         </View>
-        <HostContext hosts={hosts} selectedHost={selectedHost} onSelectHost={onSelectHost} />
       </View>
 
       {supportsAppearance ? (
         <ProjectAppearanceSection
           key={appearanceKey}
-          projectId={project.projectKey}
+          projectId={selectedHost.projectId}
           serverId={selectedHost.serverId}
           appearance={selectedHost.projectAppearance}
           client={client}
           onColorPreview={handleColorPreview}
         />
       ) : null}
+      <ProjectEditSheet
+        // A new instance per open seeds the form from the project as it stands now.
+        key={`${selectedHost.serverId}:${selectedHost.projectId}:${editSessionId}`}
+        visible={isEditSheetOpen}
+        onClose={closeEditSheet}
+        serverId={selectedHost.serverId}
+        projectId={selectedHost.projectId}
+        projectViewKey={project.viewKey}
+        client={client}
+        supportsCustomIcon={supportsCustomIcon}
+        snapshot={editSnapshot}
+      />
 
       {renderContent({
         readQuery,
         loadedConfig,
         loadedRevision,
+        hasUncommittedWorktreeSetupChanges,
         readError,
         selectedHost,
         queryKey,
         client,
         onReload: handleReload,
-        hasMultipleHosts,
         isHostGone,
+        onBackToProjects,
+        showBackToProjects,
       })}
     </View>
   );
@@ -337,26 +363,30 @@ interface RenderContentInput {
   readQuery: ReturnType<typeof useQuery<ReadProjectConfigData>>;
   loadedConfig: PaseoConfigRaw | null;
   loadedRevision: PaseoConfigRevision | null;
+  hasUncommittedWorktreeSetupChanges: boolean;
   readError: ProjectConfigRpcError | null;
   selectedHost: ProjectHostEntry;
   queryKey: readonly [string, string, string];
   client: DaemonClient;
   onReload: () => void;
-  hasMultipleHosts: boolean;
   isHostGone: boolean;
+  onBackToProjects: () => void;
+  showBackToProjects: boolean;
 }
 
 function renderContent({
   readQuery,
   loadedConfig,
   loadedRevision,
+  hasUncommittedWorktreeSetupChanges,
   readError,
   selectedHost,
   queryKey,
   client,
   onReload,
-  hasMultipleHosts,
   isHostGone,
+  onBackToProjects,
+  showBackToProjects,
 }: RenderContentInput) {
   if (readQuery.isLoading) {
     return (
@@ -367,29 +397,20 @@ function renderContent({
   }
 
   if (readQuery.isError) {
-    return (
-      <ReadFailureCallout
-        kind="transport"
-        error={readQuery.error}
-        onReload={onReload}
-        hasMultipleHosts={hasMultipleHosts}
-      />
-    );
+    return <ReadFailureCallout kind="transport" error={readQuery.error} onReload={onReload} />;
   }
 
   if (readError) {
-    return (
-      <ReadFailureCallout
-        kind={readError.code}
-        error={null}
-        onReload={onReload}
-        hasMultipleHosts={hasMultipleHosts}
-      />
-    );
+    return <ReadFailureCallout kind={readError.code} error={null} onReload={onReload} />;
   }
 
   if (isHostGone) {
-    return <NoEditableTarget />;
+    return (
+      <NoEditableTarget
+        onBackToProjects={onBackToProjects}
+        showBackToProjects={showBackToProjects}
+      />
+    );
   }
 
   if (!loadedConfig) {
@@ -400,12 +421,15 @@ function renderContent({
     );
   }
 
-  const formKey = `${selectedHost.serverId}::${selectedHost.repoRoot}::${revisionToKey(loadedRevision)}`;
+  const formKey = `${selectedHost.serverId}::${
+    selectedHost.repoRoot
+  }::${revisionToKey(loadedRevision)}`;
   return (
     <ProjectConfigForm
       key={formKey}
       baseConfig={loadedConfig}
       revision={loadedRevision}
+      hasUncommittedWorktreeSetupChanges={hasUncommittedWorktreeSetupChanges}
       repoRoot={selectedHost.repoRoot}
       queryKey={queryKey}
       client={client}
@@ -423,20 +447,18 @@ interface ReadFailureCalloutProps {
   kind: "transport" | ProjectConfigRpcError["code"];
   error: unknown;
   onReload: () => void;
-  hasMultipleHosts: boolean;
 }
 
-function ReadFailureCallout({ kind, error, onReload, hasMultipleHosts }: ReadFailureCalloutProps) {
+function ReadFailureCallout({ kind, error, onReload }: ReadFailureCalloutProps) {
   const { t } = useTranslation();
   const { testID, title, description } = resolveReadFailureCopy({
     kind,
     error,
-    hasMultipleHosts,
     t,
   });
   return (
     <View style={styles.errorBlock}>
-      <Alert testID={testID} variant="error" title={title} description={description}>
+      <Alert size="md" testID={testID} variant="error" title={title} description={description}>
         <Button testID={`${testID}-action-0`} onPress={onReload} variant="outline" size="sm">
           {t("settings.project.actions.reload")}
         </Button>
@@ -448,7 +470,6 @@ function ReadFailureCallout({ kind, error, onReload, hasMultipleHosts }: ReadFai
 function resolveReadFailureCopy(input: {
   kind: ReadFailureCalloutProps["kind"];
   error: unknown;
-  hasMultipleHosts: boolean;
   t: TFunction;
 }): { testID: string; title: string; description: string } {
   if (input.kind === "invalid_project_config") {
@@ -462,9 +483,7 @@ function resolveReadFailureCopy(input: {
     return {
       testID: "project-not-found-callout",
       title: input.t("settings.project.readFailures.missingTitle"),
-      description: input.hasMultipleHosts
-        ? input.t("settings.project.readFailures.missingWithHosts")
-        : input.t("settings.project.readFailures.missingSingleHost"),
+      description: input.t("settings.project.readFailures.missingSingleHost"),
     };
   }
   if (input.kind === "transport") {
@@ -491,6 +510,7 @@ function errorToDetail(error: unknown): string | null {
 interface ProjectConfigFormProps {
   baseConfig: PaseoConfigRaw;
   revision: PaseoConfigRevision | null;
+  hasUncommittedWorktreeSetupChanges: boolean;
   repoRoot: string;
   queryKey: readonly [string, string, string];
   client: DaemonClient;
@@ -500,6 +520,7 @@ interface ProjectConfigFormProps {
 function ProjectConfigForm({
   baseConfig,
   revision,
+  hasUncommittedWorktreeSetupChanges,
   repoRoot,
   queryKey,
   client,
@@ -532,6 +553,11 @@ function ProjectConfigForm({
           revision: result.revision,
           requestId: "local-cache",
           repoRoot,
+          ...(result.hasUncommittedWorktreeSetupChanges === undefined
+            ? {}
+            : {
+                hasUncommittedWorktreeSetupChanges: result.hasUncommittedWorktreeSetupChanges,
+              }),
         });
         setWriteError(null);
         queryClient.invalidateQueries({ queryKey: ["projects"] });
@@ -642,7 +668,10 @@ function ProjectConfigForm({
         entry.type.trim().length === 0 &&
         entry.portText.trim().length === 0;
       if (!isEmpty) return d;
-      return { ...d, scripts: d.scripts.filter((row) => row.id !== editingScriptId) };
+      return {
+        ...d,
+        scripts: d.scripts.filter((row) => row.id !== editingScriptId),
+      };
     });
     setEditingScriptId(null);
   }, [editingScriptId, updateDraft]);
@@ -713,6 +742,14 @@ function ProjectConfigForm({
           testID="worktree-setup-section"
           trailing={setupDocsLink}
         >
+          {hasUncommittedWorktreeSetupChanges ? (
+            <Alert
+              size="sm"
+              variant="warning"
+              title={t("settings.project.worktree.uncommittedTitle")}
+              description={t("settings.project.worktree.uncommittedDescription")}
+            />
+          ) : null}
           <SettingsTextAreaCard
             testID="worktree-setup-input"
             accessibilityLabel={t("settings.project.worktree.setupAccessibility")}
@@ -781,6 +818,7 @@ function ProjectConfigForm({
       {isStale ? (
         <View style={styles.calloutWrap}>
           <Alert
+            size="sm"
             testID="stale-callout"
             variant="error"
             title={t("settings.project.writeFailures.staleTitle")}
@@ -801,6 +839,7 @@ function ProjectConfigForm({
       {isWriteFailed ? (
         <View style={styles.calloutWrap}>
           <Alert
+            size="sm"
             testID="write-failed-callout"
             variant="error"
             title={t("settings.project.writeFailures.failedTitle")}
@@ -858,240 +897,27 @@ function ResolveSpinnerColor(): string {
   return styles.spinnerColor.color;
 }
 
-interface ProjectNameEditorProps {
-  projectName: string;
-  projectCustomName: string | null;
-  projectId: string;
-  client: DaemonClient;
-}
-
-function ProjectNameEditor({
-  projectName,
-  projectCustomName,
-  projectId,
-  client,
-}: ProjectNameEditorProps) {
-  const { t } = useTranslation();
-  const queryClient = useQueryClient();
-  const toast = useToast();
-  const [isEditing, setIsEditing] = useState(false);
-  const [value, setValue] = useState(() =>
-    getProjectNameEditValue({ projectName, projectCustomName }),
-  );
-
-  const renameMutation = useMutation({
-    mutationFn: (customName: string | null) => client.renameProject(projectId, customName),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["projects"] });
-      setIsEditing(false);
-      toast.show(t("settings.project.rename.renamedToast"), { variant: "success" });
-    },
-    onError: (error) => {
-      const message =
-        error instanceof Error ? error.message : t("settings.project.rename.errorFallback");
-      toast.show(message, { variant: "error" });
-    },
-  });
-
-  const handleStartEdit = useCallback(() => {
-    setValue(getProjectNameEditValue({ projectName, projectCustomName }));
-    setIsEditing(true);
-  }, [projectName, projectCustomName]);
-
-  const handleCancel = useCallback(() => {
-    setIsEditing(false);
-    setValue(getProjectNameEditValue({ projectName, projectCustomName }));
-  }, [projectName, projectCustomName]);
-
-  const handleSave = useCallback(() => {
-    const result = resolveProjectNameSave({
-      projectName,
-      projectCustomName,
-      value,
-    });
-    if (!result.hasChange) {
-      setIsEditing(false);
-      return;
-    }
-    renameMutation.mutate(result.customName);
-  }, [value, projectName, projectCustomName, renameMutation]);
-
-  const handleReset = useCallback(() => {
-    renameMutation.mutate(null);
-  }, [renameMutation]);
-
-  if (!isEditing) {
-    return (
-      <View
-        role="group"
-        accessibilityLabel={t("settings.project.rename.projectNameLabel")}
-        style={styles.nameEditorRow}
-      >
-        <Text style={styles.projectTitle} numberOfLines={1}>
-          {projectName}
-        </Text>
-        <Pressable
-          testID="project-name-edit-button"
-          accessibilityRole="button"
-          accessibilityLabel={t("settings.project.rename.renameLabel")}
-          onPress={handleStartEdit}
-          hitSlop={8}
-          style={styles.nameEditorIconButton}
-        >
-          <Pencil size={ICON_SIZE} color={styles.iconColor.color} />
-        </Pressable>
-        {projectCustomName ? (
-          <Pressable
-            testID="project-name-reset-button"
-            accessibilityRole="button"
-            accessibilityLabel={t("settings.project.rename.resetLabel")}
-            onPress={handleReset}
-            disabled={renameMutation.isPending}
-            hitSlop={8}
-            style={styles.nameEditorResetButton}
-          >
-            <Text style={styles.nameEditorResetText}>{t("settings.project.rename.reset")}</Text>
-          </Pressable>
-        ) : null}
-      </View>
-    );
-  }
-
-  return (
-    <View
-      role="group"
-      accessibilityLabel={t("settings.project.rename.projectNameLabel")}
-      style={styles.nameEditorRow}
-    >
-      <TextInput
-        testID="project-name-input"
-        accessibilityLabel={t("settings.project.rename.projectNameLabel")}
-        value={value}
-        onChangeText={setValue}
-        placeholder={projectName}
-        placeholderTextColor={styles.placeholderColor.color}
-        autoFocus
-        style={styles.nameEditorInput}
-        editable={!renameMutation.isPending}
-        onSubmitEditing={handleSave}
-        returnKeyType="done"
-      />
-      <Pressable
-        testID="project-name-save-button"
-        accessibilityRole="button"
-        accessibilityLabel={t("settings.project.rename.saveLabel")}
-        onPress={handleSave}
-        disabled={renameMutation.isPending}
-        hitSlop={8}
-        style={styles.nameEditorIconButton}
-      >
-        <Check size={ICON_SIZE} color={styles.iconColor.color} />
-      </Pressable>
-      <Pressable
-        testID="project-name-cancel-button"
-        accessibilityRole="button"
-        accessibilityLabel={t("settings.project.rename.cancelLabel")}
-        onPress={handleCancel}
-        disabled={renameMutation.isPending}
-        hitSlop={8}
-        style={styles.nameEditorIconButton}
-      >
-        <X size={ICON_SIZE} color={styles.iconColor.color} />
-      </Pressable>
-    </View>
-  );
-}
-
 function ProjectTitleIcon({
   iconDataUri,
   projectName,
-  projectKey,
+  projectViewKey,
   appearance,
 }: {
   iconDataUri: string | null;
   projectName: string;
-  projectKey: string;
-  appearance: ProjectHostEntry["projectAppearance"];
+  projectViewKey: string;
+  appearance?: ProjectHostEntry["projectAppearance"];
 }) {
   const initial = projectName.trim().charAt(0).toUpperCase() || "?";
   return (
     <ProjectIconView
       iconDataUri={iconDataUri}
       initial={initial}
-      projectKey={projectKey}
+      projectViewKey={projectViewKey}
+      size={28}
       appearance={appearance}
-      imageStyle={styles.titleIcon}
-      fallbackStyle={styles.titleIconFallback}
       textStyle={styles.titleIconFallbackText}
     />
-  );
-}
-
-interface HostContextProps {
-  hosts: ProjectHostEntry[];
-  selectedHost: ProjectHostEntry;
-  onSelectHost: (serverId: string) => void;
-}
-
-function HostContext({ hosts, selectedHost, onSelectHost }: HostContextProps) {
-  if (hosts.length > 1) {
-    return <HostPicker hosts={hosts} selectedHost={selectedHost} onSelectHost={onSelectHost} />;
-  }
-  return (
-    <View testID="host-indicator" style={styles.hostIndicator}>
-      <HostStatusDotSlot serverId={selectedHost.serverId} />
-      <Text style={styles.hostName} numberOfLines={1}>
-        {selectedHost.serverName}
-      </Text>
-    </View>
-  );
-}
-
-interface HostPickerProps {
-  hosts: ProjectHostEntry[];
-  selectedHost: ProjectHostEntry;
-  onSelectHost: (serverId: string) => void;
-}
-
-function HostPicker({ hosts, selectedHost, onSelectHost }: HostPickerProps) {
-  const { t } = useTranslation();
-  const [open, setOpen] = useState(false);
-  const triggerRef = useRef<View | null>(null);
-  const hostOptions = useMemo(
-    () => hosts.map((host) => ({ serverId: host.serverId, label: host.serverName })),
-    [hosts],
-  );
-  const handleOpen = useCallback(() => setOpen(true), []);
-  const hostOptionTestID = useCallback((serverId: string) => `host-picker-item-${serverId}`, []);
-  return (
-    <SharedHostPicker
-      hosts={hostOptions}
-      value={selectedHost.serverId}
-      onSelect={onSelectHost}
-      open={open}
-      onOpenChange={setOpen}
-      anchorRef={triggerRef}
-      searchable={false}
-      title={t("settings.project.switchHost")}
-      desktopPlacement="bottom-start"
-      desktopMinWidth={240}
-      hostOptionTestID={hostOptionTestID}
-    >
-      <Pressable
-        ref={triggerRef}
-        accessibilityRole="button"
-        accessibilityLabel={t("settings.project.switchHost")}
-        testID="host-picker"
-        style={styles.hostIndicator}
-        onPress={handleOpen}
-      >
-        <HostStatusDotSlot serverId={selectedHost.serverId} />
-        <Text style={styles.hostName} numberOfLines={1}>
-          {selectedHost.serverName}
-        </Text>
-        <ChevronDown size={ICON_SIZE} color={styles.chevronColor.color} />
-      </Pressable>
-    </SharedHostPicker>
   );
 }
 
@@ -1273,7 +1099,7 @@ function ScriptEditModal({ script, onChange, onCancel, onSave }: ScriptEditModal
         <TextInput
           testID="script-edit-name"
           accessibilityLabel={t("settings.project.scripts.nameAccessibility")}
-          value={script.name}
+          initialValue={script.name}
           onChangeText={handleNameChange}
           onBlur={handleNameBlur}
           placeholder="dev"
@@ -1292,7 +1118,7 @@ function ScriptEditModal({ script, onChange, onCancel, onSave }: ScriptEditModal
           testID="script-edit-command"
           accessibilityLabel={t("settings.project.scripts.commandAccessibility")}
           multiline
-          value={script.commandText}
+          initialValue={script.commandText}
           onChangeText={handleCommandChange}
           onBlur={handleCommandBlur}
           placeholder="npm run dev"
@@ -1341,7 +1167,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   noTargetText: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.sm,
+    fontSize: theme.fontSize.base,
   },
   body: {
     padding: theme.spacing[4],
@@ -1363,75 +1189,19 @@ const styles = StyleSheet.create((theme) => ({
   },
   projectTitle: {
     color: theme.colors.foreground,
-    fontSize: theme.fontSize.lg,
+    fontSize: theme.fontSize.base,
     fontWeight: theme.fontWeight.medium,
     flexShrink: 1,
   },
-  nameEditorRow: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing[2],
-    minWidth: 0,
-  },
-  nameEditorIconButton: {
+  editButton: {
     padding: theme.spacing[1],
   },
-  nameEditorInput: {
-    flex: 1,
-    color: theme.colors.foreground,
-    fontSize: theme.fontSize.lg,
-    fontWeight: theme.fontWeight.medium,
-    paddingVertical: theme.spacing[1],
-    paddingHorizontal: theme.spacing[2],
-    borderRadius: theme.borderRadius.md,
-    // borderless card (new theme)
-    ...theme.shadow.sm,
-    backgroundColor: theme.colors.surface2,
-    minWidth: 0,
-  },
-  nameEditorResetButton: {
-    paddingVertical: theme.spacing[1],
-    paddingHorizontal: theme.spacing[2],
-  },
-  nameEditorResetText: {
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
-  },
-  titleIcon: {
-    width: 28,
-    height: 28,
-    borderRadius: theme.borderRadius.md,
-  },
-  titleIconFallback: {
-    width: 28,
-    height: 28,
-    borderRadius: theme.borderRadius.md,
-    alignItems: "center",
-    justifyContent: "center",
-  },
   titleIconFallbackText: {
-    fontSize: theme.fontSize.sm,
+    fontSize: theme.fontSize.base,
     fontWeight: theme.fontWeight.medium,
   },
   iconColor: {
     color: theme.colors.foregroundMuted,
-  },
-  hostIndicator: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing[2],
-    paddingHorizontal: theme.spacing[2],
-    paddingVertical: theme.spacing[1],
-    borderRadius: theme.borderRadius.lg,
-    alignSelf: "flex-start",
-    minWidth: 0,
-  },
-  hostName: {
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.sm,
-    flexShrink: 1,
-    minWidth: 0,
   },
   centered: {
     flex: 1,
@@ -1444,7 +1214,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   emptyScripts: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.sm,
+    fontSize: theme.fontSize.base,
   },
   scriptRow: {
     flexDirection: "row",
@@ -1477,11 +1247,11 @@ const styles = StyleSheet.create((theme) => ({
   },
   modalLabel: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
   },
   modalInput: {
     color: theme.colors.foreground,
-    fontSize: theme.fontSize.sm,
+    fontSize: theme.fontSize.base,
     paddingVertical: theme.spacing[2],
     paddingHorizontal: theme.spacing[3],
     borderRadius: theme.borderRadius.md,
@@ -1491,7 +1261,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   modalMultilineInput: {
     color: theme.colors.foreground,
-    fontSize: theme.fontSize.sm,
+    fontSize: theme.fontSize.base,
     paddingVertical: theme.spacing[2],
     paddingHorizontal: theme.spacing[3],
     borderRadius: theme.borderRadius.md,
@@ -1509,7 +1279,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   fieldError: {
     color: theme.colors.palette.red[300],
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
   },
   serviceToggleRow: {
     flexDirection: "row",
@@ -1523,12 +1293,12 @@ const styles = StyleSheet.create((theme) => ({
   },
   serviceToggleLabel: {
     color: theme.colors.foreground,
-    fontSize: theme.fontSize.sm,
+    fontSize: theme.fontSize.base,
     fontWeight: theme.fontWeight.medium,
   },
   modalHint: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
   },
   placeholderColor: {
     color: theme.colors.foregroundMuted,

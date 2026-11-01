@@ -4,6 +4,12 @@
 import React, { act, useImperativeHandle } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+vi.mock("@/contexts/toast-context", () => ({
+  useToast: () => ({ toast: vi.fn(), showToast: vi.fn() }),
+}));
+vi.mock("@/plugins/registry", () => ({
+  pluginRegistry: { getSnapshot: () => [], subscribe: () => () => {} },
+}));
 import { TerminalPane } from "@/components/terminal-pane";
 import type { TerminalEmulatorHandle } from "@/components/terminal-emulator";
 import {
@@ -12,12 +18,6 @@ import {
   createPaneFocusContextValue,
   type PaneContextValue,
 } from "@/panels/pane-context";
-import {
-  clearActivePaneFindPaneId,
-  handlePaneFindKeyboardAction,
-  setActivePaneFindPaneId,
-} from "@/panels/pane-find-registry";
-
 interface FindResultChange {
   resultIndex: number;
   resultCount: number;
@@ -33,97 +33,89 @@ interface TerminalKeyInput {
 
 interface MockTerminalEmulatorProps {
   testId?: string;
+  streamKey: string;
+  onRendererReadyChange?: (change: { streamKey: string; isReady: boolean }) => void;
+  onFindResult?: (result: FindResultChange & { limited: boolean; placement: "top" }) => void;
   onTerminalKey?: (input: TerminalKeyInput) => Promise<void> | void;
 }
 
-const { client, findListeners, terminalProps, theme, terminalHandle, resetTerminalHandle } =
-  vi.hoisted(() => {
-    const listeners: Array<(event: FindResultChange) => void> = [];
-    const handle = {
-      writeOutput: vi.fn(),
-      restoreOutput: vi.fn(),
-      renderSnapshot: vi.fn(),
-      clear: vi.fn(),
-      blur: vi.fn(),
-      findNext: vi.fn(() => true),
-      findPrevious: vi.fn(() => true),
-      clearFindDecorations: vi.fn(),
-      requestClipboardRead: vi.fn(),
-      onFindResultsChanged: vi.fn((listener: (event: FindResultChange) => void) => {
-        listeners.push(listener);
-        return () => {
-          const index = listeners.indexOf(listener);
-          if (index >= 0) {
-            listeners.splice(index, 1);
-          }
-        };
-      }),
-    };
-    return {
-      client: {
-        on: vi.fn(() => () => {}),
-        sendTerminalInput: vi.fn(),
-      },
-      findListeners: listeners,
-      terminalProps: {
-        current: null as null | MockTerminalEmulatorProps,
-      },
-      terminalHandle: handle,
-      resetTerminalHandle: () => {
-        handle.writeOutput.mockClear();
-        handle.renderSnapshot.mockClear();
-        handle.clear.mockClear();
-        handle.findNext.mockClear();
-        handle.findPrevious.mockClear();
-        handle.clearFindDecorations.mockClear();
-        handle.onFindResultsChanged.mockClear();
-        listeners.splice(0);
-      },
-      theme: {
-        spacing: { 1: 4, 2: 8, 3: 12, 4: 16 },
-        fontSize: { xs: 11, sm: 13 },
-        fontWeight: { medium: "500" as const },
-        borderRadius: { md: 6 },
-        colors: {
+const { client, terminalProps, theme, terminalHandle, resetTerminalHandle } = vi.hoisted(() => {
+  const handle = {
+    replay: vi.fn(),
+    paste: vi.fn(),
+    copySelection: vi.fn(),
+    claimSize: vi.fn(() => () => {}),
+    showKeyboard: vi.fn(),
+    writeOutput: vi.fn(),
+    restoreOutput: vi.fn(),
+    renderSnapshot: vi.fn(),
+    clear: vi.fn(),
+    blur: vi.fn(),
+    find: { search: vi.fn(), clear: vi.fn(), setWidgetSize: vi.fn() },
+  };
+  return {
+    client: {
+      on: vi.fn(() => () => {}),
+      sendTerminalInput: vi.fn(),
+    },
+    terminalProps: {
+      current: null as null | MockTerminalEmulatorProps,
+    },
+    terminalHandle: handle,
+    resetTerminalHandle: () => {
+      handle.writeOutput.mockClear();
+      handle.renderSnapshot.mockClear();
+      handle.clear.mockClear();
+      handle.find.search.mockClear();
+      handle.find.clear.mockClear();
+      handle.find.setWidgetSize.mockClear();
+    },
+    theme: {
+      spacing: { 1: 4, 2: 8, 3: 12, 4: 16 },
+      fontSize: { xs: 11, sm: 13 },
+      fontWeight: { medium: "500" as const },
+      borderRadius: { md: 6 },
+      colors: {
+        background: "#000",
+        border: "#333",
+        destructive: "#f43f5e",
+        foreground: "#fff",
+        foregroundMuted: "#aaa",
+        primary: "#0a84ff",
+        surface0: "#111",
+        surface1: "#222",
+        surface2: "#333",
+        terminal: {
           background: "#000",
-          border: "#333",
-          destructive: "#f43f5e",
           foreground: "#fff",
-          foregroundMuted: "#aaa",
-          primary: "#0a84ff",
-          surface0: "#111",
-          surface1: "#222",
-          surface2: "#333",
-          terminal: {
-            background: "#000",
-            foreground: "#fff",
-            cursor: "#fff",
-            cursorAccent: "#000",
-            selectionBackground: "#444",
-            selectionForeground: "#fff",
-            black: "#000",
-            red: "#f00",
-            green: "#0f0",
-            yellow: "#ff0",
-            blue: "#00f",
-            magenta: "#f0f",
-            cyan: "#0ff",
-            white: "#fff",
-            brightBlack: "#555",
-            brightRed: "#f55",
-            brightGreen: "#5f5",
-            brightYellow: "#ff5",
-            brightBlue: "#55f",
-            brightMagenta: "#f5f",
-            brightCyan: "#5ff",
-            brightWhite: "#fff",
-          },
+          cursor: "#fff",
+          cursorAccent: "#000",
+          selectionBackground: "#444",
+          selectionForeground: "#fff",
+          black: "#000",
+          red: "#f00",
+          green: "#0f0",
+          yellow: "#ff0",
+          blue: "#00f",
+          magenta: "#f0f",
+          cyan: "#0ff",
+          white: "#fff",
+          brightBlack: "#555",
+          brightRed: "#f55",
+          brightGreen: "#5f5",
+          brightYellow: "#ff5",
+          brightBlue: "#55f",
+          brightMagenta: "#f5f",
+          brightCyan: "#5ff",
+          brightWhite: "#fff",
         },
       },
-    };
-  });
+    },
+  };
+});
 
-vi.mock("react-native", () => {
+vi.mock("react-native", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("react-native")>();
   const MockView = ({ children, testID }: { children?: React.ReactNode; testID?: string }) =>
     React.createElement("div", { "data-testid": testID }, children);
   const MockText = ({ children }: { children?: React.ReactNode }) =>
@@ -131,11 +123,13 @@ vi.mock("react-native", () => {
   const MockPressable = ({
     children,
     disabled,
+    accessibilityLabel,
     onPress,
     testID,
   }: {
     children?: React.ReactNode;
     disabled?: boolean;
+    accessibilityLabel?: string;
     onPress?: () => void;
     testID?: string;
   }) =>
@@ -143,6 +137,7 @@ vi.mock("react-native", () => {
       "button",
       {
         "data-testid": testID,
+        "aria-label": accessibilityLabel,
         disabled,
         onClick: () => {
           if (!disabled) {
@@ -161,6 +156,7 @@ vi.mock("react-native", () => {
       onKeyPress?: (event: {
         nativeEvent: { key: string; shiftKey?: boolean };
         preventDefault: () => void;
+        stopPropagation: () => void;
       }) => void;
       testID?: string;
       placeholder?: string;
@@ -174,14 +170,16 @@ vi.mock("react-native", () => {
         onKeyPress?.({
           nativeEvent: { key: event.key, shiftKey: event.shiftKey },
           preventDefault: () => event.preventDefault(),
+          stopPropagation: () => event.stopPropagation(),
         }),
       placeholder,
       ref,
-      value: value ?? "",
+      value,
     });
   });
 
   return {
+    ...actual,
     ActivityIndicator: () => React.createElement("span", { "data-testid": "activity" }),
     Platform: {
       OS: "web",
@@ -195,7 +193,8 @@ vi.mock("react-native", () => {
   };
 });
 
-vi.mock("react-native-reanimated", () => ({
+vi.mock("react-native-reanimated", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("react-native-reanimated")>()),
   default: {
     View: ({ children }: { children?: React.ReactNode }) =>
       React.createElement("div", null, children),
@@ -204,29 +203,51 @@ vi.mock("react-native-reanimated", () => ({
   useAnimatedReaction: vi.fn(),
 }));
 
-vi.mock("react-native-unistyles", () => ({
-  StyleSheet: {
-    absoluteFillObject: {},
-    hairlineWidth: 1,
-    create: (factory: unknown) =>
-      Object.prototype.toString.call(factory) === "[object Function]"
-        ? (factory as (value: unknown) => unknown)(theme)
-        : factory,
-  },
-  useUnistyles: () => ({ theme }),
-}));
+vi.mock("react-native-unistyles", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("react-native-unistyles")>();
+  const baseTheme = actual.useUnistyles().theme;
+  const mergedTheme = {
+    ...baseTheme,
+    ...theme,
+    colors: { ...baseTheme.colors, ...theme.colors, palette: { ...baseTheme.colors.palette } },
+  };
+  return {
+    withUnistyles: (component: unknown) => component,
+    StyleSheet: {
+      absoluteFillObject: {},
+      hairlineWidth: 1,
+      create: (factory: unknown) =>
+        Object.prototype.toString.call(factory) === "[object Function]"
+          ? (factory as (value: unknown) => unknown)(mergedTheme)
+          : factory,
+    },
+    useUnistyles: () => ({ theme: mergedTheme, rt: { breakpoint: "md" } }),
+  };
+});
 
-vi.mock("lucide-react-native", () => {
+vi.mock("lucide-react-native", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("lucide-react-native")>();
   const createIcon = (name: string) =>
     function Icon() {
       return React.createElement("span", { "data-icon": name });
     };
   return {
+    ...actual,
+    Maximize: createIcon("Maximize"),
+    ArrowDown: createIcon("ArrowDown"),
     ChevronDown: createIcon("ChevronDown"),
     ChevronUp: createIcon("ChevronUp"),
     X: createIcon("X"),
   };
 });
+
+vi.mock("@/ssh/upload/use-ssh-terminal-file-drop", () => ({
+  useSshTerminalFileDrop: () => ({ onFileDrop: undefined, sheet: null }),
+}));
+
+vi.mock("@/mobile-panels/provider", () => ({ useBlockMobilePanelOpenGestures: () => {} }));
+
+vi.mock("@/hooks/use-is-local-daemon", () => ({ useIsLocalDaemon: () => true }));
 
 vi.mock("@/runtime/host-runtime", () => ({
   useHostRuntimeClient: () => client,
@@ -234,10 +255,11 @@ vi.mock("@/runtime/host-runtime", () => ({
 }));
 
 vi.mock("@/hooks/use-app-visible", () => ({
+  useAppActivelyVisible: () => true,
   useAppVisible: () => true,
 }));
 
-vi.mock("@/hooks/use-keyboard-shift-style", () => ({
+vi.mock("@/keyboard/shift", () => ({
   useKeyboardShiftStyle: () => ({
     shift: { value: 0 },
     style: null,
@@ -258,14 +280,18 @@ vi.mock("@/hooks/use-settings", () => ({
   }),
 }));
 
-vi.mock("@/constants/layout", () => ({
+vi.mock("@/constants/layout", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/constants/layout")>()),
   useIsCompactFormFactor: () => false,
 }));
 
 vi.mock("@/stores/panel-store", () => ({
   usePanelStore: (
-    selector: (state: { mobileView: string; showMobileAgentList: () => void }) => unknown,
-  ) => selector({ mobileView: "agent", showMobileAgentList: vi.fn() }),
+    selector: (state: {
+      mobilePanel: { target: string };
+      showMobileAgentList: () => void;
+    }) => unknown,
+  ) => selector({ mobilePanel: { target: "agent" }, showMobileAgentList: vi.fn() }),
 }));
 
 vi.mock("@/terminal/runtime/workspace-terminal-session", () => ({
@@ -289,14 +315,19 @@ vi.mock("@/components/terminal-emulator", () => ({
   default: React.forwardRef<TerminalEmulatorHandle, MockTerminalEmulatorProps>(
     function TerminalEmulator(props, ref) {
       terminalProps.current = props;
-      useImperativeHandle(ref, () => terminalHandle);
-      return React.createElement("div", { "data-testid": props.testId ?? "terminal-surface" });
+      useImperativeHandle(ref, () => terminalHandle as unknown as TerminalEmulatorHandle);
+      return React.createElement("div", {
+        "data-testid": props.testId ?? "terminal-surface",
+      });
     },
   ),
 }));
 
 const paneInstanceId = "server-a:workspace-a:left";
 const paneContext: PaneContextValue = {
+  host: "main",
+  openPreferredTarget: vi.fn(),
+  setCurrentTabState: vi.fn(),
   serverId: "server-a",
   workspaceId: "workspace-a",
   paneInstanceId,
@@ -333,7 +364,6 @@ afterEach(() => {
       root?.unmount();
     });
   }
-  clearActivePaneFindPaneId(paneInstanceId);
   root = null;
   container?.remove();
   container = null;
@@ -358,11 +388,14 @@ function renderTerminalPane(): void {
       </PaneProvider>,
     );
   });
-  setActivePaneFindPaneId(paneInstanceId);
+  act(() => {
+    const props = terminalProps.current;
+    if (props) props.onRendererReadyChange?.({ streamKey: props.streamKey, isReady: true });
+  });
 }
 
 function inputElement(): HTMLInputElement {
-  const input = container?.querySelector('[data-testid="pane-find-input"]');
+  const input = container?.querySelector("input");
   expect(input).toBeInstanceOf(HTMLInputElement);
   return input as HTMLInputElement;
 }
@@ -384,7 +417,7 @@ function pressFindKey(key: string, shiftKey = false): void {
 }
 
 function click(testId: string): void {
-  const element = container?.querySelector(`[data-testid="${testId}"]`);
+  const element = container?.querySelector(`button[aria-label="${testId}"]`);
   expect(element).toBeInstanceOf(HTMLElement);
   act(() => {
     element?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
@@ -393,9 +426,7 @@ function click(testId: string): void {
 
 function emitFindResults(event: FindResultChange): void {
   act(() => {
-    for (const listener of findListeners) {
-      listener(event);
-    }
+    terminalProps.current?.onFindResult?.({ ...event, limited: false, placement: "top" });
   });
 }
 
@@ -404,46 +435,47 @@ describe("TerminalPane find", () => {
     renderTerminalPane();
 
     act(() => {
-      handlePaneFindKeyboardAction({ id: "workspace.find.open", scope: "workspace" });
+      document.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "f", ctrlKey: true, bubbles: true }),
+      );
     });
     changeInput("needle");
-    expect(container?.textContent).toContain("Searching...");
     emitFindResults({ resultIndex: 2, resultCount: 7 });
 
-    expect(terminalHandle.findNext).toHaveBeenCalledWith({ query: "needle" });
-    expect(container?.textContent).toContain("3 / 7");
+    expect(terminalHandle.find.search).toHaveBeenCalledWith("needle");
+    expect(container?.textContent).toContain("3 of 7");
 
-    click("pane-find-next");
-    expect(terminalHandle.findNext).toHaveBeenLastCalledWith({ query: "needle" });
-    expect(container?.textContent).toContain("Searching...");
+    click("Next match");
+    expect(terminalHandle.find.search).toHaveBeenLastCalledWith("needle", "next");
     emitFindResults({ resultIndex: 3, resultCount: 7 });
 
-    click("pane-find-prev");
-    expect(terminalHandle.findPrevious).toHaveBeenLastCalledWith({ query: "needle" });
+    click("Previous match");
+    expect(terminalHandle.find.search).toHaveBeenLastCalledWith("needle", "previous");
     emitFindResults({ resultIndex: 2, resultCount: 7 });
 
     pressFindKey("Enter");
-    expect(terminalHandle.findNext).toHaveBeenLastCalledWith({ query: "needle" });
+    expect(terminalHandle.find.search).toHaveBeenLastCalledWith("needle", "next");
     emitFindResults({ resultIndex: 3, resultCount: 7 });
 
     pressFindKey("Enter", true);
-    expect(terminalHandle.findPrevious).toHaveBeenLastCalledWith({ query: "needle" });
+    expect(terminalHandle.find.search).toHaveBeenLastCalledWith("needle", "previous");
 
     changeInput("");
-    expect(terminalHandle.clearFindDecorations).toHaveBeenCalledTimes(1);
-    expect(container?.textContent).toContain("0 / 0");
+    expect(terminalHandle.find.search).toHaveBeenLastCalledWith("");
 
     changeInput("needle");
-    click("pane-find-close");
-    expect(terminalHandle.clearFindDecorations).toHaveBeenCalledTimes(2);
-    expect(container?.querySelector('[data-testid="pane-find-input"]')).toBeNull();
+    click("Close Find");
+    expect(terminalHandle.find.clear).toHaveBeenCalledTimes(1);
+    expect(container?.querySelector("input")).toBeNull();
   });
 
   it("keeps terminal key input flowing while the find bar is open", async () => {
     renderTerminalPane();
 
     act(() => {
-      handlePaneFindKeyboardAction({ id: "workspace.find.open", scope: "workspace" });
+      document.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "f", ctrlKey: true, bubbles: true }),
+      );
     });
     await act(async () => {
       await terminalProps.current?.onTerminalKey?.({

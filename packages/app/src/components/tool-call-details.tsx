@@ -10,8 +10,11 @@ import {
 } from "react-native";
 import { ScrollView as GHScrollView } from "react-native-gesture-handler";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
-import { AppearanceStyleBoundary } from "@/components/appearance-style-boundary";
 import type { ToolCallDetail } from "@getpaseo/protocol/agent-types";
+import {
+  buildPaseoToolDetailSections,
+  type PaseoToolDetailSection,
+} from "@getpaseo/protocol/paseo-tool-presentation/index";
 import { buildLineDiff, parseUnifiedDiff, type DiffLine } from "@/utils/tool-call-parsers";
 import { highlightDiffLines } from "@/utils/diff-highlight";
 import { hasMeaningfulToolCallDetail } from "@/utils/tool-call-detail-state";
@@ -38,6 +41,7 @@ const ScrollView = isWeb ? RNScrollView : GHScrollView;
 // ---- Content Component ----
 
 interface ToolCallDetailsContentProps {
+  toolName?: string;
   detail?: ToolCallDetail;
   errorText?: string;
   maxHeight?: number;
@@ -74,7 +78,7 @@ function resolveShouldFill(
 ): boolean {
   if (!fillAvailableHeight) return false;
   const t = detail?.type;
-  return t === "shell" || t === "edit" || t === "write" || t === "read" || t === "sub_agent";
+  return t === "shell" || t === "edit" || t === "write" || t === "read";
 }
 
 function useDetailStyles(
@@ -341,216 +345,6 @@ const ShellDetailSection = withUnistyles(ShellDetailSectionBase, (theme: Theme) 
   monoLigatures: theme.monoLigatures,
 }));
 
-interface WorktreeSetupDetailProps {
-  log: string;
-  branchName: string;
-  worktreePath: string;
-  ds: DetailStyles;
-}
-
-function WorktreeSetupDetailSection({
-  log,
-  branchName,
-  worktreePath,
-  ds,
-}: WorktreeSetupDetailProps) {
-  const setupLog = log.replace(/^\n+/, "");
-  const hasLog = setupLog.length > 0;
-  return (
-    <View style={ds.sectionFillStyle}>
-      <View style={ds.codeBlockFillStyle}>
-        <ScrollView
-          style={ds.codeVerticalScrollStyle}
-          contentContainerStyle={styles.codeVerticalContent}
-          nestedScrollEnabled
-          showsVerticalScrollIndicator
-        >
-          <View style={styles.codeHorizontalContent}>
-            <View style={styles.codeLine} dataSet={CODE_SURFACE_DATASET}>
-              <Text selectable style={styles.scrollText}>
-                {hasLog ? setupLog : `Preparing worktree ${branchName} at ${worktreePath}`}
-              </Text>
-            </View>
-          </View>
-        </ScrollView>
-      </View>
-    </View>
-  );
-}
-
-function resolveSubAgentFallbackHeader(
-  subAgentType: string | null | undefined,
-  description: string | null | undefined,
-  fallbackText: string,
-): string {
-  if (subAgentType && description) {
-    return `${subAgentType}: ${description}`;
-  }
-  return subAgentType ?? description ?? fallbackText;
-}
-
-interface SubAgentDetailProps {
-  log: string;
-  childSessionId: string | null | undefined;
-  subAgentType: string | null | undefined;
-  description: string | null | undefined;
-  ds: DetailStyles;
-}
-
-interface SubAgentActivityRow {
-  index: number;
-  toolName: string;
-  summary?: string;
-}
-
-interface ParsedSubAgentLog {
-  actions: SubAgentActivityRow[];
-  remainingLog: string;
-}
-
-function parseBracketedSubAgentLine(line: string, index: number): SubAgentActivityRow | null {
-  const match = line.match(/^\[([^\]]+)\](?:\s+(.*))?$/);
-  if (!match) {
-    return null;
-  }
-  const toolName = match[1]?.trim();
-  if (!toolName) {
-    return null;
-  }
-  const summary = match[2]?.trim();
-  return {
-    index,
-    toolName,
-    ...(summary ? { summary } : {}),
-  };
-}
-
-function parseSubAgentLog(log: string): ParsedSubAgentLog {
-  const actions: SubAgentActivityRow[] = [];
-  const remainingLines: string[] = [];
-  for (const line of log.replace(/^\n+/, "").split("\n")) {
-    const normalizedLine = line.trim();
-    if (!normalizedLine) {
-      continue;
-    }
-    const parsedAction = parseBracketedSubAgentLine(normalizedLine, actions.length + 1);
-    if (parsedAction) {
-      actions.push(parsedAction);
-    } else {
-      remainingLines.push(line);
-    }
-  }
-  return {
-    actions,
-    remainingLog: remainingLines.join("\n").replace(/^\n+/, ""),
-  };
-}
-
-function SubAgentActionRow({ action }: { action: SubAgentActivityRow }) {
-  return (
-    <View style={styles.subAgentActionRow}>
-      <Text selectable style={styles.subAgentActionTool}>
-        {formatSubAgentToolName(action.toolName)}
-      </Text>
-      {action.summary ? (
-        <Text selectable style={styles.subAgentActionSummary}>
-          {action.summary}
-        </Text>
-      ) : null}
-    </View>
-  );
-}
-
-function formatSubAgentToolName(toolName: string): string {
-  const trimmed = toolName.trim();
-  if (!trimmed) {
-    return toolName;
-  }
-  return trimmed
-    .replace(/[._-]+/g, " ")
-    .split(" ")
-    .filter((segment) => segment.length > 0)
-    .map((segment) => `${segment[0]?.toUpperCase() ?? ""}${segment.slice(1)}`)
-    .join(" ");
-}
-
-function SubAgentLogText({
-  activityLog,
-  fallbackHeader,
-  hasActions,
-}: {
-  activityLog: string;
-  fallbackHeader: string;
-  hasActions: boolean;
-}) {
-  if (activityLog.length > 0) {
-    return (
-      <Text selectable style={styles.scrollText}>
-        {activityLog}
-      </Text>
-    );
-  }
-  if (!hasActions) {
-    return (
-      <Text selectable style={styles.scrollText}>
-        {fallbackHeader}
-      </Text>
-    );
-  }
-  return null;
-}
-
-function SubAgentDetailSection({
-  log,
-  childSessionId,
-  subAgentType,
-  description,
-  ds,
-}: SubAgentDetailProps) {
-  const { t } = useTranslation();
-  const { actions, remainingLog } = useMemo(() => parseSubAgentLog(log), [log]);
-  const fallbackHeader = resolveSubAgentFallbackHeader(
-    subAgentType,
-    description,
-    t("toolCallDetails.subAgentActivity"),
-  );
-  const hasActions = actions.length > 0;
-  return (
-    <View style={ds.sectionFillStyle}>
-      <View style={ds.codeBlockFillStyle}>
-        <ScrollView
-          style={ds.codeVerticalScrollStyle}
-          contentContainerStyle={styles.codeVerticalContent}
-          nestedScrollEnabled
-          showsVerticalScrollIndicator
-        >
-          <View style={styles.codeHorizontalContent}>
-            <View style={styles.codeLine} dataSet={CODE_SURFACE_DATASET}>
-              {childSessionId ? (
-                <Text selectable style={styles.subAgentSessionText}>
-                  session {childSessionId}
-                </Text>
-              ) : null}
-              {hasActions ? (
-                <View style={styles.subAgentActions}>
-                  {actions.map((action) => (
-                    <SubAgentActionRow key={action.index} action={action} />
-                  ))}
-                </View>
-              ) : null}
-              <SubAgentLogText
-                activityLog={remainingLog}
-                fallbackHeader={fallbackHeader}
-                hasActions={hasActions}
-              />
-            </View>
-          </View>
-        </ScrollView>
-      </View>
-    </View>
-  );
-}
-
 interface EditDetailProps {
   diffLines: DiffLine[] | undefined;
   ds: DetailStyles;
@@ -798,7 +592,42 @@ function buildUnknownSections(
   return out;
 }
 
+function PaseoDetailSection({ section }: { section: PaseoToolDetailSection }) {
+  return (
+    <View style={styles.paseoSection}>
+      <Text style={styles.paseoSectionTitle}>{section.title}</Text>
+      {section.kind === "prose" ? (
+        <Text selectable style={styles.paseoProse}>
+          {section.text}
+        </Text>
+      ) : (
+        <View style={styles.paseoFields}>
+          {section.fields.map((field) => (
+            <View key={field.label} style={styles.paseoFieldRow}>
+              <Text style={styles.paseoFieldLabel}>{field.label}</Text>
+              <Text selectable style={styles.paseoFieldValue}>
+                {field.value}
+              </Text>
+            </View>
+          ))}
+        </View>
+      )}
+    </View>
+  );
+}
+
+function buildPaseoUnknownSections(
+  toolName: string | undefined,
+  detail: UnknownDetail,
+): ReactNode[] | null {
+  if (!toolName) return null;
+  const sections = buildPaseoToolDetailSections(toolName, detail.input, detail.output);
+  if (!sections) return null;
+  return sections.map((section) => <PaseoDetailSection key={section.title} section={section} />);
+}
+
 function buildDetailSections(
+  toolName: string | undefined,
   detail: ToolCallDetail | undefined,
   diffLines: DiffLine[] | undefined,
   ds: DetailStyles,
@@ -818,29 +647,7 @@ function buildDetailSections(
       />,
     ];
   }
-  if (detail.type === "worktree_setup") {
-    return [
-      <WorktreeSetupDetailSection
-        key="worktree-setup"
-        log={detail.log}
-        branchName={detail.branchName}
-        worktreePath={detail.worktreePath}
-        ds={ds}
-      />,
-    ];
-  }
-  if (detail.type === "sub_agent") {
-    return [
-      <SubAgentDetailSection
-        key="sub-agent"
-        log={detail.log}
-        childSessionId={detail.childSessionId}
-        subAgentType={detail.subAgentType}
-        description={detail.description}
-        ds={ds}
-      />,
-    ];
-  }
+  if (detail.type === "worktree_setup" || detail.type === "sub_agent") return [];
   if (detail.type === "edit") {
     return [<EditDetailSection key="edit" diffLines={diffLines} ds={ds} />];
   }
@@ -888,7 +695,10 @@ function buildDetailSections(
     ];
   }
   if (detail.type === "unknown") {
-    return buildUnknownSections(detail, ds, t, followContentEnd);
+    return (
+      buildPaseoUnknownSections(toolName, detail) ??
+      buildUnknownSections(detail, ds, t, followContentEnd)
+    );
   }
   return [];
 }
@@ -917,15 +727,8 @@ function LoadingSkeleton({ containerStyle }: { containerStyle: StyleProp<ViewSty
   );
 }
 
-export function ToolCallDetailsContent({ ...props }: ToolCallDetailsContentProps) {
-  return (
-    <AppearanceStyleBoundary>
-      <ToolCallDetailsContentInner {...props} />
-    </AppearanceStyleBoundary>
-  );
-}
-
-function ToolCallDetailsContentInner({
+export function ToolCallDetailsContent({
+  toolName,
   detail,
   errorText,
   maxHeight,
@@ -940,6 +743,7 @@ function ToolCallDetailsContentInner({
   const diffLines = useDiffLines(detail);
 
   const sections: ReactNode[] = buildDetailSections(
+    toolName,
     detail,
     diffLines,
     ds,
@@ -991,8 +795,48 @@ const styles = StyleSheet.create((theme) => {
     },
     groupHeaderText: {
       color: theme.colors.foregroundMuted,
-      fontSize: theme.fontSize.sm,
+      fontSize: theme.fontSize.base,
       fontWeight: theme.fontWeight.normal,
+    },
+    paseoSection: {
+      gap: theme.spacing[3],
+      paddingHorizontal: theme.spacing[4],
+      paddingVertical: theme.spacing[4],
+      borderBottomWidth: theme.borderWidth[1],
+      borderBottomColor: theme.colors.border,
+    },
+    paseoSectionTitle: {
+      color: theme.colors.foreground,
+      fontSize: theme.fontSize.base,
+      fontWeight: theme.fontWeight.medium,
+    },
+    paseoProse: {
+      color: theme.colors.foreground,
+      fontSize: theme.fontSize.content,
+      lineHeight: Math.round(theme.fontSize.content * 1.5),
+      overflowWrap: "anywhere",
+    },
+    paseoFields: {
+      gap: theme.spacing[3],
+    },
+    paseoFieldRow: {
+      flexDirection: "row",
+      alignItems: "flex-start",
+      gap: theme.spacing[4],
+    },
+    paseoFieldLabel: {
+      width: 120,
+      color: theme.colors.foregroundMuted,
+      fontSize: theme.fontSize.sm,
+      lineHeight: Math.round(theme.fontSize.base * 1.5),
+    },
+    paseoFieldValue: {
+      flex: 1,
+      minWidth: 0,
+      color: theme.colors.foreground,
+      fontSize: theme.fontSize.base,
+      lineHeight: Math.round(theme.fontSize.base * 1.5),
+      overflowWrap: "anywhere",
     },
     section: {
       gap: theme.spacing[2],
@@ -1010,14 +854,14 @@ const styles = StyleSheet.create((theme) => {
     },
     sectionTitle: {
       color: theme.colors.foregroundMuted,
-      fontSize: theme.fontSize.xs,
+      fontSize: theme.fontSize.sm,
       fontWeight: theme.fontWeight.semibold,
       textTransform: "uppercase",
       letterSpacing: 0.5,
     },
     rangeText: {
       color: theme.colors.foregroundMuted,
-      fontSize: theme.fontSize.xs,
+      fontSize: theme.fontSize.sm,
     },
     diffContainer: {
       borderRadius: theme.borderRadius.lg,
@@ -1102,6 +946,9 @@ const styles = StyleSheet.create((theme) => {
       color: theme.colors.foreground,
       lineHeight: Math.round(theme.fontSize.code * 1.5),
     },
+    shellPrompt: {
+      color: theme.colors.foregroundMuted,
+    },
     jsonScroll: {
       borderRadius: theme.borderRadius.lg,
       backgroundColor: theme.colors.surface2,
@@ -1118,7 +965,7 @@ const styles = StyleSheet.create((theme) => {
     },
     emptyStateText: {
       color: theme.colors.foregroundMuted,
-      fontSize: theme.fontSize.sm,
+      fontSize: theme.fontSize.base,
       fontStyle: "italic",
     },
     loadingContainer: {

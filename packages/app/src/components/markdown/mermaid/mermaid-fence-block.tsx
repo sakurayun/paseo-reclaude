@@ -1,5 +1,6 @@
+import { PressHighlight } from "@/components/ui/press-highlight";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Pressable, Text, View, type TextStyle } from "react-native";
+import { Text, View, type TextStyle } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
 import { Check, Copy, Expand, FileCode2, GitGraph } from "lucide-react-native";
@@ -115,7 +116,7 @@ export function MermaidFenceBlock({ code, inheritedStyles, textStyle }: MermaidF
     >
       <View style={fenceStyles.toolbar} pointerEvents={controlsVisible ? "auto" : "none"}>
         <View style={toolbarInnerStyle}>
-          <Pressable
+          <PressHighlight
             testID="mermaid-diagram-toggle"
             accessibilityRole="button"
             accessibilityLabel={t("markdown.mermaid.viewDiagram")}
@@ -124,8 +125,8 @@ export function MermaidFenceBlock({ code, inheritedStyles, textStyle }: MermaidF
           >
             <ThemedGitGraph size={14} uniProps={mutedIconColorMapping} />
             <Text style={fenceStyles.segmentLabel}>{t("markdown.mermaid.diagram")}</Text>
-          </Pressable>
-          <Pressable
+          </PressHighlight>
+          <PressHighlight
             testID="mermaid-source-toggle"
             accessibilityRole="button"
             accessibilityLabel={t("markdown.mermaid.viewSource")}
@@ -134,10 +135,10 @@ export function MermaidFenceBlock({ code, inheritedStyles, textStyle }: MermaidF
           >
             <ThemedFileCode2 size={14} uniProps={mutedIconColorMapping} />
             <Text style={fenceStyles.segmentLabel}>{t("markdown.mermaid.source")}</Text>
-          </Pressable>
+          </PressHighlight>
           <View style={fenceStyles.toolbarSpacer} />
           {fullscreenSvg ? (
-            <Pressable
+            <PressHighlight
               accessibilityRole="button"
               accessibilityLabel={t("markdown.mermaid.openFullscreen")}
               onPress={handleExpand}
@@ -145,9 +146,9 @@ export function MermaidFenceBlock({ code, inheritedStyles, textStyle }: MermaidF
               style={fenceStyles.iconButton}
             >
               <ThemedExpand size={14} uniProps={mutedIconColorMapping} />
-            </Pressable>
+            </PressHighlight>
           ) : null}
-          <Pressable
+          <PressHighlight
             accessibilityRole="button"
             accessibilityLabel={
               copied ? t("message.actions.copied") : t("message.actions.copyCode")
@@ -161,7 +162,7 @@ export function MermaidFenceBlock({ code, inheritedStyles, textStyle }: MermaidF
             ) : (
               <ThemedCopy size={14} uniProps={mutedIconColorMapping} />
             )}
-          </Pressable>
+          </PressHighlight>
         </View>
       </View>
 

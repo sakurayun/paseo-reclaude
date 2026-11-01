@@ -14,11 +14,15 @@ export function applyTerminalRendererReadyChange(
   return currentReadyStreamKey === change.streamKey ? null : currentReadyStreamKey;
 }
 
-export function shouldReplayTerminalSnapshotForRenderer(input: {
-  change: TerminalRendererReadyChange;
+export function resolveTerminalStreamTarget(input: {
+  terminalId: string;
   terminalStreamKey: string;
-}): boolean {
-  return input.change.isReady && input.change.streamKey === input.terminalStreamKey;
+  rendererReadyStreamKey: string | null;
+  isWorkspaceFocused: boolean;
+}): string | null {
+  return input.isWorkspaceFocused && input.rendererReadyStreamKey === input.terminalStreamKey
+    ? input.terminalId
+    : null;
 }
 
 export function shouldShowTerminalLoadingOverlay(input: {

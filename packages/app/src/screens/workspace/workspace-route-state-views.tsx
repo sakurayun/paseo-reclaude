@@ -126,15 +126,21 @@ function ArchivedWorkspaceRecovery({
   if (recovery.phase === "failed") {
     actionLabel = t("common.actions.retry");
   }
-  const description =
-    recovery.recovery.action === "restore"
-      ? t("workspace.route.recovery.restoreDescription", {
-          workspaceName: recovery.recovery.workspaceName,
-          branch: recovery.recovery.branch,
-        })
-      : t("workspace.route.recovery.unarchiveDescription", {
-          workspaceName: recovery.recovery.workspaceName,
-        });
+  let description: string;
+  if (recovery.recovery.action === "restore" && recovery.recovery.branch) {
+    description = t("workspace.route.recovery.restoreDescription", {
+      workspaceName: recovery.recovery.workspaceName,
+      branch: recovery.recovery.branch,
+    });
+  } else if (recovery.recovery.action === "restore") {
+    description = t("workspace.route.recovery.restoreWithoutBranchDescription", {
+      workspaceName: recovery.recovery.workspaceName,
+    });
+  } else {
+    description = t("workspace.route.recovery.unarchiveDescription", {
+      workspaceName: recovery.recovery.workspaceName,
+    });
+  }
 
   return (
     <View style={styles.emptyState}>
@@ -300,18 +306,18 @@ const styles = StyleSheet.create((theme) => ({
   },
   description: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.sm,
+    fontSize: theme.fontSize.base,
     textAlign: "center",
   },
   error: {
     color: theme.colors.destructive,
-    fontSize: theme.fontSize.sm,
-    lineHeight: Math.round(theme.fontSize.sm * 1.4),
+    fontSize: theme.fontSize.base,
+    lineHeight: Math.round(theme.fontSize.base * 1.4),
     textAlign: "center",
   },
   errorTooltip: {
     color: theme.colors.popoverForeground,
-    fontSize: theme.fontSize.sm,
+    fontSize: theme.fontSize.base,
     maxWidth: 420,
   },
   actions: {

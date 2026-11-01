@@ -1,6 +1,7 @@
+import { PressHighlight } from "@/components/ui/press-highlight";
 import { useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { Pressable, Text, View } from "react-native";
+import { Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { AdaptiveModalSheet, type SheetHeader } from "./adaptive-modal-sheet";
 
@@ -61,7 +62,7 @@ export function CloseTabChoiceSheet({
 
   return (
     <AdaptiveModalSheet header={header} visible onClose={onClose} testID="close-tab-choice-sheet">
-      <Pressable
+      <PressHighlight
         style={styles.option}
         onPress={handleCloseTabOnly}
         accessibilityRole="button"
@@ -76,9 +77,9 @@ export function CloseTabChoiceSheet({
               : t("workspace.tabs.closePrompt.closeTabAgentDescription")}
           </Text>
         </View>
-      </Pressable>
+      </PressHighlight>
       {prompt.kind === "agent" ? (
-        <Pressable
+        <PressHighlight
           style={styles.option}
           onPress={handleArchiveAgent}
           accessibilityRole="button"
@@ -93,9 +94,9 @@ export function CloseTabChoiceSheet({
               {t("workspace.tabs.closePrompt.archiveAgentDescription")}
             </Text>
           </View>
-        </Pressable>
+        </PressHighlight>
       ) : (
-        <Pressable
+        <PressHighlight
           style={styles.option}
           onPress={handleKillTerminal}
           accessibilityRole="button"
@@ -108,7 +109,7 @@ export function CloseTabChoiceSheet({
               {t("workspace.tabs.closePrompt.killTerminalDescription")}
             </Text>
           </View>
-        </Pressable>
+        </PressHighlight>
       )}
     </AdaptiveModalSheet>
   );

@@ -1,6 +1,7 @@
 import type { ProjectDescriptor, WorkspaceDescriptor } from "@/stores/session-store";
 import type { HostProjectListItem } from "@/projects/host-project-model";
 import { buildWorkspaceStructureProjects } from "@/projects/workspace-structure";
+import { selectPrHintFromStatus } from "@/git/pr-hint";
 
 export interface WorkspaceSummary {
   id: string;
@@ -10,6 +11,9 @@ export interface WorkspaceSummary {
   status: WorkspaceDescriptor["status"];
   currentBranch: string | null;
   archivingAt?: string;
+  /** Pull/merge request number backing this workspace, so a query can find it. */
+  changeRequestNumber: number | null;
+  statusEnteredAt: Date | null;
 }
 
 export interface ProjectHostEntry {
@@ -25,10 +29,12 @@ export interface ProjectHostEntry {
   gitRuntime?: WorkspaceDescriptor["gitRuntime"];
   githubRuntime?: WorkspaceDescriptor["githubRuntime"];
   projectAppearance?: WorkspaceDescriptor["projectAppearance"];
+  customIconRevision?: string | null;
+  iconRevision?: string;
 }
 
 export interface ProjectSummary {
-  projectKey: string;
+  viewKey: string;
   projectName: string;
   projectCustomName?: string | null;
   hosts: ProjectHostEntry[];
@@ -90,10 +96,15 @@ interface HostGroup {
   // Repo root for a project parent that has no workspaces yet. Without it the
   // host's repoRoot resolves to "" and the project reads as non-editable.
   fallbackRepoRoot: string;
+  customIconRevision?: string | null;
+  iconRevision?: string;
+  // The project record exists before its first workspace. Keep its editable
+  // root at the project boundary instead of deriving it from child rows.
+  projectRoot: string;
 }
 
 interface ProjectGroup {
-  projectKey: string;
+  viewKey: string;
   projectName: string;
   projectCustomName: string | null;
   hostsByServerId: Map<string, HostGroup>;
@@ -101,10 +112,10 @@ interface ProjectGroup {
 
 function findProjectMetadata(
   host: ProjectHost,
-  projectKey: string,
+  projectId: string,
 ): { customName: string | null; displayName: string } | null {
   for (const project of host.projects) {
-    if (project.projectId === projectKey) {
+    if (project.projectId === projectId) {
       return {
         customName: project.projectCustomName ?? null,
         displayName: project.projectDisplayName,
@@ -124,8 +135,25 @@ function buildHostProjectEntries(hosts: ProjectHost[]): HostProjectListItem[] {
   });
 }
 
-function resolveHostRepoRoot(group: HostGroup): string {
-  return group.workspaces[0]?.projectRootPath ?? group.fallbackRepoRoot;
+function resolveHostRepoRoot(input: {
+  projectRoot: string;
+  workspaces: readonly WorkspaceDescriptor[];
+}): string {
+  return input.workspaces[0]?.projectRootPath || input.projectRoot;
+}
+
+/**
+ * Resolve the workspace's pull/merge request number.
+ *
+ * The wire carries the number directly, so prefer it. `selectPrHintFromStatus`
+ * is only the fallback: it derives the number by regex-parsing the PR/MR URL,
+ * which yields null for a noncanonical or absent URL even when the daemon sent
+ * a perfectly good number.
+ */
+function toChangeRequestNumber(workspace: WorkspaceDescriptor): number | null {
+  const pullRequest = workspace.githubRuntime?.pullRequest;
+  if (!pullRequest) return null;
+  return pullRequest.number ?? selectPrHintFromStatus(pullRequest, workspace.forge)?.number ?? null;
 }
 
 function toWorkspaceSummary(workspace: WorkspaceDescriptor): WorkspaceSummary {
@@ -138,6 +166,8 @@ function toWorkspaceSummary(workspace: WorkspaceDescriptor): WorkspaceSummary {
     status: workspace.status,
     currentBranch: currentBranch && currentBranch !== "HEAD" ? currentBranch : null,
     ...(workspace.archivingAt ? { archivingAt: workspace.archivingAt } : {}),
+    changeRequestNumber: toChangeRequestNumber(workspace),
+    statusEnteredAt: workspace.statusEnteredAt,
   };
 }
 
@@ -159,6 +189,8 @@ function toHostEntry(group: HostGroup): ProjectHostEntry {
     gitRuntime: canonical?.gitRuntime,
     githubRuntime: canonical?.githubRuntime,
     projectAppearance: canonical?.projectAppearance ?? group.projectAppearance,
+    customIconRevision: canonical?.projectCustomIconRevision ?? group.customIconRevision,
+    iconRevision: group.iconRevision,
   };
 }
 
@@ -175,7 +207,7 @@ function toProjectSummary(draft: ProjectGroup): ProjectSummary {
   const totalWorkspaceCount = hosts.reduce((sum, host) => sum + host.workspaceCount, 0);
   const onlineHostCount = hosts.filter((host) => host.isOnline).length;
   return {
-    projectKey: draft.projectKey,
+    viewKey: draft.viewKey,
     projectName: draft.projectName,
     projectCustomName: draft.projectCustomName,
     hosts,
@@ -199,15 +231,15 @@ function addHostProjects(
     if (!placement) continue;
     const projectId = placement.projectId;
     const customName = findProjectMetadata(host, projectId);
-    let group = groups.get(hostProject.projectKey);
+    let group = groups.get(hostProject.viewKey);
     if (!group) {
       group = {
-        projectKey: hostProject.projectKey,
+        viewKey: hostProject.viewKey,
         projectName: customName?.displayName ?? hostProject.projectName,
         projectCustomName: customName?.customName ?? null,
         hostsByServerId: new Map(),
       };
-      groups.set(hostProject.projectKey, group);
+      groups.set(hostProject.viewKey, group);
     } else if (customName?.customName && !group.projectCustomName) {
       group.projectCustomName = customName.customName;
       group.projectName = customName.displayName;
@@ -224,6 +256,9 @@ function addHostProjects(
         workspaces: [],
         projectAppearance: placement.projectAppearance,
         fallbackRepoRoot: repoRootByProjectId.get(projectId) ?? "",
+        customIconRevision: placement.customIconRevision,
+        iconRevision: placement.iconRevision,
+        projectRoot: repoRootByProjectId.get(projectId) ?? "",
       });
     }
   }
@@ -234,16 +269,16 @@ function attachHostWorkspaces(
   host: ProjectHost,
   hostProjects: HostProjectListItem[],
 ): void {
-  const projectKeyByProjectId = new Map(
+  const projectViewKeyByProjectId = new Map(
     hostProjects.flatMap((project) =>
       project.hosts
         .filter((placement) => placement.serverId === host.serverId && placement.projectId)
-        .map((placement) => [placement.projectId!, project.projectKey] as const),
+        .map((placement) => [placement.projectId!, project.viewKey] as const),
     ),
   );
 
   for (const workspace of host.workspaces) {
-    const key = projectKeyByProjectId.get(workspace.projectId);
+    const key = projectViewKeyByProjectId.get(workspace.projectId);
     if (key) groups.get(key)?.hostsByServerId.get(host.serverId)?.workspaces.push(workspace);
   }
 }
@@ -266,7 +301,7 @@ export function buildProjects(input: BuildProjectsInput): BuildProjectsResult {
     if (name !== 0) {
       return name;
     }
-    return left.projectKey.localeCompare(right.projectKey);
+    return left.viewKey.localeCompare(right.viewKey);
   });
 
   return { projects };

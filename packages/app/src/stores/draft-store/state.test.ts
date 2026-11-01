@@ -3,11 +3,13 @@ import type { ChatHistoryContextAttachment } from "@/attachments/types";
 import {
   applyClearDraftRecord,
   buildDraftTranscriptAttachmentId,
-  pruneFinalizedDraftRecords,
   removeDraftTranscriptAttachment,
   haveDraftImageReferencesChanged,
-  toDraftInputIfReady,
   upsertDraftTranscriptAttachment,
+  pruneFinalizedDraftRecords,
+  toDraftInputIfReady,
+  editDraftRecordText,
+  type DraftRecord,
 } from "./state";
 
 function transcriptAttachment(input: {
@@ -37,6 +39,44 @@ function transcriptAttachment(input: {
 }
 
 describe("draft-store lifecycle", () => {
+  it("edits text without invalidating attachment subscribers", () => {
+    const draft: DraftRecord = {
+      input: {
+        text: "hello",
+        transcriptAttachments: [],
+        attachments: [
+          { kind: "workspace_file", path: "README.md", selection: { kind: "whole_file" } },
+        ],
+      },
+      lifecycle: "active",
+      updatedAt: 1,
+      version: 1,
+    };
+    const edited = editDraftRecordText(draft, "hello\n", 2);
+    expect(edited.input.text).toBe("hello\n");
+    expect(edited.input.attachments).toBe(draft.input.attachments);
+    expect(edited.version).toBe(2);
+    expect(editDraftRecordText(edited, "hello\n", 3)).toBe(edited);
+    expect(editDraftRecordText(edited, "", 3).lifecycle).toBe("active");
+    expect(editDraftRecordText(undefined, "", 3).lifecycle).toBe("abandoned");
+  });
+  it("preserves transcript-only content during text edits", () => {
+    const transcript = transcriptAttachment({
+      serverId: "host-1",
+      agentId: "agent-1",
+      text: "Context",
+    });
+    const record: DraftRecord = {
+      input: { text: "hello", attachments: [], transcriptAttachments: [transcript] },
+      lifecycle: "active",
+      updatedAt: 1,
+      version: 1,
+    };
+    const edited = editDraftRecordText(record, "", 2);
+    expect(edited.lifecycle).toBe("active");
+    expect(edited.input.transcriptAttachments).toBe(record.input.transcriptAttachments);
+    expect(toDraftInputIfReady(edited)?.transcriptAttachments).toHaveLength(1);
+  });
   it("prunes finalized tombstones after TTL", () => {
     const nowMs = 1_000_000;
     const drafts = {
@@ -113,6 +153,34 @@ describe("draft-store lifecycle", () => {
 });
 
 describe("draft-store normalization", () => {
+  it("preserves plugin resources when hydrating a draft", () => {
+    const attachment = {
+      kind: "plugin_resource" as const,
+      pluginId: "linear",
+      sourceId: "issues",
+      sourceTitle: "Linear issue",
+      sourceIcon: "CircleDot",
+      item: {
+        id: "issue-uuid",
+        identifier: "ENG-123",
+        title: "Plugin attachments",
+        subtitle: "In progress",
+        url: "https://linear.app/acme/issue/ENG-123/plugin-attachments",
+        text: "Linear issue ENG-123: Plugin attachments",
+        resourceType: "issue",
+      },
+    };
+
+    expect(
+      toDraftInputIfReady({
+        input: { text: "Implement this", attachments: [attachment], transcriptAttachments: [] },
+        lifecycle: "active",
+        updatedAt: 1,
+        version: 1,
+      }),
+    ).toEqual({ text: "Implement this", attachments: [attachment], transcriptAttachments: [] });
+  });
+
   it("preserves uploaded file attachments when hydrating a draft", () => {
     const attachment = {
       kind: "file" as const,
@@ -133,7 +201,7 @@ describe("draft-store normalization", () => {
         updatedAt: 1,
         version: 1,
       }),
-    ).toEqual({ text: "Review this", attachments: [attachment] });
+    ).toEqual({ text: "Review this", attachments: [attachment], transcriptAttachments: [] });
   });
 
   it("preserves workspace file selections when hydrating a draft", () => {
@@ -150,7 +218,7 @@ describe("draft-store normalization", () => {
         updatedAt: 1,
         version: 1,
       }),
-    ).toEqual({ text: "Review this", attachments: [attachment] });
+    ).toEqual({ text: "Review this", attachments: [attachment], transcriptAttachments: [] });
   });
 
   it("preserves New Workspace picker ownership when hydrating a draft", () => {

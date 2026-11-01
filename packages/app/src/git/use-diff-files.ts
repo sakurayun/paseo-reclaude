@@ -1,7 +1,8 @@
 import { useMemo } from "react";
 import type { CheckoutCommitFile, ParsedDiffFile } from "@getpaseo/protocol/messages";
+import { useRetainedPanelActive } from "@/components/retained-panel";
 import { useFetchQueries } from "@/data/query";
-import { checkoutCommitFileDiffQueryKey, COMMIT_FILE_DIFF_STALE_TIME } from "@/git/query-keys";
+import { commitFileDiffQueryOptions } from "./commit-file-diff-query";
 import { useCheckoutCommitsQuery } from "@/git/use-commits-query";
 import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
 
@@ -57,9 +58,11 @@ export function resolveCommitDiffFiles(
 
 export function useCommitDiffFiles(ctx: CommitDiffFilesContext): CommitDiffFilesResult {
   const { serverId, cwd, sha, enabled = true } = ctx;
+  const retainedPanelActive = useRetainedPanelActive();
+  const queryEnabled = enabled && retainedPanelActive;
   const client = useHostRuntimeClient(serverId);
   const isConnected = useHostRuntimeIsConnected(serverId);
-  const commitsQuery = useCheckoutCommitsQuery({ serverId, cwd, enabled });
+  const commitsQuery = useCheckoutCommitsQuery({ serverId, cwd, enabled: queryEnabled });
   const commitsData = commitsQuery.status === "loaded" ? commitsQuery.data : null;
   const commitFiles = useMemo(() => {
     if (!sha || !commitsData) {
@@ -69,25 +72,23 @@ export function useCommitDiffFiles(ctx: CommitDiffFilesContext): CommitDiffFiles
   }, [commitsData, sha]);
 
   const fileDiffsEnabled =
-    enabled &&
+    queryEnabled &&
     commitsQuery.status === "loaded" &&
     Boolean(cwd) &&
     Boolean(sha) &&
     Boolean(client) &&
     isConnected;
   const fileDiffResults = useFetchQueries(
-    commitFiles.map((file) => ({
-      queryKey: checkoutCommitFileDiffQueryKey(serverId, cwd, sha, file.path),
-      queryFn: async (): Promise<{ file: ParsedDiffFile | null }> => {
-        if (!client) {
-          throw new Error("Host disconnected");
-        }
-        return client.getCommitFileDiff(cwd, sha, file.path);
-      },
-      enabled: fileDiffsEnabled,
-      staleTimeMs: COMMIT_FILE_DIFF_STALE_TIME,
-      dataShape: "value" as const,
-    })),
+    commitFiles.map((file) =>
+      commitFileDiffQueryOptions({
+        serverId,
+        cwd,
+        sha,
+        path: file.path,
+        client,
+        enabled: fileDiffsEnabled,
+      }),
+    ),
   );
   const commitsLoading = commitsQuery.status === "connecting" || commitsQuery.status === "loading";
   const commitsError = commitsQuery.status === "error" ? commitsQuery.error : null;

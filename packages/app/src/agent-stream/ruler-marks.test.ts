@@ -17,6 +17,7 @@ function assistantMessage(id: string, text: string): StreamItem {
 function todoList(id: string): StreamItem {
   return {
     kind: "todo_list",
+    activity: { type: "created", count: 1 },
     id,
     timestamp: new Date(0),
     provider: "claude",

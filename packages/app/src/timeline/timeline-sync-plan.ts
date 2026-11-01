@@ -5,16 +5,11 @@ export interface TimelineSyncCursor {
   seq: number;
 }
 
-export interface AgentTimelineCursorRange {
-  epoch: string;
-  startSeq: number;
-  endSeq: number;
-}
-
 export interface ProjectedTimelineTailFetchPlan {
   direction: "tail";
   limit: number;
   projection: "projected";
+  wholeTurns: true;
 }
 
 export interface ProjectedTimelineAfterFetchPlan {
@@ -22,6 +17,7 @@ export interface ProjectedTimelineAfterFetchPlan {
   cursor: TimelineSyncCursor;
   limit: number;
   projection: "projected";
+  wholeTurns: true;
 }
 
 export interface ProjectedTimelineBeforeFetchPlan {
@@ -29,6 +25,7 @@ export interface ProjectedTimelineBeforeFetchPlan {
   cursor: TimelineSyncCursor;
   limit: number;
   projection: "projected";
+  wholeTurns: true;
 }
 
 export type ProjectedTimelineFetchPlan =
@@ -40,33 +37,13 @@ export type ProjectedTimelineForwardFetchPlan =
   | ProjectedTimelineTailFetchPlan
   | ProjectedTimelineAfterFetchPlan;
 
-export function planInitialAgentTimelineSync(input: {
-  cursor: AgentTimelineCursorRange | undefined;
-  hasAuthoritativeHistory: boolean;
-}): ProjectedTimelineForwardFetchPlan {
-  if (input.hasAuthoritativeHistory && input.cursor) {
-    return planTimelineCatchUpAfter({ epoch: input.cursor.epoch, seq: input.cursor.endSeq });
-  }
-
-  return planTimelineTailFetch();
-}
-
-export function planResumeTimelineSync(input: {
-  cursor: AgentTimelineCursorRange | undefined;
-}): ProjectedTimelineForwardFetchPlan {
-  if (input.cursor) {
-    return planTimelineCatchUpAfter({ epoch: input.cursor.epoch, seq: input.cursor.endSeq });
-  }
-
-  return planTimelineTailFetch();
-}
-
 export function planTimelineCatchUpAfter(cursor: TimelineSyncCursor) {
   return {
     direction: "after",
     cursor,
     limit: TIMELINE_FETCH_PAGE_SIZE,
     projection: "projected",
+    wholeTurns: true,
   } as const;
 }
 
@@ -75,7 +52,16 @@ export function planTimelineTailFetch() {
     direction: "tail",
     limit: TIMELINE_FETCH_PAGE_SIZE,
     projection: "projected",
+    wholeTurns: true,
   } as const;
+}
+
+export function planTimelineResumeFetch(
+  range: { epoch: string; endSeq: number } | null | undefined,
+): ProjectedTimelineForwardFetchPlan {
+  return range
+    ? planTimelineCatchUpAfter({ epoch: range.epoch, seq: range.endSeq })
+    : planTimelineTailFetch();
 }
 
 export function planTimelineOlderFetch(cursor: TimelineSyncCursor) {
@@ -84,6 +70,19 @@ export function planTimelineOlderFetch(cursor: TimelineSyncCursor) {
     cursor,
     limit: TIMELINE_FETCH_PAGE_SIZE,
     projection: "projected",
+    wholeTurns: true,
+  } as const;
+}
+
+export function planTimelinePromptJump(target: TimelineSyncCursor) {
+  const newerRows = Math.floor(TIMELINE_FETCH_PAGE_SIZE / 2);
+  return {
+    direction: "before",
+    cursor: { epoch: target.epoch, seq: target.seq + newerRows + 1 },
+    limit: TIMELINE_FETCH_PAGE_SIZE,
+    projection: "projected",
+    wholeTurns: true,
+    mergeWindow: true,
   } as const;
 }
 
@@ -97,4 +96,13 @@ export function isTimelineCatchUpComplete(input: {
   }
 
   return input.direction !== "after" || !input.hasNewer;
+}
+
+export function isTimelineResumeSnapshotAuthoritative(input: {
+  direction: "tail" | "before" | "after";
+  hasNewer: boolean;
+  error: string | null;
+}): boolean {
+  if (input.error || input.direction === "before") return false;
+  return input.direction === "tail" || !input.hasNewer;
 }

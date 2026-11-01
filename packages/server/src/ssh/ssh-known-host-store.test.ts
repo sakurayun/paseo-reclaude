@@ -74,7 +74,7 @@ describe("createSshKnownHostStore", () => {
     expect(store.list()).toHaveLength(2);
   });
 
-  it("imports plain openssh known_hosts lines and skips hashed/invalid ones", () => {
+  it("imports plain openssh known_hosts lines and skips hashed/invalid ones", async () => {
     const dir = mkdtempSync(path.join(tmpdir(), "known-hosts-import-"));
     const knownHostsFile = path.join(dir, "known_hosts");
     const b64 = KEY_A.toString("base64");
@@ -91,7 +91,7 @@ describe("createSshKnownHostStore", () => {
 
     const store = createSshKnownHostStore({ storePath: tempStorePath() });
     stores.push(store);
-    const result = store.importFromFile(knownHostsFile);
+    const result = await store.importFromFile(knownHostsFile);
     expect(result.imported).toBe(2);
     expect(result.skipped).toBe(2);
 
@@ -102,10 +102,10 @@ describe("createSshKnownHostStore", () => {
     expect(entries.every((entry) => entry.source === "imported")).toBe(true);
   });
 
-  it("returns zero counts when the file is missing", () => {
+  it("returns zero counts when the file is missing", async () => {
     const store = createSshKnownHostStore({ storePath: tempStorePath() });
     stores.push(store);
-    expect(store.importFromFile("/nonexistent/known_hosts")).toEqual({
+    expect(await store.importFromFile("/nonexistent/known_hosts")).toEqual({
       imported: 0,
       skipped: 0,
     });

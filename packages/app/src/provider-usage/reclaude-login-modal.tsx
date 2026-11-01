@@ -210,7 +210,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   label: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
   },
   hint: {
     color: theme.colors.foregroundMuted,

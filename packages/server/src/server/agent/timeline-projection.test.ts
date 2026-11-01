@@ -1,9 +1,9 @@
+import { selectProjectedTimelinePage } from "./test-utils/timeline-page-reference.js";
 import { describe, expect, test } from "vitest";
 
 import type { AgentTimelineRow } from "./agent-manager.js";
 import {
   projectTimelineRows,
-  selectProjectedTimelinePage,
   selectTimelineWindowByProjectedLimit,
 } from "./timeline-projection.js";
 
@@ -174,6 +174,45 @@ describe("projectTimelineRows", () => {
       { startSeq: 3, endSeq: 3 },
     ]);
     expect(tool?.collapsed).toContain("tool_lifecycle");
+  });
+
+  test("replaces plugin rows with the same identity across turns", () => {
+    const rows: AgentTimelineRow[] = [
+      {
+        seq: 1,
+        turnId: "turn-1",
+        timestamp: "2026-02-13T00:00:00.000Z",
+        item: {
+          type: "plugin",
+          id: "review-1",
+          pluginId: "review",
+          kind: "review",
+          version: 1,
+          data: { status: "running" },
+        },
+      },
+      {
+        seq: 2,
+        turnId: "turn-2",
+        timestamp: "2026-02-13T00:00:00.100Z",
+        item: {
+          type: "plugin",
+          id: "review-1",
+          pluginId: "review",
+          kind: "review",
+          version: 1,
+          data: { status: "complete" },
+        },
+      },
+    ];
+
+    const projected = projectTimelineRows({ rows, mode: "projected" });
+
+    expect(projected).toHaveLength(1);
+    expect(projected[0]?.item).toEqual(rows[1]?.item);
+    expect(projected[0]?.turnId).toBe("turn-2");
+    expect(projected[0]?.sourceSeqRanges).toEqual([{ startSeq: 1, endSeq: 2 }]);
+    expect(projected[0]?.collapsed).toContain("identity");
   });
 
   test("returns canonical rows unchanged in canonical mode", () => {
@@ -495,6 +534,154 @@ describe("selectProjectedTimelinePage", () => {
     };
   }
 
+  test("whole-turn pages extend past the soft target and keep prompt jumps whole", () => {
+    const rows: AgentTimelineRow[] = Array.from({ length: 125 }, (_, index) => ({
+      seq: index + 1,
+      timestamp: new Date(1000 + index).toISOString(),
+      turnId: ["short", "long", "latest"][Number(index >= 3) + Number(index >= 123)],
+      item: {
+        type: "tool_call",
+        callId: `tool-${index}`,
+        name: "shell",
+        status: "completed",
+        error: null,
+        detail: { type: "unknown", input: null, output: null },
+      },
+    }));
+    const tail = selectProjectedTimelinePage({
+      rows,
+      direction: "tail",
+      limit: 40,
+      wholeTurns: true,
+    });
+    expect(tail.entries.map((entry) => entry.seqStart)).toEqual(
+      rows.slice(3).map((row) => row.seq),
+    );
+    expect(tail).toMatchObject({ startSeq: 4, endSeq: 125, hasOlder: true, hasNewer: false });
+    const before = selectProjectedTimelinePage({
+      rows,
+      direction: "before",
+      cursorSeq: 124,
+      limit: 40,
+      wholeTurns: true,
+    });
+    expect(before.entries.map((entry) => entry.seqStart)).toEqual(
+      rows.slice(3, 123).map((row) => row.seq),
+    );
+    expect(before.endSeq).toBe(123);
+    const older = selectProjectedTimelinePage({
+      rows,
+      direction: "before",
+      cursorSeq: 4,
+      limit: 40,
+      wholeTurns: true,
+    });
+    expect(older.entries.map((entry) => entry.seqStart)).toEqual([1, 2, 3]);
+    expect(older.hasOlder).toBe(false);
+    const jump = selectProjectedTimelinePage({
+      rows,
+      direction: "before",
+      cursorSeq: 70,
+      limit: 40,
+      wholeTurns: true,
+    });
+    expect(jump.entries.map((entry) => entry.seqStart)).toEqual(
+      rows.slice(3, 123).map((row) => row.seq),
+    );
+    expect(jump).toMatchObject({ startSeq: 4, endSeq: 123, hasOlder: true, hasNewer: true });
+    const nearPreviousPrompt = selectProjectedTimelinePage({
+      rows,
+      direction: "before",
+      cursorSeq: 10,
+      limit: 40,
+      wholeTurns: true,
+    });
+    expect(nearPreviousPrompt).toMatchObject({ startSeq: 1, endSeq: 123 });
+    expect(
+      selectProjectedTimelinePage({ rows, direction: "tail", limit: 40 }).entries,
+    ).toHaveLength(40);
+  });
+
+  test("whole-turn pages share short runs and use the same deterministic legacy triggers", () => {
+    const rows: AgentTimelineRow[] = Array.from({ length: 24 }, (_, index) => ({
+      seq: index + 1,
+      timestamp: new Date(1000 + index).toISOString(),
+      item:
+        index % 2 === 0
+          ? { type: "user_message", text: `prompt-${index}` }
+          : { type: "assistant_message", text: `reply-${index}` },
+    }));
+    const page = selectProjectedTimelinePage({
+      rows,
+      direction: "tail",
+      limit: 7,
+      wholeTurns: true,
+    });
+    expect(page.entries.map((entry) => entry.seqStart)).toEqual([17, 18, 19, 20, 21, 22, 23, 24]);
+    expect(
+      selectProjectedTimelinePage({ rows, direction: "tail", limit: 0, wholeTurns: true }).entries,
+    ).toHaveLength(24);
+    rows.push({
+      ...toolRow(25, "completed"),
+      item: { ...toolRow(25, "completed").item, name: "heartbeat" } as AgentTimelineRow["item"],
+    });
+    rows.push({
+      seq: 26,
+      timestamp: new Date().toISOString(),
+      item: { type: "assistant_message", text: "awake" },
+    });
+    expect(
+      selectProjectedTimelinePage({
+        rows,
+        direction: "tail",
+        limit: 1,
+        wholeTurns: true,
+      }).entries.map((entry) => entry.seqStart),
+    ).toEqual([25, 26]);
+  });
+
+  test("whole-turn tails close interleaved source coverage without changing forward catch-up", () => {
+    const rows: AgentTimelineRow[] = [
+      {
+        seq: 1,
+        timestamp: new Date(1).toISOString(),
+        turnId: "first",
+        item: { type: "user_message", text: "go" },
+      },
+      { ...toolRow(2, "running"), turnId: "first" },
+      {
+        seq: 3,
+        timestamp: new Date(3).toISOString(),
+        turnId: "second",
+        item: { type: "user_message", text: "next" },
+      },
+      {
+        seq: 4,
+        timestamp: new Date(4).toISOString(),
+        turnId: "second",
+        item: { type: "assistant_message", text: "done" },
+      },
+      { ...toolRow(5, "completed"), turnId: "first" },
+    ];
+    expect(
+      selectProjectedTimelinePage({ rows, direction: "tail", limit: 1, wholeTurns: true }),
+    ).toMatchObject({
+      startSeq: 1,
+      endSeq: 5,
+      hasOlder: false,
+      hasNewer: false,
+    });
+    expect(
+      selectProjectedTimelinePage({
+        rows,
+        direction: "after",
+        cursorSeq: 2,
+        limit: 1,
+        wholeTurns: true,
+      }),
+    ).toEqual(selectProjectedTimelinePage({ rows, direction: "after", cursorSeq: 2, limit: 1 }));
+  });
+
   test("tail page returns full projected items instead of tool lifecycle deltas", () => {
     const rows: AgentTimelineRow[] = [
       { seq: 1, timestamp: "2026-02-13T00:00:00.000Z", item: { type: "user_message", text: "go" } },
@@ -627,7 +814,63 @@ describe("selectProjectedTimelinePage", () => {
     });
   });
 
-  test("before page includes a wide tool whose earlier source range is before the cursor", () => {
+  test("before limit counts projected entries without repeating a merged assistant", () => {
+    const rows: AgentTimelineRow[] = [
+      ...Array.from({ length: 80 }, (_, index) => ({
+        seq: index + 1,
+        timestamp: new Date(1000 + index).toISOString(),
+        item: { type: "assistant_message" as const, text: "x" },
+      })),
+      ...Array.from({ length: 4 }, (_, index) => ({
+        seq: index + 81,
+        timestamp: new Date(2000 + index).toISOString(),
+        item: { type: "user_message" as const, text: `message ${index + 1}` },
+      })),
+    ];
+
+    const newest = selectProjectedTimelinePage({
+      rows,
+      direction: "before",
+      cursorSeq: 85,
+      limit: 2,
+    });
+    const middle = selectProjectedTimelinePage({
+      rows,
+      direction: "before",
+      cursorSeq: newest.startSeq ?? 0,
+      limit: 2,
+    });
+    const oldest = selectProjectedTimelinePage({
+      rows,
+      direction: "before",
+      cursorSeq: middle.startSeq ?? 0,
+      limit: 2,
+    });
+    const exhausted = selectProjectedTimelinePage({
+      rows,
+      direction: "before",
+      cursorSeq: oldest.startSeq ?? 0,
+      limit: 2,
+    });
+
+    const pageSummaries = [];
+    for (const page of [newest, middle, oldest]) {
+      pageSummaries.push({
+        entryTypes: page.entries.map((entry) => entry.item.type),
+        startSeq: page.startSeq,
+        endSeq: page.endSeq,
+        hasOlder: page.hasOlder,
+      });
+    }
+    expect(pageSummaries).toEqual([
+      { entryTypes: ["user_message", "user_message"], startSeq: 83, endSeq: 84, hasOlder: true },
+      { entryTypes: ["user_message", "user_message"], startSeq: 81, endSeq: 82, hasOlder: true },
+      { entryTypes: ["assistant_message"], startSeq: 1, endSeq: 80, hasOlder: false },
+    ]);
+    expect(exhausted.entries).toEqual([]);
+  });
+
+  test("before pages place a full wide tool on the page containing its projected anchor", () => {
     const rows: AgentTimelineRow[] = [
       toolRow(1, "running"),
       ...Array.from({ length: 498 }, (_, index) => ({
@@ -638,16 +881,32 @@ describe("selectProjectedTimelinePage", () => {
       toolRow(500, "completed"),
     ];
 
-    const page = selectProjectedTimelinePage({
+    const newestPage = selectProjectedTimelinePage({
       rows,
       direction: "before",
       cursorSeq: 500,
       limit: 100,
     });
+    const anchoredPage = selectProjectedTimelinePage({
+      rows,
+      direction: "before",
+      cursorSeq: 101,
+      limit: 100,
+    });
 
-    expect(page.entries.some((entry) => entry.item.type === "tool_call")).toBe(true);
-    expect(page.endSeq).toBeLessThan(500);
-    expect(page.hasOlder).toBe(true);
+    expect(newestPage.entries).toHaveLength(100);
+    expect(newestPage.entries.some((entry) => entry.item.type === "tool_call")).toBe(false);
+    expect(newestPage.startSeq).toBe(400);
+    expect(newestPage.endSeq).toBe(499);
+    expect(newestPage.hasOlder).toBe(true);
+
+    expect(anchoredPage.entries).toHaveLength(100);
+    expect(anchoredPage.entries[0]?.item.type).toBe("tool_call");
+    expect(anchoredPage.entries[0]?.seqStart).toBe(1);
+    expect(anchoredPage.entries[0]?.seqEnd).toBe(500);
+    expect(anchoredPage.startSeq).toBe(1);
+    expect(anchoredPage.endSeq).toBe(100);
+    expect(anchoredPage.hasOlder).toBe(false);
   });
 
   test("tail page includes a wide tool when its completion is the newest seq", () => {

@@ -2,19 +2,75 @@
 title: MCP reference
 description: Reference for the Paseo tools agents use to manage agents, workspaces, scripts, terminals, and schedules.
 nav: MCP reference
-order: 33
+order: 34
 category: Orchestration
 ---
 
 # MCP reference
 
-This is the complete catalog behind the workflows in [Orchestration](/docs/orchestration) and [Common workflows](/docs/orchestration-workflows). You normally ask for an outcome in natural language and let the agent choose the tools.
+[Enable Paseo tools](/docs/orchestration#get-started) to give agents this catalog. Ask for an outcome in natural language, or use the tool interfaces below.
 
-Paseo can inject these tools into every new agent it launches. Open **Settings → your host → Agents** and turn on **Enable Paseo tools**, or set `daemon.mcp.injectIntoAgents` to `true`.
+## Configuration
 
-Depending on the provider, Paseo delivers the catalog through its native tool interface or MCP. The capabilities are the same either way.
+| Setting                       | Default | Purpose                                            |
+| ----------------------------- | ------- | -------------------------------------------------- |
+| `daemon.mcp.enabled`          | `true`  | Run the MCP server.                                |
+| `daemon.mcp.injectIntoAgents` | `false` | Give agents launched by Paseo access to its tools. |
 
-The MCP server itself is controlled by `daemon.mcp.enabled`. Existing agents may need a reload.
+Depending on the provider, Paseo delivers tools through its native tool interface or MCP. The capabilities are the same. Start a new agent or reload an existing one after changing injection settings.
+
+## Limit Paseo tools by provider
+
+Use provider policies when different agent profiles should receive different Paseo tools. Enable
+tool injection globally, then add `paseoTools` to the exact provider IDs you launch:
+
+```json
+{
+  "$schema": "https://paseo.sh/schemas/paseo.config.v1.json",
+  "version": 1,
+  "daemon": {
+    "mcp": {
+      "enabled": true,
+      "injectIntoAgents": true
+    }
+  },
+  "agents": {
+    "providers": {
+      "codex-lead": {
+        "extends": "codex",
+        "label": "Codex Lead"
+      },
+      "codex-worker": {
+        "extends": "codex",
+        "label": "Codex Worker",
+        "paseoTools": {
+          "disabledTools": ["create_agent", "send_agent_prompt", "kill_agent"]
+        }
+      },
+      "codex-isolated": {
+        "extends": "codex",
+        "label": "Codex Isolated",
+        "paseoTools": {
+          "enabled": false
+        }
+      }
+    }
+  }
+}
+```
+
+Run `paseo reload` after editing `~/.paseo/config.json`, then start a new agent or reload an
+existing one. A running session keeps the catalog it received at launch.
+
+Omitting `paseoTools` enables the complete catalog. Set `enabled` to `false` to remove the catalog,
+or list exact tool IDs in `disabledTools` to remove selected tools. Custom profiles do not inherit
+this policy from `extends`; configure each custom provider ID separately.
+
+Browser tools still require browser tools to be enabled and a connected browser host. The
+voice-only `speak` tool is separate from this policy.
+
+This setting limits the catalog presented to an agent. It is not a security boundary for an agent
+that can access the host through a shell.
 
 ## Mental model
 
@@ -31,27 +87,29 @@ MCP does not expose an agent-detach tool. Detaching is a manual user action in t
 
 ### Agents
 
-| Tool                 | Function                                                                                |
-| -------------------- | --------------------------------------------------------------------------------------- |
-| `create_agent`       | Create an agent, optionally placing it in an existing workspace with `workspaceId`.     |
-| `send_agent_prompt`  | Send a task to a running agent.                                                         |
-| `get_agent_status`   | Return the latest snapshot for an agent.                                                |
-| `list_agents`        | List recent agents as compact metadata.                                                 |
-| `cancel_agent`       | Abort an agent's current run but keep the agent alive.                                  |
-| `archive_agent`      | Soft-delete an agent and remove it from the active list.                                |
-| `kill_agent`         | Terminate an agent session permanently.                                                 |
-| `update_agent`       | Update an agent name, labels, or runtime settings such as mode/model/thinking/features. |
-| `get_agent_activity` | Return recent agent timeline entries as a curated summary.                              |
-| `set_agent_mode`     | Switch an agent's session mode.                                                         |
+| Tool                 | Function                                                                                                                                                       |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `create_agent`       | Create an agent, optionally placing it in an existing workspace with `workspaceId`. Use `initialPrompt` to start work; returns without waiting for completion. |
+| `send_agent_prompt`  | Send a prompt using `agentId` and `prompt`; returns without waiting for completion.                                                                            |
+| `get_agent_status`   | Return the latest snapshot for an agent.                                                                                                                       |
+| `list_agents`        | List recent agents as compact metadata; `includeBackground: true` includes background work.                                                                    |
+| `cancel_agent`       | Abort an agent's current run but keep the agent alive.                                                                                                         |
+| `archive_agent`      | Soft-delete an agent and remove it from the active list.                                                                                                       |
+| `kill_agent`         | Terminate an agent session permanently.                                                                                                                        |
+| `update_agent`       | Update an agent name, labels, or runtime settings such as mode/model/thinking/features.                                                                        |
+| `get_agent_activity` | Return recent agent timeline entries as a curated summary.                                                                                                     |
+| `set_agent_mode`     | Switch an agent's session mode.                                                                                                                                |
+
+Paseo agents receive finish, error, and permission notifications by default; set `notifyOnFinish: false` to disable them. External MCP clients use `get_agent_status` and `get_agent_activity` to check results.
 
 ### Workspaces
 
-| Tool                | Function                                                                                              |
-| ------------------- | ----------------------------------------------------------------------------------------------------- |
-| `create_workspace`  | Create a local or worktree-isolated workspace. Worktrees can branch off, check out a branch, or a PR. |
-| `list_workspaces`   | List active workspaces and their directories and isolation.                                           |
-| `rename_workspace`  | Change the user-visible name of the current or specified workspace.                                   |
-| `archive_workspace` | Archive a workspace and the sessions it owns.                                                         |
+| Tool                | Function                                                                                                                                                                                                                                                                                                        |
+| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `create_workspace`  | Create a local or worktree-isolated workspace. Worktrees can branch off, check out a branch, or a PR. `background: true` hides it from default lists and the sidebar while preserving history and access by ID. Omission inherits the calling agent’s workspace setting, or defaults to false without a caller. |
+| `list_workspaces`   | List active workspaces and their directories and isolation. Use `includeBackground: true` to include background workspaces.                                                                                                                                                                                     |
+| `rename_workspace`  | Change the user-visible name of the current or specified workspace.                                                                                                                                                                                                                                             |
+| `archive_workspace` | Archive a workspace and the sessions it owns.                                                                                                                                                                                                                                                                   |
 
 For worktree isolation, `create_workspace` accepts the same useful choices as the app: branch off from a base, check out an existing branch, or check out a pull request. The worktree remains an implementation detail of the workspace lifecycle.
 
@@ -107,6 +165,28 @@ Both use the same cron engine, but they have deliberately different interfaces.
 | `delete_heartbeat`  | Delete one of the current agent's heartbeats.                                |
 
 MCP heartbeats are ephemeral: create or delete them. To change one, delete it and create a replacement. Pause, resume, update, inspect, logs, and run-once apply to new-agent schedules only.
+
+New-agent run workspaces are archived when each run ends by default. `create_schedule` and `update_schedule` do not expose **Archive on finish** (`archiveOnFinish`); [change the option in the app](/docs/schedules#keep-run-workspaces) to keep subsequent run workspaces active.
+
+### Agent profiles
+
+| Tool            | Function                                                                                                                           |
+| --------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `list_profiles` | Return the host's saved agent profiles, including their notes and launch settings. Returns an empty list when none are configured. |
+
+Before delegating, read each profile's `notes` and choose the profile the user named or the one that fits the task. See [Agent profiles](/docs/agent-profiles) for setup and example notes.
+
+`create_agent` has no profile parameter and requires a `provider/model` pair. If the profile has no model, call `list_models` for its provider and choose an available model for the task before launching. Apply the chosen profile's values to the launch request:
+
+| Profile field                   | `create_agent` field                                                        |
+| ------------------------------- | --------------------------------------------------------------------------- |
+| `provider` and optional `model` | `provider` as `provider/model`, using the saved or discovered model ID      |
+| `modeId`                        | `settings.modeId`                                                           |
+| `thinkingOptionId`              | `settings.thinkingOptionId`                                                 |
+| `featureValues`                 | `settings.features`                                                         |
+| `notes`                         | Selection guidance for the orchestrator; supply the task in `initialPrompt` |
+
+Omit absent optional settings. If no profile fits, use provider discovery to choose available settings.
 
 ### Providers
 

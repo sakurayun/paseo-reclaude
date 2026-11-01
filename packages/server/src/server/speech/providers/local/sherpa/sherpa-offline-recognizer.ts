@@ -1,8 +1,9 @@
 import { existsSync } from "node:fs";
+import path from "node:path";
 import type pino from "pino";
 
+import { engineFiles, type SttEngine } from "./model-catalog.js";
 import { loadSherpaOnnxNode } from "./sherpa-onnx-node-loader.js";
-import type { SherpaOnnxModelSpec } from "./model-catalog.js";
 
 function assertFileExists(filePath: string, label: string): void {
   if (!existsSync(filePath)) {
@@ -10,28 +11,43 @@ function assertFileExists(filePath: string, label: string): void {
   }
 }
 
-export interface SherpaNemoTransducerModel {
-  kind: "nemo_transducer";
-  encoder: string;
-  decoder: string;
-  joiner: string;
-  tokens: string;
+// Each engine family takes its own block under sherpa's modelConfig.
+function buildModelConfig(modelDir: string, engine: SttEngine): Record<string, unknown> {
+  const file = (name: string) => path.join(modelDir, name);
+  switch (engine.family) {
+    case "transducer":
+      return {
+        transducer: {
+          encoder: file(engine.encoder),
+          decoder: file(engine.decoder),
+          joiner: file(engine.joiner),
+        },
+        modelType: "nemo_transducer",
+      };
+    case "whisper":
+      // An empty language makes Whisper detect the spoken language.
+      return {
+        whisper: {
+          encoder: file(engine.encoder),
+          decoder: file(engine.decoder),
+          language: "",
+          task: "transcribe",
+        },
+      };
+    case "sense_voice":
+      return {
+        senseVoice: { model: file(engine.model), language: "", useInverseTextNormalization: 1 },
+      };
+    case "dolphin":
+      return { dolphin: { model: file(engine.model) } };
+    case "nemo_ctc":
+      return { nemoCtc: { model: file(engine.model) } };
+  }
 }
-
-export interface SherpaSenseVoiceModel {
-  kind: "sense_voice";
-  model: string;
-  tokens: string;
-  /** Decoding language hint: "auto" (default) or a tag such as "zh"/"en"/"ja"/"ko"/"yue". */
-  language?: string;
-  /** Inverse text normalization (punctuation/numerals). Defaults to enabled. */
-  useInverseTextNormalization?: boolean;
-}
-
-export type SherpaOfflineRecognizerModel = SherpaNemoTransducerModel | SherpaSenseVoiceModel;
 
 export interface SherpaOfflineRecognizerConfig {
-  model: SherpaOfflineRecognizerModel;
+  modelDir: string;
+  engine: SttEngine;
   numThreads?: number;
   provider?: "cpu";
   debug?: 0 | 1;
@@ -67,40 +83,11 @@ export class SherpaOfflineRecognizerEngine {
       component: "offline-recognizer",
     });
 
-    const model = config.model;
-    if (model.kind === "sense_voice") {
-      assertFileExists(model.model, "offline model");
-      assertFileExists(model.tokens, "tokens");
-    } else {
-      assertFileExists(model.encoder, "offline encoder");
-      assertFileExists(model.decoder, "offline decoder");
-      assertFileExists(model.joiner, "offline joiner");
-      assertFileExists(model.tokens, "tokens");
+    for (const name of engineFiles(config.engine)) {
+      assertFileExists(path.join(config.modelDir, name), `${config.engine.family} model file`);
     }
 
     const sherpa = loadSherpaOnnxNode();
-
-    // sherpa-onnx wires the modelConfig differently per architecture: a transducer
-    // triple (encoder/decoder/joiner) vs. a single-file SenseVoice model.
-    const modelSpecificConfig =
-      model.kind === "sense_voice"
-        ? {
-            senseVoice: {
-              model: model.model,
-              language: model.language ?? "auto",
-              useInverseTextNormalization: (model.useInverseTextNormalization ?? true) ? 1 : 0,
-            },
-            tokens: model.tokens,
-          }
-        : {
-            transducer: {
-              encoder: model.encoder,
-              decoder: model.decoder,
-              joiner: model.joiner,
-            },
-            tokens: model.tokens,
-            modelType: "nemo_transducer" as const,
-          };
 
     const recognizerConfig = {
       featConfig: {
@@ -108,7 +95,8 @@ export class SherpaOfflineRecognizerEngine {
         featureDim: config.featureDim ?? 80,
       },
       modelConfig: {
-        ...modelSpecificConfig,
+        ...buildModelConfig(config.modelDir, config.engine),
+        tokens: path.join(config.modelDir, config.engine.tokens),
         numThreads: config.numThreads ?? 1,
         provider: config.provider ?? "cpu",
         debug: config.debug ?? 0,
@@ -163,32 +151,4 @@ export class SherpaOfflineRecognizerEngine {
       this.logger.warn({ err }, "Failed to free sherpa offline recognizer");
     }
   }
-}
-
-/**
- * Build the offline-recognizer model descriptor for a catalog entry, resolving the
- * required model files inside `modelDir`. The wiring (transducer triple vs. single-file
- * SenseVoice) is selected from the entry's `architecture`.
- */
-export function buildOfflineRecognizerModel(
-  modelDir: string,
-  spec: SherpaOnnxModelSpec,
-  options?: { language?: string },
-): SherpaOfflineRecognizerModel {
-  const file = (name: string): string => `${modelDir}/${name}`;
-  if (spec.architecture === "sense_voice") {
-    return {
-      kind: "sense_voice",
-      model: file("model.int8.onnx"),
-      tokens: file("tokens.txt"),
-      ...(options?.language ? { language: options.language } : {}),
-    };
-  }
-  return {
-    kind: "nemo_transducer",
-    encoder: file("encoder.int8.onnx"),
-    decoder: file("decoder.int8.onnx"),
-    joiner: file("joiner.int8.onnx"),
-    tokens: file("tokens.txt"),
-  };
 }

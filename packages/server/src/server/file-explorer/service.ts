@@ -1,8 +1,9 @@
-import { constants, promises as fs, type BigIntStats } from "fs";
+import { constants, promises as fs, type BigIntStats, type Stats } from "fs";
 import type { FileHandle } from "fs/promises";
 import path from "path";
 import { randomUUID } from "crypto";
 import { expandUserPath, resolvePathFromBase } from "../path-utils.js";
+import { runGitCommand } from "../../utils/run-git-command.js";
 
 export type ExplorerEntryKind = "file" | "directory";
 export type ExplorerFileKind = "text" | "image" | "binary";
@@ -20,6 +21,8 @@ export interface ReadFileParams {
 
 export interface WriteFileParams extends ReadFileParams {
   content: string;
+  /** `base64` writes the decoded bytes, so binary files can be written too. */
+  contentEncoding?: "utf-8" | "base64";
   expectedModifiedAt: string;
   expectedRevision?: string;
 }
@@ -32,6 +35,8 @@ export type ExplorerFileVersion =
       size: number;
       modifiedAt: string;
       revision: string;
+      kind?: ExplorerFileKind;
+      mimeType?: string;
     }
   | { status: "missing"; cwd: string; path: string }
   | { status: "error"; cwd: string; path: string; error: string };
@@ -89,6 +94,15 @@ export interface FileExplorerFileStream {
 
 const TEXT_MIME_TYPES: Record<string, string> = {
   ".json": "application/json",
+};
+
+const BINARY_MIME_TYPES: Record<string, string> = {
+  ".pdf": "application/pdf",
+  ".zip": "application/zip",
+  ".gz": "application/gzip",
+  ".mp3": "audio/mpeg",
+  ".mp4": "video/mp4",
+  ".woff2": "font/woff2",
 };
 
 const DEFAULT_TEXT_MIME_TYPE = "text/plain";
@@ -265,13 +279,13 @@ export async function readExplorerFileBytes({
       };
     }
 
-    if (isLikelyBinary(buffer) || !isValidUtf8(buffer)) {
+    if (ext in BINARY_MIME_TYPES || isLikelyBinary(buffer) || !isValidUtf8(buffer)) {
       return {
         ...basePayload,
         kind: "binary",
         encoding: "binary",
         bytes: buffer,
-        mimeType: "application/octet-stream",
+        mimeType: BINARY_MIME_TYPES[ext] ?? "application/octet-stream",
       };
     }
 
@@ -310,147 +324,6 @@ export interface DuplicateExplorerEntryParams {
   path: string;
 }
 
-export async function createExplorerEntry({
-  root,
-  parentPath = ".",
-  name,
-  kind,
-}: CreateExplorerEntryParams): Promise<FileExplorerEntry> {
-  assertValidEntryName(name);
-
-  const parent = await resolveScopedPath({ root, relativePath: parentPath });
-  const parentStats = await fs.stat(parent.resolvedPath);
-  if (!parentStats.isDirectory()) {
-    throw new Error("Parent path is not a directory");
-  }
-
-  const targetPath = path.join(parent.requestedPath, name);
-  const scopedTarget = await resolveScopedPathForMutate({
-    root,
-    relativePath: normalizeRelativePath({ root, targetPath }),
-  });
-
-  if (await pathExists(scopedTarget.resolvedPath)) {
-    throw new Error("An entry with that name already exists");
-  }
-
-  if (kind === "directory") {
-    await fs.mkdir(scopedTarget.resolvedPath);
-  } else {
-    await fs.writeFile(scopedTarget.resolvedPath, "", { flag: "wx" });
-  }
-
-  return buildEntryPayload({
-    root,
-    targetPath: scopedTarget.requestedPath,
-    name,
-    kind,
-  });
-}
-
-export async function renameExplorerEntry({
-  root,
-  path: relativePath,
-  newName,
-}: RenameExplorerEntryParams): Promise<FileExplorerEntry> {
-  assertValidEntryName(newName);
-
-  const source = await resolveScopedPathForMutate({ root, relativePath });
-  const normalizedSource = normalizeRelativePath({ root, targetPath: source.requestedPath });
-  if (normalizedSource === ".") {
-    throw new Error("Cannot rename the workspace root");
-  }
-
-  const sourceStats = await fs.lstat(source.resolvedPath);
-  const kind: ExplorerEntryKind =
-    sourceStats.isDirectory() && !sourceStats.isSymbolicLink() ? "directory" : "file";
-
-  const parentRequestedPath = path.dirname(source.requestedPath);
-  const destinationPath = path.join(parentRequestedPath, newName);
-  const destination = await resolveScopedPathForMutate({
-    root,
-    relativePath: normalizeRelativePath({ root, targetPath: destinationPath }),
-  });
-
-  if (await pathExists(destination.resolvedPath)) {
-    if (!(await isSameFileIdentity(source.resolvedPath, destination.resolvedPath))) {
-      throw new Error("An entry with that name already exists");
-    }
-    await renameCaseOnly(source.resolvedPath, destination.resolvedPath);
-  } else {
-    await fs.rename(source.resolvedPath, destination.resolvedPath);
-  }
-
-  return buildEntryPayload({
-    root,
-    targetPath: destination.requestedPath,
-    name: newName,
-    kind,
-  });
-}
-
-export async function deleteExplorerEntry({
-  root,
-  path: relativePath,
-}: DeleteExplorerEntryParams): Promise<void> {
-  const target = await resolveScopedPathForMutate({ root, relativePath });
-  const normalized = normalizeRelativePath({ root, targetPath: target.requestedPath });
-  if (normalized === ".") {
-    throw new Error("Cannot delete the workspace root");
-  }
-
-  const stats = await fs.lstat(target.resolvedPath);
-  if (stats.isSymbolicLink() || stats.isFile()) {
-    await fs.unlink(target.resolvedPath);
-    return;
-  }
-  await fs.rm(target.resolvedPath, { recursive: true, force: false });
-}
-
-export async function duplicateExplorerEntry({
-  root,
-  path: relativePath,
-}: DuplicateExplorerEntryParams): Promise<FileExplorerEntry> {
-  const source = await resolveScopedPathForMutate({ root, relativePath });
-  const normalizedSource = normalizeRelativePath({ root, targetPath: source.requestedPath });
-  if (normalizedSource === ".") {
-    throw new Error("Cannot duplicate the workspace root");
-  }
-
-  const sourceStats = await fs.lstat(source.resolvedPath);
-  const kind: ExplorerEntryKind =
-    sourceStats.isDirectory() && !sourceStats.isSymbolicLink() ? "directory" : "file";
-  const parentRequestedPath = path.dirname(source.requestedPath);
-  const parent = await resolveScopedPath({
-    root,
-    relativePath: normalizeRelativePath({ root, targetPath: parentRequestedPath }),
-  });
-
-  const siblingNames = new Set(await fs.readdir(parent.resolvedPath));
-  const duplicateName = allocateDuplicateName(path.basename(source.requestedPath), siblingNames);
-  const destinationPath = path.join(parent.requestedPath, duplicateName);
-  const destination = await resolveScopedPathForMutate({
-    root,
-    relativePath: normalizeRelativePath({ root, targetPath: destinationPath }),
-  });
-
-  if (sourceStats.isSymbolicLink()) {
-    const linkTarget = await fs.readlink(source.resolvedPath);
-    await fs.symlink(linkTarget, destination.resolvedPath);
-  } else if (kind === "directory") {
-    await fs.cp(source.resolvedPath, destination.resolvedPath, { recursive: true });
-  } else {
-    await fs.copyFile(source.resolvedPath, destination.resolvedPath);
-  }
-
-  return buildEntryPayload({
-    root,
-    targetPath: destination.requestedPath,
-    name: duplicateName,
-    kind,
-  });
-}
-
 export async function streamExplorerFile(
   { root, relativePath }: ReadFileParams,
   consume: (file: FileExplorerFileStream) => Promise<void>,
@@ -468,7 +341,8 @@ export async function streamExplorerFile(
     const advertisedRevision = fileRevision(stats);
     const ext = path.extname(filePath.resolvedPath).toLowerCase();
     const isImage = ext in IMAGE_MIME_TYPES;
-    const isBinary = isImage || (await isFileHandleBinary(handle, advertisedSize));
+    const isBinary =
+      isImage || ext in BINARY_MIME_TYPES || (await isFileHandleBinary(handle, advertisedSize));
     let kind: ExplorerFileKind = "text";
     let mimeType = textMimeTypeForExtension(ext);
     if (isImage) {
@@ -476,7 +350,7 @@ export async function streamExplorerFile(
       mimeType = IMAGE_MIME_TYPES[ext];
     } else if (isBinary) {
       kind = "binary";
-      mimeType = "application/octet-stream";
+      mimeType = BINARY_MIME_TYPES[ext] ?? "application/octet-stream";
     }
 
     await consume({
@@ -561,18 +435,26 @@ export async function getExplorerFileVersion({
   const cwd = expandUserPath(root);
   try {
     const filePath = await resolveScopedPath({ root, relativePath });
-    const stats = await fs.stat(filePath.resolvedPath, { bigint: true });
-    if (!stats.isFile()) {
-      return { status: "error", cwd, path: relativePath, error: "Requested path is not a file" };
+    const handle = await openFileForRead(filePath.resolvedPath);
+    try {
+      const stats = await handle.stat({ bigint: true });
+      if (!stats.isFile()) {
+        return { status: "error", cwd, path: relativePath, error: "Requested path is not a file" };
+      }
+      const type = await sniffFileType(handle, path.extname(filePath.resolvedPath).toLowerCase());
+      return {
+        status: "ready",
+        cwd,
+        path: normalizeRelativePath({ root, targetPath: filePath.requestedPath }),
+        size: Number(stats.size),
+        modifiedAt: stats.mtime.toISOString(),
+        revision: fileRevision(stats),
+        kind: type.kind,
+        mimeType: type.mimeType,
+      };
+    } finally {
+      await handle.close();
     }
-    return {
-      status: "ready",
-      cwd,
-      path: normalizeRelativePath({ root, targetPath: filePath.requestedPath }),
-      size: Number(stats.size),
-      modifiedAt: stats.mtime.toISOString(),
-      revision: fileRevision(stats),
-    };
   } catch (error) {
     if (isMissingEntryError(error)) {
       return { status: "missing", cwd, path: relativePath };
@@ -597,10 +479,11 @@ export async function writeExplorerFile({
   root,
   relativePath,
   content,
+  contentEncoding = "utf-8",
   expectedModifiedAt,
   expectedRevision,
 }: WriteFileParams): Promise<ExplorerFileWriteResult> {
-  const encoded = Buffer.from(content, "utf8");
+  const encoded = Buffer.from(content, contentEncoding === "base64" ? "base64" : "utf8");
   if (encoded.byteLength > MAX_EDITABLE_FILE_BYTES) {
     return { status: "error", error: "File is too large to edit" };
   }
@@ -618,9 +501,11 @@ export async function writeExplorerFile({
       if (stats.size > BigInt(MAX_EDITABLE_FILE_BYTES)) {
         return { status: "error", error: "File is too large to edit" };
       }
-      const current = await handle.readFile();
-      if (isLikelyBinary(current) || !isValidUtf8(current)) {
-        return { status: "error", error: "Binary files cannot be edited" };
+      if (contentEncoding === "utf-8") {
+        const current = await handle.readFile();
+        if (isLikelyBinary(current) || !isValidUtf8(current)) {
+          return { status: "error", error: "Binary files cannot be edited" };
+        }
       }
       currentMode = Number(stats.mode);
       const modifiedAt = stats.mtime.toISOString();
@@ -652,7 +537,7 @@ export async function writeExplorerFile({
 
   const temporaryPath = path.join(
     path.dirname(filePath.resolvedPath),
-    `.${path.basename(filePath.resolvedPath)}.paseo-${randomUUID()}.tmp`,
+    `.paseo-${randomUUID()}.tmp`,
   );
   let temporaryHandle: FileHandle | null = null;
   try {
@@ -711,18 +596,10 @@ export async function getDownloadableFileInfo({ root, relativePath }: ReadFilePa
       throw new Error("Requested path is not a file");
     }
 
-    const ext = path.extname(filePath.resolvedPath).toLowerCase();
-    let mimeType = "application/octet-stream";
-    if (ext in IMAGE_MIME_TYPES) {
-      mimeType = IMAGE_MIME_TYPES[ext];
-    } else {
-      const sample = Buffer.alloc(FILE_TYPE_SAMPLE_BYTES);
-      const { bytesRead } = await handle.read(sample, 0, sample.length, 0);
-      const chunk = bytesRead < sample.length ? sample.subarray(0, bytesRead) : sample;
-      if (!isLikelyBinary(chunk)) {
-        mimeType = textMimeTypeForExtension(ext);
-      }
-    }
+    const { mimeType } = await sniffFileType(
+      handle,
+      path.extname(filePath.resolvedPath).toLowerCase(),
+    );
 
     return {
       path: normalizeRelativePath({ root, targetPath: filePath.requestedPath }),
@@ -736,115 +613,261 @@ export async function getDownloadableFileInfo({ root, relativePath }: ReadFilePa
   }
 }
 
+export interface ExplorerCreateEntryParams {
+  root: string;
+  parentPath: string;
+  name: string;
+  kind: ExplorerEntryKind;
+}
+
+export interface ExplorerRenameEntryParams {
+  root: string;
+  relativePath: string;
+  name: string;
+}
+
+export type ExplorerEntryMutationResult =
+  | { status: "ok"; path: string }
+  | { status: "error"; error: string };
+
+export async function createExplorerEntry({
+  root,
+  parentPath,
+  name,
+  kind,
+}: ExplorerCreateEntryParams): Promise<ExplorerEntryMutationResult> {
+  const trimmedName = name.trim();
+  if (!trimmedName || trimmedName === "." || trimmedName === "..") {
+    return { status: "error", error: "Invalid name" };
+  }
+  if (trimmedName.includes("/") || trimmedName.includes("\\")) {
+    return { status: "error", error: "Name cannot contain path separators" };
+  }
+
+  try {
+    const parent = await resolveScopedPath({ root, relativePath: parentPath });
+    const parentStats = await fs.stat(parent.resolvedPath);
+    if (!parentStats.isDirectory()) {
+      return { status: "error", error: "Parent path is not a directory" };
+    }
+    const targetPath = path.join(parent.resolvedPath, trimmedName);
+    if (kind === "directory") {
+      await fs.mkdir(targetPath);
+    } else {
+      const handle = await fs.open(targetPath, "wx", 0o644);
+      await handle.close();
+    }
+    return {
+      status: "ok",
+      path: normalizeRelativePath({
+        root,
+        targetPath: path.join(parent.requestedPath, trimmedName),
+      }),
+    };
+  } catch (error) {
+    if (isEntryExistsError(error)) {
+      return { status: "error", error: `"${trimmedName}" already exists` };
+    }
+    return { status: "error", error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+export async function duplicateExplorerEntry({
+  root,
+  relativePath,
+}: ReadFileParams): Promise<ExplorerEntryMutationResult> {
+  try {
+    const source = await resolveScopedPath({ root, relativePath });
+    const realRoot = await fs.realpath(expandUserPath(root));
+    if (source.resolvedPath === realRoot) {
+      return { status: "error", error: "Cannot duplicate the workspace root" };
+    }
+
+    const stats = await fs.lstat(source.requestedPath);
+    const sourceName = path.basename(source.requestedPath);
+    const extension = stats.isDirectory() ? "" : path.extname(sourceName);
+    const baseName = extension ? sourceName.slice(0, -extension.length) : sourceName;
+    let targetPath = "";
+    for (let copyNumber = 1; ; copyNumber += 1) {
+      const suffix = copyNumber === 1 ? " copy" : ` copy ${copyNumber}`;
+      targetPath = path.join(
+        path.dirname(source.requestedPath),
+        `${baseName}${suffix}${extension}`,
+      );
+      try {
+        await fs.lstat(targetPath);
+      } catch (error) {
+        if (isMissingEntryError(error)) {
+          break;
+        }
+        throw error;
+      }
+    }
+
+    await fs.cp(source.requestedPath, targetPath, {
+      recursive: stats.isDirectory(),
+      errorOnExist: true,
+      force: false,
+      preserveTimestamps: true,
+      verbatimSymlinks: true,
+    });
+    return { status: "ok", path: normalizeRelativePath({ root, targetPath }) };
+  } catch (error) {
+    if (isMissingEntryError(error)) {
+      return { status: "error", error: "File or folder no longer exists" };
+    }
+    return { status: "error", error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+export async function renameExplorerEntry({
+  root,
+  relativePath,
+  name,
+}: ExplorerRenameEntryParams): Promise<ExplorerEntryMutationResult> {
+  const trimmedName = name.trim();
+  if (!trimmedName || trimmedName === "." || trimmedName === "..") {
+    return { status: "error", error: "Invalid name" };
+  }
+  if (trimmedName.includes("/") || trimmedName.includes("\\")) {
+    return { status: "error", error: "Name cannot contain path separators" };
+  }
+
+  try {
+    const source = await resolveScopedPath({ root, relativePath });
+    const realRoot = await fs.realpath(expandUserPath(root));
+    if (source.resolvedPath === realRoot) {
+      return { status: "error", error: "Cannot rename the workspace root" };
+    }
+
+    const targetPath = path.join(path.dirname(source.requestedPath), trimmedName);
+    const sourceStats = await fs.lstat(source.requestedPath);
+    const targetStats = await fs.lstat(targetPath).catch((error: unknown) => {
+      if (isMissingEntryError(error)) {
+        return null;
+      }
+      throw error;
+    });
+    if (targetStats) {
+      if (!(await isCaseOnlyRename(source, targetPath, sourceStats, targetStats))) {
+        return { status: "error", error: `"${trimmedName}" already exists` };
+      }
+    }
+
+    const sourcePath = normalizeRelativePath({ root, targetPath: source.requestedPath });
+    const renamedPath = normalizeRelativePath({ root, targetPath });
+    if (sourcePath === renamedPath) {
+      return { status: "ok", path: renamedPath };
+    }
+    const repository = await runGitCommand(["rev-parse", "--is-inside-work-tree"], {
+      cwd: realRoot,
+      acceptExitCodes: [0, 128],
+    });
+    const tracked =
+      repository.exitCode === 0
+        ? await runGitCommand(["ls-files", "-z", "--", `:(literal)${sourcePath}`], {
+            cwd: realRoot,
+            // Inherited literal mode disables the :(literal) pathspec magic.
+            envOverlay: { GIT_LITERAL_PATHSPECS: undefined },
+          })
+        : null;
+    if (tracked?.stdout) {
+      await runGitCommand(["mv", "--", sourcePath, renamedPath], { cwd: realRoot });
+    } else {
+      await fs.rename(source.requestedPath, targetPath);
+    }
+    return { status: "ok", path: renamedPath };
+  } catch (error) {
+    if (isEntryExistsError(error)) {
+      return { status: "error", error: `"${trimmedName}" already exists` };
+    }
+    if (isMissingEntryError(error)) {
+      return { status: "error", error: "File or folder no longer exists" };
+    }
+    return { status: "error", error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+export async function deleteExplorerEntry({
+  root,
+  relativePath,
+}: ReadFileParams): Promise<ExplorerEntryMutationResult> {
+  try {
+    const scoped = await resolveScopedPath({ root, relativePath });
+    const realRoot = await fs.realpath(expandUserPath(root));
+    if (scoped.resolvedPath === realRoot) {
+      return { status: "error", error: "Cannot delete the workspace root" };
+    }
+    // Remove the requested path, not the realpath: deleting a symlink must
+    // remove the link, never its target. lstat keeps the same guarantee.
+    const stats = await fs.lstat(scoped.requestedPath);
+    await fs.rm(scoped.requestedPath, {
+      recursive: stats.isDirectory(),
+      force: false,
+    });
+    return {
+      status: "ok",
+      path: normalizeRelativePath({ root, targetPath: scoped.requestedPath }),
+    };
+  } catch (error) {
+    if (isMissingEntryError(error)) {
+      return { status: "error", error: "File or folder no longer exists" };
+    }
+    return { status: "error", error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+function isEntryExistsError(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error as NodeJS.ErrnoException).code === "EEXIST"
+  );
+}
+
+async function isCaseOnlyRename(
+  source: ScopedPath,
+  targetPath: string,
+  sourceStats: Stats,
+  targetStats: Stats,
+): Promise<boolean> {
+  const hasStableFileIds =
+    sourceStats.dev !== 0 ||
+    sourceStats.ino !== 0 ||
+    targetStats.dev !== 0 ||
+    targetStats.ino !== 0;
+  const isSameEntry = hasStableFileIds
+    ? targetStats.dev === sourceStats.dev && targetStats.ino === sourceStats.ino
+    : !sourceStats.isSymbolicLink() &&
+      !targetStats.isSymbolicLink() &&
+      (await fs.realpath(targetPath)) === source.resolvedPath;
+  return isSameEntry && source.requestedPath.toLowerCase() === targetPath.toLowerCase();
+}
+
 async function resolveScopedPath({
   root,
   relativePath = ".",
 }: ScopedPathParams): Promise<ScopedPath> {
-  const normalizedRoot = expandUserPath(root);
-  const requestedPath = resolvePathFromBase(normalizedRoot, relativePath);
-  const relative = path.relative(normalizedRoot, requestedPath);
-
-  if (relative !== "" && (relative.startsWith("..") || path.isAbsolute(relative))) {
-    throw new Error(ACCESS_OUTSIDE_WORKSPACE_MESSAGE);
-  }
-
-  const realRoot = await fs.realpath(normalizedRoot);
-
+  const workspacePath = expandUserPath(root);
+  const requestedPath = resolvePathFromBase(workspacePath, relativePath);
+  assertWithinWorkspace(workspacePath, requestedPath);
+  const canonicalRoot = await fs.realpath(workspacePath);
   try {
-    const realPath = await fs.realpath(requestedPath);
-    const realRelative = path.relative(realRoot, realPath);
-    if (realRelative !== "" && (realRelative.startsWith("..") || path.isAbsolute(realRelative))) {
-      throw new Error(ACCESS_OUTSIDE_WORKSPACE_MESSAGE);
-    }
-    return { requestedPath, resolvedPath: realPath };
+    const canonicalPath = await fs.realpath(requestedPath);
+    assertWithinWorkspace(canonicalRoot, canonicalPath);
+    return { requestedPath, resolvedPath: canonicalPath };
   } catch (error) {
-    if (isMissingEntryError(error)) {
-      return { requestedPath, resolvedPath: requestedPath };
-    }
+    if (isMissingEntryError(error)) return { requestedPath, resolvedPath: requestedPath };
     throw error;
   }
 }
 
-/**
- * Like resolveScopedPath, but does not follow a final symlink leaf.
- * Mutate ops must act on the link itself, never the referent.
- */
-async function resolveScopedPathForMutate({
-  root,
-  relativePath = ".",
-}: ScopedPathParams): Promise<ScopedPath> {
-  const normalizedRoot = expandUserPath(root);
-  const requestedPath = resolvePathFromBase(normalizedRoot, relativePath);
-  const relative = path.relative(normalizedRoot, requestedPath);
-
-  if (relative !== "" && (relative.startsWith("..") || path.isAbsolute(relative))) {
-    throw new Error(ACCESS_OUTSIDE_WORKSPACE_MESSAGE);
-  }
-
-  const realRoot = await fs.realpath(normalizedRoot);
-  // Path is the workspace root itself — there is no parent/leaf to split.
-  // dirname(root) lives outside the workspace and would false-positive the checks below.
-  if (relative === "") {
-    return { requestedPath, resolvedPath: realRoot };
-  }
-
-  const parentDir = path.dirname(requestedPath);
-  const baseName = path.basename(requestedPath);
-
-  let realParent: string;
-  try {
-    realParent = await fs.realpath(parentDir);
-  } catch (error) {
-    if (isMissingEntryError(error)) {
-      realParent = parentDir;
-    } else {
-      throw error;
-    }
-  }
-
-  const parentRelative = path.relative(realRoot, realParent);
-  if (
-    parentRelative !== "" &&
-    (parentRelative.startsWith("..") || path.isAbsolute(parentRelative))
-  ) {
-    throw new Error(ACCESS_OUTSIDE_WORKSPACE_MESSAGE);
-  }
-
-  const leafPath = path.join(realParent, baseName);
-  const leafRelative = path.relative(realRoot, leafPath);
-  if (leafRelative !== "" && (leafRelative.startsWith("..") || path.isAbsolute(leafRelative))) {
-    throw new Error(ACCESS_OUTSIDE_WORKSPACE_MESSAGE);
-  }
-
-  return { requestedPath, resolvedPath: leafPath };
-}
-
-async function isSameFileIdentity(leftPath: string, rightPath: string): Promise<boolean> {
-  try {
-    const [left, right] = await Promise.all([fs.lstat(leftPath), fs.lstat(rightPath)]);
-    return left.dev === right.dev && left.ino === right.ino;
-  } catch {
-    return false;
-  }
-}
-
-async function renameCaseOnly(sourcePath: string, destinationPath: string): Promise<void> {
-  if (sourcePath === destinationPath) {
-    return;
-  }
-  // Case-insensitive volumes often require a temp rename when only casing changes.
-  const parent = path.dirname(sourcePath);
-  const tempPath = path.join(
-    parent,
-    `.paseo-rename-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`,
-  );
-  await fs.rename(sourcePath, tempPath);
-  try {
-    await fs.rename(tempPath, destinationPath);
-  } catch (error) {
-    await fs.rename(tempPath, sourcePath).catch(() => undefined);
-    throw error;
-  }
+function assertWithinWorkspace(root: string, candidate: string): void {
+  const relative = path.relative(root, candidate);
+  const isOutsideWorkspace =
+    relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative);
+  if (isOutsideWorkspace) throw new Error(ACCESS_OUTSIDE_WORKSPACE_MESSAGE);
 }
 
 async function openFileForRead(filePath: string): Promise<FileHandle> {
@@ -878,48 +901,6 @@ function isMissingEntryError(error: unknown): boolean {
 
 function isOutsideWorkspaceError(error: unknown): boolean {
   return error instanceof Error && error.message === ACCESS_OUTSIDE_WORKSPACE_MESSAGE;
-}
-
-function assertValidEntryName(name: string): void {
-  if (name.length === 0) {
-    throw new Error("Name is required");
-  }
-  if (name === "." || name === "..") {
-    throw new Error("Invalid entry name");
-  }
-  if (name.includes("/") || name.includes("\\") || name.includes("\0")) {
-    throw new Error("Invalid entry name");
-  }
-}
-
-async function pathExists(targetPath: string): Promise<boolean> {
-  try {
-    await fs.lstat(targetPath);
-    return true;
-  } catch (error) {
-    if (isMissingEntryError(error)) {
-      return false;
-    }
-    throw error;
-  }
-}
-
-function allocateDuplicateName(originalName: string, existingNames: Set<string>): string {
-  const extension = path.extname(originalName);
-  const baseName = path.basename(originalName, extension);
-  const firstCandidate = `${baseName} copy${extension}`;
-  if (!existingNames.has(firstCandidate)) {
-    return firstCandidate;
-  }
-
-  let copyIndex = 2;
-  while (true) {
-    const candidate = `${baseName} copy ${copyIndex}${extension}`;
-    if (!existingNames.has(candidate)) {
-      return candidate;
-    }
-    copyIndex += 1;
-  }
 }
 
 function normalizeRelativePath({ root, targetPath }: { root: string; targetPath: string }): string {
@@ -957,6 +938,34 @@ function isLikelyBinary(buffer: Buffer): boolean {
   }
 
   return suspicious / buffer.length > 0.3;
+}
+
+/** Classifies a file from its extension and first bytes, without reading the rest of it. */
+async function sniffFileType(
+  handle: FileHandle,
+  ext: string,
+): Promise<{ kind: ExplorerFileKind; mimeType: string }> {
+  if (ext in IMAGE_MIME_TYPES) return { kind: "image", mimeType: IMAGE_MIME_TYPES[ext] };
+  const binary = {
+    kind: "binary" as const,
+    mimeType: BINARY_MIME_TYPES[ext] ?? "application/octet-stream",
+  };
+  if (ext in BINARY_MIME_TYPES) return binary;
+  const sample = Buffer.alloc(FILE_TYPE_SAMPLE_BYTES);
+  const { bytesRead } = await handle.read(sample, 0, sample.length, 0);
+  const chunk = sample.subarray(0, bytesRead);
+  if (isLikelyBinary(chunk) || !isValidUtf8Prefix(chunk)) return binary;
+  return { kind: "text", mimeType: textMimeTypeForExtension(ext) };
+}
+
+/** A sample can end inside a multi-byte character, so only a complete invalid sequence fails. */
+function isValidUtf8Prefix(buffer: Buffer): boolean {
+  try {
+    new TextDecoder("utf-8", { fatal: true }).decode(buffer, { stream: true });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function isValidUtf8(buffer: Buffer): boolean {

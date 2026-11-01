@@ -39,11 +39,11 @@ function thought(id: string, text: string, seed = 1): StreamItem {
 
 function activityLog(id: string, message: string, seed = 1): StreamItem {
   return {
-    kind: "activity_log",
+    kind: "notification",
+    sourceType: "notification",
     id,
-    activityType: "info",
+    level: "info",
     message,
-    metadata: { hidden: "metadata is not searched" },
     timestamp: timestamp(seed),
   };
 }
@@ -51,6 +51,7 @@ function activityLog(id: string, message: string, seed = 1): StreamItem {
 function todoList(id: string, seed = 1): StreamItem {
   return {
     kind: "todo_list",
+    activity: { type: "created", count: 1 },
     id,
     provider: "codex",
     items: [

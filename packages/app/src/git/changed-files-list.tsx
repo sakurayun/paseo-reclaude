@@ -1,3 +1,4 @@
+import { PressHighlight } from "@/components/ui/press-highlight";
 import {
   useCallback,
   useMemo,
@@ -10,7 +11,6 @@ import {
   ActivityIndicator,
   Animated as RNAnimated,
   PanResponder,
-  Pressable,
   ScrollView,
   StyleSheet as RNStyleSheet,
   Text,
@@ -26,7 +26,7 @@ import type { CheckoutGitStatusFile } from "@getpaseo/protocol/messages";
 import type { Theme } from "@/styles/theme";
 import { useToast } from "@/contexts/toast-context";
 import { confirmDialog } from "@/utils/confirm-dialog";
-import { getFileIconSvg } from "@/components/material-file-icons";
+import { getFileIconSvg } from "@/components/file-icon-svg";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -739,7 +739,7 @@ function ChangedDirRow({
         style={rowStyle}
         testID={`source-control-tree-dir-${group}-${dir.path}`}
       >
-        <Pressable
+        <PressHighlight
           accessibilityRole="button"
           accessibilityLabel={dir.name}
           onPress={handleToggle}
@@ -752,7 +752,7 @@ function ChangedDirRow({
           ) : (
             <ThemedChevronDown size={FILE_ICON_SIZE} uniProps={mutedIconMapping} />
           )}
-        </Pressable>
+        </PressHighlight>
         <Text style={styles.dirName} numberOfLines={1}>
           {dir.name}
         </Text>

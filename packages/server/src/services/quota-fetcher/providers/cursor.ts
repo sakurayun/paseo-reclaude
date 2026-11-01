@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { existsSync } from "node:fs";
+import { promises as fs } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -89,7 +89,13 @@ async function readCursorTokenFromSqlite(): Promise<string | null> {
   dbPaths.push(join(homedir(), ".config", "Cursor", "User", "globalStorage", "state.vscdb"));
 
   for (const path of dbPaths) {
-    if (!existsSync(path)) continue;
+    if (
+      !(await fs.access(path).then(
+        () => true,
+        () => false,
+      ))
+    )
+      continue;
     try {
       const { stdout } = await execFileAsync(
         "sqlite3",

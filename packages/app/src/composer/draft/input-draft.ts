@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ChatHistoryContextAttachment, UserComposerAttachment } from "@/attachments/types";
+import type { TextReplacement } from "@/composer/types";
 import type { DraftAgentControlsProps } from "@/composer/agent-controls";
-import type { DraftCommandConfig } from "@/hooks/use-agent-commands-query";
+import type { DraftCommandTarget } from "@/agent-commands";
 import {
   useAgentFormState,
   type CreateAgentInitialValues,
@@ -9,25 +10,28 @@ import {
 } from "@/hooks/use-agent-form-state";
 import { useDraftAgentFeatures } from "@/hooks/use-draft-agent-features";
 import {
-  areAttachmentsEqual,
-  areTranscriptAttachmentsEqual,
   buildDraftAgentControls,
   hasDraftContent,
   resolveDraftKey,
   type DraftKeyInput,
 } from "@/composer/draft/input-draft-core";
 import {
-  buildDraftCommandConfig,
+  buildDraftCommandTarget,
+  resolveEffectiveComposerModeId,
   resolveEffectiveComposerModelId,
   resolveEffectiveComposerThinkingOptionId,
   type ProviderSelectionState,
 } from "@/provider-selection/provider-selection";
 import {
-  removeDraftTranscriptAttachment,
-  upsertDraftTranscriptAttachment,
   useDraftStore,
+  upsertDraftTranscriptAttachment,
+  removeDraftTranscriptAttachment,
   type DraftTranscriptSource,
 } from "@/stores/draft-store";
+import { AfterPaintPublication } from "@/composer/after-paint-publication";
+import { useShallow } from "zustand/shallow";
+import type { ComposerTextSource } from "@/composer/text-source";
+import { isWeb } from "@/constants/platform";
 
 type AttachmentUpdater =
   | UserComposerAttachment[]
@@ -38,7 +42,6 @@ interface AgentInputDraftComposerOptions {
   initialValues?: CreateAgentInitialValues;
   initialFeatureValues?: Record<string, unknown>;
   isVisible?: boolean;
-  onlineServerIds?: string[];
   lockedWorkingDir?: string;
 }
 
@@ -49,21 +52,24 @@ interface UseAgentInputDraftInput {
 
 type DraftComposerState = UseAgentFormStateResult & {
   workingDir: string;
+  effectiveModeId: string;
   effectiveModelId: string;
   effectiveThinkingOptionId: string;
   featureValues: Record<string, unknown> | undefined;
   agentControls: DraftAgentControlsProps;
-  commandDraftConfig: DraftCommandConfig | undefined;
+  commandDraft: DraftCommandTarget;
 };
 
 export interface AgentInputDraft {
-  text: string;
-  setText: (text: string) => void;
-  attachments: UserComposerAttachment[];
-  setAttachments: (updater: AttachmentUpdater) => void;
   transcriptAttachments: ChatHistoryContextAttachment[];
   upsertTranscriptAttachment: (attachment: ChatHistoryContextAttachment) => void;
   removeTranscriptAttachment: (source: DraftTranscriptSource) => void;
+  textSource: ComposerTextSource;
+  editText: (text: string) => void;
+  replaceText: (text: string) => void;
+  textReplacement: TextReplacement;
+  attachments: UserComposerAttachment[];
+  setAttachments: (updater: AttachmentUpdater) => void;
   clear: (lifecycle: "sent" | "abandoned") => void;
   isHydrated: boolean;
   attachmentFocusRequestId: number;
@@ -72,12 +78,13 @@ export interface AgentInputDraft {
 
 export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDraft {
   const composerOptions = input.composer ?? null;
+  const workingDir = composerOptions?.lockedWorkingDir?.trim() || "";
   const formState = useAgentFormState({
-    initialServerId: composerOptions?.initialServerId ?? null,
+    workingDir,
+    serverId: composerOptions?.initialServerId ?? null,
     initialValues: composerOptions?.initialValues,
     isVisible: composerOptions?.isVisible ?? false,
     isCreateFlow: true,
-    onlineServerIds: composerOptions?.onlineServerIds ?? [],
   });
   const draftKey = useMemo(
     () =>
@@ -87,156 +94,203 @@ export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDr
       }),
     [formState.selectedServerId, input.draftKey],
   );
-  const [text, setText] = useState("");
-  const [attachments, setAttachmentsState] = useState<UserComposerAttachment[]>([]);
-  const [transcriptAttachments, setTranscriptAttachmentsState] = useState<
-    ChatHistoryContextAttachment[]
-  >([]);
-  const [isHydrated, setIsHydrated] = useState(false);
+  const attachments = useDraftStore(
+    useShallow((state) =>
+      state.drafts[draftKey]?.lifecycle === "active"
+        ? (state.drafts[draftKey].input.attachments ?? [])
+        : [],
+    ),
+  );
+  const transcriptAttachments = useDraftStore(
+    useShallow((state) =>
+      state.drafts[draftKey]?.lifecycle === "active"
+        ? (state.drafts[draftKey].input.transcriptAttachments ?? [])
+        : [],
+    ),
+  );
+  const updateTranscripts = useCallback(
+    (update: (attachments: ChatHistoryContextAttachment[]) => ChatHistoryContextAttachment[]) => {
+      const store = useDraftStore.getState();
+      const current = store.getDraftInput(draftKey) ?? {
+        text: "",
+        attachments: [],
+        transcriptAttachments: [],
+      };
+      store.saveDraftInput({
+        draftKey,
+        draft: { ...current, transcriptAttachments: update(current.transcriptAttachments) },
+      });
+    },
+    [draftKey],
+  );
+  const upsertTranscriptAttachment = useCallback(
+    (attachment: ChatHistoryContextAttachment) =>
+      updateTranscripts((currentTranscripts) =>
+        upsertDraftTranscriptAttachment({ attachments: currentTranscripts, attachment }),
+      ),
+    [updateTranscripts],
+  );
+  const removeTranscriptAttachment = useCallback(
+    (source: DraftTranscriptSource) =>
+      updateTranscripts((currentTranscripts) =>
+        removeDraftTranscriptAttachment({ attachments: currentTranscripts, source }),
+      ),
+    [updateTranscripts],
+  );
+  const textSource = useMemo<ComposerTextSource>(
+    () => ({
+      getSnapshot: () => {
+        const record = useDraftStore.getState().drafts[draftKey];
+        return record?.lifecycle === "active" ? record.input.text : "";
+      },
+      subscribe: (listener) =>
+        useDraftStore.subscribe((state, previous) => {
+          if (
+            state.drafts[draftKey]?.input.text !== previous.drafts[draftKey]?.input.text ||
+            state.drafts[draftKey]?.lifecycle !== previous.drafts[draftKey]?.lifecycle
+          )
+            listener();
+        }),
+    }),
+    [draftKey],
+  );
   const attachmentFocusRequestId = useDraftStore(
     (state) => state.attachmentFocusRequestByDraftKey[draftKey] ?? 0,
   );
-  const draftGenerationRef = useRef(0);
-  const hydratedGenerationRef = useRef(0);
+  const [hydratedDraftKey, setHydratedDraftKey] = useState<string | null>(null);
+  const isHydrated = hydratedDraftKey === draftKey;
+  const textReplacementRevisionRef = useRef(0);
+  const [textReplacement, setTextReplacement] = useState<TextReplacement>(() => ({
+    kind: "initial",
+    key: `${draftKey}:0`,
+    text: textSource.getSnapshot(),
+  }));
 
-  const setAttachments = useCallback((updater: AttachmentUpdater) => {
-    setAttachmentsState((previousAttachments) => {
-      if (typeof updater === "function") {
-        return updater(previousAttachments);
-      }
-      return updater;
-    });
-  }, []);
-
-  const upsertTranscriptAttachment = useCallback((attachment: ChatHistoryContextAttachment) => {
-    setTranscriptAttachmentsState((current) =>
-      upsertDraftTranscriptAttachment({ attachments: current, attachment }),
-    );
-  }, []);
-
-  const removeTranscriptAttachment = useCallback((source: DraftTranscriptSource) => {
-    setTranscriptAttachmentsState((current) =>
-      removeDraftTranscriptAttachment({ attachments: current, source }),
-    );
-  }, []);
-
-  const clear = useCallback(
-    (lifecycle: "sent" | "abandoned") => {
-      const store = useDraftStore.getState();
-      store.clearDraftInput({ draftKey, lifecycle });
-
-      const generation = store.beginDraftGeneration(draftKey);
-      draftGenerationRef.current = generation;
-      hydratedGenerationRef.current = generation;
-
-      setText("");
-      setAttachmentsState([]);
-      setTranscriptAttachmentsState([]);
-      setIsHydrated(true);
+  const publishTextReplacement = useCallback(
+    (kind: "hydrated" | "replace", nextText: string) => {
+      textReplacementRevisionRef.current += 1;
+      setTextReplacement({
+        kind,
+        key: `${draftKey}:${textReplacementRevisionRef.current}`,
+        text: nextText,
+      });
     },
     [draftKey],
   );
 
+  const saveDraft = useCallback(
+    (
+      update: (draft: {
+        text: string;
+        attachments: UserComposerAttachment[];
+        transcriptAttachments: ChatHistoryContextAttachment[];
+      }) => {
+        text: string;
+        attachments: UserComposerAttachment[];
+        transcriptAttachments: ChatHistoryContextAttachment[];
+      },
+    ) => {
+      const store = useDraftStore.getState();
+      const current = store.getDraftInput(draftKey) ?? {
+        text: "",
+        attachments: [],
+        transcriptAttachments: [],
+      };
+      const next = update(current);
+      if (!hasDraftContent(next)) {
+        store.clearDraftInput({ draftKey, lifecycle: "abandoned" });
+        return;
+      }
+      store.saveDraftInput({ draftKey, draft: next });
+    },
+    [draftKey],
+  );
+
+  const textPublication = useMemo(
+    () =>
+      new AfterPaintPublication<string>((nextText) => {
+        useDraftStore.getState().editDraftText({ draftKey, text: nextText });
+      }),
+    [draftKey],
+  );
+
+  const editText = useCallback(
+    (nextText: string) => {
+      if (isWeb) {
+        textPublication.stage(nextText);
+      } else {
+        useDraftStore.getState().editDraftText({ draftKey, text: nextText });
+      }
+    },
+    [draftKey, textPublication],
+  );
+
+  const replaceText = useCallback(
+    (nextText: string) => {
+      textPublication.cancel();
+      useDraftStore.getState().editDraftText({ draftKey, text: nextText });
+      publishTextReplacement("replace", nextText);
+    },
+    [draftKey, publishTextReplacement, textPublication],
+  );
+
+  const setAttachments = useCallback(
+    (updater: AttachmentUpdater) => {
+      saveDraft((current) => ({
+        ...current,
+        attachments: typeof updater === "function" ? updater(current.attachments) : updater,
+      }));
+    },
+    [saveDraft],
+  );
+
+  const clear = useCallback(
+    (lifecycle: "sent" | "abandoned") => {
+      textPublication.cancel();
+      useDraftStore.getState().clearDraftInput({ draftKey, lifecycle });
+    },
+    [draftKey, textPublication],
+  );
+
   useEffect(() => {
-    const store = useDraftStore.getState();
-    const generation = store.beginDraftGeneration(draftKey);
-    draftGenerationRef.current = generation;
-    hydratedGenerationRef.current = 0;
+    const flushWhenHidden = () => {
+      if (document.visibilityState === "hidden") textPublication.flush();
+    };
+    const flush = () => textPublication.flush();
+    const canListenForPageHide =
+      isWeb && typeof window !== "undefined" && typeof window.addEventListener === "function";
+    if (isWeb && typeof document !== "undefined") {
+      document.addEventListener("visibilitychange", flushWhenHidden);
+    }
+    if (canListenForPageHide) {
+      window.addEventListener("pagehide", flush);
+    }
+    return () => {
+      if (isWeb && typeof document !== "undefined") {
+        document.removeEventListener("visibilitychange", flushWhenHidden);
+      }
+      if (canListenForPageHide) {
+        window.removeEventListener("pagehide", flush);
+      }
+      textPublication.flush();
+    };
+  }, [textPublication]);
 
-    setText("");
-    setAttachmentsState([]);
-    setTranscriptAttachmentsState([]);
-    setIsHydrated(false);
-
+  useEffect(() => {
     let cancelled = false;
-
     void (async () => {
-      const draft = await store.hydrateDraftInput({
-        draftKey,
-      });
-      if (cancelled) {
-        return;
+      await useDraftStore.getState().hydrateDraftInput({ draftKey });
+      if (!cancelled) {
+        const hydratedText = useDraftStore.getState().getDraftInput(draftKey)?.text ?? "";
+        publishTextReplacement("hydrated", hydratedText);
+        setHydratedDraftKey(draftKey);
       }
-      if (!useDraftStore.getState().isDraftGenerationCurrent({ draftKey, generation })) {
-        return;
-      }
-
-      if (draft) {
-        setText(draft.text);
-        setAttachmentsState(draft.attachments);
-        setTranscriptAttachmentsState(draft.transcriptAttachments);
-      }
-
-      hydratedGenerationRef.current = generation;
-      setIsHydrated(true);
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [draftKey]);
-
-  useEffect(() => {
-    const currentGeneration = draftGenerationRef.current;
-    if (currentGeneration <= 0) {
-      return;
-    }
-
-    const store = useDraftStore.getState();
-    const isCurrentGeneration = store.isDraftGenerationCurrent({
-      draftKey,
-      generation: currentGeneration,
-    });
-    if (!isCurrentGeneration) {
-      return;
-    }
-    if (hydratedGenerationRef.current !== currentGeneration) {
-      return;
-    }
-
-    const existing = store.getDraftInput(draftKey);
-    const isSameDraft =
-      existing !== undefined &&
-      existing.text === text &&
-      areAttachmentsEqual({
-        left: existing.attachments,
-        right: attachments,
-      }) &&
-      areTranscriptAttachmentsEqual({
-        left: existing.transcriptAttachments,
-        right: transcriptAttachments,
-      });
-    if (isSameDraft) {
-      return;
-    }
-
-    if (!hasDraftContent({ text, attachments, transcriptAttachments })) {
-      if (existing) {
-        store.clearDraftInput({ draftKey, lifecycle: "abandoned" });
-      }
-      return;
-    }
-
-    store.saveDraftInput({
-      draftKey,
-      draft: {
-        text,
-        attachments,
-        transcriptAttachments,
-      },
-    });
-  }, [attachments, draftKey, text, transcriptAttachments]);
-
-  const lockedWorkingDir = composerOptions?.lockedWorkingDir?.trim() ?? "";
-  useEffect(() => {
-    if (!composerOptions || !lockedWorkingDir) {
-      return;
-    }
-    if (formState.workingDir.trim() === lockedWorkingDir) {
-      return;
-    }
-    formState.setWorkingDir(lockedWorkingDir);
-  }, [composerOptions, formState, lockedWorkingDir]);
+  }, [draftKey, publishTextReplacement]);
 
   const providerSelection = useMemo<ProviderSelectionState>(
     () => ({
@@ -257,6 +311,11 @@ export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDr
     ],
   );
 
+  const effectiveModeId = useMemo(
+    () => resolveEffectiveComposerModeId(providerSelection, formState.isModelLoading),
+    [formState.isModelLoading, providerSelection],
+  );
+
   const effectiveModelId = useMemo(
     () => resolveEffectiveComposerModelId(providerSelection),
     [providerSelection],
@@ -267,11 +326,11 @@ export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDr
     [effectiveModelId, providerSelection],
   );
 
-  const workingDir = lockedWorkingDir || formState.workingDir;
   const {
     features: draftFeatures,
     featureValues: draftFeatureValues,
     setFeatureValue: setDraftFeatureValue,
+    applyProfileFeatureValues,
   } = useDraftAgentFeatures({
     serverId: formState.selectedServerId,
     provider: formState.selectedProvider,
@@ -282,19 +341,24 @@ export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDr
     initialFeatureValues: composerOptions?.initialFeatureValues,
   });
 
-  const commandDraftConfig = useMemo(
+  const applyDraftAgentProfile = useCallback(
+    (profile: Parameters<typeof formState.applyProfileFromUser>[0]) => {
+      formState.applyProfileFromUser(profile);
+      applyProfileFeatureValues(profile.featureValues);
+    },
+    [applyProfileFeatureValues, formState],
+  );
+
+  const commandDraft = useMemo(
     () =>
-      composerOptions
-        ? buildDraftCommandConfig({
-            selection: providerSelection,
-            cwd: workingDir,
-            effectiveModelId,
-            effectiveThinkingOptionId,
-            featureValues: draftFeatureValues,
-          })
-        : undefined,
+      buildDraftCommandTarget({
+        selection: providerSelection,
+        cwd: workingDir,
+        effectiveModelId,
+        effectiveThinkingOptionId,
+        featureValues: draftFeatureValues,
+      }),
     [
-      composerOptions,
       effectiveModelId,
       effectiveThinkingOptionId,
       draftFeatureValues,
@@ -311,6 +375,7 @@ export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDr
     return {
       ...formState,
       workingDir,
+      effectiveModeId,
       effectiveModelId,
       effectiveThinkingOptionId,
       featureValues: draftFeatureValues,
@@ -318,29 +383,34 @@ export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDr
         formState,
         features: draftFeatures,
         onSetFeature: setDraftFeatureValue,
+        onApplyAgentProfile: applyDraftAgentProfile,
       }),
-      commandDraftConfig,
+      commandDraft,
     };
   }, [
-    commandDraftConfig,
+    commandDraft,
     composerOptions,
+    effectiveModeId,
     effectiveModelId,
     effectiveThinkingOptionId,
     draftFeatures,
     draftFeatureValues,
+    applyDraftAgentProfile,
     formState,
     setDraftFeatureValue,
     workingDir,
   ]);
 
   return {
-    text,
-    setText,
-    attachments,
-    setAttachments,
     transcriptAttachments,
     upsertTranscriptAttachment,
     removeTranscriptAttachment,
+    textSource,
+    editText,
+    replaceText,
+    textReplacement,
+    attachments,
+    setAttachments,
     clear,
     isHydrated,
     attachmentFocusRequestId,
@@ -350,9 +420,9 @@ export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDr
 
 export const __private__ = {
   resolveDraftKey,
+  resolveEffectiveComposerModeId,
   resolveEffectiveComposerModelId,
   resolveEffectiveComposerThinkingOptionId,
-  buildDraftCommandConfig,
-  buildDraftComposerCommandConfig: buildDraftCommandConfig,
+  buildDraftCommandTarget,
   buildDraftAgentControls,
 };

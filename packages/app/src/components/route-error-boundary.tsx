@@ -1,6 +1,7 @@
+import { PressHighlight } from "@/components/ui/press-highlight";
 import { useCallback, useEffect } from "react";
 import type { ErrorBoundaryProps } from "expo-router";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ScrollView, StyleSheet, Text, View } from "react-native";
 
 // App-wide route safety net. A render-time exception anywhere in a screen subtree
 // would otherwise unmount the React tree and leave a blank white screen — and,
@@ -36,9 +37,9 @@ export function RouteErrorBoundary({ error, retry }: ErrorBoundaryProps) {
           </Text>
         ) : null}
       </ScrollView>
-      <Pressable style={styles.button} onPress={handleRetry} accessibilityRole="button">
+      <PressHighlight style={styles.button} onPress={handleRetry} accessibilityRole="button">
         <Text style={styles.buttonText}>重试</Text>
-      </Pressable>
+      </PressHighlight>
     </View>
   );
 }

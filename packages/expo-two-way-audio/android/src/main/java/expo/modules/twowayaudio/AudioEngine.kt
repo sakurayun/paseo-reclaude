@@ -6,12 +6,14 @@ import android.media.AudioFocusRequest
 import android.media.AudioFormat
 import android.media.AudioManager
 import android.media.AudioRecord
+import android.media.AudioRecordingConfiguration
 import android.media.AudioTrack
 import android.media.MediaRecorder
 import android.media.audiofx.AcousticEchoCanceler
 import android.media.audiofx.NoiseSuppressor
 import android.os.Build
-import android.os.PowerManager
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import androidx.annotation.RequiresApi
 import java.util.LinkedList
@@ -34,7 +36,27 @@ class AudioEngine (context: Context) {
     private var noiseSuppressor: NoiseSuppressor? = null
     private val executorServiceMicrophone = Executors.newFixedThreadPool(1)
     private val executorServicePlayback = Executors.newFixedThreadPool(1)
-    private var speakerDevice: AudioDeviceInfo? = null
+    private enum class CaptureMode { CONVERSATION, DICTATION }
+    private var captureMode = CaptureMode.CONVERSATION
+    private val mainHandler = Handler(Looper.getMainLooper())
+    @Volatile private var captureSilenced = false
+    private val recordingCallback = object : AudioManager.AudioRecordingCallback() {
+        override fun onRecordingConfigChanged(configs: MutableList<AudioRecordingConfiguration>) {
+            if (!isRecording || !::audioRecord.isInitialized) return
+            val config = configs.firstOrNull { it.clientAudioSessionId == audioRecord.audioSessionId }
+                ?: return
+            setCaptureSilenced(config.isClientSilenced)
+        }
+    }
+    private val deviceCallback = object : android.media.AudioDeviceCallback() {
+        override fun onAudioDevicesAdded(devices: Array<out AudioDeviceInfo>) {
+            if (communicationRouteActive) updateAudioRouting()
+        }
+        override fun onAudioDevicesRemoved(devices: Array<out AudioDeviceInfo>) {
+            if (communicationRouteActive) updateAudioRouting()
+        }
+    }
+    private var communicationRouteActive = false
     private var bridgeWindowStartedAtMs = System.currentTimeMillis()
     private var micEvents = 0
     private var micBytes = 0L
@@ -43,7 +65,7 @@ class AudioEngine (context: Context) {
     private var playbackWrites = 0
     private var playbackWriteBytes = 0L
 
-    var isRecording = false
+    @Volatile var isRecording = false
     private var isRecordingBeforePause = false
     var isPlaying = false
 
@@ -82,27 +104,9 @@ class AudioEngine (context: Context) {
     @SuppressLint("NewApi")
     private fun initializeAudio(context:Context) {
         audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
-        audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
-        if (!requestAudioFocus()) {
-            handleAudioFocusBlocked()
-        }
-
-        // Route audio to external device if connected, otherwise route to speaker
-        updateAudioRouting()
-
-        // Listen for changes in audio routing
-        audioManager.registerAudioDeviceCallback(object:android.media.AudioDeviceCallback(){
-            override fun onAudioDevicesAdded(addedDevices: Array<out AudioDeviceInfo>?) {
-                Log.d("AudioEngine", "onAudioDevicesAdded")
-                super.onAudioDevicesAdded(addedDevices)
-                updateAudioRouting()
-            }
-            override fun onAudioDevicesRemoved(removedDevices: Array<out AudioDeviceInfo>?) {
-                Log.d("AudioEngine", "onAudioDevicesRemoved")
-                super.onAudioDevicesRemoved(removedDevices)
-                updateAudioRouting()
-            }
-        }, null)
+        // Initialization must not interrupt music before a capture/playback operation owns a session.
+        audioManager.registerAudioDeviceCallback(deviceCallback, mainHandler)
+        audioManager.registerAudioRecordingCallback(recordingCallback, mainHandler)
 
         val bufferSize = AudioTrack.getMinBufferSize(
             SAMPLE_RATE,
@@ -123,49 +127,111 @@ class AudioEngine (context: Context) {
             bufferSize,
             AudioTrack.MODE_STREAM,
             audioManager.generateAudioSessionId()
-        ).apply {
-            play()
+        )
+    }
+
+    @SuppressLint("NewApi")
+    private fun updateAudioRouting() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val devices = audioManager.availableCommunicationDevices
+            // A2DP is a music output, not a microphone route. Android chooses the matching
+            // input for a valid communication sink (including SCO and BLE headsets).
+            val selected = devices.firstOrNull { it.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO ||
+                it.type == AudioDeviceInfo.TYPE_BLE_HEADSET }
+                ?: devices.firstOrNull { it.type == AudioDeviceInfo.TYPE_WIRED_HEADSET ||
+                    it.type == AudioDeviceInfo.TYPE_WIRED_HEADPHONES ||
+                    it.type == AudioDeviceInfo.TYPE_USB_HEADSET }
+                ?: devices.firstOrNull { it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER }
+            val routed = try {
+                selected != null && audioManager.setCommunicationDevice(selected)
+            } catch (_: IllegalArgumentException) {
+                // The device disconnected between enumeration and selection.
+                false
+            }
+            if (!routed) audioManager.clearCommunicationDevice()
+        } else {
+            @Suppress("DEPRECATION")
+            val devices = audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
+            // Before Android 12, A2DP signals a connected headset; start SCO to open its mic.
+            val bluetooth = devices.any { it.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO ||
+                it.type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP }
+            @Suppress("DEPRECATION")
+            if (bluetooth) audioManager.startBluetoothSco() else audioManager.stopBluetoothSco()
+            @Suppress("DEPRECATION")
+            audioManager.isSpeakerphoneOn = !bluetooth && !devices.any {
+                it.type == AudioDeviceInfo.TYPE_WIRED_HEADSET ||
+                    it.type == AudioDeviceInfo.TYPE_WIRED_HEADPHONES ||
+                    it.type == AudioDeviceInfo.TYPE_USB_HEADSET
+            }
         }
     }
 
-    private fun updateAudioRouting() {
-        val devices = audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
-        var isExternalDeviceConnected = false
-        var selectedDevice: AudioDeviceInfo? = null
+    @SuppressLint("NewApi")
+    private fun activateCommunicationRoute() {
+        communicationRouteActive = true
+        audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
+        updateAudioRouting()
+    }
 
-        for (device in devices) {
-            if (device.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER) {
-                speakerDevice = device
-            }
-            if (device.type == AudioDeviceInfo.TYPE_WIRED_HEADPHONES ||
-                device.type == AudioDeviceInfo.TYPE_WIRED_HEADSET ||
-                device.type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP ||
-                device.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO) {
-                isExternalDeviceConnected = true
-                selectedDevice = device
-                break
-            } else if (device.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER) {
-                selectedDevice = device
-            }
-        }
-
+    @SuppressLint("NewApi")
+    private fun releaseCommunicationRoute() {
+        communicationRouteActive = false
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            // Use the modern API for Android S and above
-            try {
-                selectedDevice?.let {
-                    audioManager.setCommunicationDevice(it)
-                }
-            }catch (e:Exception){
-                Log.e("AudioEngine", "Error setting communication device. Using speaker")
-                speakerDevice?.let {
-                    audioManager.setCommunicationDevice(it)
-                }
-            }
-
+            audioManager.clearCommunicationDevice()
         } else {
-            // Fall back to deprecated method for older Android versions
             @Suppress("DEPRECATION")
-            audioManager.isSpeakerphoneOn = !isExternalDeviceConnected
+            audioManager.isSpeakerphoneOn = false
+            @Suppress("DEPRECATION")
+            audioManager.stopBluetoothSco()
+        }
+        audioManager.mode = AudioManager.MODE_NORMAL
+    }
+
+    /**
+     * Give the complete communication session back once we are neither recording nor playing.
+     * Focus pauses the user's music, while MODE_IN_COMMUNICATION and the selected communication
+     * device can leave Bluetooth earbuds on their narrow-band call route after capture stops.
+     */
+    @SuppressLint("NewApi")
+    fun releaseAudioSession() {
+        if (isRecording || isPlaying) {
+            return
+        }
+        audioFocusRequest?.let { request ->
+            audioManager.abandonAudioFocusRequest(request)
+            audioFocusRequest = null
+        }
+        if (::audioTrack.isInitialized) {
+            audioTrack.pause()
+        }
+        releaseCommunicationRoute()
+    }
+
+    /**
+     * Take the audio session back before playing, mirroring iOS `activateAudioSessionIfNeeded()`.
+     *
+     * `releaseAudioSession()` abandons focus and pauses the track once we go idle, so a playback
+     * turn that starts after that release has to reclaim both. Without this, the assistant's
+     * response plays with no focus held and competes with whatever the user is listening to.
+     * A null [audioFocusRequest] is what "we released" looks like, so it is the guard against
+     * re-requesting focus mid-turn.
+     *
+     * Focus is best effort here, and deliberately not fatal. `playPCMData` is fire-and-forget
+     * from JS — `playAudio()` settles on a duration timer, not on a native ack — so refusing to
+     * queue would report a chunk as played that nobody heard. Playing unfocused is what this
+     * path did before the session was ever released, and it is the better failure. Leaving the
+     * request outstanding instead of abandoning it is also what lets a delayed grant arrive
+     * later through the listener, which is the point of `setAcceptsDelayedFocusGain(true)`.
+     */
+    @SuppressLint("NewApi")
+    private fun acquireAudioSessionIfNeeded() {
+        if (audioFocusRequest != null) {
+            return
+        }
+        activateCommunicationRoute()
+        requestAudioFocus()
+        if (::audioTrack.isInitialized) {
+            audioTrack.play()
         }
     }
 
@@ -176,8 +242,8 @@ class AudioEngine (context: Context) {
             audioFocusRequest = null
         }
 
-        val focusRequest =
-            AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_EXCLUSIVE)
+        lateinit var focusRequest: AudioFocusRequest
+        focusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_EXCLUSIVE)
                 .setAudioAttributes(
                     AudioAttributes.Builder()
                         .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
@@ -186,6 +252,7 @@ class AudioEngine (context: Context) {
                 )
                 .setAcceptsDelayedFocusGain(true)
                 .setOnAudioFocusChangeListener { focusChange ->
+                    if (audioFocusRequest !== focusRequest) return@setOnAudioFocusChangeListener
                     when (focusChange) {
                         AudioManager.AUDIOFOCUS_GAIN -> {
                             Log.d("AudioEngine", "Audio focus gained")
@@ -217,6 +284,14 @@ class AudioEngine (context: Context) {
     }
 
     private fun handleAudioFocusBlocked() {
+        // Focus governs playback. Dictation keeps its AudioRecord alive; Android's
+        // recording configuration reports real input silencing and restores it after calls.
+        if (captureMode == CaptureMode.DICTATION) {
+            stopPlayback()
+            audioFocusRequest?.let { audioManager.abandonAudioFocusRequest(it) }
+            audioFocusRequest = null
+            return
+        }
         if (isRecording) {
             stopRecording()
         }
@@ -227,6 +302,7 @@ class AudioEngine (context: Context) {
         if (::audioTrack.isInitialized) {
             audioTrack.pause()
         }
+        releaseCommunicationRoute()
         audioSampleQueue.clear()
         isPlaying = false
         isRecordingBeforePause = false
@@ -236,10 +312,11 @@ class AudioEngine (context: Context) {
 
     @RequiresApi(Build.VERSION_CODES.Q)
     @SuppressLint("MissingPermission")
-    private fun startRecording(): Boolean {
-        if (!requestAudioFocus()) {
+    private fun startRecording(requestFocus: Boolean = true): Boolean {
+        activateCommunicationRoute()
+        if (requestFocus && !requestAudioFocus()) {
             handleAudioFocusBlocked()
-            return false
+            if (captureMode == CaptureMode.CONVERSATION) return false
         }
 
         val bufferSize = AudioRecord.getMinBufferSize(SAMPLE_RATE, CHANNEL_CONFIG, AUDIO_FORMAT)
@@ -273,17 +350,27 @@ class AudioEngine (context: Context) {
 
         audioRecord.startRecording()
         isRecording = true
-        startMicSampleTap()
+        setCaptureSilenced(audioRecord.activeRecordingConfiguration?.isClientSilenced ?: false)
+        startMicSampleTap(audioRecord)
         return true
     }
 
-    private fun startMicSampleTap(){
+    private fun setCaptureSilenced(silenced: Boolean) {
+        if (captureSilenced == silenced) return
+        captureSilenced = silenced
+        if (silenced) onInputVolumeCallback?.invoke(0.0F)
+        onAudioInterruptionCallback?.invoke(if (silenced) "capture_paused" else "capture_resumed")
+    }
+
+    private fun startMicSampleTap(recorder: AudioRecord){
         executorServiceMicrophone.execute {
             val buffer = ByteArray(1024)
             try {
-                while (isRecording) {
-                    val read = audioRecord.read(buffer, 0, buffer.size)
-                    if (read > 0) {
+                while (isRecording && audioRecord === recorder) {
+                    val read = recorder.read(buffer, 0, buffer.size)
+                    if (!isRecording || audioRecord !== recorder) break
+                    if (read < 0) throw IllegalStateException("AudioRecord read failed: $read")
+                    if (read > 0 && !captureSilenced) {
                         val data = buffer.copyOf(read)
                         micEvents += 1
                         micBytes += data.size.toLong()
@@ -296,9 +383,13 @@ class AudioEngine (context: Context) {
                 Log.d("AudioEngine", "Mic sample tap stopped.")
             }catch (e: Exception){
                 Log.e("AudioEngine", "Error reading mic sample data", e)
-                isRecording = false
-                tearDown()
-                throw e
+                mainHandler.post {
+                    if (isRecording && audioRecord === recorder) {
+                        stopRecording()
+                        releaseAudioSession()
+                        onAudioInterruptionCallback?.invoke("blocked")
+                    }
+                }
             }
         }
     }
@@ -308,16 +399,31 @@ class AudioEngine (context: Context) {
         isRecording = false
         if (audioRecord.recordingState == AudioRecord.RECORDSTATE_RECORDING) {
             audioRecord.stop()
-            audioRecord.release()
         }
+        audioRecord.release()
+        echoCanceler?.release()
+        echoCanceler = null
+        noiseSuppressor?.release()
+        noiseSuppressor = null
+        setCaptureSilenced(false)
         onInputVolumeCallback?.invoke(0.0F)
     }
 
     @RequiresApi(Build.VERSION_CODES.Q)
+    fun startDictation(): Boolean {
+        isRecordingBeforePause = false
+        if (isRecording) return true
+        captureMode = CaptureMode.DICTATION
+        return startRecording()
+    }
+
+    @RequiresApi(Build.VERSION_CODES.Q)
     fun toggleRecording(value: Boolean): Boolean {
+        isRecordingBeforePause = false
         if (value == isRecording) return isRecording
 
         if (value) {
+            captureMode = CaptureMode.CONVERSATION
             return startRecording()
         } else {
             stopRecording()
@@ -327,7 +433,10 @@ class AudioEngine (context: Context) {
         return isRecording
     }
 
+    @SuppressLint("NewApi")
     fun playPCMData(data: ByteArray) {
+        acquireAudioSessionIfNeeded()
+        audioTrack.play()
         audioSampleQueue.add(data)
         playbackEvents += 1
         playbackQueuedBytes += data.size.toLong()
@@ -391,22 +500,32 @@ class AudioEngine (context: Context) {
     @RequiresApi(Build.VERSION_CODES.Q)
     fun pauseRecordingAndPlayer() {
         isRecordingBeforePause = isRecording
-        isRecording = toggleRecording(false)
+        stopRecording()
         audioTrack.pause()
     }
 
     @RequiresApi(Build.VERSION_CODES.Q)
     fun resumeRecordingAndPlayer() {
-        if (!requestAudioFocus()) {
-            handleAudioFocusBlocked()
-            return
-        }
         val wasRecordingBeforePause = isRecordingBeforePause
-        isRecording = toggleRecording(wasRecordingBeforePause)
-        if (wasRecordingBeforePause && !isRecording) {
+        // Only take the session back if something was actually live when we backgrounded. The
+        // activity lifecycle listener calls this on every onResume, so requesting
+        // AUDIOFOCUS_GAIN_TRANSIENT_EXCLUSIVE unconditionally re-paused the user's music every
+        // time the app came to the foreground — the exact symptom this change exists to remove.
+        if (!wasRecordingBeforePause && !isPlaying) {
             return
         }
-        audioTrack.play()
+        isRecordingBeforePause = false
+        if (wasRecordingBeforePause) {
+            // Returning from music controls must not pause music the user explicitly resumed.
+            if (!startRecording(requestFocus = captureMode == CaptureMode.CONVERSATION)) return
+        } else {
+            activateCommunicationRoute()
+            if (!requestAudioFocus()) {
+                handleAudioFocusBlocked()
+                return
+            }
+        }
+        if (captureMode == CaptureMode.CONVERSATION) audioTrack.play()
     }
 
     fun stopPlayback() {
@@ -423,7 +542,9 @@ class AudioEngine (context: Context) {
         Log.d("AudioEngine", "Playback paused")
     }
 
+    @SuppressLint("NewApi")
     fun resumePlayback() {
+        acquireAudioSessionIfNeeded()
         audioTrack.play()
         Log.d("AudioEngine", "Playback resumed")
     }
@@ -432,14 +553,16 @@ class AudioEngine (context: Context) {
     fun tearDown() {
         stopRecording()
         audioTrack.stop()
-        audioManager.mode = AudioManager.MODE_NORMAL
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            audioManager.clearCommunicationDevice()
-        }
+        releaseCommunicationRoute()
         audioFocusRequest?.let { request ->
             audioManager.abandonAudioFocusRequest(request)
         }
+        audioFocusRequest = null
+        audioManager.unregisterAudioDeviceCallback(deviceCallback)
+        audioManager.unregisterAudioRecordingCallback(recordingCallback)
+        audioTrack.release()
         executorServiceMicrophone.shutdownNow()
+        executorServicePlayback.shutdownNow()
     }
 
 

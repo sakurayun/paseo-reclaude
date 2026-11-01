@@ -1,12 +1,11 @@
+import { PressHighlight } from "@/components/ui/press-highlight";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Animated as RNAnimated,
   FlatList,
-  Pressable,
   StyleSheet as RNStyleSheet,
   Text,
-  TextInput,
   View,
   type ListRenderItemInfo,
 } from "react-native";
@@ -23,6 +22,7 @@ import {
   RefreshCw,
 } from "lucide-react-native";
 import { useTranslation } from "react-i18next";
+import { EditingTextInput, type EditingTextInputHandle } from "@/components/ui/text-input";
 import type { GitLogCommit } from "@getpaseo/protocol/messages";
 import type { Theme } from "@/styles/theme";
 import { useSessionStore } from "@/stores/session-store";
@@ -56,7 +56,7 @@ const ThemedArchive = withUnistyles(Archive);
 const ThemedCheck = withUnistyles(Check);
 const ThemedChevronDown = withUnistyles(ChevronDown);
 const ThemedChevronRight = withUnistyles(ChevronRight);
-const ThemedTextInput = withUnistyles(TextInput);
+const ThemedTextInput = withUnistyles(EditingTextInput);
 
 const mutedIconMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
 const accentIconMapping = (theme: Theme) => ({ color: theme.colors.accent });
@@ -417,6 +417,7 @@ function ChangesSection({
   const { t } = useTranslation();
   const toast = useToast();
   const [message, setMessage] = useState("");
+  const messageInputRef = useRef<EditingTextInputHandle>(null);
   const [filesOpen, setFilesOpen] = useState(false);
   const handleFilesToggle = useCallback(() => setFilesOpen((value) => !value), []);
 
@@ -452,6 +453,7 @@ function ChangesSection({
     void runCommit({ serverId, cwd, message, addAll: !hasStaged })
       .then(() => {
         setMessage("");
+        messageInputRef.current?.reset();
         toast.show(t("workspace.git.actions.commit.success"), { variant: "success" });
         return;
       })
@@ -518,7 +520,8 @@ function ChangesSection({
       )}
       <View style={styles.changesBody}>
         <ThemedTextInput
-          value={message}
+          ref={messageInputRef}
+          initialValue=""
           onChangeText={setMessage}
           placeholder={t("workspace.sourceControl.changes.placeholder")}
           multiline
@@ -601,7 +604,7 @@ function CollapsibleHeader({
   testID: string;
 }) {
   return (
-    <Pressable
+    <PressHighlight
       accessibilityRole="button"
       accessibilityLabel={title}
       accessibilityState={open ? COLLAPSIBLE_EXPANDED : COLLAPSIBLE_COLLAPSED}
@@ -616,7 +619,7 @@ function CollapsibleHeader({
       )}
       <Text style={styles.collapsibleTitle}>{title}</Text>
       {count !== null ? <Text style={styles.collapsibleCount}>{count}</Text> : null}
-    </Pressable>
+    </PressHighlight>
   );
 }
 
@@ -759,14 +762,14 @@ function RepoInfoButton({
   return (
     <Tooltip delayDuration={200} enabledOnDesktop enabledOnMobile>
       <TooltipTrigger asChild>
-        <Pressable
+        <PressHighlight
           accessibilityRole="button"
           accessibilityLabel={t("workspace.sourceControl.repo.title")}
           style={styles.repoInfoButton}
           testID="source-control-repo-info"
         >
           <ThemedGitBranch size={13} uniProps={mutedIconMapping} />
-        </Pressable>
+        </PressHighlight>
       </TooltipTrigger>
       <TooltipContent side="bottom" align="start" offset={6}>
         <View style={styles.repoTooltipBody}>
@@ -880,7 +883,7 @@ function SyncActionButton({
     [isDisabled],
   );
   return (
-    <Pressable
+    <PressHighlight
       accessibilityRole="button"
       accessibilityLabel={label}
       accessibilityState={accessibilityState}
@@ -891,7 +894,7 @@ function SyncActionButton({
     >
       {pending ? <ActivityIndicator size="small" /> : children}
       <Text style={styles.actionButtonText}>{label}</Text>
-    </Pressable>
+    </PressHighlight>
   );
 }
 
@@ -922,9 +925,9 @@ function CommitListEmptyState({ isLoading, isError, onRetry }: CommitListEmptySt
     return (
       <View style={styles.centered}>
         <Text style={styles.mutedText}>{t("workspace.sourceControl.history.error")}</Text>
-        <Pressable accessibilityRole="button" onPress={onRetry} style={styles.retryButton}>
+        <PressHighlight accessibilityRole="button" onPress={onRetry} style={styles.retryButton}>
           <Text style={styles.retryButtonText}>{t("workspace.git.diff.refresh")}</Text>
-        </Pressable>
+        </PressHighlight>
       </View>
     );
   }
@@ -1011,7 +1014,11 @@ const styles = StyleSheet.create((theme) => ({
     padding: theme.spacing[6],
   },
   centeredOverlay: {
-    ...RNStyleSheet.absoluteFillObject,
+    position: "absolute",
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: theme.colors.surfaceSidebar,

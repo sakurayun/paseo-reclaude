@@ -1,6 +1,7 @@
+import { PressHighlight } from "@/components/ui/press-highlight";
 import { useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { FlatList, Pressable, Text, View, type ListRenderItemInfo } from "react-native";
+import { FlatList, Text, View, type ListRenderItemInfo } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { SvgXml } from "react-native-svg";
 import {
@@ -16,7 +17,7 @@ import {
 import type { SshUpload, SshUploadFile } from "@getpaseo/protocol/messages";
 import { deriveTerminalActivityStatusBucket } from "@getpaseo/protocol/terminal-activity";
 import { formatByteSize } from "@/components/ssh/ssh-upload-drop-sheet";
-import { getFileIconSvg } from "@/components/material-file-icons";
+import { getFileIconSvg } from "@/components/file-icon-svg";
 import { TreeChevron, treeRowPaddingLeft } from "@/components/tree-primitives";
 import {
   ContextMenu,
@@ -178,7 +179,7 @@ export function SshUploadSidebarHost({ serverId }: { serverId: string }) {
   }
   const activeCount = uploads.filter((upload) => upload.status === "active").length;
   return (
-    <Pressable
+    <PressHighlight
       style={styles.floatingPill}
       onPress={openPanel}
       accessibilityRole="button"
@@ -191,7 +192,7 @@ export function SshUploadSidebarHost({ serverId }: { serverId: string }) {
           ? t("ssh.uploads.panel.pillActive", { count: activeCount })
           : t("ssh.uploads.panel.pillIdle", { count: uploads.length })}
       </Text>
-    </Pressable>
+    </PressHighlight>
   );
 }
 
@@ -328,7 +329,7 @@ function SshUploadSidebar({ serverId, uploads }: { serverId: string; uploads: Ss
         <Text style={styles.headerTitle}>{t("ssh.uploads.panel.title")}</Text>
         <View style={styles.headerActions}>
           {hasActive ? (
-            <Pressable
+            <PressHighlight
               style={styles.headerButton}
               onPress={handleStopAll}
               accessibilityRole="button"
@@ -336,10 +337,10 @@ function SshUploadSidebar({ serverId, uploads }: { serverId: string; uploads: Ss
               testID="ssh-upload-stop-all"
             >
               <MutedStop size={ROW_ICON_SIZE} />
-            </Pressable>
+            </PressHighlight>
           ) : null}
           {hasFinished ? (
-            <Pressable
+            <PressHighlight
               style={styles.headerButton}
               onPress={handleClearFinished}
               accessibilityRole="button"
@@ -347,9 +348,9 @@ function SshUploadSidebar({ serverId, uploads }: { serverId: string; uploads: Ss
               testID="ssh-upload-clear-finished"
             >
               <MutedTrash size={ROW_ICON_SIZE} />
-            </Pressable>
+            </PressHighlight>
           ) : null}
-          <Pressable
+          <PressHighlight
             style={styles.headerButton}
             onPress={closePanel}
             accessibilityRole="button"
@@ -357,7 +358,7 @@ function SshUploadSidebar({ serverId, uploads }: { serverId: string; uploads: Ss
             testID="ssh-upload-close-panel"
           >
             <MutedX size={ROW_ICON_SIZE} />
-          </Pressable>
+          </PressHighlight>
         </View>
       </View>
       {rows.length === 0 ? (
@@ -424,7 +425,7 @@ function UploadHeaderRow({
           ) : null}
         </View>
         {upload.status === "active" ? (
-          <Pressable
+          <PressHighlight
             style={styles.headerButton}
             onPress={handleCancel}
             accessibilityRole="button"
@@ -432,7 +433,7 @@ function UploadHeaderRow({
             testID={`ssh-upload-cancel-${upload.uploadId}`}
           >
             <MutedStop size={ROW_ICON_SIZE} />
-          </Pressable>
+          </PressHighlight>
         ) : null}
       </ContextMenuTrigger>
       <ContextMenuContent>

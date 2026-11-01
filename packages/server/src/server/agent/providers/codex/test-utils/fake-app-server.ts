@@ -3,6 +3,10 @@ import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
 
 import type { AgentSession, AgentStreamEvent } from "../../../agent-sdk-types.js";
+import { CODEX_PROVIDER_LINE_BYTES } from "../app-server-transport.js";
+
+/** A handler result that the fake writes as a response line past the provider line cap. */
+export const OVERSIZED_RESPONSE = Symbol("oversized Codex response");
 
 type JsonObject = Record<string, unknown>;
 type FakeCodexAppServerHandler = (params: unknown) => unknown;
@@ -24,6 +28,13 @@ interface FakeSilentCommand {
   callId: string;
   command: string;
   cwd: string;
+}
+interface FakeTerminalCommand {
+  threadId: string;
+  turnId: string;
+  itemId: string;
+  processId: string;
+  command: string;
 }
 interface FakeTerminalInput {
   threadId: string;
@@ -47,11 +58,20 @@ type CodexAppServerChildProcess = ChildProcessWithoutNullStreams & {
 export interface FakeCodexAppServer {
   readonly child: CodexAppServerChildProcess;
   readonly recordedRollbacks: JsonObject[];
+  requests(): readonly JsonObject[];
   assertNoErrors(): void;
   waitForTurnStart(): Promise<JsonObject>;
+  waitForRequest(method: string): Promise<JsonObject>;
+  disconnect(): void;
   nextResponse(): Promise<string>;
   startsTurn(params: { threadId: string; turnId?: string }): void;
-  completeTurn(params?: { threadId?: string }): void;
+  startsCompaction(params: { threadId: string; itemId: string }): void;
+  updatesPlan(params: { threadId: string; steps: string[] }): void;
+  completeTurn(params?: {
+    threadId?: string;
+    status?: "completed" | "failed" | "interrupted";
+    error?: { message: string } | null;
+  }): void;
   startsSubAgent(params: {
     callId: string;
     threadId: string;
@@ -72,17 +92,33 @@ export interface FakeCodexAppServer {
   completesCommand(params: FakeLegacyCommand): void;
   completesSilentCommand(params: FakeSilentCommand): void;
   completesSilentLegacyCommand(params: FakeSilentCommand): void;
+  startsTerminalCommand(params: FakeTerminalCommand): void;
   typesIntoTerminal(params: FakeTerminalInput): void;
   says(params: { threadId: string; itemId?: string; text: string; chunks?: string[] }): void;
   requestCommandApproval(params: {
     itemId: string;
+    approvalId?: string;
     threadId: string;
     turnId: string;
     command: string;
     cwd: string;
     reason: string;
   }): void;
-  waitForCommandApprovalDecision(itemId: string): Promise<unknown>;
+  /** Keyed by `approvalId` when the request carried one, otherwise by `itemId`. */
+  waitForCommandApprovalDecision(callbackId: string): Promise<unknown>;
+  requestFileChangeApproval(params: {
+    itemId: string;
+    threadId: string;
+    turnId: string;
+    reason: string;
+  }): void;
+  requestUserInput(params: {
+    itemId: string;
+    threadId: string;
+    turnId: string;
+    questions: Array<Record<string, unknown>>;
+  }): void;
+  waitForApprovalDecision(itemId: string): Promise<unknown>;
   requestMcpElicitation(params: {
     threadId: string;
     turnId: string | null;
@@ -197,8 +233,23 @@ export function createFakeCodexAppServer(
       return;
     }
 
-    Promise.resolve(handler(message.params))
+    let response: unknown;
+    try {
+      response = handler(message.params);
+    } catch (error) {
+      response = Promise.reject(error);
+    }
+    Promise.resolve(response)
       .then((result) => {
+        if (result === OVERSIZED_RESPONSE) {
+          writeOversizedResponse(message.id as number);
+          return undefined;
+        }
+        const rpcError = toJsonObject(result).__jsonRpcError;
+        if (rpcError) {
+          child.stdout.write(`${JSON.stringify({ id: message.id, error: rpcError })}\n`);
+          return undefined;
+        }
         child.stdout.write(`${JSON.stringify({ id: message.id, result })}\n`);
         return undefined;
       })
@@ -276,6 +327,16 @@ export function createFakeCodexAppServer(
     });
   }
 
+  // Codex writes `id` first, then a result past the provider line cap.
+  function writeOversizedResponse(id: number): void {
+    child.stdout.write(`{"id":${id},"result":{"data":[{"item":{"text":"`);
+    const chunk = Buffer.alloc(1024 * 1024, "x");
+    for (let written = 0; written <= CODEX_PROVIDER_LINE_BYTES; written += chunk.byteLength) {
+      child.stdout.write(chunk);
+    }
+    child.stdout.write('"}}]}}\n');
+  }
+
   function writeNotification(method: string, params: JsonObject): void {
     child.stdout.write(`${JSON.stringify({ method, params })}\n`);
   }
@@ -291,6 +352,9 @@ export function createFakeCodexAppServer(
   return {
     child,
     recordedRollbacks,
+    requests() {
+      return messages;
+    },
     assertNoErrors() {
       if (errors.length > 0) {
         throw errors[0];
@@ -302,6 +366,16 @@ export function createFakeCodexAppServer(
         "turn start request",
       );
       return toJsonObject(message.params);
+    },
+    async waitForRequest(method) {
+      const message = await waitForMessage(
+        (candidate) => candidate.method === method,
+        `${method} request`,
+      );
+      return toJsonObject(message.params);
+    },
+    disconnect() {
+      child.emit("exit", null, "SIGTERM");
     },
     nextResponse() {
       return new Promise<string>((resolve) => {
@@ -319,11 +393,34 @@ export function createFakeCodexAppServer(
         })}\n`,
       );
     },
+    startsCompaction(params) {
+      writeNotification("item/started", {
+        threadId: params.threadId,
+        item: { type: "contextCompaction", id: params.itemId },
+      });
+    },
+    updatesPlan(params) {
+      child.stdout.write(
+        `${JSON.stringify({
+          method: "turn/plan/updated",
+          params: {
+            threadId: params.threadId,
+            plan: params.steps.map((step) => ({ step, status: "pending" })),
+          },
+        })}\n`,
+      );
+    },
     completeTurn(params = {}) {
       child.stdout.write(
         `${JSON.stringify({
           method: "turn/completed",
-          params: { threadId: params.threadId ?? "thread-1", turn: { status: "completed" } },
+          params: {
+            threadId: params.threadId ?? "thread-1",
+            turn: {
+              status: params.status ?? "completed",
+              error: params.error ?? null,
+            },
+          },
         })}\n`,
       );
     },
@@ -422,6 +519,19 @@ export function createFakeCodexAppServer(
         success: true,
       });
     },
+    startsTerminalCommand(params) {
+      writeNotification("item/started", {
+        threadId: params.threadId,
+        turnId: params.turnId,
+        item: {
+          type: "commandExecution",
+          id: params.itemId,
+          status: "inProgress",
+          command: params.command,
+          processId: params.processId,
+        },
+      });
+    },
     typesIntoTerminal(params) {
       writeNotification("item/commandExecution/terminalInteraction", {
         threadId: params.threadId,
@@ -455,7 +565,7 @@ export function createFakeCodexAppServer(
     requestCommandApproval(params) {
       const requestId = nextServerRequestId;
       nextServerRequestId += 1;
-      approvalRequestIds.set(params.itemId, requestId);
+      approvalRequestIds.set(params.approvalId ?? params.itemId, requestId);
       child.stdout.write(
         `${JSON.stringify({
           jsonrpc: "2.0",
@@ -465,7 +575,36 @@ export function createFakeCodexAppServer(
         })}\n`,
       );
     },
-    async waitForCommandApprovalDecision(itemId) {
+    async waitForCommandApprovalDecision(callbackId) {
+      return await this.waitForApprovalDecision(callbackId);
+    },
+    requestFileChangeApproval(params) {
+      const requestId = nextServerRequestId;
+      nextServerRequestId += 1;
+      approvalRequestIds.set(params.itemId, requestId);
+      child.stdout.write(
+        `${JSON.stringify({
+          jsonrpc: "2.0",
+          id: requestId,
+          method: "item/fileChange/requestApproval",
+          params,
+        })}\n`,
+      );
+    },
+    requestUserInput(params) {
+      const requestId = nextServerRequestId;
+      nextServerRequestId += 1;
+      approvalRequestIds.set(params.itemId, requestId);
+      child.stdout.write(
+        `${JSON.stringify({
+          jsonrpc: "2.0",
+          id: requestId,
+          method: "item/tool/requestUserInput",
+          params,
+        })}\n`,
+      );
+    },
+    async waitForApprovalDecision(itemId) {
       const requestId = approvalRequestIds.get(itemId);
       if (requestId === undefined) {
         throw new Error(`No pending fake Codex app-server approval for ${itemId}`);
@@ -526,7 +665,7 @@ function toJsonObject(value: unknown): JsonObject {
 type StreamEventType = AgentStreamEvent["type"];
 type StreamEventOfType<TType extends StreamEventType> = Extract<AgentStreamEvent, { type: TType }>;
 
-function waitForNextEvent<TType extends StreamEventType>(
+export function waitForNextEvent<TType extends StreamEventType>(
   session: AgentSession,
   type: TType,
   accepts?: (event: StreamEventOfType<TType>) => boolean,
@@ -580,4 +719,82 @@ export function waitForProviderSubagent(
   id: string,
 ): Promise<ProviderSubagentEvent> {
   return waitForNextEvent(session, "provider_subagent", (event) => event.event.id === id);
+}
+
+export interface FakeCodexHistoryTurn {
+  id: string;
+  startedAt?: number;
+  completedAt?: number;
+  items: JsonObject[];
+}
+
+export interface FakeCodexHistoryThread {
+  /** Omitted on Codex builds older than 0.143, which only have legacy history. */
+  historyMode?: "legacy" | "paginated";
+  turns: FakeCodexHistoryTurn[];
+}
+
+export interface FakeCodexHistoryOptions {
+  /** Any response carrying one of these items is written past the line cap. */
+  oversizedItemIds?: string[];
+}
+
+/**
+ * Codex's persisted thread history: `thread/read` for metadata and legacy full
+ * reads, `thread/items/list` for paginated threads. Paginated threads reject
+ * the full read as Codex 0.145 and 0.146 do.
+ */
+export function fakeCodexThreadHistory(
+  threads: Record<string, FakeCodexHistoryThread>,
+  options: FakeCodexHistoryOptions = {},
+): Record<string, FakeCodexAppServerHandler> {
+  const oversizedItemIds = new Set(options.oversizedItemIds ?? []);
+  const isOversized = (items: JsonObject[]) =>
+    items.some((item) => oversizedItemIds.has(String(item.id)));
+
+  function readThread(params: unknown): { id: string; thread: FakeCodexHistoryThread } {
+    const id = String(toJsonObject(params).threadId);
+    const thread = threads[id];
+    if (!thread) throw new Error(`thread not found: ${id}`);
+    return { id, thread };
+  }
+
+  return {
+    "thread/read": (params) => {
+      const { id, thread } = readThread(params);
+      if (!toJsonObject(params).includeTurns) {
+        return {
+          thread: { id, ...(thread.historyMode ? { historyMode: thread.historyMode } : {}) },
+        };
+      }
+      if (thread.historyMode === "paginated") {
+        throw new Error("paginated threads do not support thread/read(includeTurns=true)");
+      }
+      if (isOversized(thread.turns.flatMap((turn) => turn.items))) return OVERSIZED_RESPONSE;
+      return { thread: { id, turns: thread.turns } };
+    },
+    "thread/items/list": (params) => {
+      const { thread } = readThread(params);
+      if (thread.historyMode !== "paginated") {
+        throw new Error("thread/items/list is not supported for legacy threads");
+      }
+      const request = toJsonObject(params);
+      // Codex records each item's own times; the fake gives every item its turn's.
+      const rows = thread.turns.flatMap((turn) =>
+        turn.items.map((item) => ({
+          turnId: turn.id,
+          item,
+          startedAtMs: turn.startedAt === undefined ? null : turn.startedAt * 1000,
+          completedAtMs: turn.completedAt === undefined ? null : turn.completedAt * 1000,
+        })),
+      );
+      const limit = Math.min(typeof request.limit === "number" ? request.limit : 25, 100);
+      const start =
+        typeof request.cursor === "string" ? Number(request.cursor.slice("cursor-".length)) : 0;
+      const end = Math.min(rows.length, start + limit);
+      const data = rows.slice(start, end);
+      if (isOversized(data.map((row) => row.item))) return OVERSIZED_RESPONSE;
+      return { data, nextCursor: end < rows.length ? `cursor-${end}` : null };
+    },
+  };
 }

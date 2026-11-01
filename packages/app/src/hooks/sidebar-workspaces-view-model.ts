@@ -1,3 +1,5 @@
+import { deriveEffectiveWorkspaceStatus } from "@/workspace-status";
+import equal from "fast-deep-equal";
 import type { PrHint } from "@/git/pr-hint";
 import { selectPrHintFromStatus } from "@/git/pr-hint";
 import { type HostProjectListItem } from "@/projects/host-project-model";
@@ -8,6 +10,8 @@ import type {
   WorkspaceStructureProject,
 } from "@/projects/workspace-structure";
 import { projectDisplayNameFromProjectId } from "@/utils/project-display-name";
+import { aggregateSidebarStateBuckets } from "@/utils/sidebar-agent-state";
+import { shortenPath } from "@/utils/shorten-path";
 import type { WorkspaceAgentActivity } from "@/utils/workspace-agent-activity";
 import { resolveWorkspaceMapKeyByIdentity } from "@/utils/workspace-identity";
 
@@ -19,12 +23,13 @@ export interface SidebarWorkspacePlacement {
   workspaceKey: string;
   serverId: string;
   workspaceId: string;
-  projectKey: string;
+  projectViewKey: string;
   projectName: string;
   projectRootPath?: string;
   workspaceDirectory?: string;
-  projectKind: WorkspaceDescriptor["projectKind"];
+  projectKind: WorkspaceStructureProject["projectKind"];
   workspaceKind: WorkspaceDescriptor["workspaceKind"];
+  background?: boolean;
   name: string;
 }
 
@@ -34,10 +39,13 @@ export interface SidebarStatusWorkspacePlacement extends SidebarWorkspacePlaceme
 }
 
 export interface SidebarWorkspaceEntry extends SidebarStatusWorkspacePlacement {
+  workspaceDirectory: string;
+  workspaceDirectoryLabel: string;
   // Raw user-set title (null when the name is derived from branch/directory).
   // Prefills the rename input and signals whether a reset is available.
   title: string | null;
   pinnedAt?: string | null;
+  labels?: string[];
   // Checkout branch (null when not a git checkout or detached HEAD).
   currentBranch: string | null;
   archivingAt: string | null;
@@ -50,9 +58,9 @@ export interface SidebarWorkspaceEntry extends SidebarStatusWorkspacePlacement {
 }
 
 export interface SidebarProjectEntry {
-  projectKey: string;
+  viewKey: string;
   projectName: string;
-  projectKind: WorkspaceDescriptor["projectKind"];
+  projectKind: WorkspaceStructureProject["projectKind"];
   iconWorkingDir: string;
   hosts: WorkspaceStructureHostPlacement[];
   workspaces: SidebarWorkspacePlacement[];
@@ -61,7 +69,7 @@ export interface SidebarProjectEntry {
 export interface SidebarWorkspacePlacementModel {
   workspaces: SidebarWorkspacePlacement[];
   projects: SidebarProjectEntry[];
-  projectNamesByKey: Map<string, string>;
+  projectNamesByViewKey: Map<string, string>;
 }
 
 export interface SidebarWorkspaceSession {
@@ -117,16 +125,11 @@ export function areSidebarWorkspaceSessionsEqual(
   return true;
 }
 
-interface EffectiveWorkspaceStatus {
-  status: WorkspaceDescriptor["status"];
-  enteredAt: Date | null;
-}
-
-function projectNameForWorkspace(workspace: WorkspaceDescriptor, projectKey: string): string {
+function projectNameForWorkspace(workspace: WorkspaceDescriptor): string {
   return (
     workspace.projectCustomName ??
     workspace.projectDisplayName ??
-    projectDisplayNameFromProjectId(projectKey)
+    projectDisplayNameFromProjectId(workspace.projectId)
   );
 }
 
@@ -141,25 +144,29 @@ function normalizeCurrentBranch(currentBranch: string | null | undefined): strin
 export function createSidebarWorkspaceEntry(input: {
   serverId: string;
   workspace: WorkspaceDescriptor;
-  projectKey?: string;
+  projectViewKey?: string;
   pendingCreateAttempts?: Record<string, PendingCreateAttempt>;
   workspaceAgentActivity?: ReadonlyMap<string, WorkspaceAgentActivity>;
 }): SidebarWorkspaceEntry {
-  const projectKey = input.projectKey ?? input.workspace.projectId;
+  const projectViewKey = input.projectViewKey ?? input.workspace.projectId;
   const effectiveStatus = deriveEffectiveWorkspaceStatus(input);
   return {
     workspaceKey: `${input.serverId}:${input.workspace.id}`,
     serverId: input.serverId,
     workspaceId: input.workspace.id,
-    projectKey,
-    projectName: projectNameForWorkspace(input.workspace, projectKey),
+    projectViewKey,
+    projectName: projectNameForWorkspace(input.workspace),
     projectRootPath: input.workspace.projectRootPath,
     workspaceDirectory: input.workspace.workspaceDirectory,
+    workspaceDirectoryLabel:
+      input.workspace.worktreeSlug ?? shortenPath(input.workspace.workspaceDirectory),
     projectKind: input.workspace.projectKind,
     workspaceKind: input.workspace.workspaceKind,
+    background: input.workspace.background,
     name: input.workspace.name,
     title: input.workspace.title ?? null,
     pinnedAt: input.workspace.pinnedAt,
+    labels: input.workspace.labels ?? EMPTY_WORKSPACE_LABELS,
     currentBranch: normalizeCurrentBranch(input.workspace.gitRuntime?.currentBranch),
     statusBucket: effectiveStatus.status,
     statusEnteredAt: effectiveStatus.enteredAt,
@@ -176,49 +183,88 @@ export function createSidebarWorkspaceEntry(input: {
   };
 }
 
-function deriveEffectiveWorkspaceStatus(input: {
-  serverId: string;
-  workspace: WorkspaceDescriptor;
-  pendingCreateAttempts?: Record<string, PendingCreateAttempt>;
-  workspaceAgentActivity?: ReadonlyMap<string, WorkspaceAgentActivity>;
-}): EffectiveWorkspaceStatus {
-  if (input.workspace.status !== "done") {
-    return { status: input.workspace.status, enteredAt: input.workspace.statusEnteredAt };
-  }
+const EMPTY_WORKSPACE_LABELS: string[] = [];
 
-  const pendingStartedAt = getPendingInitialAgentCreateStartedAt({
-    serverId: input.serverId,
-    workspaceId: input.workspace.id,
-    pendingCreateAttempts: input.pendingCreateAttempts,
-  });
-  if (pendingStartedAt) {
-    return { status: "running", enteredAt: pendingStartedAt };
-  }
-
-  const rootAgentActivity = input.workspaceAgentActivity?.get(input.workspace.id);
-  if (rootAgentActivity && rootAgentActivity.status !== "done") {
-    return rootAgentActivity;
-  }
-
-  return { status: input.workspace.status, enteredAt: input.workspace.statusEnteredAt };
+export interface ProjectStatusSession {
+  workspaces: Map<string, WorkspaceDescriptor>;
+  workspaceAgentActivity: Map<string, WorkspaceAgentActivity>;
 }
 
-function getPendingInitialAgentCreateStartedAt(input: {
-  serverId: string;
-  workspaceId: string;
-  pendingCreateAttempts: Record<string, PendingCreateAttempt> | undefined;
-}): Date | null {
-  let latestStartedAt: Date | null = null;
-  for (const pending of Object.values(input.pendingCreateAttempts ?? {})) {
-    if (pending.serverId !== input.serverId) continue;
-    if (pending.workspaceId !== input.workspaceId) continue;
-    if (pending.lifecycle === "abandoned") continue;
-    const startedAt = new Date(pending.timestamp);
-    if (!latestStartedAt || startedAt > latestStartedAt) {
-      latestStartedAt = startedAt;
+/**
+ * Most urgent status among a project's workspaces. Backs the status dot on a collapsed
+ * project row, which otherwise hides every workspace-level signal it contains.
+ *
+ * Workspaces the session hasn't hydrated yet are skipped rather than counted as done —
+ * an unknown workspace shouldn't drag the aggregate anywhere. Reuses the same
+ * activity-index + effective-status pipeline as per-workspace rows (one pass over the
+ * session's agents per server, not per workspace) rather than re-deriving it.
+ */
+export function deriveProjectStatusBucket(input: {
+  workspaces: readonly SidebarWorkspacePlacement[];
+  sessions: Record<string, ProjectStatusSession | undefined>;
+  pendingCreateAttempts?: Record<string, PendingCreateAttempt>;
+}): SidebarStateBucket {
+  const workspaceIdsByServer = new Map<string, string[]>();
+  for (const placement of input.workspaces) {
+    const existing = workspaceIdsByServer.get(placement.serverId);
+    if (existing) {
+      existing.push(placement.workspaceId);
+    } else {
+      workspaceIdsByServer.set(placement.serverId, [placement.workspaceId]);
     }
   }
-  return latestStartedAt;
+
+  const buckets: SidebarStateBucket[] = [];
+  for (const [serverId, workspaceIds] of workspaceIdsByServer) {
+    const session = input.sessions[serverId];
+    if (!session) continue;
+    for (const workspaceId of workspaceIds) {
+      const workspaceKey = resolveWorkspaceMapKeyByIdentity({
+        workspaces: session.workspaces,
+        workspaceId,
+      });
+      const workspace = workspaceKey ? session.workspaces.get(workspaceKey) : undefined;
+      if (!workspace) continue;
+      buckets.push(
+        deriveEffectiveWorkspaceStatus({
+          serverId,
+          workspace,
+          pendingCreateAttempts: input.pendingCreateAttempts,
+          workspaceAgentActivity: session.workspaceAgentActivity,
+        }).status,
+      );
+    }
+  }
+
+  return aggregateSidebarStateBuckets(buckets);
+}
+
+/** One bounded projection per sidebar; unchanged placements survive project reordering. */
+export function createSidebarWorkspacePlacementSelector(): (
+  projects: readonly HostProjectListItem[],
+) => SidebarWorkspacePlacementModel {
+  let previous: SidebarWorkspacePlacementModel | null = null;
+  return (projects) => {
+    const next = buildSidebarWorkspacePlacementModel({ projects });
+    const previousProjects = new Map(
+      previous?.projects.map((project) => [project.viewKey, project]),
+    );
+    const previousWorkspaces = new Map(
+      previous?.workspaces.map((workspace) => [workspace.workspaceKey, workspace]),
+    );
+    next.projects = next.projects.map((project) => {
+      const prior = previousProjects.get(project.viewKey);
+      if (prior && equal(prior, project)) return prior;
+      project.workspaces = project.workspaces.map((workspace) => {
+        const priorWorkspace = previousWorkspaces.get(workspace.workspaceKey);
+        return priorWorkspace && equal(priorWorkspace, workspace) ? priorWorkspace : workspace;
+      });
+      return project;
+    });
+    next.workspaces = next.projects.flatMap((project) => project.workspaces);
+    previous = next;
+    return next;
+  };
 }
 
 export function buildSidebarWorkspacePlacementModel(input: {
@@ -228,8 +274,8 @@ export function buildSidebarWorkspacePlacementModel(input: {
   return {
     projects,
     workspaces: projects.flatMap((project) => project.workspaces),
-    projectNamesByKey: new Map(
-      projects.map((project) => [project.projectKey, project.projectName]),
+    projectNamesByViewKey: new Map(
+      projects.map((project) => [project.viewKey, project.projectName]),
     ),
   };
 }
@@ -247,7 +293,7 @@ function createStructuralWorkspaceEntry(input: {
     workspaceKey: identity.workspaceKey,
     serverId: identity.serverId,
     workspaceId: identity.workspaceId,
-    projectKey: input.project.projectKey,
+    projectViewKey: input.project.viewKey,
     projectName: input.project.projectName,
     projectRootPath: input.project.iconWorkingDir,
     workspaceDirectory: undefined,
@@ -303,13 +349,15 @@ export function buildSidebarWorkspaceEntries(input: {
   sessions: SidebarWorkspaceSession[];
   pendingCreateAttempts?: Record<string, PendingCreateAttempt>;
   previousEntries?: ReadonlyMap<string, SidebarWorkspaceEntry>;
-}): Map<string, SidebarWorkspaceEntry> {
+}): ReadonlyMap<string, SidebarWorkspaceEntry> {
   if (input.placements.length === 0 || input.sessions.length === 0) {
     return new Map();
   }
 
   const sessionByServerId = new Map(input.sessions.map((session) => [session.serverId, session]));
   const entries = new Map<string, SidebarWorkspaceEntry>();
+  const previousKeys = input.previousEntries?.keys();
+  let unchanged = input.previousEntries !== undefined;
 
   for (const placement of input.placements) {
     const session = sessionByServerId.get(placement.serverId);
@@ -324,20 +372,27 @@ export function buildSidebarWorkspaceEntries(input: {
     const entry = createSidebarWorkspaceEntry({
       serverId: placement.serverId,
       workspace,
-      projectKey: placement.projectKey,
+      projectViewKey: placement.projectViewKey,
       pendingCreateAttempts: input.pendingCreateAttempts,
       workspaceAgentActivity: session.workspaceAgentActivity,
     });
     const previousEntry = input.previousEntries?.get(placement.workspaceKey);
-    entries.set(
-      placement.workspaceKey,
+    const nextEntry =
       previousEntry && areSidebarWorkspaceEntriesEqual(previousEntry, entry)
         ? previousEntry
-        : entry,
-    );
+        : entry;
+    entries.set(placement.workspaceKey, nextEntry);
+    unchanged =
+      previousKeys?.next().value === placement.workspaceKey &&
+      previousEntry === nextEntry &&
+      unchanged;
   }
 
-  return entries;
+  // Resuming a retained sidebar must not invalidate its project/filter projections
+  // when the directory has not changed while it was hidden.
+  return unchanged && input.previousEntries?.size === entries.size
+    ? input.previousEntries
+    : entries;
 }
 
 function areSidebarWorkspaceEntriesEqual(
@@ -369,6 +424,7 @@ export function buildSidebarProjectsFromStructure(input: {
 }): SidebarProjectEntry[] {
   return buildSidebarProjectsFromHostProjects({
     projects: input.projects.map((project) => ({
+      viewKey: project.viewKey,
       projectKey: project.projectKey,
       projectName: project.projectName,
       projectKind: project.projectKind,
@@ -387,7 +443,7 @@ export function buildSidebarProjectsFromHostProjects(input: {
   }
 
   return input.projects.map((project) => ({
-    projectKey: project.projectKey,
+    viewKey: project.viewKey,
     projectName: project.projectName,
     projectKind: project.projectKind,
     iconWorkingDir: project.iconWorkingDir,
@@ -498,13 +554,13 @@ export function prependMissingOrderKeys(input: {
 
 export interface SidebarOrderUpdates {
   projectOrder: string[] | null;
-  workspaceOrders: Array<{ projectKey: string; order: string[] }>;
+  workspaceOrders: Array<{ projectViewKey: string; order: string[] }>;
 }
 
 export function computeSidebarOrderUpdates(input: {
   projects: SidebarProjectEntry[];
   persistedProjectOrder: string[];
-  getWorkspaceOrder: (projectKey: string) => string[];
+  getWorkspaceOrder?: (projectViewKey: string) => string[];
 }): SidebarOrderUpdates {
   if (input.projects.length === 0) {
     return { projectOrder: null, workspaceOrders: [] };
@@ -512,19 +568,20 @@ export function computeSidebarOrderUpdates(input: {
 
   const nextProjectOrder = appendMissingOrderKeys({
     currentOrder: input.persistedProjectOrder,
-    visibleKeys: input.projects.map((project) => project.projectKey),
+    visibleKeys: input.projects.map((project) => project.viewKey),
   });
   const projectOrder = nextProjectOrder === input.persistedProjectOrder ? null : nextProjectOrder;
 
-  const workspaceOrders: Array<{ projectKey: string; order: string[] }> = [];
+  const workspaceOrders: Array<{ projectViewKey: string; order: string[] }> = [];
   for (const project of input.projects) {
-    const persistedWorkspaceOrder = input.getWorkspaceOrder(project.projectKey);
+    if (!input.getWorkspaceOrder) break;
+    const persistedWorkspaceOrder = input.getWorkspaceOrder(project.viewKey);
     const nextWorkspaceOrder = prependMissingOrderKeys({
       currentOrder: persistedWorkspaceOrder,
       visibleKeys: project.workspaces.map((workspace) => workspace.workspaceKey),
     });
     if (nextWorkspaceOrder !== persistedWorkspaceOrder) {
-      workspaceOrders.push({ projectKey: project.projectKey, order: nextWorkspaceOrder });
+      workspaceOrders.push({ projectViewKey: project.viewKey, order: nextWorkspaceOrder });
     }
   }
 

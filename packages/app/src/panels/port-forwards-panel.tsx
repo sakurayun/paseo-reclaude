@@ -1,8 +1,10 @@
+import { definePanel } from "@/panels/panel-registry";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ArrowRight, Cable, Plus, Trash2 } from "lucide-react-native";
 import { useTranslation } from "react-i18next";
-import { ScrollView, Text, TextInput, View, type PressableStateCallbackType } from "react-native";
-import { Pressable } from "react-native";
+import { ScrollView, Text, View, type PressableStateCallbackType } from "react-native";
+import { PressHighlight as Pressable } from "@/components/ui/press-highlight";
+import { AdaptiveTextInput as TextInput } from "@/components/adaptive-text-input";
 import invariant from "tiny-invariant";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { usePaneContext } from "@/panels/pane-context";
@@ -50,7 +52,10 @@ function PortForwardsPanel() {
   const supported = useSessionStore(
     (state) => state.sessions[serverId]?.serverInfo?.features?.portForward === true,
   );
-  const { forwards, createMutation, deleteMutation } = usePortForwards({ client, serverId });
+  const { forwards, createMutation, deleteMutation } = usePortForwards({
+    client,
+    serverId,
+  });
   const isDesktop = getIsElectron();
 
   // Desktop only: keep the OS-level loopback listeners in sync with the synced
@@ -80,6 +85,7 @@ function PortForwardsPanel() {
   const [localPort, setLocalPort] = useState("");
   const [remotePort, setRemotePort] = useState("");
   const [label, setLabel] = useState("");
+  const [inputResetKey, setInputResetKey] = useState(0);
 
   const parsedLocal = parsePort(localPort);
   const parsedRemote = parsePort(remotePort);
@@ -101,6 +107,7 @@ function PortForwardsPanel() {
           setLocalPort("");
           setRemotePort("");
           setLabel("");
+          setInputResetKey((key) => key + 1);
         },
       },
     );
@@ -149,7 +156,8 @@ function PortForwardsPanel() {
             <Text style={styles.fieldLabel}>{t("workspace.portForwards.localPortLabel")}</Text>
             <ThemedTextInput
               style={styles.input}
-              value={localPort}
+              initialValue=""
+              resetKey={inputResetKey}
               onChangeText={setLocalPort}
               placeholder={t("workspace.portForwards.localPortPlaceholder")}
               keyboardType="number-pad"
@@ -166,7 +174,8 @@ function PortForwardsPanel() {
             <Text style={styles.fieldLabel}>{t("workspace.portForwards.remotePortLabel")}</Text>
             <ThemedTextInput
               style={styles.input}
-              value={remotePort}
+              initialValue=""
+              resetKey={inputResetKey}
               onChangeText={setRemotePort}
               placeholder={t("workspace.portForwards.remotePortPlaceholder")}
               keyboardType="number-pad"
@@ -179,7 +188,8 @@ function PortForwardsPanel() {
         </View>
         <ThemedTextInput
           style={styles.input}
-          value={label}
+          initialValue=""
+          resetKey={inputResetKey}
           onChangeText={setLabel}
           placeholder={t("workspace.portForwards.labelPlaceholder")}
           maxLength={64}
@@ -303,19 +313,25 @@ function DeleteButton({
   );
 }
 
-export const portForwardsPanelRegistration: PanelRegistration<"port-forwards"> = {
-  kind: "port-forwards",
-  component: PortForwardsPanel,
-  useDescriptor: usePortForwardsPanelDescriptor,
-};
+export const portForwardsPanelRegistration: PanelRegistration<"port-forwards"> = definePanel(
+  "port-forwards",
+  {
+    component: PortForwardsPanel,
+    useDescriptor: usePortForwardsPanelDescriptor,
+  },
+);
 
 const ThemedArrowRight = withUnistyles(ArrowRight);
 const ThemedPlus = withUnistyles(Plus);
 const ThemedTrash2 = withUnistyles(Trash2);
 const ThemedTextInput = withUnistyles(TextInput);
 
-const mutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
-const onAccentColorMapping = (theme: Theme) => ({ color: theme.colors.accentForeground });
+const mutedColorMapping = (theme: Theme) => ({
+  color: theme.colors.foregroundMuted,
+});
+const onAccentColorMapping = (theme: Theme) => ({
+  color: theme.colors.accentForeground,
+});
 const placeholderColorMapping = (theme: Theme) => ({
   placeholderTextColor: theme.colors.foregroundMuted,
 });

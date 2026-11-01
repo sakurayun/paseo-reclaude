@@ -5,7 +5,11 @@ import React from "react";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { BrowserPane } from "@/components/browser-pane.electron";
+vi.mock("@/contexts/toast-context", () => ({
+  useToast: () => ({ toast: vi.fn(), showToast: vi.fn() }),
+}));
+import { BrowserPane } from "@/desktop/browser/pane/index.electron";
+import { removeResidentBrowserWebview } from "@/desktop/browser/resident-webviews";
 import {
   PaneFocusProvider,
   PaneProvider,
@@ -74,13 +78,22 @@ const desktopBridge = vi.hoisted(() => {
   };
 });
 
-vi.mock("lucide-react-native", () => {
+vi.mock("lucide-react-native", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("lucide-react-native")>();
   const createIcon = (name: string) =>
     function Icon() {
       return React.createElement("span", { "data-icon": name });
     };
 
   return {
+    ...actual,
+    Maximize: createIcon("Maximize"),
+    Tablet: createIcon("Tablet"),
+    Monitor: createIcon("Monitor"),
+    Smartphone: createIcon("Smartphone"),
+    Camera: createIcon("Camera"),
+    Wrench: createIcon("Wrench"),
+    ArrowDown: createIcon("ArrowDown"),
     ArrowLeft: createIcon("ArrowLeft"),
     ArrowRight: createIcon("ArrowRight"),
     ChevronDown: createIcon("ChevronDown"),
@@ -91,16 +104,19 @@ vi.mock("lucide-react-native", () => {
   };
 });
 
-vi.mock("react-native", () => {
+vi.mock("react-native", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("react-native")>();
   const MockView = ({
+    ref,
     children,
     testID,
     style,
   }: {
+    ref?: React.Ref<HTMLDivElement>;
     children?: React.ReactNode;
     testID?: string;
     style?: unknown;
-  }) => React.createElement("div", { "data-testid": testID, style }, children);
+  }) => React.createElement("div", { ref, "data-testid": testID, style }, children);
   const MockText = ({ children }: { children?: React.ReactNode }) =>
     React.createElement("span", null, children);
   const MockPressable = ({
@@ -160,11 +176,12 @@ vi.mock("react-native", () => {
       },
       placeholder,
       ref,
-      value: value ?? "",
+      value,
     });
   });
 
   return {
+    ...actual,
     Platform: {
       OS: "web",
       select: (options: Record<string, unknown>) => options.web ?? options.default,
@@ -176,14 +193,30 @@ vi.mock("react-native", () => {
   };
 });
 
-vi.mock("react-native-unistyles", () => ({
-  StyleSheet: {
-    hairlineWidth: 1,
-    create: (factory: unknown) =>
-      typeof factory === "function" ? (factory as (t: typeof theme) => unknown)(theme) : factory,
-  },
-  useUnistyles: () => ({ theme }),
-}));
+vi.mock("react-native-unistyles", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("react-native-unistyles")>();
+  const baseTheme = actual.useUnistyles().theme;
+  const mergedTheme = {
+    ...baseTheme,
+    ...theme,
+    colors: {
+      ...baseTheme.colors,
+      ...theme.colors,
+      palette: { ...baseTheme.colors.palette, ...theme.colors.palette },
+    },
+  };
+  return {
+    withUnistyles: (component: unknown) => component,
+    StyleSheet: {
+      hairlineWidth: 1,
+      create: (factory: unknown) =>
+        typeof factory === "function"
+          ? (factory as (t: typeof theme) => unknown)(mergedTheme)
+          : factory,
+    },
+    useUnistyles: () => ({ theme: mergedTheme, rt: { breakpoint: "md" } }),
+  };
+});
 
 vi.mock("@/attachments/workspace-attachments-store", () => ({
   buildWorkspaceAttachmentScopeKey: () => "scope-a",
@@ -196,6 +229,8 @@ vi.mock("@/attachments/workspace-attachments-store", () => ({
 vi.mock("@/desktop/host", () => ({
   getDesktopHost: () => ({
     browser: {
+      profilePartition: "persist:test",
+      registerAttachedBrowser: vi.fn(async () => {}),
       findInPage: desktopBridge.findInPage,
       onFoundInPage: desktopBridge.onFoundInPage,
       setActivePane: desktopBridge.setActivePane,
@@ -206,13 +241,18 @@ vi.mock("@/desktop/host", () => ({
   isElectronRuntime: () => true,
 }));
 
-vi.mock("@/constants/layout", () => ({
+vi.mock("@/constants/layout", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/constants/layout")>()),
   WORKSPACE_SECONDARY_HEADER_HEIGHT: 36,
 }));
 
-vi.mock("@/stores/browser-store", () => ({
+vi.mock("@/desktop/browser/store", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/desktop/browser/store")>()),
   normalizeWorkspaceBrowserUrl: (url: string) => url,
-  useBrowserStore: (selector: (state: typeof browserState) => unknown) => selector(browserState),
+  useBrowserStore: Object.assign(
+    (selector: (state: typeof browserState) => unknown) => selector(browserState),
+    { getState: () => browserState },
+  ),
 }));
 
 type FakeWebview = HTMLDivElement & {
@@ -236,6 +276,9 @@ const paneInstanceId = createPaneFindPaneId({
 });
 
 const paneContextValue: PaneContextValue = {
+  host: "main",
+  openPreferredTarget: vi.fn(),
+  setCurrentTabState: vi.fn(),
   serverId: "server-a",
   workspaceId: "workspace-a",
   paneInstanceId,
@@ -294,7 +337,10 @@ function renderBrowserPane(input?: { isInteractive?: boolean }): void {
 function openFind(): void {
   act(() => {
     setActivePaneFindPaneId(paneInstanceId);
-    handlePaneFindKeyboardAction({ id: "workspace.find.open", scope: "workspace" });
+    handlePaneFindKeyboardAction({
+      id: "workspace.find.open",
+      scope: "workspace",
+    });
   });
 }
 
@@ -383,6 +429,7 @@ afterEach(() => {
     root?.unmount();
   });
   root = null;
+  removeResidentBrowserWebview("browser-a");
   container?.remove();
   container = null;
   webview = null;

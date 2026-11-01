@@ -21,25 +21,30 @@ A workspace title and its branch name are produced together from the same prompt
 
 ## How a model is chosen
 
-You don't have to configure anything — Paseo picks a model automatically. It builds an ordered list of candidates and tries each one until a generation succeeds, so a slow or unavailable model falls through to the next.
+Paseo has two modes. **Automatic** is the default and needs no configuration. **Manual** uses only the models you choose.
 
-The candidate list is assembled in this order:
+In Automatic mode, Paseo builds an ordered list of candidates and tries each one until a generation succeeds, so a slow or unavailable model falls through to the next:
 
-1. **Providers you configured**, in the order you list them (see below).
-2. **Built-in defaults**, matched against the models of the providers you have enabled:
+1. **Built-in defaults**, matched against the models of the providers you have enabled:
    1. a `haiku` model
    2. `gpt-5.4-mini` (low reasoning)
    3. `minimax-m3`
    4. `nemotron-3-super`
-3. **The model currently selected** for that agent or draft, as a last resort.
+2. **The model currently selected** for that agent or draft, as a last resort.
 
-Each default is a match on the model id or name, so the first enabled provider that ships a matching model wins. Anything that can't be resolved against an enabled provider is skipped. Duplicates are removed, then generation tries the list top to bottom.
+Each default is a match on the model id or name, so the first enabled provider that ships a matching model wins. Defaults with no match are skipped. Duplicates are removed, then generation tries the list top to bottom. The default order prefers small, fast, cheap models for these short tasks before falling back to whatever you have selected.
 
-The intent of the default order is to prefer small, fast, cheap models for these short tasks before falling back to whatever you have selected.
+In Manual mode, Paseo tries only your configured models, in your order. It never adds the built-in defaults or the selected model, so your prompts and diffs only go to providers you chose. If every configured model fails, generation fails: workspace titles and branch names are not generated, and commits and pull requests get placeholder text. Pick a model that works for these tasks.
 
-## Configuring the providers
+Every failure is written to `$PASEO_HOME/daemon.log` (`~/.paseo/daemon.log` by default) with the provider, the model and the error. Look there when a manual model doesn't produce titles, branch names, commit messages or pull request text.
 
-To control which models Paseo uses — for example to keep all metadata generation on one provider, or to prefer a local model — set `agents.metadataGeneration.providers` in `~/.paseo/config.json`. Your entries are tried before the built-in defaults.
+## Choose a model
+
+Open **Settings → Host → Metadata** and select **Automatic** or **Manual**. In Manual mode, pick the model Paseo uses. Choosing a model replaces the first entry in `agents.metadataGeneration.providers` and preserves the rest of the list. Switching back to Automatic clears the list.
+
+## Configure a custom fallback order
+
+To use more than one model in Manual mode, list them in `agents.metadataGeneration.providers` in `~/.paseo/config.json`. Paseo tries your entries in order and nothing else. An empty list means Automatic.
 
 ```json
 {
@@ -60,7 +65,7 @@ Each entry accepts:
 - `model` (optional) — a specific model id. Omit it to use that provider's default model.
 - `thinkingOptionId` (optional) — a reasoning/thinking level for models that support one. Falls back to the model's default if the value isn't valid for that model.
 
-Restart the daemon after editing the file.
+The Settings screen replaces only the first entry and preserves the rest of a custom list. Restart the daemon after editing the file directly.
 
 ## Per-project instructions
 

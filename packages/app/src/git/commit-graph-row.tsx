@@ -1,5 +1,6 @@
+import { PressHighlight } from "@/components/ui/press-highlight";
 import { memo, useCallback, useMemo, useState } from "react";
-import { Pressable, StyleSheet as RNStyleSheet, Text, View } from "react-native";
+import { StyleSheet as RNStyleSheet, Text, View } from "react-native";
 import Animated, { FadeIn, ReduceMotion } from "react-native-reanimated";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import Svg, { Circle, Line, Path } from "react-native-svg";
@@ -246,7 +247,7 @@ function CommitGraphRowInner({
     >
       <Tooltip delayDuration={500} enabledOnDesktop enabledOnMobile={false}>
         <TooltipTrigger asChild>
-          <Pressable
+          <PressHighlight
             accessibilityRole="button"
             accessibilityLabel={commit.subject}
             accessibilityHint={shortHash}
@@ -263,7 +264,7 @@ function CommitGraphRowInner({
               shortHash={shortHash}
               repoHost={repoHost}
             />
-          </Pressable>
+          </PressHighlight>
         </TooltipTrigger>
         <TooltipContent side="left" align="start" offset={8}>
           <CommitTooltipBody commit={commit} repoHost={repoHost} />
@@ -431,7 +432,7 @@ function CommitExpandedDetails({
 
   return (
     <View style={styles.expandedContainer}>
-      <Pressable
+      <PressHighlight
         accessibilityRole="button"
         accessibilityLabel={t("workspace.sourceControl.commit.copyHash")}
         onPress={handleCopyHash}
@@ -441,7 +442,7 @@ function CommitExpandedDetails({
         <Text style={styles.expandedHash} numberOfLines={1}>
           {commit.hash.slice(0, 12)}
         </Text>
-      </Pressable>
+      </PressHighlight>
       <Text style={styles.expandedMeta} numberOfLines={1}>
         {commit.authorName}
         {commit.authorEmail ? ` <${commit.authorEmail}>` : ""} · {fullDate}
@@ -471,7 +472,7 @@ function CommitBodySection({ body }: { body: string }) {
           {body}
         </Text>
       )}
-      <Pressable
+      <PressHighlight
         accessibilityRole="button"
         accessibilityState={accessibilityState}
         onPress={handleToggle}
@@ -484,7 +485,7 @@ function CommitBodySection({ body }: { body: string }) {
             ? t("workspace.sourceControl.commit.showLess")
             : t("workspace.sourceControl.commit.showMore")}
         </Text>
-      </Pressable>
+      </PressHighlight>
     </View>
   );
 }

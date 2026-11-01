@@ -1,3 +1,5 @@
+import { revealWorkspaceTab } from "@/workspace-tabs/navigation";
+import { usePanelStore } from "@/stores/panel-store";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useLocalSearchParams, usePathname } from "expo-router";
 import { useEffect, useSyncExternalStore } from "react";
@@ -29,6 +31,7 @@ export type { NavigateToWorkspaceInput } from "./navigation";
 const lastWorkspaceSelectionStorage: LastWorkspaceSelectionStorage = {
   read: () => AsyncStorage.getItem(LAST_WORKSPACE_SELECTION_STORAGE_KEY),
   write: (value) => AsyncStorage.setItem(LAST_WORKSPACE_SELECTION_STORAGE_KEY, value),
+  clear: () => AsyncStorage.removeItem(LAST_WORKSPACE_SELECTION_STORAGE_KEY),
 };
 
 const lastWorkspaceSelectionStore = createLastWorkspaceSelectionStore(
@@ -60,14 +63,21 @@ function navigateDeps(): NavigateToWorkspaceDeps {
   const layoutStore = useWorkspaceLayoutStore.getState();
   const draftStore = useDraftStore.getState();
   return {
+    revealTab: revealWorkspaceTab,
+    revealWorkspace: () => {
+      if (useWorkspaceLayoutStore.getState().layoutMode === "compact") {
+        usePanelStore.getState().showMobileAgent();
+      }
+    },
     getSessionWorkspaces: (serverId) => useSessionStore.getState().sessions[serverId]?.workspaces,
     getSessionAgents: (serverId) =>
       useSessionStore.getState().sessions[serverId]?.agents.values() ?? [],
-    openTabFocused: (workspaceKey, target) => layoutStore.openTabFocused(workspaceKey, target),
-    pinAgent: (workspaceKey, agentId) => layoutStore.pinAgent(workspaceKey, agentId),
     getWorkspaceTabs: (workspaceKey) => layoutStore.getWorkspaceTabs(workspaceKey),
     getDraftInput: draftStore.getDraftInput,
     isDraftBusy: isWorkspaceDraftBusy,
+    isWorkspaceLayoutHydrated: () => useWorkspaceLayoutStore.persist.hasHydrated(),
+    deferOpenTab: (input) => useWorkspaceLayoutStore.getState().deferOpenTab(input),
+    openTab: (input) => useWorkspaceLayoutStore.getState().openTab(input),
     rememberLastWorkspace: (selection) => lastWorkspaceSelectionStore.remember(selection),
     navigateToRoute: (route) => {
       navigateToHostWorkspaceRoute(route);
@@ -104,7 +114,10 @@ export function useActiveWorkspaceSelection(): ActiveWorkspaceSelection | null {
     serverId?: string | string[];
     workspaceId?: string | string[];
   }>();
-  const selection = parseActiveWorkspaceSelection({ pathname: usePathname(), params });
+  const selection = parseActiveWorkspaceSelection({
+    pathname: usePathname(),
+    params,
+  });
   const serverId = selection?.serverId ?? null;
   const workspaceId = selection?.workspaceId ?? null;
   useEffect(() => {

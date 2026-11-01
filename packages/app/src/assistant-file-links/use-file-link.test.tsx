@@ -2,9 +2,9 @@
  * @vitest-environment jsdom
  */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, renderHook, waitFor } from "@testing-library/react";
+import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import React, { useCallback, useMemo, useState, type ReactNode } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ToastApi } from "@/components/toast-host";
 import type { InlinePathTarget } from "./parse";
 import { AssistantFileLinkResolverProvider } from "./provider";
@@ -99,6 +99,12 @@ function createWrapper(input: { client: TestClient; openedFiles: OpenedFile[]; t
 }
 
 describe("useFileLink", () => {
+  // Lookups resolve after a test's last assertion; an unmounted hook cannot re-render
+  // once jsdom is torn down.
+  afterEach(() => {
+    cleanup();
+  });
+
   it("returns the same object across no-op parent rerenders", () => {
     const getDirectorySuggestions = vi.fn(async () => resolvedSuggestions([]));
     const queryClient = createQueryClient();
@@ -136,7 +142,6 @@ describe("useFileLink", () => {
     expect(result.current).toBe(first);
     expect(result.current.onHoverIn).toBe(first.onHoverIn);
     expect(result.current.onPress).toBe(first.onPress);
-    expect(result.current.onAuxPress).toBe(first.onAuxPress);
     expect(result.current.open).toBe(first.open);
   });
 
@@ -177,7 +182,7 @@ describe("useFileLink", () => {
             lineStart: undefined,
             lineEnd: undefined,
           },
-          disposition: "main",
+          disposition: "preferred",
         },
       ]);
     });

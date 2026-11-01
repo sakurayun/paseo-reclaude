@@ -14,7 +14,7 @@ import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { File, Folder } from "lucide-react-native";
 import { GlassSurface } from "@/components/ui/glass-surface";
 import type { Theme } from "@/styles/theme";
-import { getAutocompleteScrollOffset } from "./autocomplete-utils";
+import { getScrollOffsetToRevealItem } from "./scroll-reveal";
 
 export interface AutocompleteOption {
   id: string;
@@ -147,7 +147,7 @@ export function Autocomplete({
       return;
     }
 
-    const nextOffset = getAutocompleteScrollOffset({
+    const nextOffset = getScrollOffsetToRevealItem({
       currentOffset: scrollOffsetRef.current,
       viewportHeight: viewportHeightRef.current,
       itemTop: layout.top,
@@ -250,14 +250,16 @@ export function Autocomplete({
     <View style={styles.outerWrapper}>
       {selectedOption?.kind === "command" && selectedOption.description ? (
         <GlassSurface backdropStyle={styles.containerBackdrop} style={styles.detailCard}>
-          <Text style={styles.detailLabel}>
+          <Text style={styles.detailLabel} numberOfLines={1}>
             {removeBoltGlyphs(selectedOption.label) ?? selectedOption.label}
           </Text>
-          <Text style={styles.detailDescription}>
+          <Text style={styles.detailDescription} numberOfLines={2} ellipsizeMode="tail">
             {removeBoltGlyphs(selectedOption.description)}
           </Text>
           {selectedOption.detail ? (
-            <Text style={styles.detailHint}>{removeBoltGlyphs(selectedOption.detail)}</Text>
+            <Text style={styles.detailHint} numberOfLines={1}>
+              {removeBoltGlyphs(selectedOption.detail)}
+            </Text>
           ) : null}
         </GlassSurface>
       ) : null}
@@ -291,9 +293,17 @@ export function Autocomplete({
 
 const styles = StyleSheet.create((theme: Theme) => ({
   outerWrapper: {
+    flexShrink: 1,
+    minHeight: 0,
     gap: theme.spacing[1],
   },
   detailCard: {
+    flexShrink: 1,
+    minHeight: 0,
+    overflow: "hidden",
+    backgroundColor: "transparent",
+    borderWidth: theme.shell.controlBorder,
+    borderColor: theme.colors.borderAccent,
     borderRadius: theme.borderRadius.lg,
     paddingHorizontal: theme.spacing[3],
     paddingVertical: theme.spacing[3],
@@ -309,20 +319,26 @@ const styles = StyleSheet.create((theme: Theme) => ({
   },
   detailLabel: {
     color: theme.colors.foreground,
-    fontSize: theme.fontSize.sm,
+    fontSize: theme.fontSize.base,
     fontWeight: theme.fontWeight.normal,
   },
   detailDescription: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     marginTop: theme.spacing[1],
   },
   detailHint: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     marginTop: theme.spacing[1],
   },
   container: {
+    flexShrink: 1,
+    // Keep a complete selectable row (36), list padding (8), and borders (2).
+    minHeight: 46,
+    backgroundColor: "transparent",
+    borderWidth: theme.shell.controlBorder,
+    borderColor: theme.colors.borderAccent,
     borderRadius: theme.borderRadius.lg,
     overflow: "hidden",
     ...theme.shadow.md,
@@ -368,22 +384,22 @@ const styles = StyleSheet.create((theme: Theme) => ({
   },
   itemLabel: {
     color: theme.colors.foreground,
-    fontSize: theme.fontSize.sm,
+    fontSize: theme.fontSize.base,
     fontWeight: theme.fontWeight.normal,
   },
   itemDetail: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
   },
   itemDescription: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     marginTop: 2,
   },
   itemDescriptionInline: {
     flex: 1,
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
   },
   emptyItem: {
     paddingHorizontal: theme.spacing[3],
@@ -391,6 +407,6 @@ const styles = StyleSheet.create((theme: Theme) => ({
   },
   emptyText: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.sm,
+    fontSize: theme.fontSize.base,
   },
 })) as unknown as Record<string, object>;

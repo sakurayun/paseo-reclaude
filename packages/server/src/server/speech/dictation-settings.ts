@@ -1,5 +1,3 @@
-import { stat } from "node:fs/promises";
-import { join } from "node:path";
 import type { Logger } from "pino";
 
 import {
@@ -10,10 +8,8 @@ import {
 import { resolveSpeechConfig } from "./speech-config-resolver.js";
 import {
   DEFAULT_LOCAL_STT_MODEL,
-  getLocalSpeechModelDir,
   listLocalSpeechModels,
   LocalSttModelIdSchema,
-  type LocalSpeechModelId,
 } from "./providers/local/models.js";
 import type {
   DictationCurrentSelection,
@@ -35,8 +31,6 @@ export interface DictationSettingsController {
   setModel: (modelId: string) => Promise<DictationSettingsSnapshot>;
 }
 
-const DEFAULT_LOCAL_MODELS_SUBDIR = join("models", "local-speech");
-
 /**
  * Backs the `speech.dictation.*` RPCs: lists local STT models with their supported
  * languages and install state, and switches the active dictation model at runtime by
@@ -51,47 +45,39 @@ export function createDictationSettingsController(params: {
   const { paseoHome, env, speechService } = params;
   const logger = params.logger.child({ module: "dictation-settings" });
 
-  const resolveModelsDir = (
-    persisted: PersistedConfig,
-    localModelsDir: string | undefined,
-  ): string =>
-    localModelsDir ??
-    env.PASEO_LOCAL_MODELS_DIR ??
-    persisted.providers?.local?.modelsDir ??
-    join(paseoHome, DEFAULT_LOCAL_MODELS_SUBDIR);
-
-  const isInstalled = async (
-    modelsDir: string,
-    modelId: LocalSpeechModelId,
-    requiredFiles: readonly string[],
-  ): Promise<boolean> => {
-    const modelDir = getLocalSpeechModelDir(modelsDir, modelId);
-    const checks = await Promise.all(
-      requiredFiles.map(async (rel) => {
-        try {
-          const s = await stat(join(modelDir, rel));
-          return s.isDirectory() || (s.isFile() && s.size > 0);
-        } catch {
-          return false;
-        }
-      }),
-    );
-    return checks.every(Boolean);
-  };
-
   const buildSnapshot = async (persisted: PersistedConfig): Promise<DictationSettingsSnapshot> => {
     const resolved = resolveSpeechConfig({ paseoHome, env, persisted });
-    const modelsDir = resolveModelsDir(persisted, resolved.speech.local?.modelsDir);
     const sttModels = listLocalSpeechModels().filter((m) => m.kind === "stt-offline");
 
     const r = speechService.getReadiness();
-    const progressByModelId = r.download.progressByModelId ?? {};
+    const library = await speechService.listLocalModels();
+    const progressByModelId = Object.fromEntries(
+      library.flatMap(({ spec, state }) => {
+        if (state.status === "downloading")
+          return [
+            [
+              spec.id,
+              {
+                percent: state.totalBytes > 0 ? (state.receivedBytes / state.totalBytes) * 90 : 0,
+                bytesPerSecond: 0,
+                receivedBytes: state.receivedBytes,
+                totalBytes: state.totalBytes,
+              },
+            ],
+          ];
+        if (state.status === "extracting")
+          return [[spec.id, { percent: 95, bytesPerSecond: 0, receivedBytes: 0, totalBytes: 0 }]];
+        return [];
+      }),
+    );
     const missingIds = new Set(r.missingLocalModelIds);
     const downloadInProgress = r.download.inProgress;
 
     const models = await Promise.all(
       sttModels.map(async (m): Promise<DictationModelInfo> => {
-        const installed = await isInstalled(modelsDir, m.id, m.requiredFiles);
+        const installed = library.some(
+          (entry) => entry.spec.id === m.id && entry.state.status === "installed",
+        );
         const modelProgress = progressByModelId[m.id];
         const downloading =
           downloadInProgress && (missingIds.has(m.id) || modelProgress !== undefined);
@@ -168,6 +154,7 @@ export function createDictationSettingsController(params: {
             ...persisted.features?.dictation,
             stt: {
               ...persisted.features?.dictation?.stt,
+              provider: "local",
               model: parsed,
             },
           },

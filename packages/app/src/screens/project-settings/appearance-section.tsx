@@ -1,6 +1,7 @@
+import { PressHighlight as Pressable } from "@/components/ui/press-highlight";
 import { useCallback, useMemo, useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
-import { Pressable, View } from "react-native";
+import { View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
@@ -11,7 +12,7 @@ import { Field, FormTextInput } from "@/components/ui/form-field";
 import { SelectField } from "@/components/ui/select-field";
 import { useToast } from "@/contexts/toast-context";
 import { useProjectAppearanceForm } from "@/projects/appearance/use-form";
-import { SettingsGroup } from "@/screens/settings/settings-group";
+import { SettingsGroup } from "@/components/settings";
 import { settingsStyles } from "@/styles/settings";
 import { PROJECT_ICON_COLORS } from "@/styles/theme";
 
@@ -68,7 +69,9 @@ export function ProjectAppearanceSection({
     mutationFn: () => client.setProjectAppearance(projectId, state.input),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["projectIcon", serverId] });
-      toast.show(t("settings.project.appearance.saved"), { variant: "success" });
+      toast.show(t("settings.project.appearance.saved"), {
+        variant: "success",
+      });
     },
   });
 
@@ -99,7 +102,7 @@ export function ProjectAppearanceSection({
         {state.showFaviconUrl ? (
           <Field label={t("settings.project.appearance.url")} error={state.valueError}>
             <FormTextInput
-              value={state.faviconUrl}
+              initialValue={state.faviconUrl}
               onChangeText={form.setFaviconUrl}
               autoCapitalize="none"
               autoCorrect={false}
@@ -112,7 +115,7 @@ export function ProjectAppearanceSection({
         {state.showCustomText ? (
           <Field label={t("settings.project.appearance.text")} error={state.valueError}>
             <FormTextInput
-              value={state.customText}
+              initialValue={state.customText}
               onChangeText={form.setCustomText}
               placeholder="🚀"
               size="sm"

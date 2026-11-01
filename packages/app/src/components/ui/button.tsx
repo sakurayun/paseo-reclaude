@@ -1,4 +1,5 @@
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
+import { useContainedControlSize } from "@/components/ui/control-size";
 import {
   default as React,
   useCallback,
@@ -83,7 +84,9 @@ function ButtonIcon({ loading, leftIcon, iconSize, iconColor }: ButtonIconProps)
 
 const ThemedButtonIcon = withUnistyles(ButtonIcon);
 
-const foregroundIconMapping = (theme: Theme) => ({ iconColor: theme.colors.foreground });
+const foregroundIconMapping = (theme: Theme) => ({
+  iconColor: theme.colors.foreground,
+});
 const foregroundMutedIconMapping = (theme: Theme) => ({
   iconColor: theme.colors.foregroundMuted,
 });
@@ -168,11 +171,12 @@ const styles = StyleSheet.create((theme) => {
 export function Button({
   children,
   variant = "secondary",
-  size = "md",
+  size: sizeProp,
   leftIcon,
   trailing,
   style,
   textStyle,
+  numberOfLines,
   disabled,
   loading = false,
   accessibilityRole,
@@ -181,6 +185,7 @@ export function Button({
   ...props
 }: PropsWithChildren<
   Omit<PressableProps, "onPress" | "style"> & {
+    ref?: React.Ref<View>;
     variant?: ButtonVariant;
     size?: ButtonSize;
     leftIcon?: LeftIcon;
@@ -188,9 +193,12 @@ export function Button({
     trailing?: ReactNode;
     style?: StyleProp<ViewStyle>;
     textStyle?: StyleProp<TextStyle>;
+    numberOfLines?: number;
     loading?: boolean;
   }
 >) {
+  const containedSize = useContainedControlSize();
+  const size = sizeProp ?? containedSize ?? "md";
   const isDisabled = disabled || loading;
 
   let variantStyle: ViewStyle;
@@ -288,7 +296,11 @@ export function Button({
         uniProps={resolveIconMapping()}
       />
       {children != null ? (
-        <Text dataSet={BUTTON_LABEL_DATA_SET} style={resolvedTextStyle}>
+        <Text
+          dataSet={BUTTON_LABEL_DATA_SET}
+          numberOfLines={numberOfLines}
+          style={resolvedTextStyle}
+        >
           {children}
         </Text>
       ) : null}

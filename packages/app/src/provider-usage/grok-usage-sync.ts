@@ -18,7 +18,9 @@ export function startGrokUsageSync(params: { serverId: string; client: DaemonCli
     }
     const { authenticated, usage } = msg.payload;
 
-    appQueryClient.setQueryData(grokStatusQueryKey(serverId), { authenticated });
+    appQueryClient.setQueryData(grokStatusQueryKey(serverId), {
+      authenticated,
+    });
 
     if (!usage) {
       return;
@@ -37,7 +39,10 @@ export function startGrokUsageSync(params: { serverId: string; client: DaemonCli
           }
           return provider;
         });
-        return { ...prev, providers: found ? providers : [...providers, usage] };
+        return {
+          ...prev,
+          providers: found ? providers : [...providers, usage],
+        };
       },
     );
   });

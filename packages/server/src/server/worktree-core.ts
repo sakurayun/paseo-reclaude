@@ -1,12 +1,14 @@
+import type { PluginWorktreeCreateRequest } from "@getpaseo/plugin/server";
+import type { PluginLifecycle } from "./plugins/lifecycle/index.js";
 import { createNameId } from "mnemonic-id";
 
 import type { ForgeService } from "../services/forge-service.js";
 import {
   createWorktree,
-  resolveExistingWorktreeForSlug,
+  resolveDefaultWorktreePath,
   slugify,
   validateBranchSlug,
-  type WorktreeConfig,
+  type CreatedWorktree,
 } from "../utils/worktree.js";
 import {
   resolveWorktreeCreationIntent,
@@ -16,6 +18,7 @@ import {
 } from "./resolve-worktree-creation-intent.js";
 import type { ChangeRequestCheckoutSource, FirstAgentContext } from "@getpaseo/protocol/messages";
 import type { WorkspaceGitService } from "./workspace-git-service.js";
+import { runGitCommand, runWithGitCommandPriority } from "../utils/run-git-command.js";
 
 export interface CreateWorktreeCoreInput {
   cwd: string;
@@ -28,10 +31,10 @@ export interface CreateWorktreeCoreInput {
   firstAgentContext?: FirstAgentContext;
   paseoHome?: string;
   worktreesRoot?: string;
-  runSetup?: boolean;
 }
 
 export interface CreateWorktreeCoreDeps {
+  lifecycle?: Pick<PluginLifecycle, "before">;
   github: ForgeService;
   workspaceGitService?: Pick<
     WorkspaceGitService,
@@ -41,7 +44,7 @@ export interface CreateWorktreeCoreDeps {
 }
 
 export interface CreateWorktreeCoreResult {
-  worktree: WorktreeConfig;
+  worktree: CreatedWorktree;
   intent: WorktreeCreationIntent;
   repoRoot: string;
   created: boolean;
@@ -51,13 +54,18 @@ export async function createWorktreeCore(
   input: CreateWorktreeCoreInput,
   deps: CreateWorktreeCoreDeps,
 ): Promise<CreateWorktreeCoreResult> {
+  return runWithGitCommandPriority("high", () => createWorktreeCoreWithPriority(input, deps));
+}
+
+async function createWorktreeCoreWithPriority(
+  input: CreateWorktreeCoreInput,
+  deps: CreateWorktreeCoreDeps,
+): Promise<CreateWorktreeCoreResult> {
   const repoRoot = await resolveWorktreeRepoRoot(input, deps.workspaceGitService);
   const requestedWorktreeSlug = input.worktreeSlug
     ? normalizeWorktreeSlug(input.worktreeSlug)
     : undefined;
-  const requestedBranchName = input.branchName
-    ? validateWorktreeSlug(input.branchName.trim())
-    : undefined;
+  const requestedBranchName = input.branchName?.trim();
 
   let intentInput: ResolveWorktreeCreationIntentInput;
   if (input.action === "checkout") {
@@ -86,7 +94,7 @@ export async function createWorktreeCore(
   }
 
   const forge = await resolveForge(repoRoot, deps, intentInput);
-  const intent = await resolveWorktreeCreationIntent(intentInput, repoRoot, {
+  let intent = await resolveWorktreeCreationIntent(intentInput, repoRoot, {
     forge: forge.forge,
     forgeService: forge.service,
     resolveDefaultBranch: (root) => resolveDefaultBranch(root, deps),
@@ -110,28 +118,95 @@ export async function createWorktreeCore(
     }
   }
 
-  const existingWorktree = await resolveExistingWorktreeForSlug({
-    slug: normalizedSlug,
-    repoRoot,
+  const defaultPath = await resolveDefaultWorktreePath({
+    cwd: repoRoot,
     paseoHome: input.paseoHome,
     worktreesRoot: input.worktreesRoot,
+    worktreeSlug: normalizedSlug,
   });
-  if (existingWorktree) {
-    return { worktree: existingWorktree, intent, repoRoot, created: false };
-  }
+  const { stdout: sourceRoot } = await runGitCommand(["rev-parse", "--show-toplevel"], {
+    cwd: input.cwd,
+  });
+  const sourceCheckout = sourceRoot.trim();
+  const request = describeCreationRequest(intent, {
+    repoRoot,
+    sourceCheckout,
+    slug: normalizedSlug,
+    path: defaultPath,
+  });
+  const transformed = deps.lifecycle
+    ? await deps.lifecycle.before("worktree.create.before", request)
+    : request;
+  normalizedSlug = validateWorktreeSlug(transformed.slug);
+  intent = creationIntentFromRequest(transformed, intent);
 
   return {
     worktree: await createWorktree({
       cwd: repoRoot,
       worktreeSlug: normalizedSlug,
+      worktreePath: transformed.path,
       source: intent,
-      runSetup: input.runSetup ?? true,
       paseoHome: input.paseoHome,
       worktreesRoot: input.worktreesRoot,
     }),
     intent,
     repoRoot,
     created: true,
+  };
+}
+
+function describeCreationRequest(
+  intent: WorktreeCreationIntent,
+  placement: Pick<PluginWorktreeCreateRequest, "repoRoot" | "sourceCheckout" | "slug" | "path">,
+): PluginWorktreeCreateRequest {
+  if (intent.kind === "branch-off")
+    return {
+      ...placement,
+      kind: intent.kind,
+      branch: intent.branchName,
+      baseRef: intent.baseBranch,
+    };
+  if (intent.kind === "checkout-branch")
+    return { ...placement, kind: intent.kind, branch: intent.branchName };
+  const { localBranchName, baseRefName, ...facts } = intent;
+  return {
+    ...placement,
+    ...facts,
+    branch: localBranchName ?? intent.headRef,
+    baseRef: baseRefName,
+  };
+}
+
+function creationIntentFromRequest(
+  request: PluginWorktreeCreateRequest,
+  original: WorktreeCreationIntent,
+): WorktreeCreationIntent {
+  if (request.kind === "branch-off") {
+    return { kind: request.kind, branchName: request.branch, baseBranch: request.baseRef };
+  }
+  if (request.kind === "checkout-branch") {
+    return {
+      kind: request.kind,
+      branchName: request.branch,
+    };
+  }
+  const {
+    repoRoot: _repoRoot,
+    sourceCheckout: _checkout,
+    slug: _slug,
+    path: _path,
+    branch,
+    baseRef,
+    ...facts
+  } = request;
+  const keepLocalBranchName =
+    branch !== request.headRef ||
+    ((original.kind === "checkout-change-request" || original.kind === "checkout-github-pr") &&
+      original.localBranchName !== undefined);
+  return {
+    ...facts,
+    ...(keepLocalBranchName ? { localBranchName: branch } : {}),
+    baseRefName: baseRef,
   };
 }
 

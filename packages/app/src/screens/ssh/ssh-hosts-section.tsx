@@ -1,5 +1,6 @@
+import { PressHighlight } from "@/components/ui/press-highlight";
 import { useCallback } from "react";
-import { Pressable, Text, View, type PressableStateCallbackType } from "react-native";
+import { Text, View, type PressableStateCallbackType } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { Pencil } from "lucide-react-native";
 import { useTranslation } from "react-i18next";
@@ -87,7 +88,7 @@ function SshHostCard({
 
   return (
     <View style={styles.card}>
-      <Pressable
+      <PressHighlight
         style={connectStyle}
         onPress={handleConnect}
         disabled={isConnecting}
@@ -104,8 +105,8 @@ function SshHostCard({
             {isConnecting ? t("ssh.hosts.connecting") : subtitle}
           </Text>
         </View>
-      </Pressable>
-      <Pressable
+      </PressHighlight>
+      <PressHighlight
         style={editStyle}
         onPress={handleEdit}
         accessibilityRole="button"
@@ -114,7 +115,7 @@ function SshHostCard({
         hitSlop={8}
       >
         <ThemedPencil size={16} uniProps={mutedIconColor} />
-      </Pressable>
+      </PressHighlight>
     </View>
   );
 }

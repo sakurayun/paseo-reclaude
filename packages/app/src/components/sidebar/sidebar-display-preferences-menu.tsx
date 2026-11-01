@@ -19,7 +19,9 @@ import { useHosts } from "@/runtime/host-runtime";
 import { useSidebarViewStore, type SidebarGroupMode } from "@/stores/sidebar-view-store";
 
 const ThemedSettings2 = withUnistyles(Settings2);
-const filterColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
+const filterColorMapping = (theme: Theme) => ({
+  color: theme.colors.foregroundMuted,
+});
 
 const GROUP_MODE_ITEMS: Array<{ value: SidebarGroupMode; labelKey: string }> = [
   { value: "project", labelKey: "sidebar.grouping.project" },
@@ -27,7 +29,10 @@ const GROUP_MODE_ITEMS: Array<{ value: SidebarGroupMode; labelKey: string }> = [
   { value: "status", labelKey: "sidebar.grouping.status" },
 ];
 
-const WORKSPACE_TITLE_SOURCE_ITEMS: Array<{ value: WorkspaceTitleSource; label: string }> = [
+const WORKSPACE_TITLE_SOURCE_ITEMS: Array<{
+  value: WorkspaceTitleSource;
+  label: string;
+}> = [
   { value: "title", label: "Title" },
   { value: "branch", label: "Branch name" },
 ];
@@ -219,7 +224,7 @@ const styles = StyleSheet.create((theme) => ({
     paddingVertical: theme.spacing[2],
   },
   menuHeaderLabel: {
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     fontWeight: theme.fontWeight.medium,
     color: theme.colors.foregroundMuted,
   },

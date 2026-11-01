@@ -1,9 +1,15 @@
+import { DaemonConfigStore } from "../../daemon-config-store.js";
+import type { PaseoServicePortAllocation } from "@getpaseo/protocol/paseo-config-schema";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pino } from "pino";
 import { afterEach, describe, expect, test } from "vitest";
-import type { SessionOutboundMessage, StartWorkspaceScriptRequest } from "../../messages.js";
+import type {
+  ScriptStatusUpdateMessage,
+  SessionOutboundMessage,
+  StartWorkspaceScriptRequest,
+} from "../../messages.js";
 import { createServiceProxySubsystem, type ServiceProxySubsystem } from "../../service-proxy.js";
 import type { TerminalManager } from "../../../terminal/terminal-manager.js";
 import type {
@@ -18,11 +24,11 @@ import type {
   SpawnWorkspaceScriptOptions,
   WorktreeScriptResult,
 } from "../../worktree-bootstrap.js";
-import type { WorkspaceGitService } from "../../workspace-git-service.js";
+import type { WorkspaceRuntimeStore } from "../../workspace-runtime-store/index.js";
 import { createWorkspaceScriptsService } from "./workspace-scripts-service.js";
 import { deriveProjectServiceSlug } from "../../workspace-git-metadata.js";
 
-// The production module reads only WorkspaceGitService.{peekSnapshot,getProjectSlug},
+// The production module reads only WorkspaceRuntimeStore.get,
 // WorkspaceRegistry.get, and forwards the launcher + opaque managers to the injected
 // spawnWorkspaceScript port. The fakes below implement exactly that slice; the service proxy and
 // runtime store are the real in-memory implementations, and spawning is injected so no process runs.
@@ -47,7 +53,7 @@ function fakeProjectRegistry(record: PersistedProjectRecord | null): Pick<Projec
   };
 }
 
-function fakeGitService() {
+function fakeRuntimeStore() {
   const snapshot = createNoGitWorkspaceRuntimeSnapshot("/tmp/repo");
   snapshot.git = {
     ...snapshot.git,
@@ -59,7 +65,7 @@ function fakeGitService() {
   };
 
   return {
-    peekSnapshot() {
+    get() {
       return snapshot;
     },
   };
@@ -76,11 +82,14 @@ interface BuildOptions {
   workspace?: PersistedWorkspaceRecord | null;
   project?: PersistedProjectRecord | null;
   spawnThrows?: string;
-  gitService?: Pick<WorkspaceGitService, "peekSnapshot">;
+  runtimeStore?: Pick<WorkspaceRuntimeStore, "get">;
+  automationError?: Error;
+  getGlobalServicePorts?: () => Promise<PaseoServicePortAllocation | undefined>;
 }
 
 function buildService(options: BuildOptions = {}) {
   const emitted: SessionOutboundMessage[] = [];
+  const published: ScriptStatusUpdateMessage[] = [];
   const spawnCalls: SpawnWorkspaceScriptOptions[] = [];
   const workspace =
     options.workspace === undefined
@@ -100,13 +109,15 @@ function buildService(options: BuildOptions = {}) {
       options.terminalManager === undefined ? availableTerminalManager : options.terminalManager,
     workspaceRegistry: fakeWorkspaceRegistry(workspace),
     projectRegistry: fakeProjectRegistry(options.project ?? null),
-    workspaceGitService: options.gitService ?? fakeGitService(),
+    workspaceRuntimeStore: options.runtimeStore ?? fakeRuntimeStore(),
     getDaemonTcpPort: () => 6767,
     getDaemonTcpHost: () => "127.0.0.1",
     serviceProxyPublicBaseUrl: null,
     resolveScriptHealth: null,
+    getGlobalServicePorts: options.getGlobalServicePorts ?? (async () => undefined),
     logger,
     emit: (message) => emitted.push(message),
+    publishStatusUpdate: (message) => published.push(message),
     async spawnWorkspaceScript(spawnOptions): Promise<WorktreeScriptResult> {
       spawnCalls.push(spawnOptions);
       if (options.spawnThrows) {
@@ -120,9 +131,12 @@ function buildService(options: BuildOptions = {}) {
         terminalId: "terminal-1",
       };
     },
+    assertAutomationAllowed: async () => {
+      if (options.automationError) throw options.automationError;
+    },
   });
 
-  return { service, emitted, spawnCalls };
+  return { service, emitted, published, spawnCalls };
 }
 
 const request: StartWorkspaceScriptRequest = {
@@ -142,18 +156,42 @@ afterEach(() => {
   }
 });
 
+test("reads external service-port edits at the next launch without construction IO", async () => {
+  const home = mkdtempSync(join(tmpdir(), "workspace-service-ports-"));
+  tempDirs.push(home);
+  const store = new DaemonConfigStore(home, {
+    providers: {},
+    mcp: { enabled: true, injectIntoAgents: false },
+  });
+  const { service, spawnCalls } = buildService({
+    getGlobalServicePorts: () => store.readServicePorts(),
+  });
+  writeFileSync(
+    join(home, "config.json"),
+    JSON.stringify({ worktrees: { servicePorts: { range: "9000-9999" } } }),
+  );
+  await service.start(request);
+  expect(spawnCalls.map((call) => call.globalServicePorts)).toEqual([{ range: "9000-9999" }]);
+});
+
 describe("buildSnapshot", () => {
   test("returns no scripts when the service proxy is unavailable", async () => {
     const { service } = buildService({ serviceProxy: null });
     expect(
-      service.buildSnapshot({ workspaceId: "ws-1", cwd: "/tmp/repo" } as PersistedWorkspaceRecord),
+      await service.buildSnapshot({
+        workspaceId: "ws-1",
+        cwd: "/tmp/repo",
+      } as PersistedWorkspaceRecord),
     ).toEqual([]);
   });
 
   test("returns no scripts when the runtime store is unavailable", async () => {
     const { service } = buildService({ scriptRuntimeStore: null });
     expect(
-      service.buildSnapshot({ workspaceId: "ws-1", cwd: "/tmp/repo" } as PersistedWorkspaceRecord),
+      await service.buildSnapshot({
+        workspaceId: "ws-1",
+        cwd: "/tmp/repo",
+      } as PersistedWorkspaceRecord),
     ).toEqual([]);
   });
 
@@ -162,7 +200,7 @@ describe("buildSnapshot", () => {
     tempDirs.push(dir);
     const { service } = buildService();
     expect(
-      service.buildSnapshot({ workspaceId: "ws-1", cwd: dir } as PersistedWorkspaceRecord),
+      await service.buildSnapshot({ workspaceId: "ws-1", cwd: dir } as PersistedWorkspaceRecord),
     ).toEqual([]);
   });
 
@@ -194,10 +232,10 @@ describe("buildSnapshot", () => {
       workspace,
       project,
       serviceProxy,
-      gitService: { peekSnapshot: () => undefined },
+      runtimeStore: { get: () => null },
     });
 
-    expect(service.buildSnapshot(workspace, project)[0]?.hostname).toBe(
+    expect((await service.buildSnapshot(workspace, project))[0]?.hostname).toBe(
       serviceProxy.projectWorkspaceService({
         projectSlug: deriveProjectServiceSlug(project),
         branchName: workspace.branch,
@@ -211,10 +249,11 @@ describe("buildSnapshot", () => {
 });
 
 describe("emitStatusUpdate", () => {
-  test("emits one script_status_update carrying the snapshot", async () => {
-    const { service, emitted } = buildService();
+  test("publishes one script_status_update carrying the snapshot", async () => {
+    const { service, emitted, published } = buildService();
     await service.emitStatusUpdate("ws-1", "/tmp/repo");
-    expect(emitted).toEqual([
+    expect(emitted).toEqual([]);
+    expect(published).toEqual([
       { type: "script_status_update", payload: { workspaceId: "ws-1", scripts: [] } },
     ]);
   });
@@ -269,6 +308,28 @@ describe("stop", () => {
 });
 
 describe("start", () => {
+  test("refuses to start a script while repository automation is blocked", async () => {
+    const { service, emitted, spawnCalls } = buildService({
+      automationError: new Error(
+        "Scripts are blocked for PR #42 from contributor/paseo. Run setup to allow them.",
+      ),
+    });
+
+    await service.start(request);
+
+    expect(spawnCalls).toEqual([]);
+    expect(emitted).toContainEqual({
+      type: "start_workspace_script_response",
+      payload: {
+        requestId: "req-1",
+        workspaceId: "ws-1",
+        scriptName: "app",
+        terminalId: null,
+        error: "Scripts are blocked for PR #42 from contributor/paseo. Run setup to allow them.",
+      },
+    });
+  });
+
   test("reports an error when workspace scripts are unavailable", async () => {
     const { service, emitted, spawnCalls } = buildService({ terminalManager: null });
     await service.start(request);
@@ -306,7 +367,7 @@ describe("start", () => {
   });
 
   test("spawns the script with resolved git metadata and reports success", async () => {
-    const { service, emitted, spawnCalls } = buildService();
+    const { service, emitted, published, spawnCalls } = buildService();
     await service.start(request);
 
     expect(spawnCalls).toHaveLength(1);
@@ -319,10 +380,12 @@ describe("start", () => {
       daemonPort: 6767,
       daemonListenHost: "127.0.0.1",
     });
-    expect(emitted).toContainEqual({
-      type: "script_status_update",
-      payload: { workspaceId: "ws-1", scripts: [] },
-    });
+    await expect
+      .poll(() => published)
+      .toContainEqual({
+        type: "script_status_update",
+        payload: { workspaceId: "ws-1", scripts: [] },
+      });
     expect(emitted).toContainEqual({
       type: "start_workspace_script_response",
       payload: {
@@ -416,7 +479,7 @@ describe("start", () => {
     const serviceProxy = createServiceProxySubsystem({ logger });
     const { service, spawnCalls } = buildService({ workspace, project, serviceProxy });
 
-    const snapshot = service.buildSnapshot(workspace, project);
+    const snapshot = await service.buildSnapshot(workspace, project);
     await service.start({ ...request, workspaceId: workspace.workspaceId });
 
     const started = spawnCalls[0]!;

@@ -7,6 +7,7 @@ import {
   segmentedIconSize,
   type SegmentedControlSize,
 } from "@/components/ui/control-geometry";
+import { useContainedControlSize } from "@/components/ui/control-size";
 import type { Theme } from "@/styles/theme";
 
 type SegmentedControlIconRenderer = (props: { color: string; size: number }) => ReactNode;
@@ -41,18 +42,20 @@ function SegmentIcon({ icon, iconSize, iconColor }: SegmentIconProps) {
 
 const ThemedSegmentIcon = withUnistyles(SegmentIcon);
 
-const selectedIconMapping = (theme: Theme) => ({ iconColor: theme.colors.surface0 });
+const selectedIconMapping = (theme: Theme) => ({ iconColor: theme.colors.foreground });
 const mutedIconMapping = (theme: Theme) => ({ iconColor: theme.colors.foregroundMuted });
 
 export function SegmentedControl<T extends string>({
   options,
   value,
   onValueChange,
-  size = "md",
+  size: sizeProp,
   hideLabels = false,
   style,
   testID,
 }: SegmentedControlProps<T>) {
+  const containedSize = useContainedControlSize();
+  const size = sizeProp ?? containedSize ?? "md";
   const sizeStyles = {
     xs: { container: styles.containerXs, segment: styles.segmentXs, label: styles.labelXs },
     sm: { container: styles.containerSm, segment: styles.segmentSm, label: styles.labelSm },
@@ -196,7 +199,7 @@ const styles = StyleSheet.create((theme) => {
       ...geometry.segmentedSegmentMd,
     },
     segmentSelected: {
-      backgroundColor: theme.colors.foreground,
+      backgroundColor: theme.colors.surface3,
     },
     segmentHover: {
       backgroundColor: theme.colors.surface2,
@@ -225,7 +228,7 @@ const styles = StyleSheet.create((theme) => {
       ...geometry.segmentedLabelMd,
     },
     labelSelected: {
-      color: theme.colors.surface0,
+      color: theme.colors.foreground,
     },
   };
 });

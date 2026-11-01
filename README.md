@@ -77,6 +77,8 @@ Paseo 会运行一个名为 daemon 的本地服务，用来管理你的 coding a
 - [GitHub Copilot](https://github.com/features/copilot/cli/)
 - [OpenCode](https://github.com/anomalyco/opencode)
 - [Pi](https://pi.dev)
+- [Antigravity](https://paseo.sh/docs/supported-providers#antigravity)
+- [Muse Code](https://paseo.sh/docs/muse-code)
 
 ### 桌面 app（推荐）
 
@@ -121,7 +123,7 @@ Open `http://localhost:6767` after it starts. Extend the base image with the age
 
 ```bash
 paseo run --provider claude/opus-4.6 "implement user authentication"
-paseo run --provider codex/gpt-5.4 --worktree feature-x "implement feature X"
+paseo run --provider codex/gpt-5.5 --worktree feature-x "implement feature X"
 
 paseo ls                           # 列出正在运行的 agents
 paseo attach abc123                # 实时流式查看输出
@@ -132,6 +134,30 @@ paseo --host workstation.local:6767 run "run the full test suite"
 ```
 
 更多内容见[完整 CLI 参考](https://paseo.sh/docs/cli)。
+
+## TypeScript SDK
+
+Build issue integrations, dashboards, and orchestration services with `@getpaseo/client`:
+
+```ts
+import { createPaseoClient } from "@getpaseo/client";
+
+const client = createPaseoClient({ url: "ws://127.0.0.1:6767/ws" });
+await client.connect();
+
+const agent = await client.agents.create({
+  config: { provider: "codex/gpt-5.5" },
+  cwd: "/Users/me/dev/storefront",
+  prompt: "Review the current diff and name the riskiest change.",
+});
+
+const result = await agent.waitForFinish();
+console.log(result.lastMessage);
+
+await client.close();
+```
+
+See the [SDK quickstart](https://paseo.sh/docs/sdk/quickstart), [recipes](https://paseo.sh/docs/sdk/recipes), and [API reference](https://paseo.sh/docs/sdk/reference).
 
 ## Skills
 
@@ -233,4 +259,4 @@ server {
 
 ## License
 
-AGPL-3.0
+Apache-2.0

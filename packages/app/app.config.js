@@ -1,7 +1,13 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const pkg = require("./package.json");
+const withAndroidAsyncStorageSize = require("./plugins/with-android-async-storage-size");
+const withAndroidOptionalCamera = require("./plugins/with-android-optional-camera");
+const withAndroidProfileable = require("./plugins/with-android-profileable");
 const withFdroidAutolinking = require("./plugins/with-fdroid-autolinking");
+const withPasteInput = require("./plugins/with-paste-input");
+const withAndroidScroll = require("./modules/paseo-scroll/app.plugin");
+const { getNativeReleaseVersion } = require("./native-release-version");
 const appVariant = process.env.APP_VARIANT ?? "production";
 const isFdroidBuild = process.env.PASEO_FDROID_BUILD === "1";
 // Low-mem APK path (GitHub Actions runners / free-tier EAS): OOM hermesc (exit 137)
@@ -9,6 +15,8 @@ const isFdroidBuild = process.env.PASEO_FDROID_BUILD === "1";
 // Prefer PASEO_APK_LOW_MEM; keep PASEO_EAS_APK_LOW_MEM as a back-compat alias.
 const isLowMemApkBuild =
   process.env.PASEO_APK_LOW_MEM === "1" || process.env.PASEO_EAS_APK_LOW_MEM === "1";
+const isWatchdogBuild = process.env.PASEO_WATCHDOG_BUILD === "1";
+const isProfileBuild = process.env.PASEO_PROFILE_BUILD === "1";
 
 const buildProfile = isFdroidBuild
   ? {
@@ -20,7 +28,6 @@ const buildProfile = isFdroidBuild
       cameraPlugins: [],
       fdroidPlugins: [withFdroidAutolinking],
       notificationPlugins: [],
-      updates: { enabled: false },
     }
   : {
       androidPermissions: [
@@ -49,32 +56,7 @@ const buildProfile = isFdroidBuild
           },
         ],
       ],
-      updates: {},
     };
-
-function getNativeBuildVersionCode(version) {
-  const match = /^(\d+)\.(\d+)\.(\d+)(?:[-+].*)?$/.exec(version);
-  if (!match) {
-    throw new Error(`Cannot derive Android versionCode from non-semver version: ${version}`);
-  }
-
-  const [, majorText, minorText, patchText] = match;
-  const major = Number(majorText);
-  const minor = Number(minorText);
-  const patch = Number(patchText);
-
-  if (minor > 999 || patch > 999) {
-    throw new Error(`Cannot derive collision-free Android versionCode from version: ${version}`);
-  }
-
-  const versionCode = major * 1_000_000 + minor * 1_000 + patch;
-
-  if (!Number.isSafeInteger(versionCode) || versionCode <= 0 || versionCode > 2_100_000_000) {
-    throw new Error(`Derived Android versionCode is out of range: ${versionCode}`);
-  }
-
-  return versionCode;
-}
 
 function resolveSecretFile(params) {
   const fromEnv = process.env[params.envKey];
@@ -118,14 +100,14 @@ const variants = {
 };
 
 const variant = variants[appVariant] ?? variants.production;
-const nativeBuildVersionCode = getNativeBuildVersionCode(pkg.version);
+const nativeReleaseVersion = getNativeReleaseVersion(pkg.version);
 
 module.exports = {
   expo: {
     name: variant.name,
     slug: "paseo-reclaude",
-    version: pkg.version,
-    orientation: "portrait",
+    version: nativeReleaseVersion.appVersion,
+    orientation: "default",
     icon: "./assets/images/icon.png",
     scheme: "paseo",
     userInterfaceStyle: "automatic",
@@ -146,7 +128,7 @@ module.exports = {
       ...(variant.googleServiceInfoPlist
         ? { googleServicesFile: variant.googleServiceInfoPlist }
         : {}),
-      buildNumber: String(nativeBuildVersionCode),
+      buildNumber: nativeReleaseVersion.iosBuildNumber,
     },
     android: {
       adaptiveIcon: {
@@ -160,7 +142,7 @@ module.exports = {
       usesCleartextTraffic: true,
       permissions: buildProfile.androidPermissions,
       package: variant.packageId,
-      versionCode: nativeBuildVersionCode,
+      versionCode: nativeReleaseVersion.androidVersionCode,
       ...(variant.googleServicesFile ? { googleServicesFile: variant.googleServicesFile } : {}),
     },
     web: {
@@ -181,7 +163,11 @@ module.exports = {
           ],
         },
       ],
+      withPasteInput,
+      withAndroidScroll,
+      [withAndroidAsyncStorageSize, 64],
       ...buildProfile.cameraPlugins,
+      withAndroidOptionalCamera,
       [
         "expo-splash-screen",
         {
@@ -212,6 +198,7 @@ module.exports = {
       [
         "expo-build-properties",
         {
+          ios: { enableSceneSupport: true },
           android: {
             minSdkVersion: 29,
             kotlinVersion: "2.1.20",
@@ -224,6 +211,7 @@ module.exports = {
         },
       ],
       ...buildProfile.fdroidPlugins,
+      ...(isProfileBuild || isWatchdogBuild ? [withAndroidProfileable] : []),
     ],
     experiments: {
       typedRoutes: true,
@@ -232,6 +220,10 @@ module.exports = {
     },
     extra: {
       fdroidBuild: isFdroidBuild,
+      profileBuild: isProfileBuild,
+      watchdogBuild: isWatchdogBuild,
+      diagnosticRevision: process.env.PASEO_DIAGNOSTIC_REVISION,
+      diagnosticBuildTime: process.env.PASEO_DIAGNOSTIC_BUILD_TIME,
       router: {},
       eas: {
         projectId: "58537a79-e9dc-4f7c-b9bf-931fb7af4647",

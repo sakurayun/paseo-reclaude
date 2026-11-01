@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
 import { z } from "zod";
@@ -42,7 +42,7 @@ export interface SshKnownHostStore {
     publicKey: Buffer;
   }): SshKnownHostInfo;
   delete(id: string): boolean;
-  importFromFile(filePath?: string): { imported: number; skipped: number };
+  importFromFile(filePath?: string): Promise<{ imported: number; skipped: number }>;
   subscribeChanged(listener: SshKnownHostsChangedListener): () => void;
   dispose(): void;
 }
@@ -155,11 +155,11 @@ export function createSshKnownHostStore(options: SshKnownHostStoreOptions): SshK
       return false;
     },
 
-    importFromFile(filePath?: string): { imported: number; skipped: number } {
+    async importFromFile(filePath?: string): Promise<{ imported: number; skipped: number }> {
       const target = filePath ?? path.join(homedir(), ".ssh", "known_hosts");
       let content: string;
       try {
-        content = readFileSync(target, "utf8");
+        content = await readFile(target, "utf8");
       } catch {
         return { imported: 0, skipped: 0 };
       }

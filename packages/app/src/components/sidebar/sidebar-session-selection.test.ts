@@ -11,7 +11,10 @@ const KEYS = ["a:1", "a:2", "a:3", "a:4", "a:5"] as const;
 
 describe("sidebar session selection", () => {
   it("builds and parses session keys", () => {
-    const key = toSidebarSessionSelectionKey({ serverId: "host", id: "agent-1" });
+    const key = toSidebarSessionSelectionKey({
+      serverId: "host",
+      id: "agent-1",
+    });
     expect(key).toBe("host:agent-1");
     expect(parseSidebarSessionSelectionKey(key)).toEqual({
       serverId: "host",
@@ -89,9 +92,11 @@ describe("sidebar session selection", () => {
     expect(readPointerSelectionMode({ nativeEvent: { ctrlKey: true } })).toBe("toggle");
     expect(readPointerSelectionMode({ nativeEvent: { metaKey: true } })).toBe("toggle");
     expect(readPointerSelectionMode({ nativeEvent: { shiftKey: true } })).toBe("range");
-    expect(readPointerSelectionMode({ nativeEvent: { shiftKey: true, ctrlKey: true } })).toBe(
-      "range",
-    );
+    expect(
+      readPointerSelectionMode({
+        nativeEvent: { shiftKey: true, ctrlKey: true },
+      }),
+    ).toBe("range");
     expect(readPointerSelectionMode({})).toBe("replace");
   });
 });

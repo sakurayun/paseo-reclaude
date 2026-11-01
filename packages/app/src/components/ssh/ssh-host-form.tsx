@@ -1,5 +1,6 @@
+import { PressHighlight } from "@/components/ui/press-highlight";
 import { useCallback, useMemo } from "react";
-import { Pressable, Text, View } from "react-native";
+import { Text, View } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { X } from "lucide-react-native";
 import { useTranslation } from "react-i18next";
@@ -38,7 +39,6 @@ export function SshHostForm({ model, state, controlSize }: SshHostFormProps) {
         <FormTextInput
           size={controlSize}
           initialValue={state.address}
-          value={state.address}
           onChangeText={model.setAddress}
           placeholder="10.0.0.1"
           autoCapitalize="none"
@@ -50,7 +50,6 @@ export function SshHostForm({ model, state, controlSize }: SshHostFormProps) {
         <FormTextInput
           size={controlSize}
           initialValue={state.port}
-          value={state.port}
           onChangeText={model.setPort}
           placeholder="22"
           keyboardType="number-pad"
@@ -63,7 +62,6 @@ export function SshHostForm({ model, state, controlSize }: SshHostFormProps) {
         <FormTextInput
           size={controlSize}
           initialValue={state.label}
-          value={state.label}
           onChangeText={model.setLabel}
           placeholder={state.address || t("ssh.form.label")}
           autoCapitalize="none"
@@ -79,7 +77,6 @@ export function SshHostForm({ model, state, controlSize }: SshHostFormProps) {
         <FormTextInput
           size={controlSize}
           initialValue={state.username}
-          value={state.username}
           onChangeText={model.setUsername}
           placeholder="root"
           autoCapitalize="none"
@@ -92,7 +89,6 @@ export function SshHostForm({ model, state, controlSize }: SshHostFormProps) {
           <FormTextInput
             size={controlSize}
             initialValue={state.password}
-            value={state.password}
             onChangeText={model.setPassword}
             placeholder={state.mode === "edit" ? "••••••••" : ""}
             secureTextEntry
@@ -153,7 +149,6 @@ export function SshHostForm({ model, state, controlSize }: SshHostFormProps) {
         <FormTextInput
           size={controlSize}
           initialValue={state.startupSnippet}
-          value={state.startupSnippet}
           onChangeText={model.setStartupSnippet}
           placeholder="export TERM=xterm-256color"
           style={styles.multiline}
@@ -431,7 +426,6 @@ function ProxyFields({ model, state, controlSize }: SshHostFormProps) {
             <FormTextInput
               size={controlSize}
               initialValue={state.proxyHost}
-              value={state.proxyHost}
               onChangeText={model.setProxyHost}
               placeholder="proxy.local"
               autoCapitalize="none"
@@ -442,7 +436,6 @@ function ProxyFields({ model, state, controlSize }: SshHostFormProps) {
             <FormTextInput
               size={controlSize}
               initialValue={state.proxyPort}
-              value={state.proxyPort}
               onChangeText={model.setProxyPort}
               placeholder="1080"
               keyboardType="number-pad"
@@ -452,7 +445,6 @@ function ProxyFields({ model, state, controlSize }: SshHostFormProps) {
             <FormTextInput
               size={controlSize}
               initialValue={state.proxyUsername}
-              value={state.proxyUsername}
               onChangeText={model.setProxyUsername}
               autoCapitalize="none"
               autoCorrect={false}
@@ -462,7 +454,6 @@ function ProxyFields({ model, state, controlSize }: SshHostFormProps) {
             <FormTextInput
               size={controlSize}
               initialValue={state.proxyPassword}
-              value={state.proxyPassword}
               onChangeText={model.setProxyPassword}
               secureTextEntry
               autoCapitalize="none"
@@ -489,9 +480,9 @@ function EnvFields({ model, state, controlSize }: SshHostFormProps) {
           onRemove={model.removeEnvVar}
         />
       ))}
-      <Pressable style={styles.addRow} onPress={model.addEnvVar} accessibilityRole="button">
+      <PressHighlight style={styles.addRow} onPress={model.addEnvVar} accessibilityRole="button">
         <Text style={styles.addLabel}>+ {t("ssh.form.environment")}</Text>
-      </Pressable>
+      </PressHighlight>
     </Field>
   );
 }
@@ -524,7 +515,6 @@ function EnvRow({
         size={controlSize}
         style={styles.envKey}
         initialValue={entry.key}
-        value={entry.key}
         onChangeText={handleKey}
         placeholder="KEY"
         autoCapitalize="characters"
@@ -534,20 +524,19 @@ function EnvRow({
         size={controlSize}
         style={styles.envValue}
         initialValue={entry.value}
-        value={entry.value}
         onChangeText={handleValue}
         placeholder="value"
         autoCapitalize="none"
         autoCorrect={false}
       />
-      <Pressable
+      <PressHighlight
         style={styles.envRemove}
         onPress={handleRemove}
         accessibilityRole="button"
         hitSlop={8}
       >
         <XIcon />
-      </Pressable>
+      </PressHighlight>
     </View>
   );
 }
@@ -563,10 +552,10 @@ function Chip({
 }) {
   const handleRemove = useCallback(() => onRemove(value), [onRemove, value]);
   return (
-    <Pressable style={styles.chip} onPress={handleRemove} accessibilityRole="button">
+    <PressHighlight style={styles.chip} onPress={handleRemove} accessibilityRole="button">
       <Text style={styles.chipLabel}>{label}</Text>
       <XIcon />
-    </Pressable>
+    </PressHighlight>
   );
 }
 

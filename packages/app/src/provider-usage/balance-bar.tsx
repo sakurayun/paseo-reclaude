@@ -17,7 +17,10 @@ function resolveBalance(balance: ProviderUsageBalance, t: TFunction): ResolvedBa
     const usedAmount = used ?? (remaining != null ? limit - remaining : null);
     const usedPct = usedAmount != null ? (usedAmount / limit) * 100 : null;
     const usedText = usedAmount != null ? formatAmount(usedAmount, unit) : "—";
-    return { amountText: `${usedText} / ${formatAmount(limit, unit)}`, usedPct };
+    return {
+      amountText: `${usedText} / ${formatAmount(limit, unit)}`,
+      usedPct,
+    };
   }
   if (remaining != null) {
     return {
@@ -91,13 +94,13 @@ const styles = StyleSheet.create((theme) => ({
     flexShrink: 1,
     minWidth: 0,
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
   },
   value: {
     flexShrink: 1,
     minWidth: 0,
     color: theme.colors.foreground,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     fontWeight: theme.fontWeight.medium,
     textAlign: "right",
   },

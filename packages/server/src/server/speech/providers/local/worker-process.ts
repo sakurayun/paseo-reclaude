@@ -3,11 +3,8 @@ import pino from "pino";
 import type { StreamingTranscriptionSession } from "../../speech-provider.js";
 import type { TurnDetectionSession } from "../../turn-detection-provider.js";
 import { getLocalSpeechModelDir, type LocalSttModelId, type LocalTtsModelId } from "./models.js";
-import {
-  SherpaOfflineRecognizerEngine,
-  buildOfflineRecognizerModel,
-} from "./sherpa/sherpa-offline-recognizer.js";
-import { getSherpaOnnxModelSpec } from "./sherpa/model-catalog.js";
+import { getLocalSttEngine, getLocalTtsEngine } from "./sherpa/model-catalog.js";
+import { SherpaOfflineRecognizerEngine } from "./sherpa/sherpa-offline-recognizer.js";
 import { SherpaOnnxParakeetSTT } from "./sherpa/sherpa-parakeet-stt.js";
 import { SherpaParakeetRealtimeTranscriptionSession } from "./sherpa/sherpa-parakeet-realtime-session.js";
 import { SherpaOnnxTTS } from "./sherpa/sherpa-tts.js";
@@ -87,13 +84,10 @@ function getSttEngine(
     return existing;
   }
   const modelDir = getLocalSpeechModelDir(config.modelsDir, modelId);
-  const spec = getSherpaOnnxModelSpec(modelId);
   const created = new SherpaOfflineRecognizerEngine(
     {
-      // The recognizer wiring (transducer triple vs. single-file SenseVoice) is derived
-      // from the catalog entry's architecture. SenseVoice runs with language "auto",
-      // which auto-detects Chinese/Cantonese/English/Japanese/Korean.
-      model: buildOfflineRecognizerModel(modelDir, spec),
+      modelDir,
+      engine: getLocalSttEngine(modelId),
       numThreads: 2,
       debug: 0,
     },
@@ -127,8 +121,9 @@ function getTtsProvider(config: LocalSpeechWorkerConfig): SherpaOnnxTTS {
   const modelDir = getLocalSpeechModelDir(config.modelsDir, ttsModelId(config));
   const created = new SherpaOnnxTTS(
     {
-      preset: ttsModelId(config),
+      modelId: ttsModelId(config),
       modelDir,
+      engine: getLocalTtsEngine(ttsModelId(config)),
       speakerId: config.voiceTtsSpeakerId,
       speed: config.voiceTtsSpeed,
     },

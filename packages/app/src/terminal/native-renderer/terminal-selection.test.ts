@@ -1,0 +1,533 @@
+import { describe, expect, it } from "vitest";
+
+import { createNativeHeadlessTerminal } from "./headless-terminal-state";
+import {
+  copyTerminalSelection,
+  createTerminalSelectionModel,
+  extractTerminalSelectedText,
+  hitTestTerminalSelectionCell,
+  normalizeTerminalSelection,
+  resolveTerminalWordSelection,
+  resolveTerminalSelectionRects,
+} from "./terminal-selection";
+
+function terminalLines(input: { startLine: number; lineCount: number }): string {
+  return Array.from(
+    { length: input.lineCount },
+    (_, index) => `line-${input.startLine + index}\r\n`,
+  ).join("");
+}
+
+function rowWithText(
+  terminal: ReturnType<typeof createNativeHeadlessTerminal>,
+  text: string,
+): number {
+  const bounds = terminal.getBufferBounds();
+  const window = terminal.getBufferWindow({
+    startRow: bounds.oldestRow,
+    rowCount: bounds.newestRow - bounds.oldestRow + 1,
+  });
+  const rowOffset = window.rows.findIndex((row) => {
+    const rowText = row
+      .map((cell) => cell.char)
+      .join("")
+      .trimEnd();
+    return rowText === text;
+  });
+  if (rowOffset < 0) {
+    throw new Error(`missing terminal row: ${text}`);
+  }
+  return window.startRow + rowOffset;
+}
+
+describe("native terminal selection", () => {
+  it.each([
+    { startCol: 1, endCol: 8, expected: "한글 문장" },
+    { startCol: 3, endCol: 8, expected: "글 문장" },
+    { startCol: 1, endCol: 1, expected: "한" },
+    { startCol: 0, endCol: 0, expected: "한" },
+    { startCol: 0, endCol: 1, expected: "한" },
+    { startCol: 4, endCol: 6, expected: " 문" },
+  ])(
+    "copies complete wide characters for selected columns $startCol through $endCol",
+    async ({ startCol, endCol, expected }) => {
+      const terminal = createNativeHeadlessTerminal({ rows: 3, cols: 30 });
+      const copied: string[] = [];
+      try {
+        await terminal.write("한글 문장");
+        const bounds = terminal.getBufferBounds();
+        const selection = createTerminalSelectionModel();
+        selection.begin({
+          coordinate: { row: bounds.cursorRow, col: endCol },
+          bounds,
+        });
+        selection.update({
+          coordinate: { row: bounds.cursorRow, col: startCol },
+          bounds,
+        });
+
+        await copyTerminalSelection({
+          terminal,
+          selection: selection.getSnapshot().range,
+          clipboard: {
+            writeText: async (text) => {
+              copied.push(text);
+            },
+          },
+        });
+
+        expect(copied).toEqual([expected]);
+      } finally {
+        terminal.dispose();
+      }
+    },
+  );
+
+  it("copies Korean output without adding spaces for continuation cells", async () => {
+    const terminal = createNativeHeadlessTerminal({ rows: 3, cols: 30 });
+    const copied: string[] = [];
+    try {
+      await terminal.write("한글 문장");
+      const bounds = terminal.getBufferBounds();
+      await copyTerminalSelection({
+        terminal,
+        selection: {
+          start: { row: bounds.cursorRow, col: 0 },
+          end: { row: bounds.cursorRow, col: bounds.cursorCol - 1 },
+          coordinateEpoch: bounds.coordinateEpoch,
+        },
+        clipboard: {
+          writeText: async (text) => {
+            copied.push(text);
+          },
+        },
+      });
+      expect(copied).toEqual(["한글 문장"]);
+    } finally {
+      terminal.dispose();
+    }
+  });
+
+  it("copies Korean text and real spaces without wide-character continuation spaces", async () => {
+    const terminal = createNativeHeadlessTerminal({ rows: 3, cols: 30 });
+    try {
+      await terminal.write("한글 문장 | 성공");
+      const bounds = terminal.getBufferBounds();
+      expect(
+        extractTerminalSelectedText({
+          terminal,
+          selection: {
+            start: { row: bounds.cursorRow, col: 0 },
+            end: { row: bounds.cursorRow, col: bounds.cursorCol - 1 },
+            coordinateEpoch: bounds.coordinateEpoch,
+          },
+        }),
+      ).toBe("한글 문장 | 성공");
+    } finally {
+      terminal.dispose();
+    }
+  });
+
+  it("expands a long-press coordinate to the whole terminal word", async () => {
+    const terminal = createNativeHeadlessTerminal({ rows: 4, cols: 32, scrollbackLines: 20 });
+    await terminal.write("before PASEO_TARGET after\r\n");
+    const row = rowWithText(terminal, "before PASEO_TARGET after");
+
+    const selection = resolveTerminalWordSelection({
+      terminal,
+      coordinate: { row, col: 12 },
+    });
+
+    expect({
+      selection,
+      text: extractTerminalSelectedText({ terminal, selection }),
+    }).toEqual({
+      selection: {
+        start: { row, col: 7 },
+        end: { row, col: 18 },
+        coordinateEpoch: terminal.getBufferBounds().coordinateEpoch,
+      },
+      text: "PASEO_TARGET",
+    });
+  });
+
+  it.each([
+    { col: 0, expected: "한글", startCol: 0, endCol: 3 },
+    { col: 1, expected: "한글", startCol: 0, endCol: 3 },
+    { col: 2, expected: "한글", startCol: 0, endCol: 3 },
+    { col: 3, expected: "한글", startCol: 0, endCol: 3 },
+    { col: 5, expected: "문장", startCol: 5, endCol: 8 },
+    { col: 6, expected: "문장", startCol: 5, endCol: 8 },
+    { col: 7, expected: "문장", startCol: 5, endCol: 8 },
+    { col: 8, expected: "문장", startCol: 5, endCol: 8 },
+  ])(
+    "selects the whole Korean word from column $col, including continuation cells",
+    async ({ col, expected, startCol, endCol }) => {
+      const terminal = createNativeHeadlessTerminal({ rows: 3, cols: 30 });
+      try {
+        await terminal.write("한글 문장");
+        const bounds = terminal.getBufferBounds();
+        const row = bounds.cursorRow;
+        const selection = resolveTerminalWordSelection({ terminal, coordinate: { row, col } });
+
+        expect({ selection, text: extractTerminalSelectedText({ terminal, selection }) }).toEqual({
+          selection: {
+            start: { row, col: startCol },
+            end: { row, col: endCol },
+            coordinateEpoch: bounds.coordinateEpoch,
+          },
+          text: expected,
+        });
+      } finally {
+        terminal.dispose();
+      }
+    },
+  );
+
+  it.each([
+    { text: "한글 문장", col: 4, expected: "" },
+    { text: "(한글)", col: 2, expected: "한글" },
+    { text: "漢字 test", col: 1, expected: "漢字" },
+    { text: "a한b x", col: 2, expected: "a한b" },
+    { text: "🙂🙂 ok", col: 1, expected: "🙂🙂" },
+    { text: "e\u0301한 ok", col: 2, expected: "e\u0301한" },
+    { text: "한글", col: 3, expected: "한글" },
+  ])("preserves word boundaries in $text at column $col", async ({ text, col, expected }) => {
+    const terminal = createNativeHeadlessTerminal({ rows: 3, cols: 30 });
+    try {
+      await terminal.write(text);
+      const selection = resolveTerminalWordSelection({
+        terminal,
+        coordinate: { row: terminal.getBufferBounds().cursorRow, col },
+      });
+      expect(extractTerminalSelectedText({ terminal, selection })).toBe(expected);
+    } finally {
+      terminal.dispose();
+    }
+  });
+
+  it("maps screen coordinates through the current visible window", () => {
+    expect(
+      hitTestTerminalSelectionCell({
+        point: { x: 18, y: 25 },
+        metrics: { cellWidth: 8, cellHeight: 10 },
+        viewport: { firstRow: 120, rows: 4, cols: 80 },
+      }),
+    ).toEqual({ row: 122, col: 2 });
+  });
+
+  it("maps screen coordinates through a scrolled visible window", () => {
+    expect(
+      hitTestTerminalSelectionCell({
+        point: { x: 0, y: 0 },
+        metrics: { cellWidth: 8, cellHeight: 10 },
+        viewport: { firstRow: 250, rows: 4, cols: 80 },
+      }),
+    ).toEqual({ row: 250, col: 0 });
+
+    expect(
+      hitTestTerminalSelectionCell({
+        point: { x: 24, y: 35 },
+        metrics: { cellWidth: 8, cellHeight: 10 },
+        viewport: { firstRow: 250, rows: 4, cols: 80 },
+      }),
+    ).toEqual({ row: 253, col: 3 });
+  });
+
+  it("normalizes reverse selections across rows", () => {
+    expect(
+      normalizeTerminalSelection({
+        anchor: { row: 12, col: 9 },
+        focus: { row: 10, col: 4 },
+        coordinateEpoch: 7,
+      }),
+    ).toEqual({
+      start: { row: 10, col: 4 },
+      end: { row: 12, col: 9 },
+      coordinateEpoch: 7,
+    });
+  });
+
+  it("renders selected cells only inside the current viewport", () => {
+    const selection = normalizeTerminalSelection({
+      anchor: { row: 11, col: 2 },
+      focus: { row: 13, col: 4 },
+      coordinateEpoch: 3,
+    });
+
+    expect(
+      resolveTerminalSelectionRects({
+        selection,
+        viewport: { firstRow: 12, rows: 3, cols: 10 },
+        metrics: { cellWidth: 8, cellHeight: 10 },
+      }),
+    ).toEqual([
+      { key: "12:0:9", x: 0, y: 0, width: 80, height: 10 },
+      { key: "13:0:4", x: 0, y: 10, width: 40, height: 10 },
+    ]);
+  });
+
+  it("extracts only selected terminal cells with row breaks", async () => {
+    const terminal = createNativeHeadlessTerminal({ rows: 4, cols: 16, scrollbackLines: 20 });
+    await terminal.write("alpha beta\r\ngamma delta\r\n");
+    const bounds = terminal.getBufferBounds();
+    const alphaRow = rowWithText(terminal, "alpha beta");
+    const gammaRow = rowWithText(terminal, "gamma delta");
+
+    expect(
+      extractTerminalSelectedText({
+        terminal,
+        selection: {
+          start: { row: alphaRow, col: 6 },
+          end: { row: gammaRow, col: 4 },
+          coordinateEpoch: bounds.coordinateEpoch,
+        },
+      }),
+    ).toEqual("beta\ngamma");
+  });
+
+  it("copies soft-wrapped rows without fake line breaks", async () => {
+    const terminal = createNativeHeadlessTerminal({ rows: 4, cols: 4, scrollbackLines: 20 });
+    await terminal.write("abcdef");
+    const bounds = terminal.getBufferBounds();
+    const firstRow = rowWithText(terminal, "abcd");
+    const secondRow = rowWithText(terminal, "ef");
+
+    expect(
+      extractTerminalSelectedText({
+        terminal,
+        selection: {
+          start: { row: firstRow, col: 0 },
+          end: { row: secondRow, col: 1 },
+          coordinateEpoch: bounds.coordinateEpoch,
+        },
+      }),
+    ).toEqual("abcdef");
+  });
+
+  it("invalidates selection when buffer coordinates become unsafe", () => {
+    const selection = createTerminalSelectionModel();
+
+    selection.begin({
+      coordinate: { row: 4, col: 2 },
+      bounds: { oldestRow: 0, newestRow: 10, coordinateEpoch: 1 },
+    });
+    selection.update({
+      coordinate: { row: 5, col: 6 },
+      bounds: { oldestRow: 0, newestRow: 10, coordinateEpoch: 1 },
+    });
+
+    expect(selection.sync({ bounds: { oldestRow: 0, newestRow: 10, coordinateEpoch: 2 } })).toEqual(
+      {
+        range: null,
+      },
+    );
+  });
+
+  it("invalidates a selection when a near-full burst evicts scrollback", async () => {
+    const terminal = createNativeHeadlessTerminal({ rows: 3, cols: 16, scrollbackLines: 10 });
+    await terminal.write(terminalLines({ startLine: 0, lineCount: 6 }));
+    const selection = createTerminalSelectionModel();
+    const before = terminal.getBufferBounds();
+    selection.begin({
+      coordinate: { row: before.oldestRow, col: 0 },
+      bounds: before,
+    });
+    selection.update({
+      coordinate: { row: before.oldestRow, col: 4 },
+      bounds: before,
+    });
+
+    await terminal.write(terminalLines({ startLine: 6, lineCount: 20 }));
+    const after = terminal.getBufferBounds();
+
+    expect({
+      selectedRowsEvicted: after.oldestRow > before.oldestRow,
+      sameCoordinateSpace: after.coordinateEpoch === before.coordinateEpoch,
+      selection: selection.sync({ bounds: after }),
+    }).toEqual({
+      selectedRowsEvicted: true,
+      sameCoordinateSpace: true,
+      selection: { range: null },
+    });
+  });
+
+  it("keeps a selection when saturated-buffer output does not evict rows", async () => {
+    const terminal = createNativeHeadlessTerminal({ rows: 3, cols: 16, scrollbackLines: 2 });
+    await terminal.write(terminalLines({ startLine: 0, lineCount: 8 }));
+    const selection = createTerminalSelectionModel();
+    const before = terminal.getBufferBounds();
+    selection.begin({ coordinate: { row: 1, col: 0 }, bounds: before });
+    selection.update({ coordinate: { row: 1, col: 3 }, bounds: before });
+
+    await terminal.write("tail");
+
+    expect(selection.sync({ bounds: terminal.getBufferBounds() }).range).not.toBeNull();
+  });
+
+  it("keeps and copies selected rows until those rows are evicted", async () => {
+    const terminal = createNativeHeadlessTerminal({ rows: 3, cols: 16, scrollbackLines: 10 });
+    await terminal.write(terminalLines({ startLine: 0, lineCount: 13 }));
+    const selection = createTerminalSelectionModel();
+    const selectedRow = rowWithText(terminal, "line-9");
+    const before = terminal.getBufferBounds();
+    selection.begin({ coordinate: { row: selectedRow, col: 0 }, bounds: before });
+    selection.update({ coordinate: { row: selectedRow, col: 5 }, bounds: before });
+
+    await terminal.write(terminalLines({ startLine: 13, lineCount: 3 }));
+    const retained = selection.sync({ bounds: terminal.getBufferBounds() }).range;
+
+    expect({
+      retained,
+      copied: extractTerminalSelectedText({ terminal, selection: retained }),
+    }).toEqual({
+      retained: {
+        start: { row: selectedRow, col: 0 },
+        end: { row: selectedRow, col: 5 },
+        coordinateEpoch: before.coordinateEpoch,
+      },
+      copied: "line-9",
+    });
+
+    await terminal.write(terminalLines({ startLine: 16, lineCount: 10 }));
+
+    expect(selection.sync({ bounds: terminal.getBufferBounds() })).toEqual({ range: null });
+  });
+
+  it("copies exactly the selected known visible text", async () => {
+    const terminal = createNativeHeadlessTerminal({ rows: 4, cols: 16, scrollbackLines: 20 });
+    await terminal.write("COPY_OK_123\r\n");
+    const bounds = terminal.getBufferBounds();
+    const copyRow = rowWithText(terminal, "COPY_OK_123");
+    const copied: string[] = [];
+
+    await copyTerminalSelection({
+      terminal,
+      selection: {
+        start: { row: copyRow, col: 0 },
+        end: { row: copyRow, col: 10 },
+        coordinateEpoch: bounds.coordinateEpoch,
+      },
+      clipboard: {
+        writeText: async (text) => {
+          copied.push(text);
+        },
+      },
+    });
+
+    expect(copied).toEqual(["COPY_OK_123"]);
+  });
+
+  it("copies custom-drawn Claude glyphs as their original Unicode text", async () => {
+    const terminal = createNativeHeadlessTerminal({ rows: 4, cols: 32, scrollbackLines: 20 });
+    const art = "╭─ Claude ─╮\r\n│ ▐▛███▜▌ │\r\n╰──────────╯";
+    await terminal.write(art);
+    const bounds = terminal.getBufferBounds();
+    const firstRow = rowWithText(terminal, "╭─ Claude ─╮");
+    const lastRow = rowWithText(terminal, "╰──────────╯");
+
+    expect(
+      extractTerminalSelectedText({
+        terminal,
+        selection: {
+          start: { row: firstRow, col: 0 },
+          end: { row: lastRow, col: 11 },
+          coordinateEpoch: bounds.coordinateEpoch,
+        },
+      }),
+    ).toBe(art.replaceAll("\r", ""));
+  });
+
+  it("copies known text after it has scrolled into retained history", async () => {
+    const terminal = createNativeHeadlessTerminal({ rows: 4, cols: 16, scrollbackLines: 20 });
+    await terminal.write("KEEP_THIS_LINE\r\n");
+    await terminal.write(Array.from({ length: 12 }, (_, index) => `filler-${index}\r\n`).join(""));
+    const bounds = terminal.getBufferBounds();
+    const targetRow = rowWithText(terminal, "KEEP_THIS_LINE");
+    expect(targetRow).toBeGreaterThanOrEqual(bounds.oldestRow);
+    expect(targetRow).toBeLessThanOrEqual(bounds.newestRow);
+
+    const copied: string[] = [];
+    await copyTerminalSelection({
+      terminal,
+      selection: {
+        start: { row: targetRow, col: 0 },
+        end: { row: targetRow, col: 13 },
+        coordinateEpoch: bounds.coordinateEpoch,
+      },
+      clipboard: {
+        writeText: async (text) => {
+          copied.push(text);
+        },
+      },
+    });
+
+    expect(copied).toEqual(["KEEP_THIS_LINE"]);
+  });
+
+  it("does not write clipboard when there is no selection", async () => {
+    const terminal = createNativeHeadlessTerminal({ rows: 4, cols: 16, scrollbackLines: 20 });
+    await terminal.write("copy target\r\n");
+    const copied: string[] = [];
+
+    await copyTerminalSelection({
+      terminal,
+      selection: null,
+      clipboard: {
+        writeText: async (text) => {
+          copied.push(text);
+        },
+      },
+    });
+
+    expect(copied).toEqual([]);
+  });
+});
+
+describe("endpoint dragging", () => {
+  it.each([
+    {
+      endpoint: "start" as const,
+      fixed: { row: 2, col: 9 },
+      target: { row: 3, col: 2 },
+      expected: { row: 3, col: 0 },
+    },
+    {
+      endpoint: "end" as const,
+      fixed: { row: 2, col: 0 },
+      target: { row: 1, col: 7 },
+      expected: { row: 1, col: 9 },
+    },
+  ])(
+    "preserves the fixed boundary across a row edge for $endpoint",
+    ({ endpoint, fixed, target, expected }) => {
+      const selection = createTerminalSelectionModel();
+      const bounds = { oldestRow: 0, newestRow: 10, coordinateEpoch: 1 };
+      selection.begin({ coordinate: fixed, bounds });
+      selection.update({ coordinate: fixed, bounds });
+      selection.beginEndpointDrag(endpoint, 10);
+      selection.update({ coordinate: target, bounds });
+      expect(selection.getSnapshot().range?.[endpoint === "start" ? "start" : "end"]).toEqual(
+        expected,
+      );
+    },
+  );
+
+  it.each(["start", "end"] as const)(
+    "keeps the opposite endpoint fixed as %s crosses it",
+    (endpoint) => {
+      const selection = createTerminalSelectionModel();
+      const bounds = { oldestRow: 0, newestRow: 10, coordinateEpoch: 1 };
+      selection.begin({ coordinate: { row: 2, col: 2 }, bounds });
+      selection.update({ coordinate: { row: 3, col: 4 }, bounds });
+      selection.beginEndpointDrag(endpoint, 10);
+      const coordinate = endpoint === "start" ? { row: 4, col: 5 } : { row: 1, col: 1 };
+      selection.update({ coordinate, bounds });
+      expect(selection.getSnapshot().range).toEqual(
+        endpoint === "start"
+          ? { start: { row: 3, col: 5 }, end: coordinate, coordinateEpoch: 1 }
+          : { start: coordinate, end: { row: 2, col: 1 }, coordinateEpoch: 1 },
+      );
+    },
+  );
+});

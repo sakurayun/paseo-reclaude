@@ -1,3 +1,8 @@
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { AgentStorage } from "./agent/agent-storage.js";
+import { AgentDirectory } from "./agent/directory.js";
 import { describe, expect, test } from "vitest";
 import { PARENT_AGENT_ID_LABEL } from "@getpaseo/protocol/agent-labels";
 import { createTestLogger } from "../test-utils/test-logger.js";
@@ -5,6 +10,7 @@ import type { AgentSnapshotPayload, WorkspaceDescriptorPayload } from "./message
 import { WorkspaceDirectory } from "./workspace-directory.js";
 import type { PersistedProjectRecord, PersistedWorkspaceRecord } from "./workspace-registry.js";
 import type { TerminalActivity } from "@getpaseo/protocol/terminal-activity";
+import type { ProviderSubagentWorkspaceActivity } from "./workspace-directory.js";
 
 const NOW = "2026-03-01T12:00:00.000Z";
 
@@ -58,6 +64,7 @@ class WorkspaceStatus {
   private readonly workspaces = [this.workspace];
 
   private readonly agents: AgentSnapshotPayload[] = [];
+  private readonly providerSubagents: ProviderSubagentWorkspaceActivity[] = [];
   private readonly terminals: Array<{
     cwd: string;
     workspaceId?: string;
@@ -68,6 +75,17 @@ class WorkspaceStatus {
     projectRegistry: { list: async () => [this.project] },
     workspaceRegistry: { list: async () => this.workspaces },
     listAgentPayloads: async () => this.agents,
+    workspaceLastUserMessageTimes: async () => {
+      const times = new Map<string, string>();
+      for (const agent of this.agents) {
+        if (!agent.workspaceId || !agent.lastUserMessageAt) continue;
+        const previous = times.get(agent.workspaceId);
+        if (!previous || agent.lastUserMessageAt > previous)
+          times.set(agent.workspaceId, agent.lastUserMessageAt);
+      }
+      return times;
+    },
+    listProviderSubagentActivity: async () => this.providerSubagents,
     listTerminalActivityContributions: async () => this.terminals,
     isProviderVisibleToClient: () => true,
     buildWorkspaceDescriptor: async ({ workspace }) => ({
@@ -79,6 +97,7 @@ class WorkspaceStatus {
       workspaceDirectory: workspace.cwd,
       projectKind: "git",
       workspaceKind: workspace.kind,
+      background: workspace.background,
       name: workspace.displayName,
       archivingAt: null,
       status: "done",
@@ -122,6 +141,10 @@ class WorkspaceStatus {
         labels: { [PARENT_AGENT_ID_LABEL]: "parent-agent" },
       }),
     );
+  }
+
+  hasProviderSubagent(input: ProviderSubagentWorkspaceActivity): void {
+    this.providerSubagents.push(input);
   }
 
   hasWorktreeWorkspace(): void {
@@ -234,6 +257,8 @@ class WorkspaceStatus {
 interface AgentState {
   id: string;
   status: AgentSnapshotPayload["status"];
+  lastUserMessageAt?: string | null;
+  archivedAt?: string | null;
   pendingPermissionCount?: number;
   requiresAttention?: boolean;
   attentionReason?: AgentSnapshotPayload["attentionReason"];
@@ -253,7 +278,7 @@ function createAgent(
     effectiveThinkingOptionId: null,
     createdAt: NOW,
     updatedAt: NOW,
-    lastUserMessageAt: null,
+    lastUserMessageAt: input.lastUserMessageAt ?? null,
     status: input.status,
     capabilities: {
       supportsStreaming: true,
@@ -281,7 +306,7 @@ function createAgent(
     requiresAttention: input.requiresAttention ?? false,
     attentionReason: input.attentionReason ?? null,
     attentionTimestamp: null,
-    archivedAt: null,
+    archivedAt: input.archivedAt ?? null,
   } satisfies AgentSnapshotPayload;
 }
 
@@ -382,6 +407,40 @@ describe("WorkspaceDirectory", () => {
     workspace.hasDelegatedAgent({ id: "child-agent", status: "running" });
 
     await expect(workspace.workspaceStatus()).resolves.toBe("running");
+  });
+
+  test("provider subagent follows its cross-workspace parent", async () => {
+    const workspace = new WorkspaceStatus();
+
+    workspace.hasWorktreeWorkspace();
+    workspace.hasRootAgent({ id: "parent-agent", status: "idle" });
+    workspace.hasDelegatedAgentInWorktree({ id: "worktree-child", status: "idle" });
+    workspace.hasProviderSubagent({
+      parentAgentId: "worktree-child",
+      status: "running",
+      updatedAt: "2026-03-01T12:01:00.000Z",
+    });
+
+    await expect(workspace.workspaceStatuses()).resolves.toEqual({
+      "workspace-1": "done",
+      "workspace-worktree": "running",
+    });
+  });
+
+  test("running provider subagent contributes running to its parent workspace", async () => {
+    const workspace = new WorkspaceStatus();
+
+    workspace.hasRootAgent({ id: "parent-agent", status: "idle" });
+    workspace.hasProviderSubagent({
+      parentAgentId: "parent-agent",
+      status: "running",
+      updatedAt: "2026-03-01T12:01:00.000Z",
+    });
+
+    await expect(workspace.workspaceDescriptor()).resolves.toMatchObject({
+      status: "running",
+      statusEnteredAt: "2026-03-01T12:01:00.000Z",
+    });
   });
 
   test("running cross-workspace subagent contributes to its own workspace", async () => {
@@ -518,6 +577,8 @@ describe("WorkspaceDirectory empty projects", () => {
       projectRegistry: { list: async () => input.projects },
       workspaceRegistry: { list: async () => input.workspaces },
       listAgentPayloads: async () => [],
+      workspaceLastUserMessageTimes: async () => new Map(),
+      listProviderSubagentActivity: async () => [],
       listTerminalActivityContributions: async () => [],
       isProviderVisibleToClient: () => true,
       buildWorkspaceDescriptor: async ({ workspace }) => ({
@@ -529,7 +590,9 @@ describe("WorkspaceDirectory empty projects", () => {
         workspaceDirectory: workspace.cwd,
         projectKind: "non_git",
         workspaceKind: workspace.kind,
+        background: workspace.background,
         name: workspace.displayName,
+        ...(workspace.internal ? { background: true } : {}),
         archivingAt: null,
         status: "done",
         activityAt: null,
@@ -572,6 +635,7 @@ describe("WorkspaceDirectory empty projects", () => {
         projectDisplayName: "Renamed",
         projectCustomName: "Renamed",
         projectAppearance: null,
+        projectCustomIconRevision: null,
         projectRootPath: "/workspace/empty",
         projectKind: "non_git",
       },
@@ -602,4 +666,156 @@ describe("WorkspaceDirectory empty projects", () => {
 
     expect(result.emptyProjects.map((p) => p.projectId)).toEqual(["empty"]);
   });
+
+  test("hides background workspaces and counts their project as empty unless includeBackground", async () => {
+    const directory = makeDirectory({
+      projects: [project({ projectId: "hidden-only" })],
+      workspaces: [
+        {
+          workspaceId: "ws-internal",
+          projectId: "hidden-only",
+          cwd: "/workspace/hidden-only",
+          kind: "directory",
+          displayName: "helper",
+          createdAt: NOW,
+          updatedAt: NOW,
+          archivedAt: null,
+          background: true,
+        },
+      ],
+    });
+
+    const hidden = await directory.listFetchEntries({
+      type: "fetch_workspaces_request",
+      requestId: "r1",
+      filter: { query: "helper" },
+    });
+    expect(hidden.entries).toEqual([]);
+    expect(hidden.emptyProjects.map((p) => p.projectId)).toEqual(["hidden-only"]);
+
+    const shown = await directory.listFetchEntries({
+      type: "fetch_workspaces_request",
+      requestId: "r2",
+      filter: { includeBackground: true },
+    });
+    expect(shown.entries.map((entry) => entry.id)).toEqual(["ws-internal"]);
+    expect(shown.emptyProjects).toEqual([]);
+  });
+});
+
+test("Git observation targets exclude archived records without hydrating app descriptors", async () => {
+  const workspace = (
+    id: string,
+    projectId: string,
+    archivedAt: string | null = null,
+  ): PersistedWorkspaceRecord => ({
+    workspaceId: id,
+    projectId,
+    cwd: `/workspace/${id}`,
+    kind: "local_checkout",
+    displayName: id,
+    createdAt: NOW,
+    updatedAt: NOW,
+    archivedAt,
+  });
+  const project = (id: string, archivedAt: string | null = null): PersistedProjectRecord => ({
+    projectId: id,
+    rootPath: `/workspace/${id}`,
+    kind: "git",
+    displayName: id,
+    customName: null,
+    createdAt: NOW,
+    updatedAt: NOW,
+    archivedAt,
+  });
+  const unexpectedHydration = async (): Promise<never> => {
+    throw new Error("Watcher reconciliation hydrated app data");
+  };
+  const directory = new WorkspaceDirectory({
+    logger: createTestLogger(),
+    projectRegistry: { list: async () => [project("active"), project("archived", NOW)] },
+    workspaceRegistry: {
+      list: async () => [
+        workspace("observed", "active"),
+        workspace("hidden", "active", NOW),
+        workspace("hidden-project", "archived"),
+      ],
+    },
+    listAgentPayloads: unexpectedHydration,
+    workspaceLastUserMessageTimes: unexpectedHydration,
+    listProviderSubagentActivity: unexpectedHydration,
+    listTerminalActivityContributions: unexpectedHydration,
+    buildWorkspaceDescriptor: unexpectedHydration,
+    isProviderVisibleToClient: () => true,
+  });
+  expect(await directory.listObservationTargets()).toEqual([
+    { id: "observed", workspaceDirectory: "/workspace/observed", workspaceKind: "local_checkout" },
+  ]);
+});
+
+test("workspace sort times retain the latest human prompt after its agent is archived", async () => {
+  const scenario = new WorkspaceStatus();
+  scenario.hasRootAgent({
+    id: "older",
+    status: "idle",
+    lastUserMessageAt: "2026-03-03T12:00:00.000Z",
+  });
+  scenario.hasRootAgent({
+    id: "archived",
+    status: "idle",
+    lastUserMessageAt: "2026-03-04T12:00:00.000Z",
+    archivedAt: "2026-03-05T12:00:00.000Z",
+  });
+  scenario.hasRootAgent({ id: "output-only", status: "running" });
+  expect(await scenario.workspaceDescriptor()).toMatchObject({
+    createdAt: NOW,
+    lastUserMessageAt: "2026-03-04T12:00:00.000Z",
+    status: "running",
+  });
+});
+
+test("prompt recency reads archived records without projecting agents or exposing internal prompts", async () => {
+  const home = await mkdtemp(join(tmpdir(), "workspace-prompt-times-"));
+  const storage = new AgentStorage(home, createTestLogger());
+  try {
+    const base = {
+      provider: "unavailable",
+      cwd: home,
+      workspaceId: "w",
+      createdAt: NOW,
+      updatedAt: NOW,
+      labels: {},
+      lastStatus: "closed" as const,
+    };
+    await storage.upsert({
+      ...base,
+      id: "archived",
+      archivedAt: NOW,
+      lastUserMessageAt: "2026-03-04T00:00:00.000Z",
+    });
+    await storage.upsert({
+      ...base,
+      id: "internal",
+      internal: true,
+      lastUserMessageAt: "2026-03-05T00:00:00.000Z",
+    });
+    await storage.upsert({ ...base, id: "output", lastActivityAt: "2026-03-06T00:00:00.000Z" });
+    const unexpectedProjection = (): never => {
+      throw new Error("Prompt sorting projected an agent payload");
+    };
+    const directory = new AgentDirectory({
+      storage,
+      manager: { listAgents: () => [] },
+      workspaces: { get: async () => null, list: async () => [] },
+      projectLive: unexpectedProjection,
+      projectStored: unexpectedProjection,
+      isProviderVisible: () => false,
+      isStoredProviderAvailable: () => false,
+    });
+    expect(await directory.workspaceLastUserMessageTimes()).toEqual(
+      new Map([["w", "2026-03-04T00:00:00.000Z"]]),
+    );
+  } finally {
+    await rm(home, { recursive: true, force: true });
+  }
 });

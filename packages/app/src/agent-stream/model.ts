@@ -1,11 +1,8 @@
 import type { ReactNode } from "react";
 import { deriveStreamTurnTiming, type StreamTurnTiming } from "@/timeline/turn-time";
 import type { StreamItem } from "@/types/stream";
-import {
-  findMountedWindowStart,
-  getWebMountedRecentStreamItems,
-  getWebPartialVirtualizationThreshold,
-} from "./web-virtualization";
+import { findMountedWindowStart, getMountedRecentStreamItems } from "./history-window";
+import { getWebPartialVirtualizationThreshold } from "./web-virtualization";
 import { orderHeadForStreamRenderStrategy, orderTailForStreamRenderStrategy } from "./strategy";
 import { resolveStreamRenderStrategy } from "./strategy-resolver";
 
@@ -38,11 +35,13 @@ export interface AgentStreamRenderModel {
 }
 
 export interface BuildAgentStreamRenderModelInput {
-  agentStatus: string;
+  isTurnActive: boolean;
+  activeTurnStartedAt: Date | null;
   tail: StreamItem[];
   head: StreamItem[];
   platform: "web" | "native";
   isMobileBreakpoint: boolean;
+  historyStart?: number;
 }
 
 const EMPTY_STREAM_ITEMS: StreamItem[] = [];
@@ -58,10 +57,28 @@ const splitHistoryCache = new WeakMap<
   StreamItem[],
   Map<string, Pick<AgentStreamRenderModel, "history" | "segments">>
 >();
-const turnTimingCache = new WeakMap<
+// A streamed delta rebuilds the model with the same tail. Everything below is keyed on
+// the rendered tail's identity, so the slice has to be reused, not recomputed.
+const renderedTailCache = new WeakMap<
   StreamItem[],
-  WeakMap<StreamItem[], Map<string, StreamTurnTiming>>
+  { historyStart: number; rendered: StreamItem[] }
 >();
+
+function getRenderedTail(tail: StreamItem[], historyStart: number | undefined): StreamItem[] {
+  if (!historyStart) {
+    renderedTailCache.delete(tail);
+    return tail;
+  }
+  const cached = renderedTailCache.get(tail);
+  if (cached?.historyStart === historyStart) {
+    return cached.rendered;
+  }
+  const rendered = tail.slice(historyStart);
+  // Revealing older history replaces the previous window, allowing its arrays and
+  // downstream layouts to be collected while the unchanged source tail stays alive.
+  renderedTailCache.set(tail, { historyStart, rendered });
+  return rendered;
+}
 
 function getOrderedItems(params: {
   cache: WeakMap<StreamItem[], Map<string, StreamItem[]>>;
@@ -94,7 +111,7 @@ function splitOrderedTail(params: {
     platform === "web" &&
     !isMobileBreakpoint &&
     orderedTail.length > getWebPartialVirtualizationThreshold();
-  const cacheKey = `${platform}:${isMobileBreakpoint}:${getWebMountedRecentStreamItems()}:${shouldSplitHistory}`;
+  const cacheKey = `${platform}:${isMobileBreakpoint}:${getMountedRecentStreamItems()}:${shouldSplitHistory}`;
   let cachedByKey = splitHistoryCache.get(orderedTail);
   if (!cachedByKey) {
     cachedByKey = new Map();
@@ -120,7 +137,7 @@ function splitOrderedTail(params: {
 
   const mountedWindowStart = findMountedWindowStart({
     items: orderedTail,
-    minMountedCount: getWebMountedRecentStreamItems(),
+    minMountedCount: getMountedRecentStreamItems(),
   });
   const split = {
     history: orderedTail,
@@ -134,30 +151,6 @@ function splitOrderedTail(params: {
   return split;
 }
 
-function getTurnTiming(params: {
-  agentStatus: string;
-  tail: StreamItem[];
-  head: StreamItem[];
-}): StreamTurnTiming {
-  let cachedByHead = turnTimingCache.get(params.tail);
-  if (!cachedByHead) {
-    cachedByHead = new WeakMap();
-    turnTimingCache.set(params.tail, cachedByHead);
-  }
-  let cachedByStatus = cachedByHead.get(params.head);
-  if (!cachedByStatus) {
-    cachedByStatus = new Map();
-    cachedByHead.set(params.head, cachedByStatus);
-  }
-  const cached = cachedByStatus.get(params.agentStatus);
-  if (cached) {
-    return cached;
-  }
-  const timing = deriveStreamTurnTiming(params);
-  cachedByStatus.set(params.agentStatus, timing);
-  return timing;
-}
-
 export function buildAgentStreamRenderModel(
   input: BuildAgentStreamRenderModelInput,
 ): AgentStreamRenderModel {
@@ -166,9 +159,10 @@ export function buildAgentStreamRenderModel(
     isMobileBreakpoint: input.isMobileBreakpoint,
   });
   const orderingCacheKey = `${input.platform}:${input.isMobileBreakpoint}`;
+  const renderedTail = getRenderedTail(input.tail, input.historyStart);
   const orderedTail = getOrderedItems({
     cache: orderedTailCache,
-    source: input.tail,
+    source: renderedTail,
     cacheKey: orderingCacheKey,
     order: (items) =>
       orderTailForStreamRenderStrategy({
@@ -191,9 +185,10 @@ export function buildAgentStreamRenderModel(
     platform: input.platform,
     isMobileBreakpoint: input.isMobileBreakpoint,
   });
-  const turnTiming = getTurnTiming({
-    agentStatus: input.agentStatus,
-    tail: input.tail,
+  const turnTiming = deriveStreamTurnTiming({
+    isTurnActive: input.isTurnActive,
+    activeTurnStartedAt: input.activeTurnStartedAt,
+    tail: renderedTail,
     head: input.head,
   });
 

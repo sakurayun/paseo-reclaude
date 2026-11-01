@@ -8,6 +8,7 @@ import {
 
 function makeConfig(browserToolsEnabled = false): MutableDaemonConfig {
   return {
+    relay: { enabled: false },
     mcp: { injectIntoAgents: false },
     browserTools: { enabled: browserToolsEnabled },
     providers: {},

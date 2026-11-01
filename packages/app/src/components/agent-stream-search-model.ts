@@ -60,7 +60,7 @@ function getAgentStreamItemSearchableSegments(item: StreamItem): AgentStreamSear
     case "assistant_message":
     case "thought":
       return item.text ? getMessageSearchableSegments(item.text) : [];
-    case "activity_log":
+    case "notification":
       return item.message ? getMessageSearchableSegments(item.message) : [];
     case "tool_call":
       // Orchestrator tool calls carry opaque MCP argument/result blobs rather
@@ -68,6 +68,7 @@ function getAgentStreamItemSearchableSegments(item: StreamItem): AgentStreamSear
       return item.payload.source === "agent"
         ? getToolCallDetailSearchableSegments(item.payload.data.detail)
         : [];
+    case "plugin":
     case "todo_list":
     case "compaction":
       return [];

@@ -1,16 +1,13 @@
-import {
-  ensureSherpaOnnxModels,
-  getSherpaOnnxModelDir,
-  type ModelDownloadProgressListener,
-} from "./sherpa/model-downloader.js";
+import { ensureSherpaOnnxModels, getSherpaOnnxModelDir } from "./sherpa/model-downloader.js";
 import {
   DEFAULT_CHINESE_LOCAL_STT_MODEL,
+  resolveDefaultLocalSttModel,
   DEFAULT_LOCAL_STT_MODEL,
   DEFAULT_LOCAL_TTS_MODEL,
+  LocalSpeechModelIdSchema,
   LocalSttModelIdSchema,
   LocalTtsModelIdSchema,
   listSherpaOnnxModels,
-  resolveDefaultLocalSttModel,
   type LocalSpeechModelId,
   type LocalSttModelId,
   type LocalTtsModelId,
@@ -18,17 +15,16 @@ import {
 
 export {
   DEFAULT_CHINESE_LOCAL_STT_MODEL,
+  resolveDefaultLocalSttModel,
   DEFAULT_LOCAL_STT_MODEL,
   DEFAULT_LOCAL_TTS_MODEL,
+  LocalSpeechModelIdSchema,
   LocalSttModelIdSchema,
   LocalTtsModelIdSchema,
-  resolveDefaultLocalSttModel,
   type LocalSpeechModelId,
   type LocalSttModelId,
   type LocalTtsModelId,
 };
-
-export type { ModelDownloadProgressListener };
 
 export type LocalSpeechModelSpec = ReturnType<typeof listSherpaOnnxModels>[number];
 
@@ -44,12 +40,12 @@ export async function ensureLocalSpeechModels(options: {
   modelsDir: string;
   modelIds: LocalSpeechModelId[];
   logger: import("pino").Logger;
-  onProgress?: ModelDownloadProgressListener;
+  signal?: AbortSignal;
 }): Promise<Record<LocalSpeechModelId, string>> {
   return ensureSherpaOnnxModels({
     modelsDir: options.modelsDir,
     modelIds: options.modelIds,
     logger: options.logger,
-    onProgress: options.onProgress,
+    signal: options.signal,
   });
 }

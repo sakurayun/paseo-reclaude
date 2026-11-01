@@ -17,6 +17,8 @@ const runningDesktopDaemonStatus: DesktopDaemonStatus = {
   home: "/tmp/paseo",
   version: "1.0.0",
   desktopManaged: true,
+  ownedByDesktop: true,
+  startedAt: "2026-01-01T00:00:00.000Z",
   error: null,
 };
 
@@ -68,6 +70,7 @@ function makeHost(connections: HostProfile["connections"]): HostProfile {
     serverId: "srv",
     label: "Local",
     lifecycle: {},
+    appearance: { color: "none", badgeDisplay: null },
     connections,
     preferredConnectionId: connections[0]?.id ?? null,
     createdAt: "2026-01-01T00:00:00.000Z",

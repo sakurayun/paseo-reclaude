@@ -4,14 +4,10 @@ import {
   type ChatHistoryContextAttachment,
   type UserComposerAttachment,
 } from "@/attachments/types";
-import { isWorkspaceFileComposerAttachment } from "@/attachments/workspace-file";
-import {
-  ForgeSearchItemSchema,
-  GitHubSearchItemSchema,
-  UploadedFileAttachmentSchema,
-} from "@getpaseo/protocol/messages";
 import { buildChatHistoryAttachmentId } from "@/attachments/chat-history-identity";
 import type { StreamItem } from "@/types/stream";
+import { PluginResourceComposerAttachmentSchema } from "@/plugins/attachments";
+import { z } from "zod";
 
 export const DRAFT_STORE_VERSION = 6;
 export const FINALIZED_DRAFT_TTL_MS = 5 * 60 * 1000;
@@ -45,31 +41,124 @@ export interface DraftRecord {
   version: number;
 }
 
+export function editDraftRecordText(
+  record: DraftRecord | undefined,
+  text: string,
+  now: number,
+): DraftRecord {
+  if (record?.lifecycle === "active" && record.input.text === text) return record;
+  const attachments = record?.lifecycle === "active" ? record.input.attachments : [];
+  const transcriptAttachments =
+    record?.lifecycle === "active" ? (record.input.transcriptAttachments ?? []) : [];
+  return {
+    input: { text, attachments, transcriptAttachments },
+    lifecycle:
+      text.length > 0 || attachments.length > 0 || transcriptAttachments.length > 0
+        ? "active"
+        : "abandoned",
+    updatedAt: now,
+    version: (record?.version ?? 0) + 1,
+  };
+}
+
 export interface DraftStoreState {
   drafts: Record<string, DraftRecord>;
   createModalDraft: DraftRecord | null;
 }
 
+export const AttachmentMetadataSchema = z.strictObject({
+  id: z.string(),
+  mimeType: z.string(),
+  storageType: z.enum(["web-indexeddb", "desktop-file", "native-file"]),
+  storageKey: z.string(),
+  fileName: z.string().nullable().optional(),
+  byteSize: z.number().nullable().optional(),
+  createdAt: z.number(),
+}) satisfies z.ZodType<AttachmentMetadata>;
+export const LegacyDraftImageSchema: z.ZodType<LegacyDraftImage> = z.strictObject({
+  uri: z.string(),
+  mimeType: z.string().optional(),
+});
+const UploadedFileSchema = z.strictObject({
+  type: z.literal("uploaded_file"),
+  id: z.string(),
+  fileName: z.string(),
+  mimeType: z.string(),
+  size: z.number().int().nonnegative(),
+  path: z.string(),
+});
+const ForgeItemFields = {
+  forge: z.string().optional(),
+  number: z.number(),
+  title: z.string(),
+  url: z.string(),
+  state: z.string(),
+  body: z.string().nullable(),
+  labels: z.array(z.string()),
+  projectPath: z.string().optional(),
+  baseRefName: z.string().nullable().optional(),
+  headRefName: z.string().nullable().optional(),
+  updatedAt: z.string().optional(),
+};
+const IssueItemSchema = z.strictObject({ kind: z.literal("issue"), ...ForgeItemFields });
+const ChangeRequestItemSchema = z.strictObject({
+  kind: z.literal("change_request"),
+  ...ForgeItemFields,
+});
+export const UserComposerAttachmentSchema: z.ZodType<UserComposerAttachment> = z.discriminatedUnion(
+  "kind",
+  [
+    z.strictObject({ kind: z.literal("image"), metadata: AttachmentMetadataSchema }),
+    z.strictObject({ kind: z.literal("file"), attachment: UploadedFileSchema }),
+    z.strictObject({
+      kind: z.literal("workspace_file"),
+      path: z.string(),
+      selection: z.discriminatedUnion("kind", [
+        z.strictObject({ kind: z.literal("whole_file") }),
+        z.strictObject({
+          kind: z.literal("line_range"),
+          startLine: z.number().int().positive(),
+          endLine: z.number().int().positive(),
+        }),
+      ]),
+    }),
+    z.strictObject({ kind: z.literal("forge_issue"), item: IssueItemSchema }),
+    z.strictObject({ kind: z.literal("forge_change_request"), item: ChangeRequestItemSchema }),
+    z.strictObject({ kind: z.literal("github_issue"), item: IssueItemSchema }),
+    PluginResourceComposerAttachmentSchema,
+    z.strictObject({
+      kind: z.literal("github_pr"),
+      item: ChangeRequestItemSchema,
+      owner: z.literal(NEW_WORKSPACE_PICKER_ATTACHMENT_OWNER).optional(),
+    }),
+  ],
+);
+export const CanonicalDraftInputSchema = z.strictObject({
+  text: z.string(),
+  attachments: z.array(UserComposerAttachmentSchema),
+  transcriptAttachments: z
+    .array(z.custom<ChatHistoryContextAttachment>(isChatHistoryContextAttachment))
+    .default([]),
+  // COMPAT(draft-cwd): accept legacy persisted drafts that include cwd. Stop accepting after 2026-11-09.
+  cwd: z.string().optional(),
+});
+const DraftRecordSchema: z.ZodType<DraftRecord> = z.strictObject({
+  input: CanonicalDraftInputSchema,
+  lifecycle: z.enum(["active", "abandoned", "sent"]),
+  updatedAt: z.number(),
+  version: z.number().int().positive(),
+});
+export const DraftStoreStateSchema: z.ZodType<DraftStoreState> = z.strictObject({
+  drafts: z.record(z.string(), DraftRecordSchema),
+  createModalDraft: DraftRecordSchema.nullable(),
+});
+
 export function isAttachmentMetadata(value: unknown): value is AttachmentMetadata {
-  if (!value || typeof value !== "object") {
-    return false;
-  }
-  const record = value as Record<string, unknown>;
-  return (
-    typeof record.id === "string" &&
-    typeof record.mimeType === "string" &&
-    typeof record.storageType === "string" &&
-    typeof record.storageKey === "string" &&
-    typeof record.createdAt === "number"
-  );
+  return AttachmentMetadataSchema.safeParse(value).success;
 }
 
 export function isLegacyDraftImage(value: unknown): value is LegacyDraftImage {
-  if (!value || typeof value !== "object") {
-    return false;
-  }
-  const record = value as Record<string, unknown>;
-  return typeof record.uri === "string";
+  return LegacyDraftImageSchema.safeParse(value).success;
 }
 
 export function normalizeAttachmentMetadata(image: AttachmentMetadata): AttachmentMetadata {
@@ -89,39 +178,7 @@ export function normalizeAttachmentMetadata(image: AttachmentMetadata): Attachme
 }
 
 export function isUserComposerAttachment(value: unknown): value is UserComposerAttachment {
-  if (!value || typeof value !== "object") {
-    return false;
-  }
-  const record = value as Record<string, unknown>;
-  if (record.kind === "image") {
-    const metadata = record.metadata;
-    return isAttachmentMetadata(metadata);
-  }
-  if (record.kind === "workspace_file") {
-    return isWorkspaceFileComposerAttachment(value);
-  }
-  if (record.kind === "file") {
-    return UploadedFileAttachmentSchema.safeParse(record.attachment).success;
-  }
-  if (
-    record.kind !== "forge_issue" &&
-    record.kind !== "forge_change_request" &&
-    record.kind !== "github_issue" &&
-    record.kind !== "github_pr"
-  ) {
-    return false;
-  }
-  if (
-    record.kind === "github_pr" &&
-    record.owner !== undefined &&
-    record.owner !== NEW_WORKSPACE_PICKER_ATTACHMENT_OWNER
-  ) {
-    return false;
-  }
-  return (
-    ForgeSearchItemSchema.safeParse(record.item).success ||
-    GitHubSearchItemSchema.safeParse(record.item).success
-  );
+  return UserComposerAttachmentSchema.safeParse(value).success;
 }
 
 export function normalizeComposerAttachment(
@@ -138,19 +195,6 @@ export function normalizeComposerAttachment(
       kind: "workspace_file",
       path: attachment.path.trim().replace(/^\.\//, ""),
       selection: attachment.selection,
-    };
-  }
-  if (attachment.kind === "github_pr") {
-    const item =
-      (attachment.item as { kind: string }).kind === "pr"
-        ? { ...attachment.item, kind: "change_request" as const }
-        : attachment.item;
-    return {
-      kind: "github_pr",
-      item,
-      ...(attachment.owner === NEW_WORKSPACE_PICKER_ATTACHMENT_OWNER
-        ? { owner: attachment.owner }
-        : {}),
     };
   }
   return attachment;
@@ -289,15 +333,6 @@ export function normalizeDraftTranscriptAttachment(
   };
 }
 
-function isCanonicalDraftTranscriptAttachment(
-  value: unknown,
-): value is ChatHistoryContextAttachment {
-  if (!isChatHistoryContextAttachment(value)) {
-    return false;
-  }
-  return value.id === buildDraftTranscriptAttachmentId(value.source);
-}
-
 export function upsertDraftTranscriptAttachment(input: {
   attachments: readonly ChatHistoryContextAttachment[];
   attachment: ChatHistoryContextAttachment;
@@ -337,19 +372,9 @@ export function removeDraftTranscriptAttachment(input: {
 }
 
 export function isCanonicalDraftInput(value: unknown): value is CanonicalDraftInput {
-  if (!value || typeof value !== "object") {
-    return false;
-  }
-  const input = value as Record<string, unknown>;
-  // COMPAT(draft-cwd): accept legacy persisted drafts that include cwd. Stop accepting after 2026-11-09.
   return (
-    typeof input.text === "string" &&
-    Array.isArray(input.attachments) &&
-    input.attachments.every(isUserComposerAttachment) &&
-    Array.isArray(input.transcriptAttachments) &&
-    input.transcriptAttachments.every(isCanonicalDraftTranscriptAttachment) &&
-    new Set(input.transcriptAttachments.map((attachment) => attachment.id)).size ===
-      input.transcriptAttachments.length
+    CanonicalDraftInputSchema.safeParse(value).success &&
+    Array.isArray((value as DraftInput).transcriptAttachments)
   );
 }
 
@@ -368,7 +393,7 @@ export function toDraftInputIfReady(
   return {
     text: record.input.text,
     attachments: record.input.attachments.map(normalizeComposerAttachment),
-    transcriptAttachments: record.input.transcriptAttachments.map(
+    transcriptAttachments: (record.input.transcriptAttachments ?? []).map(
       normalizeDraftTranscriptAttachment,
     ),
   };

@@ -1,6 +1,7 @@
+import { PressHighlight } from "@/components/ui/press-highlight";
 import { useCallback, useMemo, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
-import { Pressable, Text, View, type PressableStateCallbackType } from "react-native";
+import { Text, View, type PressableStateCallbackType } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
 import type { Theme } from "@/styles/theme";
@@ -94,11 +95,11 @@ function BubbleButton({
     [],
   );
   return (
-    <Pressable onPress={onPress} style={style} accessibilityRole="button" testID={testID}>
+    <PressHighlight onPress={onPress} style={style} accessibilityRole="button" testID={testID}>
       <Text style={styles.buttonText} numberOfLines={1}>
         {label}
       </Text>
-    </Pressable>
+    </PressHighlight>
   );
 }
 

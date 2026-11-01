@@ -1,5 +1,6 @@
+import { PressHighlight } from "@/components/ui/press-highlight";
 import React, { useCallback, useEffect, useMemo, useReducer } from "react";
-import { Pressable, Text, View, type PressableStateCallbackType } from "react-native";
+import { Text, View, type PressableStateCallbackType } from "react-native";
 import { BottomSheetFlatList } from "@gorhom/bottom-sheet";
 import { useTranslation } from "react-i18next";
 import { Check, CircleAlert, History } from "lucide-react-native";
@@ -10,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import type { ChatHistoryContextAttachment } from "@/attachments/types";
 import { getChatHistorySourceKey } from "@/attachments/chat-history-identity";
-import { getProviderIcon } from "@/components/provider-icons";
+import { useProviderIcon } from "@/components/provider-icons";
 import { useAgentHistory, type AgentHistoryUnavailableHost } from "@/hooks/use-agent-history";
 import type { AggregatedAgent } from "@/hooks/use-aggregated-agents";
 import { getHostRuntimeStore } from "@/runtime/host-runtime";
@@ -42,12 +43,13 @@ const accentForegroundColorMapping = (theme: Theme) => ({ color: theme.colors.ac
 
 interface DynamicProviderIconProps {
   provider: string;
+  serverId: string;
   size: number;
   color?: string;
 }
 
-function DynamicProviderIcon({ provider, size, color = "" }: DynamicProviderIconProps) {
-  const Icon = getProviderIcon(provider);
+function DynamicProviderIcon({ provider, serverId, size, color = "" }: DynamicProviderIconProps) {
+  const Icon = useProviderIcon(provider, serverId);
   return <Icon size={size} color={color} />;
 }
 
@@ -89,10 +91,17 @@ function buildSourceMeta(agent: AggregatedAgent): string {
   return parts.join(" · ");
 }
 
-function TranscriptProviderIcon({ provider }: { provider: AggregatedAgent["provider"] }) {
+function TranscriptProviderIcon({
+  provider,
+  serverId,
+}: {
+  provider: AggregatedAgent["provider"];
+  serverId: string;
+}) {
   return (
     <ThemedDynamicProviderIcon
       provider={provider}
+      serverId={serverId}
       size={ICON_SIZE.md}
       uniProps={mutedColorMapping}
     />
@@ -147,7 +156,7 @@ function TranscriptSourceRow({
   }, [agent, toggleSource]);
 
   return (
-    <Pressable
+    <PressHighlight
       accessibilityRole="checkbox"
       accessibilityLabel={accessibilityLabel}
       accessibilityState={accessibilityState}
@@ -161,7 +170,7 @@ function TranscriptSourceRow({
         {selected ? <ThemedCheck size={12} uniProps={accentForegroundColorMapping} /> : null}
       </View>
       <View style={styles.rowIconWrap}>
-        <TranscriptProviderIcon provider={agent.provider} />
+        <TranscriptProviderIcon provider={agent.provider} serverId={agent.serverId} />
       </View>
       <View style={styles.rowContent}>
         <View style={styles.rowHeader}>
@@ -185,7 +194,7 @@ function TranscriptSourceRow({
           </Text>
         ) : null}
       </View>
-    </Pressable>
+    </PressHighlight>
   );
 }
 

@@ -1,22 +1,43 @@
 import * as pty from "node-pty";
-import xterm, { type Terminal as TerminalType } from "@xterm/headless";
+import type { Terminal as TerminalType } from "@xterm/headless";
 import { randomUUID } from "crypto";
-import { chmodSync, existsSync, mkdirSync, readFileSync, statSync } from "node:fs";
+import {
+  accessSync,
+  chmodSync,
+  constants,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  statSync,
+} from "node:fs";
 import { tmpdir, userInfo } from "node:os";
 import { basename, delimiter, dirname, extname, join, resolve as resolvePath } from "node:path";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { createExternalProcessEnv } from "../server/paseo-env.js";
+import {
+  resolveExternalProcessPath,
+  resolvePaseoCliBinDir,
+  resolvePaseoCliExecutablePath,
+} from "./paseo-cli-path.js";
 import { writePrivateFileAtomicSync } from "../server/private-files.js";
-import { findExecutable } from "../executable-resolution/executable-resolution.js";
-import type { TerminalCell, TerminalState } from "@getpaseo/protocol/messages";
+import {
+  findExecutable,
+  findExecutableWithoutProbing,
+} from "../executable-resolution/executable-resolution.js";
+import { createHeadlessTerminal } from "./headless-terminal.js";
+import { createTerminalSerializer } from "./terminal-serializer.js";
+import {
+  captureTerminalLines,
+  type CaptureTerminalLinesOptions,
+  type CaptureTerminalLinesResult,
+} from "./terminal-capture.js";
+import type { TerminalReplayOptions, TerminalReplayMetadata } from "./terminal-replay.js";
 import { TerminalInputModeTracker } from "@getpaseo/protocol/terminal-input-mode";
 import { TerminalActivityTracker } from "./activity/terminal-activity-tracker.js";
 import type { TerminalActivity, TerminalActivityState } from "@getpaseo/protocol/terminal-activity";
 
-const { Terminal } = xterm;
 const require = createRequire(import.meta.url);
-const PASEO_CLI_BIN_ENTRY = "@getpaseo/cli/bin/paseo";
 let nodePtySpawnHelperChecked = false;
 const TERMINAL_TITLE_DEBOUNCE_MS = 150;
 const TERMINAL_EXIT_OUTPUT_LINE_LIMIT = 12;
@@ -26,42 +47,30 @@ const TERMINAL_OSC_COLOR_QUERY_RESPONSES = new Map<number, string>([
   [11, "rgb:0b0b/0b0b/0b0b"],
   [12, "rgb:e6e6/e6e6/e6e6"],
 ]);
-// XTVERSION identity reported to apps that probe CSI > 0 q. Keep this honest
-// (we are not the Kitty binary); Kitty-compatible protocols still opt in via
-// TERM_PROGRAM=kitty + the client OSC/APC handlers.
-const TERMINAL_XTVERSION_NAME = "paseo";
 
 export interface TerminalExitInfo {
+  endedAt?: number;
   exitCode: number | null;
   signal: number | null;
   lastOutputLines: string[];
-  // Stamped by the daemon-side mirror when the exit event lands; the worker
-  // never sets it.
-  endedAt?: number;
+}
+
+// The field is assigned explicitly rather than declared as a constructor
+// parameter property: the terminal worker loads this module under
+// --experimental-strip-types, which erases types but cannot emit the
+// assignment a parameter property implies.
+export class TerminalCommandNotFoundError extends Error {
+  readonly command: string;
+
+  constructor(command: string) {
+    super(`${command}: command not found`);
+    this.name = "TerminalCommandNotFoundError";
+    this.command = command;
+  }
 }
 
 export interface TerminalCommandFinishedInfo {
   exitCode: number | null;
-}
-
-export interface TerminalStateSnapshot {
-  state: TerminalState;
-  revision: number;
-  // Input-mode replay preamble at snapshot time. Populated by the terminal
-  // worker so the daemon main loop doesn't have to re-derive it from output.
-  replayPreamble?: string;
-}
-
-export interface TerminalStateSnapshotOptions {
-  scrollbackLines?: number;
-  // Include per-row soft-wrap flags (gridWrapped/scrollbackWrapped) so the client
-  // can reflow restored content on resize. Gated on a client capability, so old
-  // clients never receive the extra fields.
-  includeWrapFlags?: boolean;
-}
-
-export interface TerminalSubscribeOptions {
-  initialSnapshot?: "state" | "ready";
 }
 
 export type ClientMessage =
@@ -71,7 +80,6 @@ export type ClientMessage =
 
 export type ServerMessage =
   | { type: "output"; data: string; revision?: number }
-  | { type: "snapshot"; state: TerminalState; revision?: number }
   | { type: "snapshotReady"; revision?: number; replayPreamble?: string }
   | { type: "titleChange"; title?: string };
 
@@ -86,14 +94,13 @@ export interface TerminalSession {
   cwd: string;
   workspaceId: string;
   send(msg: ClientMessage): void;
-  subscribe(listener: (msg: ServerMessage) => void, options?: TerminalSubscribeOptions): () => void;
+  subscribe(listener: (msg: ServerMessage) => void): () => void;
   onExit(listener: (info: TerminalExitInfo) => void): () => void;
   onCommandFinished(listener: (info: TerminalCommandFinishedInfo) => void): () => void;
   onTitleChange(listener: (title?: string) => void): () => void;
   onActivityChange(listener: (transition: TerminalActivityTransition) => void): () => void;
   getSize(): { rows: number; cols: number };
-  getState(): TerminalState;
-  getStateSnapshot(options?: TerminalStateSnapshotOptions): TerminalStateSnapshot;
+  hasOutput(): boolean;
   getReplayPreamble(): string;
   getTitle(): string | undefined;
   getActivity(): TerminalActivity | null;
@@ -103,6 +110,16 @@ export interface TerminalSession {
   getExitInfo(): TerminalExitInfo | null;
   kill(): void;
   killAndWait(options?: { gracefulTimeoutMs?: number; forceTimeoutMs?: number }): Promise<void>;
+}
+
+/** A session that owns its PTY in this process, so it knows the program's pid. */
+export interface LocalTerminalSession extends TerminalSession {
+  readonly pid: number;
+  serializeReplay(options?: TerminalReplayOptions): {
+    metadata: TerminalReplayMetadata;
+    data: Uint8Array;
+  };
+  captureLines(options?: CaptureTerminalLinesOptions): CaptureTerminalLinesResult;
 }
 
 function parseCommandFinishedOsc(data: string): TerminalCommandFinishedInfo | null {
@@ -124,7 +141,7 @@ function parseCommandFinishedOsc(data: string): TerminalCommandFinishedInfo | nu
 
 export interface TerminalBackendExitEvent {
   exitCode: number | null;
-  signal: number | null;
+  signal?: number | null;
 }
 
 // Byte-transport abstraction under a terminal session. The default backend is
@@ -132,6 +149,7 @@ export interface TerminalBackendExitEvent {
 // `CreateTerminalOptions.backend`. Everything above the backend (headless
 // xterm, scrollback, DA1/OSC replies, activity, title) is backend-agnostic.
 export interface TerminalBackend {
+  readonly pid?: number;
   write(data: string): void;
   resize(cols: number, rows: number): void;
   kill(signal?: NodeJS.Signals): void;
@@ -141,6 +159,8 @@ export interface TerminalBackend {
 }
 
 export interface CreateTerminalOptions {
+  windowsShell?: WindowsShellPreference;
+  backend?: TerminalBackend;
   id?: string;
   cwd: string;
   workspaceId: string;
@@ -153,12 +173,11 @@ export interface CreateTerminalOptions {
   title?: string;
   command?: string;
   args?: string[];
-  // Windows-only default-shell preferences (pwsh7 / gsudo elevation). Ignored on
-  // other platforms and when an explicit `command` is provided.
-  windowsShell?: WindowsShellPreference;
-  // When set, the terminal attaches to this transport instead of spawning a
-  // pty process (command/shell/windowsShell are ignored).
-  backend?: TerminalBackend;
+  // Environment the terminal starts from instead of this process's own. A detached terminal
+  // worker outlives the daemon that launched it, so each create carries the controlling
+  // daemon's environment and its resolved Paseo CLI path.
+  baseEnv?: Record<string, string>;
+  paseoCliPath?: string | null;
 }
 
 function toTerminalActivity(snapshot: {
@@ -180,9 +199,14 @@ function resolveInitialTitleMode(presetTitle: string | undefined): "auto" | "man
   return presetTitle?.trim() ? "manual" : "auto";
 }
 
+function isTerminalActivityInterruptInput(data: string): boolean {
+  return data === "\x03" || data === "\x1b";
+}
+
 interface BuildTerminalEnvironmentInput {
   shell: string;
   env: Record<string, string>;
+  baseEnv?: Record<string, string>;
   zshShellIntegrationDir?: string;
   paseoCliBinDir?: string | null;
   paseoHookCliPath?: string | null;
@@ -274,13 +298,81 @@ export function resolveDefaultTerminalShell(
 
 export interface ResolvedTerminalCommand {
   command: string;
-  args: string[];
+  // `.cmd`/`.bat` targets resolve to a single pre-escaped `cmd.exe` command
+  // line (string) instead of an argv array. node-pty's own array-quoting
+  // (see `argsToCommandLine` in its `windowsPtyAgent.js`) only produces
+  // MSVCRT/CommandLineToArgvW-safe quoting; cmd.exe re-parses that whole
+  // line itself afterwards and needs a different, cmd.exe-metachar-aware
+  // escape. Building that line ourselves and passing it as a string is the
+  // node-pty-documented way to bypass its array quoting for exactly this
+  // case (see the `spawn` jsdoc in node-pty's typings).
+  args: string[] | string;
 }
 
 export interface ResolveTerminalSpawnCommandOptions {
   platform?: NodeJS.Platform;
   env?: Record<string, string | undefined>;
   resolveExecutable?: (name: string) => Promise<string | null>;
+}
+
+// cmd.exe treats these characters specially even inside a double-quoted
+// argument, unlike a POSIX shell — quoting alone does not neutralize them.
+// Prefixing each with `^`, cmd.exe's own escape character, does. Mirrors the
+// `escape.command` metachar list in the `cross-spawn` npm package (already a
+// dependency of this repo), which solves this exact `.cmd`/`.bat` spawning
+// problem — see http://www.robvanderwoude.com/escapechars.php.
+const CMD_EXE_METACHAR_PATTERN = /([()%!^"`<>&|;, *?])/g;
+
+function escapeCmdExeMetaChars(text: string): string {
+  return text.replace(CMD_EXE_METACHAR_PATTERN, "^$1");
+}
+
+/**
+ * Escape one argument for safe inclusion in a `cmd.exe /c "..."` command
+ * line that is about to invoke a `.cmd`/`.bat` shim.
+ *
+ * node-pty builds an MSVCRT/`CommandLineToArgvW`-style quoted command line
+ * for whatever `command` it is given (double-quote wrap on whitespace,
+ * backslash-escape only backslash runs immediately before a quote). That
+ * quoting is correct for a normal executable, which parses its own argv via
+ * that same convention. It is not correct here: the `command` node-pty
+ * launches for a `.cmd`/`.bat` target is `cmd.exe` itself, and cmd.exe
+ * re-parses the whole line with its *own* tokenizer before ever handing
+ * arguments to the batch script — a tokenizer that treats `&`, `|`, `^`,
+ * `%` (environment-variable expansion), `<`, `>` etc. as live syntax even
+ * inside double quotes. A prompt containing any of those characters would
+ * therefore be interpreted by cmd.exe, not passed through as text — the
+ * same class of hazard tracked upstream as Node's CVE-2024-27980
+ * ("batBadBadging").
+ *
+ * The escaping below is the "qntm" algorithm (https://qntm.org/cmd): double
+ * every backslash run that immediately precedes a quote (or the end of the
+ * argument, since a closing quote is appended next) and escape that quote,
+ * wrap the whole argument in quotes, then caret-escape cmd.exe's
+ * metacharacters — including the quotes just added, because cmd.exe's own
+ * tokenizer runs first and would otherwise treat them as toggling a quoted
+ * region. It is the same algorithm `cross-spawn` uses for its `.cmd`/`.bat`
+ * auto-shell path (`lib/util/escape.js`). Command shims forward `%*`, which
+ * adds a second cmd.exe parse, so metacharacters need a second escape pass to
+ * survive as literal argv in the Node process behind an npm-generated shim.
+ *
+ * cmd.exe has no escape for a literal CR or LF inside a single command
+ * line — its parser treats them as command separators regardless of
+ * quoting, so passing one through verbatim would let a crafted prompt
+ * inject a second, attacker-chosen command after the newline. There is no
+ * fidelity-preserving option for that case, so newlines are normalized to
+ * spaces before quoting: the target process still receives the full text,
+ * just without the original line breaks, instead of cmd.exe splitting the
+ * prompt into multiple commands.
+ */
+function escapeCmdExeArgument(rawArg: string): string {
+  const arg = rawArg.replace(/\r\n|\r|\n/g, " ");
+
+  let escaped = arg.replace(/(\\*)"/g, '$1$1\\"');
+  escaped = escaped.replace(/(\\*)$/, "$1$1");
+  escaped = `"${escaped}"`;
+
+  return escapeCmdExeMetaChars(escapeCmdExeMetaChars(escaped));
 }
 
 /**
@@ -324,7 +416,21 @@ export async function resolveTerminalSpawnCommand(
   if (extension === ".cmd" || extension === ".bat") {
     const env = options.env ?? process.env;
     const comSpec = env.ComSpec || env.COMSPEC || "C:\\Windows\\System32\\cmd.exe";
-    return { command: comSpec, args: ["/c", resolved, ...args] };
+    // Build the `/c` command line ourselves — as a single pre-escaped
+    // string, not an argv array — so node-pty's own array quoting never
+    // runs over these values; see escapeCmdExeArgument for why that
+    // quoting alone is not safe once cmd.exe re-parses the line. `resolved`
+    // gets the same metachar (not quote-wrap) treatment as the args: it
+    // isn't attacker-controlled, but it now sits inside the same joined
+    // command line and needs to survive cmd.exe's tokenizer too (e.g. a
+    // space in the install path).
+    const commandLine = [
+      "/d",
+      "/s",
+      "/c",
+      `"${[escapeCmdExeMetaChars(resolved), ...args.map(escapeCmdExeArgument)].join(" ")}"`,
+    ].join(" ");
+    return { command: comSpec, args: commandLine };
   }
 
   return { command: resolved, args };
@@ -409,99 +515,10 @@ export async function resolveDefaultShellSpawn(
   return { command: shellPath, args: shellArgs };
 }
 
+export { resolvePaseoCliBinDir, resolvePaseoCliExecutablePath };
+
 export function resolveZshShellIntegrationDir(): string {
   return fileURLToPath(new URL("./shell-integration/zsh", import.meta.url));
-}
-
-function resolveExternalProcessPath(filePath: string): string {
-  return filePath.replace(/\.asar(?=[/\\]|$)/, ".asar.unpacked");
-}
-
-export function resolvePaseoCliBinDir(): string | null {
-  const cliEntrypoint = resolvePaseoCliBinEntrypoint();
-  if (!cliEntrypoint) {
-    return null;
-  }
-
-  const externalCliEntrypoint = resolveExternalProcessPath(cliEntrypoint);
-  const npmBinDir = findNpmBinDir(dirname(externalCliEntrypoint));
-  if (npmBinDir) {
-    return npmBinDir;
-  }
-
-  // The resolved entrypoint can be a phantom path (e.g. packaged builds where the
-  // CLI is not unpacked next to `require.resolve`'s result and the shim ships on
-  // PATH instead). Don't prepend a non-existent dir to PATH.
-  const fallbackDir = dirname(externalCliEntrypoint);
-  return existsSync(fallbackDir) ? fallbackDir : null;
-}
-
-export function resolvePaseoCliExecutablePath(): string | null {
-  const configuredCli = process.env.PASEO_CLI?.trim();
-  if (configuredCli) {
-    return resolvePath(configuredCli);
-  }
-
-  const cliEntrypoint = resolvePaseoCliBinEntrypoint();
-  if (!cliEntrypoint) {
-    return null;
-  }
-
-  const externalCliEntrypoint = resolveExternalProcessPath(cliEntrypoint);
-  const npmBinDir = findNpmBinDir(dirname(externalCliEntrypoint));
-  if (npmBinDir) {
-    const shim = resolvePaseoCliShim(npmBinDir);
-    if (shim) {
-      return shim;
-    }
-  }
-
-  // When the CLI isn't unpacked next to the resolved entrypoint, don't hand the
-  // shell a phantom path — returning null lets the agent hooks fall back to
-  // `${PASEO_HOOK_CLI:-paseo}`, resolving `paseo` from PATH instead.
-  return existsSync(externalCliEntrypoint) ? externalCliEntrypoint : null;
-}
-
-function resolvePaseoCliBinEntrypoint(): string | null {
-  try {
-    return require.resolve(PASEO_CLI_BIN_ENTRY);
-  } catch {
-    return null;
-  }
-}
-
-function findNpmBinDir(startPath: string): string | null {
-  let current = startPath;
-  while (true) {
-    const candidate = join(current, "node_modules", ".bin");
-    if (hasPaseoCliShim(candidate)) {
-      return candidate;
-    }
-
-    const parent = dirname(current);
-    if (parent === current) {
-      return null;
-    }
-    current = parent;
-  }
-}
-
-function hasPaseoCliShim(binDir: string): boolean {
-  return resolvePaseoCliShim(binDir) !== null;
-}
-
-function resolvePaseoCliShim(binDir: string): string | null {
-  for (const name of paseoCliShimNames()) {
-    const candidate = join(binDir, name);
-    if (existsSync(candidate)) {
-      return candidate;
-    }
-  }
-  return null;
-}
-
-function paseoCliShimNames(): string[] {
-  return process.platform === "win32" ? ["paseo.cmd", "paseo.exe", "paseo"] : ["paseo"];
 }
 
 function resolveZshShellIntegrationRuntimeDir(): string {
@@ -533,14 +550,15 @@ function prepareZshShellIntegrationRuntimeDir(sourceDir = resolveZshShellIntegra
 export function buildTerminalEnvironment(
   input: BuildTerminalEnvironmentInput,
 ): Record<string, string> {
-  const baseEnv: Record<string, string> = createExternalProcessEnv(process.env, input.env, {
-    TERM: "xterm-256color",
-    TERM_PROGRAM: "kitty",
-    // Advertise truecolor + Kitty-compatible identity for apps that probe env
-    // (icat, kitten notify, rich TUI toolkits). Keep TERM as xterm-256color so
-    // legacy terminfo lookups still succeed.
-    COLORTERM: "truecolor",
-  });
+  const baseEnv: Record<string, string> = createExternalProcessEnv(
+    input.baseEnv ?? process.env,
+    input.env,
+    {
+      TERM: "xterm-256color",
+      TERM_PROGRAM: "kitty",
+      COLORTERM: "truecolor",
+    },
+  );
   const envWithAgentHooks = prependPaseoCliToPath(
     baseEnv,
     input.paseoCliBinDir === undefined ? resolvePaseoCliBinDir() : input.paseoCliBinDir,
@@ -576,6 +594,23 @@ function injectPaseoHookCli(
   };
 }
 
+// The environment and CLI path a terminal starts from: the caller's when it sends them (the
+// daemon controlling a detached worker does), this process's otherwise.
+function resolveTerminalEnvironmentSource(
+  input: Pick<CreateTerminalOptions, "baseEnv" | "paseoCliPath">,
+): Pick<BuildTerminalEnvironmentInput, "baseEnv" | "paseoCliBinDir" | "paseoHookCliPath"> {
+  const source: Pick<
+    BuildTerminalEnvironmentInput,
+    "baseEnv" | "paseoCliBinDir" | "paseoHookCliPath"
+  > = {};
+  if (input.baseEnv) source.baseEnv = input.baseEnv;
+  if (input.paseoCliPath !== undefined) {
+    source.paseoCliBinDir = input.paseoCliPath ? dirname(input.paseoCliPath) : null;
+    source.paseoHookCliPath = input.paseoCliPath;
+  }
+  return source;
+}
+
 function prependPaseoCliToPath(
   env: Record<string, string>,
   cliBinDir: string | null,
@@ -599,175 +634,6 @@ function getPathEnvKey(env: Record<string, string>): string {
 function prependPathEntry(currentPath: string, entry: string): string {
   const entries = currentPath.split(delimiter).filter((value) => value && value !== entry);
   return [entry, ...entries].join(delimiter);
-}
-
-function extractCell(terminal: TerminalType, row: number, col: number): TerminalCell {
-  const buffer = terminal.buffer.active;
-  const line = buffer.getLine(row);
-  if (!line) {
-    return { char: " ", fg: undefined, bg: undefined };
-  }
-
-  const cell = line.getCell(col);
-  if (!cell) {
-    return { char: " ", fg: undefined, bg: undefined };
-  }
-
-  // Color modes from xterm.js: 0=DEFAULT, 1=16 colors (ANSI), 2=256 colors, 3=RGB
-  // getFgColorMode() returns packed value with mode in upper byte (e.g. 0x01000000 for mode 1)
-  const fgModeRaw = cell.getFgColorMode();
-  const bgModeRaw = cell.getBgColorMode();
-  const fgMode = fgModeRaw >> 24;
-  const bgMode = bgModeRaw >> 24;
-
-  // Only return color if not default (mode 0)
-  const fg = fgMode !== 0 ? cell.getFgColor() : undefined;
-  const bg = bgMode !== 0 ? cell.getBgColor() : undefined;
-
-  return {
-    char: cell.getChars() || " ",
-    fg,
-    bg,
-    fgMode: fgMode !== 0 ? fgMode : undefined,
-    bgMode: bgMode !== 0 ? bgMode : undefined,
-    bold: cell.isBold() !== 0,
-    italic: cell.isItalic() !== 0,
-    underline: cell.isUnderline() !== 0,
-    dim: cell.isDim() !== 0,
-    inverse: cell.isInverse() !== 0,
-    strikethrough: cell.isStrikethrough() !== 0,
-  };
-}
-
-function extractGrid(terminal: TerminalType): TerminalCell[][] {
-  const grid: TerminalCell[][] = [];
-  const buffer = terminal.buffer.active;
-  // Visible viewport starts at baseY
-  const baseY = buffer.baseY;
-
-  for (let row = 0; row < terminal.rows; row++) {
-    const rowCells: TerminalCell[] = [];
-    for (let col = 0; col < terminal.cols; col++) {
-      rowCells.push(extractCell(terminal, baseY + row, col));
-    }
-    grid.push(rowCells);
-  }
-
-  return grid;
-}
-
-function extractScrollback(
-  terminal: TerminalType,
-  options?: { scrollbackLines?: number },
-): TerminalCell[][] {
-  const scrollback: TerminalCell[][] = [];
-  const buffer = terminal.buffer.active;
-  // baseY is the first row of the visible viewport (0-indexed)
-  // Lines 0 to baseY-1 are in scrollback, lines baseY onwards are visible
-  const scrollbackLines = buffer.baseY;
-  const startRow =
-    typeof options?.scrollbackLines === "number"
-      ? Math.max(0, scrollbackLines - options.scrollbackLines)
-      : 0;
-
-  for (let row = startRow; row < scrollbackLines; row++) {
-    const rowCells: TerminalCell[] = [];
-    const line = buffer.getLine(row);
-    for (let col = 0; col < terminal.cols; col++) {
-      if (line) {
-        const cell = line.getCell(col);
-        if (cell) {
-          const fgModeRaw = cell.getFgColorMode();
-          const bgModeRaw = cell.getBgColorMode();
-          const fgMode = fgModeRaw >> 24;
-          const bgMode = bgModeRaw >> 24;
-          const fg = fgMode !== 0 ? cell.getFgColor() : undefined;
-          const bg = bgMode !== 0 ? cell.getBgColor() : undefined;
-          rowCells.push({
-            char: cell.getChars() || " ",
-            fg,
-            bg,
-            fgMode: fgMode !== 0 ? fgMode : undefined,
-            bgMode: bgMode !== 0 ? bgMode : undefined,
-            bold: cell.isBold() !== 0,
-            italic: cell.isItalic() !== 0,
-            underline: cell.isUnderline() !== 0,
-            dim: cell.isDim() !== 0,
-            inverse: cell.isInverse() !== 0,
-            strikethrough: cell.isStrikethrough() !== 0,
-          });
-        } else {
-          rowCells.push({ char: " ", fg: undefined, bg: undefined });
-        }
-      } else {
-        rowCells.push({ char: " ", fg: undefined, bg: undefined });
-      }
-    }
-    scrollback.push(rowCells);
-  }
-
-  return scrollback;
-}
-
-// xterm marks a line `isWrapped` when it is a continuation of the PREVIOUS line.
-// The snapshot carries the inverse, tmux-style flag — "this row continues onto the
-// next row" — so the client can rejoin and reflow logical lines. So row y's flag is
-// whether line y+1 is a wrapped continuation.
-function lineContinuesToNext(terminal: TerminalType, absoluteRow: number): boolean {
-  return terminal.buffer.active.getLine(absoluteRow + 1)?.isWrapped === true;
-}
-
-function extractGridWrapped(terminal: TerminalType): boolean[] {
-  const baseY = terminal.buffer.active.baseY;
-  const wrapped: boolean[] = [];
-  for (let row = 0; row < terminal.rows; row++) {
-    wrapped.push(lineContinuesToNext(terminal, baseY + row));
-  }
-  return wrapped;
-}
-
-function extractScrollbackWrapped(
-  terminal: TerminalType,
-  options?: { scrollbackLines?: number },
-): boolean[] {
-  const scrollbackLines = terminal.buffer.active.baseY;
-  const startRow =
-    typeof options?.scrollbackLines === "number"
-      ? Math.max(0, scrollbackLines - options.scrollbackLines)
-      : 0;
-  const wrapped: boolean[] = [];
-  for (let row = startRow; row < scrollbackLines; row++) {
-    wrapped.push(lineContinuesToNext(terminal, row));
-  }
-  return wrapped;
-}
-
-function extractCursorState(terminal: TerminalType): TerminalState["cursor"] {
-  const coreService = (terminal as unknown as { _core?: { coreService?: Record<string, unknown> } })
-    ._core?.coreService as
-    | {
-        decPrivateModes?: { cursorStyle?: unknown; cursorBlink?: unknown };
-        isCursorHidden?: unknown;
-      }
-    | undefined;
-  const cursorStyle = coreService?.decPrivateModes?.cursorStyle;
-  const normalizedCursorStyle =
-    cursorStyle === "block" || cursorStyle === "underline" || cursorStyle === "bar"
-      ? cursorStyle
-      : undefined;
-  const cursorBlink =
-    typeof coreService?.decPrivateModes?.cursorBlink === "boolean"
-      ? coreService.decPrivateModes.cursorBlink
-      : undefined;
-  const hidden = Boolean(coreService?.isCursorHidden);
-
-  return {
-    row: terminal.buffer.active.cursorY,
-    col: terminal.buffer.active.cursorX,
-    ...(hidden ? { hidden: true } : {}),
-    ...(normalizedCursorStyle ? { style: normalizedCursorStyle } : {}),
-    ...(typeof cursorBlink === "boolean" ? { blink: cursorBlink } : {}),
-  };
 }
 
 function normalizeProcessToken(token: string): string {
@@ -927,135 +793,65 @@ function extractLastOutputLinesFromText(text: string, limit: number): string[] {
   return lines.slice(-limit);
 }
 
-interface CreatePtyBackendInput {
-  command?: string;
-  args: string[];
-  shell?: string;
-  windowsShell?: WindowsShellPreference;
-  cwd: string;
-  workspaceId: string;
-  cols: number;
-  rows: number;
-  env: Record<string, string>;
-  activityEnv: Record<string, string>;
-}
-
-// Default terminal backend: spawns a local pty process. Extracted from
-// createTerminal so alternate transports (ssh2 shell channels) can implement
-// TerminalBackend without touching the session pipeline.
-async function createPtyBackend(input: CreatePtyBackendInput): Promise<TerminalBackend> {
-  ensureNodePtySpawnHelperExecutableForCurrentPlatform();
-
-  const { command: spawnCommand, args: spawnArgs } = input.command
-    ? await resolveTerminalSpawnCommand(input.command, input.args)
-    : await resolveDefaultShellSpawn({
-        shell: input.shell,
-        windowsShell: input.windowsShell,
-        onWarn: (message) => console.warn(`[paseo-terminal] ${message}`),
-      });
-  const ptyProcess = pty.spawn(spawnCommand, spawnArgs, {
-    name: "xterm-256color",
-    cols: input.cols,
-    rows: input.rows,
-    cwd: input.cwd,
-    env: buildTerminalEnvironment({
-      shell: spawnCommand,
-      env: {
-        ...input.env,
-        ...input.activityEnv,
-        PASEO_WORKSPACE_ID: input.workspaceId,
-      },
-    }),
-  });
-
-  let processExited = false;
-  let dataListener: ((data: string) => void) | null = null;
-  let exitListener: ((event: TerminalBackendExitEvent) => void) | null = null;
-  ptyProcess.onData((data) => {
-    dataListener?.(data);
-  });
-  ptyProcess.onExit((event) => {
-    processExited = true;
-    exitListener?.({
-      exitCode: event.exitCode ?? null,
-      signal: event.signal ?? null,
-    });
-  });
-
-  return {
-    write(data: string): void {
-      ptyProcess.write(data);
-    },
-    resize(cols: number, rows: number): void {
-      ptyProcess.resize(cols, rows);
-    },
-    kill(signal?: NodeJS.Signals): void {
-      if (process.platform === "win32") {
-        ptyProcess.kill();
-        return;
-      }
-      ptyProcess.kill(signal);
-    },
-    onData(listener: (data: string) => void): void {
-      dataListener = listener;
-    },
-    onExit(listener: (event: TerminalBackendExitEvent) => void): void {
-      exitListener = listener;
-    },
-    async waitForStart(): Promise<void> {
-      // ConPTY starts the process asynchronously; wait for a real pid on
-      // Windows so early input isn't dropped. POSIX ptys are ready at spawn.
-      if (process.platform !== "win32") {
-        return;
-      }
-      const started = (): boolean => {
-        const windowsPtyProcess = ptyProcess as unknown as WindowsPtyProcessReadiness;
-        return ptyProcess.pid > 0 || (windowsPtyProcess._agent?.innerPid ?? 0) > 0 || processExited;
-      };
-      const deadline = Date.now() + 5000;
-      while (!started() && Date.now() < deadline) {
-        await new Promise((resolve) => setTimeout(resolve, 10));
-      }
-    },
-  };
-}
-
-interface ResolveTerminalBackendContext {
-  command?: string;
-  args: string[];
-  shell?: string;
-  cwd: string;
-  workspaceId: string;
-  cols: number;
-  rows: number;
-  env: Record<string, string>;
-  activityEnv: Record<string, string>;
-}
-
-// Uses a caller-provided backend when present, else spawns the default pty
-// backend. Kept separate so createTerminal stays within its complexity budget.
-function resolveTerminalBackend(
-  options: CreateTerminalOptions,
-  context: ResolveTerminalBackendContext,
-): Promise<TerminalBackend> {
-  if (options.backend) {
-    return Promise.resolve(options.backend);
+function isExecutableFile(path: string): boolean {
+  try {
+    if (!statSync(path).isFile()) {
+      return false;
+    }
+    accessSync(path, constants.X_OK);
+    return true;
+  } catch {
+    return false;
   }
-  return createPtyBackend({
-    ...(context.command !== undefined ? { command: context.command } : {}),
-    args: context.args,
-    ...(context.shell !== undefined ? { shell: context.shell } : {}),
-    ...(options.windowsShell !== undefined ? { windowsShell: options.windowsShell } : {}),
-    cwd: context.cwd,
-    workspaceId: context.workspaceId,
-    cols: context.cols,
-    rows: context.rows,
-    env: context.env,
-    activityEnv: context.activityEnv,
-  });
 }
 
-export async function createTerminal(options: CreateTerminalOptions): Promise<TerminalSession> {
+export interface AssertTerminalCommandCanStartInput {
+  command: string | undefined;
+  // The terminal's own cwd and environment, not the daemon's: execve in the
+  // child resolves against those, so anything else produces false negatives.
+  cwd: string;
+  env: Record<string, string>;
+  platform?: NodeJS.Platform;
+}
+
+// node-pty spawns directly through execve on POSIX, with no shell, so a command
+// that does not exist fails inside the spawn helper and surfaces as exit code 1
+// with no output -- indistinguishable from `false` or any program that simply
+// failed. Resolving it up front is the only signal that separates "cannot start"
+// from "ran and exited non-zero", and it lets the create report the failure
+// instead of handing back a terminal that dies immediately. Windows keeps
+// resolving inside resolveTerminalSpawnCommand, which has its own shim handling
+// and its own fallback for an unresolved command.
+export async function assertTerminalCommandCanStart(
+  input: AssertTerminalCommandCanStartInput,
+): Promise<void> {
+  const { command, cwd, env } = input;
+  const platform = input.platform ?? process.platform;
+  if (command === undefined || platform === "win32") {
+    return;
+  }
+
+  // A path-ish command is resolved by execve against the child's cwd, never
+  // through PATH and never against the daemon's working directory.
+  if (command.includes("/")) {
+    if (isExecutableFile(resolvePath(cwd, command))) {
+      return;
+    }
+    throw new TerminalCommandNotFoundError(command);
+  }
+
+  const resolved = await findExecutableWithoutProbing(command, {
+    path: env[getPathEnvKey(env)],
+    cwd,
+  });
+  if (!resolved) {
+    throw new TerminalCommandNotFoundError(command);
+  }
+}
+
+export async function createTerminal(
+  options: CreateTerminalOptions,
+): Promise<LocalTerminalSession> {
   const {
     cwd,
     workspaceId,
@@ -1068,6 +864,8 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
     title: presetTitle,
     command,
     args = [],
+    baseEnv,
+    paseoCliPath,
   } = options;
 
   const id = options.id ?? randomUUID();
@@ -1136,27 +934,37 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
     }
   }
 
-  // Create xterm.js headless terminal
-  const terminal = new Terminal({
-    rows,
-    cols,
-    scrollback: 1000,
-    allowProposedApi: true,
+  const terminal = createHeadlessTerminal({ rows, cols, scrollback: 10000 });
+
+  const serialize = createTerminalSerializer(terminal);
+
+  ensureNodePtySpawnHelperExecutableForCurrentPlatform();
+
+  // Create PTY
+  const { command: spawnCommand, args: spawnArgs } = command
+    ? await resolveTerminalSpawnCommand(command, args)
+    : await resolveDefaultShellSpawn({ shell, env: baseEnv, windowsShell: options.windowsShell });
+  const terminalEnv = buildTerminalEnvironment({
+    shell: spawnCommand,
+    env: {
+      ...env,
+      ...activityEnv,
+      PASEO_WORKSPACE_ID: workspaceId,
+    },
+    ...resolveTerminalEnvironmentSource({ baseEnv, paseoCliPath }),
   });
 
-  // Create the byte transport — a local pty by default, or a caller-provided
-  // backend (e.g. an ssh2 shell channel).
-  const backend = await resolveTerminalBackend(options, {
-    command,
-    args,
-    shell,
-    cwd,
-    workspaceId,
-    cols,
-    rows,
-    env,
-    activityEnv,
-  });
+  if (!options.backend) await assertTerminalCommandCanStart({ command, cwd, env: terminalEnv });
+
+  const ptyProcess: TerminalBackend =
+    options.backend ??
+    pty.spawn(spawnCommand, spawnArgs, {
+      name: "xterm-256color",
+      cols,
+      rows,
+      cwd,
+      env: terminalEnv,
+    });
 
   function emitTitleChange(nextTitle: string | undefined): void {
     if (title === nextTitle) {
@@ -1212,34 +1020,10 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
   }
   emitTitleChange(initialTitle);
 
-  // Respond to DA1 queries (CSI c or CSI 0 c) — apps like nvim / img2sixel probe capabilities.
-  // Features match the client @xterm/addon-image DA1: VT220 + SIXEL + charsets + ANSI color.
-  // (Kitty / iTerm2 image protocols are advertised via TERM_PROGRAM=kitty + OSC/APC handlers
-  // on the client renderer; DA1 only has a standard bit for SIXEL.)
+  // Respond to DA1 queries (CSI c or CSI 0 c) — apps like nvim query terminal capabilities
   terminal.parser.registerCsiHandler({ final: "c" }, (params) => {
     if (params.length === 0 || (params.length === 1 && params[0] === 0)) {
-      backend.write("\x1b[?62;4;9;22c");
-      return true;
-    }
-    return false;
-  });
-  // DA2 (CSI > c / CSI > 0 c). Modern TUIs (Grok Build, etc.) probe secondary device
-  // attributes during feature negotiation. Report an xterm-compatible DA2: Pp=0
-  // (VT100 family), Pv=software version, Pc=0 (no keyboard ROM).
-  terminal.parser.registerCsiHandler({ prefix: ">", final: "c" }, (params) => {
-    if (params.length === 0 || (params.length === 1 && params[0] === 0)) {
-      backend.write("\x1b[>0;276;0c");
-      return true;
-    }
-    return false;
-  });
-  // XTVERSION (CSI > 0 q / CSI > q) → DCS > | name(version) ST.
-  // Grok Build and similar full-screen TUIs wait on this reply before enabling
-  // overlay UI (slash menus, selection boxes, sticky headers). Without a reply
-  // they time out and degrade those surfaces.
-  terminal.parser.registerCsiHandler({ prefix: ">", final: "q" }, (params) => {
-    if (params.length === 0 || (params.length === 1 && params[0] === 0)) {
-      backend.write(`\x1bP>|${TERMINAL_XTVERSION_NAME}\x1b\\`);
+      ptyProcess.write("\x1b[?62;4;22c");
       return true;
     }
     return false;
@@ -1249,12 +1033,12 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
       return false;
     }
     if (params[0] === 5) {
-      backend.write("\x1b[0n");
+      ptyProcess.write("\x1b[0n");
       return true;
     }
     if (params[0] === 6) {
       const buffer = terminal.buffer.active;
-      backend.write(`\x1b[${buffer.cursorY + 1};${buffer.cursorX + 1}R`);
+      ptyProcess.write(`\x1b[${buffer.cursorY + 1};${buffer.cursorX + 1}R`);
       return true;
     }
     return false;
@@ -1264,7 +1048,7 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
       return false;
     }
     const buffer = terminal.buffer.active;
-    backend.write(`\x1b[?${buffer.cursorY + 1};${buffer.cursorX + 1}R`);
+    ptyProcess.write(`\x1b[?${buffer.cursorY + 1};${buffer.cursorX + 1}R`);
     return true;
   });
   for (const [code, response] of TERMINAL_OSC_COLOR_QUERY_RESPONSES) {
@@ -1272,7 +1056,7 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
       if (data.trim() !== "?") {
         return false;
       }
-      backend.write(`\x1b]${code};${response}\x1b\\`);
+      ptyProcess.write(`\x1b]${code};${response}\x1b\\`);
       return true;
     });
   }
@@ -1366,6 +1150,7 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
       return;
     }
     disposed = true;
+    if (inputActivityDecayTimer) clearTimeout(inputActivityDecayTimer);
     activityTracker.clear();
     pendingInput = "";
     recentOutputChunks.length = 0;
@@ -1378,10 +1163,6 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
     clearPendingTitleChange();
     disposeTitleChangeSubscription();
     disposeCommandLifecycleSubscription.dispose();
-    if (inputActivityDecayTimer) {
-      clearTimeout(inputActivityDecayTimer);
-      inputActivityDecayTimer = null;
-    }
     activityTracker.dispose();
     terminal.dispose();
     listeners.clear();
@@ -1396,6 +1177,10 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
       if (disposed || killed) {
         return;
       }
+      // Commit protocol modes with the parsed bytes, so a replay cut cannot
+      // combine an older xterm buffer with modes from queued future output.
+      const inputModeUpdate = inputModeTracker.feed(data);
+      for (const response of inputModeUpdate.responses) ptyProcess.write(response);
       stateRevision += 1;
       for (const listener of listeners) {
         listener({ type: "output", data, revision: stateRevision });
@@ -1403,13 +1188,9 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
     });
   }
 
-  // Pipe backend output to terminal emulator
-  backend.onData((data) => {
+  // Pipe PTY output to terminal emulator
+  ptyProcess.onData((data) => {
     if (killed) return;
-    const inputModeUpdate = inputModeTracker.feed(data);
-    for (const response of inputModeUpdate.responses) {
-      backend.write(response);
-    }
     recentOutputChunks.push(data);
     recentOutputLength += data.length;
     // Drop whole leading chunks while the rest still covers the char limit, so
@@ -1431,7 +1212,7 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
     writeOutputToHeadless(data);
   });
 
-  backend.onExit((event) => {
+  ptyProcess.onExit((event) => {
     killed = true;
     processExited = true;
     for (const waiter of Array.from(processExitWaiters)) {
@@ -1451,32 +1232,35 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
     disposeResources();
   });
 
-  function getState(snapshotOptions?: TerminalStateSnapshotOptions): TerminalState {
-    return {
-      rows: terminal.rows,
-      cols: terminal.cols,
-      grid: extractGrid(terminal),
-      scrollback: extractScrollback(terminal, {
-        scrollbackLines: snapshotOptions?.scrollbackLines,
-      }),
-      cursor: extractCursorState(terminal),
-      ...(title ? { title } : {}),
-      ...(snapshotOptions?.includeWrapFlags
-        ? {
-            gridWrapped: extractGridWrapped(terminal),
-            scrollbackWrapped: extractScrollbackWrapped(terminal, {
-              scrollbackLines: snapshotOptions?.scrollbackLines,
-            }),
-          }
-        : {}),
+  async function waitForPtyProcessStart(): Promise<void> {
+    if (options.backend) {
+      await options.backend.waitForStart?.();
+      return;
+    }
+    if (process.platform !== "win32") return;
+
+    const started = (): boolean => {
+      const windowsPtyProcess = ptyProcess as unknown as WindowsPtyProcessReadiness;
+      return (
+        (ptyProcess.pid ?? 0) > 0 || (windowsPtyProcess._agent?.innerPid ?? 0) > 0 || processExited
+      );
     };
+
+    const deadline = Date.now() + 5000;
+    while (!started() && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
   }
 
-  function getStateSnapshot(snapshotOptions?: TerminalStateSnapshotOptions): TerminalStateSnapshot {
-    return {
-      state: getState(snapshotOptions),
+  function serializeReplay(replayOptions?: TerminalReplayOptions) {
+    const metadata = {
+      rows: terminal.rows,
+      cols: terminal.cols,
+      retainedHistoryLines: terminal.buffer.normal.baseY,
       revision: stateRevision,
+      replayPreamble: getReplayPreamble(),
     };
+    return { metadata, data: serialize(replayOptions) };
   }
 
   function getSize(): { rows: number; cols: number } {
@@ -1491,7 +1275,7 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
   }
 
   function writeInputToPty(data: string): void {
-    backend.write(data);
+    ptyProcess.write(data);
   }
 
   function flushPendingInput(): void {
@@ -1522,15 +1306,18 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
 
     switch (msg.type) {
       case "input": {
+        if (isTerminalActivityInterruptInput(msg.data)) {
+          activityTracker.interrupt();
+        }
+        if (!isTerminalActivityInterruptInput(msg.data)) markInputActivity();
         pendingInput += msg.data;
         scheduleInputFlush();
-        markInputActivity();
         break;
       }
       case "resize":
         flushPendingInput();
         terminal.resize(msg.cols, msg.rows);
-        backend.resize(msg.cols, msg.rows);
+        ptyProcess.resize(msg.cols, msg.rows);
         stateRevision += 1;
         break;
       case "mouse":
@@ -1540,14 +1327,10 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
     }
   }
 
-  function subscribe(
-    listener: (msg: ServerMessage) => void,
-    subscribeOptions?: TerminalSubscribeOptions,
-  ): () => void {
+  function subscribe(listener: (msg: ServerMessage) => void): () => void {
     let active = true;
     let snapshotDelivered = false;
     const queuedMessages: ServerMessage[] = [];
-    const initialSnapshot = subscribeOptions?.initialSnapshot ?? "state";
     const subscriptionListener = (msg: ServerMessage): void => {
       if (!active) {
         return;
@@ -1564,17 +1347,11 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
     terminal.write("", () => {
       if (!disposed && active && listeners.has(subscriptionListener)) {
         snapshotDelivered = true;
-        if (initialSnapshot === "ready") {
-          // Carry the input-mode preamble so the snapshot-less "ready" path
-          // (live restore) can replay it without a separate state fetch.
-          listener({
-            type: "snapshotReady",
-            revision: stateRevision,
-            replayPreamble: getReplayPreamble(),
-          });
-        } else {
-          listener({ type: "snapshot", ...getStateSnapshot() });
-        }
+        listener({
+          type: "snapshotReady",
+          revision: stateRevision,
+          replayPreamble: getReplayPreamble(),
+        });
         for (const message of queuedMessages.splice(0)) {
           listener(message);
         }
@@ -1677,7 +1454,11 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
   }
 
   function killPtyProcess(signal?: NodeJS.Signals): void {
-    backend.kill(signal);
+    if (process.platform === "win32") {
+      ptyProcess.kill();
+      return;
+    }
+    ptyProcess.kill(signal);
   }
 
   function waitForProcessExit(timeoutMs: number): Promise<boolean> {
@@ -1732,17 +1513,18 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
       await waitForProcessExit(forceTimeoutMs);
     }
 
-    // Finalize bookkeeping (idempotent if backend.onExit already fired).
+    // Finalize bookkeeping (idempotent if ptyProcess.onExit already fired).
     kill();
   }
 
-  await backend.waitForStart?.();
+  await waitForPtyProcessStart();
 
   // Small delay to let shell initialize
   await new Promise((resolve) => setTimeout(resolve, 50));
 
   return {
     id,
+    pid: ptyProcess.pid ?? 0,
     name,
     cwd,
     workspaceId,
@@ -1753,8 +1535,15 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
     onTitleChange,
     onActivityChange,
     getSize,
-    getState,
-    getStateSnapshot,
+    serializeReplay,
+    captureLines: (captureOptions) => captureTerminalLines(terminal.buffer.active, captureOptions),
+    hasOutput: () => {
+      const buffer = terminal.buffer.active;
+      for (let row = 0; row < buffer.length; row++) {
+        if (buffer.getLine(row)?.translateToString(true).trim()) return true;
+      }
+      return false;
+    },
     getReplayPreamble,
     getTitle,
     getActivity,

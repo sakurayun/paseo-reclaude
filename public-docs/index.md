@@ -8,13 +8,13 @@ category: Getting started
 
 # Getting started
 
-Paseo runs your coding agents on your machine and gives you a mobile, desktop, web, and CLI client to drive them from anywhere. Three common ways to install.
+Paseo is an agentic development environment for running coding agents, editing files, reviewing changes, and testing your work. Agents run on your machines; desktop, mobile, web, and CLI clients let you work from anywhere. Choose how to install it below.
 
 ## Desktop app (recommended)
 
 Download from [paseo.sh/download](https://paseo.sh/download) or the [GitHub releases page](https://github.com/getpaseo/paseo/releases). Open it and you're done.
 
-The desktop app bundles its own daemon and starts it automatically, no separate install required. On first launch you'll see a brief startup screen, then connect from your phone using **Settings → your host → Connections → Pair a device**.
+The desktop app bundles its own daemon and starts it automatically, no separate install required. On first launch you'll see a brief startup screen, then connect from your phone using **Settings → your host → Pair Device**.
 
 ## Server / CLI
 
@@ -25,7 +25,7 @@ npm install -g @getpaseo/cli
 paseo
 ```
 
-Paseo prints a QR code in the terminal. Scan it from the mobile app, or enter the daemon address manually from another client.
+Paseo starts the daemon locally, then asks whether to enable the end-to-end encrypted relay and print a pairing QR code. If you decline, enter the daemon address manually over TCP, Tailscale, or another VPN.
 
 The daemon can also serve the browser web app itself, so you can use the full UI without the hosted app. See [Self-hosting the web UI](/docs/web-ui).
 
@@ -50,10 +50,13 @@ The image runs the daemon and serves the bundled web UI. It does not bundle agen
 
 ## Where next
 
+- [Run parallel tasks](/docs/parallel-development), use separate worktrees, review diffs, and test changes in the desktop app.
+- [Connectivity](/docs/connectivity), connect through the relay or Tailscale.
 - [Docker](/docs/docker), run the daemon and bundled web UI in a container.
 - [Workspaces](/docs/workspaces), the project, workspace, and session model Paseo is built around.
 - [Providers](/docs/providers), what a provider is and how Paseo wraps existing CLIs.
 - [Orchestration](/docs/orchestration), let one agent delegate work to other providers and models.
+- [Plugins](/docs/plugins), add trusted local surfaces, sidebar actions, daemon behavior, and composer attachments.
 - [CLI reference](/docs/cli), every command.
 - [Self-hosting the web UI](/docs/web-ui), serve the browser app from your own daemon.
 - [GitHub repo](https://github.com/getpaseo/paseo)

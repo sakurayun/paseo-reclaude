@@ -1,0 +1,459 @@
+import { randomUUID } from "node:crypto";
+import { mkdir, mkdtemp, rm, stat } from "node:fs/promises";
+import { homedir, tmpdir } from "node:os";
+import path from "node:path";
+import { test, expect } from "../support/fixtures";
+import {
+  addProjectFlow,
+  addProjectFlowBack,
+  addProjectFlowHost,
+  addProjectFlowInput,
+  addProjectFlowMethod,
+  chooseAddProjectMethod,
+  expectAddProjectPage,
+  expectNewWorkspaceForAddedProject,
+  expectAddProjectResultVisible,
+  navigateAddProjectResults,
+  openAddProjectFlow,
+  openAddProjectHostSelection,
+} from "../support/helpers/add-project-flow";
+import { gotoAppShell } from "../support/helpers/app";
+import {
+  addConnectedHostAndReload,
+  addConnectedHostsAndReload,
+  addOfflineHostAndReload,
+  waitForConnectedHost,
+} from "../support/helpers/hosts";
+import {
+  type IsolatedHostDaemon,
+  startIsolatedHostDaemon,
+} from "../support/helpers/isolated-host-daemon";
+import { expectOpenedProject } from "../support/helpers/project-picker-ui";
+import { connectSeedClient } from "../support/helpers/seed-client";
+import { getServerId } from "../support/helpers/server-id";
+
+const SECONDARY_HOST_ID = "add-project-flow-secondary";
+const SECONDARY_HOST_LABEL = "Secondary Host";
+
+async function expectProjectDirectory(pathname: string): Promise<void> {
+  await expect.poll(async () => (await stat(pathname)).isDirectory()).toBe(true);
+}
+
+async function removeCreatedProject(
+  pathname: string,
+  knownProjectId: string | null,
+): Promise<void> {
+  const client = await connectSeedClient();
+  try {
+    let projectId = knownProjectId;
+    if (!projectId) {
+      const result = await client.addProject(pathname);
+      projectId = result.project?.projectId ?? null;
+    }
+    if (projectId) await client.removeProject(projectId).catch(() => undefined);
+  } finally {
+    await client.close();
+  }
+}
+
+async function expectProjectHasNoWorkspaces(projectId: string): Promise<void> {
+  const client = await connectSeedClient();
+  try {
+    const result = await client.fetchWorkspaces({ filter: { projectId } });
+    expect(result.entries).toEqual([]);
+  } finally {
+    await client.close();
+  }
+}
+
+test.describe("Add Project command-center flow", () => {
+  test.describe.configure({ timeout: 180_000 });
+
+  test("method selection shows the daemon's available project sources without search", async ({
+    page,
+  }) => {
+    await gotoAppShell(page);
+
+    await openAddProjectFlow(page);
+
+    await expect(addProjectFlowMethod(page, "directory-search")).toBeVisible();
+    await expect(addProjectFlowMethod(page, "github")).toContainText("Clone from GitHub");
+    await expect(addProjectFlowMethod(page, "new-directory")).toContainText("New directory");
+    await expect(addProjectFlowInput(page)).toHaveCount(0);
+    await expect(addProjectFlow(page).getByRole("textbox")).toHaveCount(0);
+    await expect(page.getByTestId("add-project-flow-page-host")).toHaveCount(0);
+  });
+
+  test("an offline extra host neither appears nor forces host selection", async ({ page }) => {
+    await gotoAppShell(page);
+    await addOfflineHostAndReload(page, {
+      serverId: "add-project-flow-offline",
+      label: "Offline Host",
+    });
+
+    await openAddProjectFlow(page);
+
+    await expect(addProjectFlowHost(page, "add-project-flow-offline")).toHaveCount(0);
+    await expect(addProjectFlowMethod(page, "directory-search")).toBeVisible();
+  });
+
+  test.describe("with two connected hosts", () => {
+    let secondaryHost: IsolatedHostDaemon;
+
+    test.beforeAll(async () => {
+      secondaryHost = await startIsolatedHostDaemon(SECONDARY_HOST_ID);
+    });
+
+    test.afterAll(async () => {
+      await secondaryHost?.close();
+    });
+
+    test("keyboard selection chooses the second host", async ({ page }) => {
+      await gotoAppShell(page);
+      await addConnectedHostAndReload(page, {
+        serverId: secondaryHost.serverId,
+        label: SECONDARY_HOST_LABEL,
+        port: secondaryHost.port,
+      });
+      await waitForConnectedHost(page, {
+        serverId: SECONDARY_HOST_ID,
+        endpoint: `localhost:${secondaryHost.port}`,
+      });
+      await openAddProjectHostSelection(page);
+
+      await page.keyboard.press("ArrowDown");
+      await page.keyboard.press("Enter");
+
+      await expectAddProjectPage(page, "method");
+      await expect(addProjectFlow(page)).toContainText(SECONDARY_HOST_LABEL);
+    });
+
+    test("Escape and Back restore searchable page input before closing at the root", async ({
+      page,
+    }) => {
+      await gotoAppShell(page);
+      await addConnectedHostAndReload(page, {
+        serverId: secondaryHost.serverId,
+        label: SECONDARY_HOST_LABEL,
+        port: secondaryHost.port,
+      });
+      await waitForConnectedHost(page, {
+        serverId: SECONDARY_HOST_ID,
+        endpoint: `localhost:${secondaryHost.port}`,
+      });
+      await openAddProjectHostSelection(page);
+
+      await addProjectFlowInput(page).fill("o");
+      await page.keyboard.press("ArrowDown");
+      await page.keyboard.press("Enter");
+      await expectAddProjectPage(page, "method");
+
+      await chooseAddProjectMethod(page, "new-directory");
+      await expectAddProjectPage(page, "new-directory-parent");
+      await page.keyboard.press("Escape");
+
+      await expectAddProjectPage(page, "method");
+      await expect(addProjectFlowInput(page)).toHaveCount(0);
+      await chooseAddProjectMethod(page, "new-directory");
+      await expectAddProjectPage(page, "new-directory-parent");
+      await addProjectFlowBack(page).click();
+
+      await expectAddProjectPage(page, "method");
+      await addProjectFlowBack(page).click();
+      await expectAddProjectPage(page, "host");
+      await expect(addProjectFlowInput(page)).toHaveValue("o");
+      await page.keyboard.press("Enter");
+      await expectAddProjectPage(page, "method");
+      await expect(addProjectFlow(page)).toContainText(SECONDARY_HOST_LABEL);
+
+      await page.keyboard.press("Escape");
+      await expectAddProjectPage(page, "host");
+      await page.keyboard.press("Escape");
+      await expect(addProjectFlow(page)).not.toBeVisible();
+    });
+
+    test("New directory creates a Project on the selected remote host", async ({ page }) => {
+      const parentDirectory = await mkdtemp(path.join(tmpdir(), "paseo-e2e-remote-project-"));
+      const directoryName = `remote-${randomUUID().slice(0, 8)}`;
+      const directoryPath = path.join(parentDirectory, directoryName);
+
+      try {
+        await gotoAppShell(page);
+        await addConnectedHostAndReload(page, {
+          serverId: secondaryHost.serverId,
+          label: SECONDARY_HOST_LABEL,
+          port: secondaryHost.port,
+        });
+        await waitForConnectedHost(page, {
+          serverId: SECONDARY_HOST_ID,
+          endpoint: `localhost:${secondaryHost.port}`,
+        });
+        await openAddProjectHostSelection(page);
+        await addProjectFlowHost(page, SECONDARY_HOST_ID).click();
+        await expectAddProjectPage(page, "method");
+
+        await expect(addProjectFlowMethod(page, "new-directory")).toContainText(
+          `Create an empty directory on ${SECONDARY_HOST_LABEL}`,
+        );
+        await chooseAddProjectMethod(page, "new-directory");
+        await addProjectFlowInput(page).fill(parentDirectory);
+        await page.keyboard.press("Enter");
+        await expectAddProjectPage(page, "new-directory-name");
+        await page.keyboard.type(directoryName);
+        await page.keyboard.press("Enter");
+
+        const projectId = await expectOpenedProject(page, directoryName);
+        await expectNewWorkspaceForAddedProject(page, {
+          serverId: SECONDARY_HOST_ID,
+          projectId,
+          projectName: directoryName,
+          projectPath: directoryPath,
+        });
+        await expect(page.getByTestId("host-picker-trigger")).toContainText(SECONDARY_HOST_LABEL);
+        await expectProjectDirectory(directoryPath);
+      } finally {
+        await rm(parentDirectory, { recursive: true, force: true });
+      }
+    });
+  });
+
+  test("filtered hosts keep the keyboard-selected row visible", async ({ page }) => {
+    const hosts: IsolatedHostDaemon[] = [];
+    try {
+      for (let index = 1; index <= 3; index += 1) {
+        hosts.push(await startIsolatedHostDaemon(`scroll-host-${index}`));
+      }
+      await page.setViewportSize({ width: 1280, height: 360 });
+      await gotoAppShell(page);
+      await addConnectedHostsAndReload(
+        page,
+        hosts.map((host, index) => ({
+          serverId: host.serverId,
+          port: host.port,
+          label: index < 2 ? `Fleet 0${index + 1}` : "Other host",
+        })),
+        { primaryLabel: "Fleet 00" },
+      );
+      for (const host of hosts) {
+        await waitForConnectedHost(page, {
+          serverId: host.serverId,
+          endpoint: `localhost:${host.port}`,
+        });
+      }
+      await openAddProjectHostSelection(page);
+      await expect(
+        addProjectFlow(page).getByRole("button").filter({ hasText: "Other host" }),
+      ).toBeVisible();
+
+      await addProjectFlowInput(page).fill("Fleet");
+      await expect(addProjectFlowHost(page, hosts[2]!.serverId)).toHaveCount(0);
+      await navigateAddProjectResults(page, "ArrowDown", 2);
+      await expectAddProjectResultVisible(page, "Fleet 02");
+
+      // Filtering out the first host moves retained rows to new positions.
+      await addProjectFlowInput(page).fill("scroll-host");
+      await expect(addProjectFlowHost(page, getServerId())).toHaveCount(0);
+      await expectAddProjectResultVisible(page, "Fleet 01");
+      await navigateAddProjectResults(page, "ArrowDown", 2);
+      await expectAddProjectResultVisible(page, "Other host");
+      await navigateAddProjectResults(page, "ArrowDown", 1);
+      await expectAddProjectResultVisible(page, "Fleet 01");
+
+      await addProjectFlowInput(page).fill("Fleet");
+      await expectAddProjectResultVisible(page, "Fleet 00");
+      await navigateAddProjectResults(page, "ArrowDown", 2);
+      await expectAddProjectResultVisible(page, "Fleet 02");
+      await page.keyboard.press("Enter");
+      await expectAddProjectPage(page, "method");
+      await expect(addProjectFlow(page)).toContainText("Fleet 02");
+    } finally {
+      await Promise.all(hosts.map((host) => host.close()));
+    }
+  });
+
+  test("keyboard directory search adds the selected Project", async ({
+    page,
+    projectPickerFixture,
+  }) => {
+    await gotoAppShell(page);
+    await openAddProjectFlow(page);
+
+    await page.keyboard.press("Enter");
+    await expectAddProjectPage(page, "directory-search");
+    await expect(addProjectFlowInput(page)).toBeFocused();
+    await page.keyboard.type(projectPickerFixture.fuzzyQuery);
+    await expect(addProjectFlow(page)).toContainText(projectPickerFixture.projectName, {
+      timeout: 30_000,
+    });
+    await page.keyboard.press("Enter");
+
+    const projectId = await expectOpenedProject(page, projectPickerFixture.projectName);
+    projectPickerFixture.rememberProjectId(projectId);
+    await expectNewWorkspaceForAddedProject(page, {
+      serverId: getServerId(),
+      projectId,
+      projectName: projectPickerFixture.projectName,
+      projectPath: projectPickerFixture.projectPath,
+    });
+    await expectProjectHasNoWorkspaces(projectId);
+  });
+
+  test("keyboard navigation keeps the selected row inside the visible results", async ({
+    page,
+  }) => {
+    const parentDirectory = await mkdtemp(path.join(homedir(), "paseo-e2e-scroll-"));
+    const rowPath = (index: number) =>
+      path.join(parentDirectory, `scroll-probe-${String(index).padStart(2, "0")}`);
+    let projectId: string | null = null;
+    try {
+      await Promise.all(Array.from({ length: 16 }, (_, index) => mkdir(rowPath(index))));
+      await gotoAppShell(page);
+      await openAddProjectFlow(page);
+      await chooseAddProjectMethod(page, "directory-search");
+      await addProjectFlowInput(page).fill(path.basename(parentDirectory));
+      const results = page.getByTestId("add-project-flow-results");
+      await expect(results.getByRole("button", { name: /scroll-probe-/ })).toHaveCount(16, {
+        timeout: 30_000,
+      });
+
+      await navigateAddProjectResults(page, "ArrowDown", 12);
+      await expectAddProjectResultVisible(page, rowPath(11));
+      await navigateAddProjectResults(page, "ArrowUp", 12);
+      await expectAddProjectResultVisible(page, parentDirectory);
+      await navigateAddProjectResults(page, "ArrowUp", 1);
+      await expectAddProjectResultVisible(page, rowPath(15));
+      await navigateAddProjectResults(page, "ArrowDown", 1);
+      await expectAddProjectResultVisible(page, parentDirectory);
+
+      await navigateAddProjectResults(page, "ArrowDown", 12);
+      await expectAddProjectResultVisible(page, rowPath(11));
+      await addProjectFlowInput(page).fill(`${path.basename(parentDirectory)}probe`);
+      await expect(results.getByRole("button")).toHaveCount(16);
+      await expectAddProjectResultVisible(page, rowPath(0));
+      await navigateAddProjectResults(page, "ArrowDown", 12);
+      await expectAddProjectResultVisible(page, rowPath(12));
+      await addProjectFlowInput(page).fill(path.basename(parentDirectory));
+      await expect(results.getByRole("button")).toHaveCount(17);
+      await expectAddProjectResultVisible(page, parentDirectory);
+      await navigateAddProjectResults(page, "ArrowDown", 12);
+      await expectAddProjectResultVisible(page, rowPath(11));
+      await page.keyboard.press("Enter");
+      projectId = await expectOpenedProject(page, "scroll-probe-11");
+      await expectNewWorkspaceForAddedProject(page, {
+        serverId: getServerId(),
+        projectId,
+        projectName: "scroll-probe-11",
+        projectPath: rowPath(11),
+      });
+    } finally {
+      if (projectId) await removeCreatedProject(rowPath(11), projectId);
+      await rm(parentDirectory, { recursive: true, force: true });
+    }
+  });
+
+  test("a complete repository URL remains selectable without a GitHub search result", async ({
+    page,
+  }) => {
+    await gotoAppShell(page);
+    await openAddProjectFlow(page);
+    await chooseAddProjectMethod(page, "github");
+
+    const remote = "https://github.invalid/acme/manual.git";
+    await addProjectFlowInput(page).fill(remote);
+    await expect(addProjectFlow(page).getByText("manual", { exact: true })).toBeVisible();
+    await page.keyboard.press("Enter");
+
+    await expectAddProjectPage(page, "github-location");
+    const title = addProjectFlow(page).getByTestId("add-project-flow-title");
+    await expect(title.getByText("Choose destination", { exact: true })).toBeVisible();
+    await expect(title.getByText("localhost", { exact: true })).toBeVisible();
+    await expect(title).not.toContainText("Where should Paseo create");
+    await addProjectFlowBack(page).click();
+    await expect(addProjectFlowInput(page)).toHaveValue(remote);
+  });
+
+  test("New directory validates the name, restores parent and name state, then creates a Project", async ({
+    page,
+  }) => {
+    const parentDirectory = await mkdtemp(path.join(tmpdir(), "paseo-e2e-new-project-"));
+    const directoryName = `created-${randomUUID().slice(0, 8)}`;
+    const directoryPath = path.join(parentDirectory, directoryName);
+    let projectId: string | null = null;
+
+    try {
+      await gotoAppShell(page);
+      await openAddProjectFlow(page);
+      await chooseAddProjectMethod(page, "new-directory");
+
+      await page.keyboard.type(parentDirectory);
+      await page.keyboard.press("Enter");
+      await expectAddProjectPage(page, "new-directory-name");
+      await page.keyboard.type("../invalid");
+      await page.keyboard.press("Enter");
+
+      const error = page.getByTestId("add-project-flow-error");
+      await expect(error).toBeVisible();
+      await expect(error).toContainText(/name|separator|directory/i);
+      await expectAddProjectPage(page, "new-directory-name");
+
+      await addProjectFlowInput(page).fill(directoryName);
+      await addProjectFlowBack(page).click();
+      await expectAddProjectPage(page, "new-directory-parent");
+      await expect(addProjectFlowInput(page)).toHaveValue(parentDirectory);
+      await page.keyboard.press("Enter");
+      await expectAddProjectPage(page, "new-directory-name");
+      await expect(addProjectFlowInput(page)).toHaveValue(directoryName);
+      await page.keyboard.press("Enter");
+
+      projectId = await expectOpenedProject(page, directoryName);
+      await expectNewWorkspaceForAddedProject(page, {
+        serverId: getServerId(),
+        projectId,
+        projectName: directoryName,
+        projectPath: directoryPath,
+      });
+      await expectProjectHasNoWorkspaces(projectId);
+      await expectProjectDirectory(directoryPath);
+    } finally {
+      await removeCreatedProject(directoryPath, projectId).catch(() => undefined);
+      await rm(parentDirectory, { recursive: true, force: true });
+    }
+  });
+});
+
+test.describe("Compact Add project context", () => {
+  test.use({ viewport: { width: 390, height: 844 } });
+  test("canceling Add project preserves the sidebar", async ({ page }) => {
+    await gotoAppShell(page);
+    await page.getByRole("button", { name: "Open menu", exact: true }).click();
+    await openAddProjectFlow(page);
+    await page.keyboard.press("Escape");
+    await expect(addProjectFlow(page)).not.toBeVisible();
+    await expect(page.getByRole("button", { name: "Close menu", exact: true })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+    await expect(page.getByTestId("sidebar-search")).toBeVisible();
+  });
+  test("successful Add project reveals the new workspace page", async ({
+    page,
+    projectPickerFixture,
+  }) => {
+    await gotoAppShell(page);
+    await page.getByRole("button", { name: "Open menu", exact: true }).click();
+    await openAddProjectFlow(page);
+    await chooseAddProjectMethod(page, "directory-search");
+    await addProjectFlowInput(page).fill(projectPickerFixture.fuzzyQuery);
+    await expect(addProjectFlow(page)).toContainText(projectPickerFixture.projectName);
+    await page.keyboard.press("Enter");
+    const projectId = await expectOpenedProject(page, projectPickerFixture.projectName);
+    projectPickerFixture.rememberProjectId(projectId);
+    await expectNewWorkspaceForAddedProject(page, {
+      serverId: getServerId(),
+      projectId,
+      projectName: projectPickerFixture.projectName,
+      projectPath: projectPickerFixture.projectPath,
+    });
+    await expect(page.getByRole("button", { name: "Open menu", exact: true })).toBeVisible();
+  });
+});

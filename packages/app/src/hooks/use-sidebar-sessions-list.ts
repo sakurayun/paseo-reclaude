@@ -67,6 +67,7 @@ export function useSidebarSessionsList(serverId: string | null): SidebarSessions
           serverId: agent.serverId,
           title: agent.title ?? null,
           status: agent.status,
+          turn: agent.turn,
           lastActivityAt: agent.lastActivityAt,
           cwd: agent.cwd,
           workspaceId: agent.workspaceId,

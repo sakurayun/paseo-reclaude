@@ -6,7 +6,7 @@
  * `provider_quota` WebSocket message to all connected clients.
  */
 
-import { existsSync, promises as fs } from "node:fs";
+import { promises as fs } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { execFile } from "node:child_process";
@@ -96,7 +96,13 @@ export class ClaudeQuotaProvider implements QuotaProvider {
 
   async fetch(): Promise<ProviderQuotaMessage["payload"]["claude"]> {
     const credPath = join(this.claudeHome, ".credentials.json");
-    if (!existsSync(credPath)) return undefined;
+    if (
+      !(await fs.access(credPath).then(
+        () => true,
+        () => false,
+      ))
+    )
+      return undefined;
 
     const raw = await fs.readFile(credPath, "utf8");
     const creds: ClaudeCredentials = JSON.parse(raw);
@@ -274,7 +280,13 @@ export class CodexQuotaProvider implements QuotaProvider {
       join(this.codexHome, "auth.json"),
     ];
     for (const p of candidates) {
-      if (!existsSync(p)) continue;
+      if (
+        !(await fs.access(p).then(
+          () => true,
+          () => false,
+        ))
+      )
+        continue;
       try {
         const raw = await fs.readFile(p, "utf8");
         const auth = JSON.parse(raw) as CodexAuth;
@@ -327,7 +339,13 @@ export class CodexQuotaProvider implements QuotaProvider {
       join(this.codexHome, "auth.json"),
     ];
     for (const p of candidates) {
-      if (!existsSync(p)) continue;
+      if (
+        !(await fs.access(p).then(
+          () => true,
+          () => false,
+        ))
+      )
+        continue;
       try {
         const updated: CodexAuth = {
           ...original,
@@ -355,7 +373,13 @@ async function readGithubCliToken(): Promise<string | null> {
   candidates.push(join(homedir(), ".config", "gh", "hosts.yml"));
 
   for (const p of candidates) {
-    if (!existsSync(p)) continue;
+    if (
+      !(await fs.access(p).then(
+        () => true,
+        () => false,
+      ))
+    )
+      continue;
     try {
       const raw = await fs.readFile(p, "utf8");
       const match = raw.match(/oauth_token:\s*["']?([a-zA-Z0-9_-]+)["']?/);
@@ -387,7 +411,13 @@ async function readCursorTokenFromSqlite(): Promise<string | null> {
   dbPaths.push(join(homedir(), ".config", "Cursor", "User", "globalStorage", "state.vscdb"));
 
   for (const p of dbPaths) {
-    if (!existsSync(p)) continue;
+    if (
+      !(await fs.access(p).then(
+        () => true,
+        () => false,
+      ))
+    )
+      continue;
     try {
       const { stdout } = await execFileAsync("sqlite3", [
         p,
@@ -649,7 +679,13 @@ export class KimiQuotaProvider implements QuotaProvider {
 
   private async readKimiToken(): Promise<string | null> {
     const p = join(homedir(), ".kimi", "credentials", "kimi-code.json");
-    if (!existsSync(p)) return null;
+    if (
+      !(await fs.access(p).then(
+        () => true,
+        () => false,
+      ))
+    )
+      return null;
     try {
       const raw = await fs.readFile(p, "utf8");
       const credentials = JSON.parse(raw);

@@ -4,7 +4,10 @@ import path from "node:path";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
 import type { AgentManager } from "./agent/agent-manager.js";
-import type { StructuredAgentGenerationWithFallbackOptions } from "./agent/agent-response-loop.js";
+import {
+  StructuredAgentFallbackError,
+  type StructuredAgentGenerationWithFallbackOptions,
+} from "./agent/agent-response-loop.js";
 import {
   attemptFirstAgentBranchAutoName,
   type AttemptFirstAgentBranchAutoNameResult,
@@ -24,15 +27,13 @@ The branch must be a valid git ref: lowercase letters, numbers, hyphens, and sla
 The branch is generated directly from the prompt — it is NEVER derived from or slugified from the title.
 
 Title style:
-A terse, task-shaped label naming what the task is about (sentence case, max 80 characters).
-Aim for about 4 words. Go longer only when the task genuinely needs it; most titles must stay short.
-Do not start with a generic 'do' verb (Fix, Add, Implement, Diagnose, Update, Change, Create, Set, Make) — every task is implicitly one of these, so the verb is noise. Name the thing instead.
-Keep a verb only when it states the specific operation (Swap, Split, Extract, Rename, Merge, Inline).
-Good titles: "Swap sidebar history icon", "Composer keyboard shift", "Agent auto-titling", "Worktree selection memory", "Split browser pane".
-Bad titles: "Fix composer pushed up by keyboard in workspace", "Diagnose auto-titling still happening for agents", "Change sidebar history icon from clock to history icon".
+An actionable task label: requested operation + concrete target + strongest distinguishing anchor (sentence case, max 80 characters).
+Preserve explicit identifiers such as PR or issue numbers, file paths, packages, components, commands, and quoted names when they distinguish the task.
+Aim for about 4 words, but never drop a part needed to understand or distinguish the task.
+Example: "Refactor PR #2638 Playwright specs".
 
 Branch style:
-A short, descriptive slug — a few lowercase words joined by hyphens.
+A short task-shaped slug preserving the operation, target, and explicit identifier when present.
 
 Return JSON only with fields 'title' and 'branch'.
 
@@ -229,6 +230,52 @@ describe("generateBranchNameFromFirstAgentContext", () => {
     ]);
   });
 
+  test("tries only the manual model and logs its failure", async () => {
+    const logger = createLogger();
+    const failure = new StructuredAgentFallbackError([
+      { provider: "local-llm", model: "qwen-local", available: true, error: "connection refused" },
+    ]);
+    const calls: StructuredAgentGenerationWithFallbackOptions<unknown>[] = [];
+
+    const result = await generateBranchNameFromFirstAgentContext({
+      agentManager: {} as AgentManager,
+      cwd: "/tmp/repo",
+      providerSnapshotManager: {
+        listProviders: vi.fn(async () => [
+          {
+            provider: "opencode",
+            status: "ready" as const,
+            enabled: true,
+            models: [
+              { provider: "opencode", id: "minimax-m3", label: "MiniMax M3", isDefault: true },
+            ],
+          },
+        ]),
+      },
+      daemonConfig: {
+        metadataGeneration: { providers: [{ provider: "local-llm", model: "qwen-local" }] },
+      },
+      currentSelection: { provider: "opencode", model: "minimax-m3" },
+      firstAgentContext: { prompt: "Fix the login flow" },
+      logger,
+      deps: {
+        generateStructuredAgentResponseWithFallback: async (options) => {
+          calls.push(options as StructuredAgentGenerationWithFallbackOptions<unknown>);
+          throw failure;
+        },
+      },
+    });
+
+    expect(result).toBeNull();
+    expect(calls.map((call) => call.providers)).toEqual([
+      [{ provider: "local-llm", model: "qwen-local" }],
+    ]);
+    expect(logger.error).toHaveBeenCalledWith(
+      { err: failure, attempts: failure.attempts },
+      "Structured branch name generation failed",
+    );
+  });
+
   test.each([
     ["paseo.json missing", undefined],
     ["paseo.json exists but invalid JSON", "{ nope"],
@@ -265,7 +312,7 @@ describe("generateBranchNameFromFirstAgentContext", () => {
     expect(prompt).not.toContain("Aim for about 4 words");
     // Contract and branch style are not part of the title override.
     expect(prompt).toContain("Generate a title and a git branch name");
-    expect(prompt).toContain("Branch style:\nA short, descriptive slug");
+    expect(prompt).toContain("Branch style:\nA short task-shaped slug");
     expect(prompt).toContain("Return JSON only with fields 'title' and 'branch'.");
   });
 
@@ -275,7 +322,7 @@ describe("generateBranchNameFromFirstAgentContext", () => {
     });
 
     expect(prompt).toContain("Branch style:\nUse the prefix mb/.");
-    expect(prompt).not.toContain("A short, descriptive slug");
+    expect(prompt).not.toContain("A short task-shaped slug");
     expect(prompt).toContain("Aim for about 4 words");
   });
 
@@ -296,8 +343,8 @@ describe("generateBranchNameFromFirstAgentContext", () => {
     const repoRoot = createTempDir("paseo-branch-config-");
     const worktreeRoot = createTempDir("paseo-branch-worktree-");
     mkdirSync(path.join(worktreeRoot, ".git"));
-    writePaseoWorktreeMetadata(worktreeRoot, { baseRefName: "main" });
-    writePaseoWorktreeFirstAgentBranchAutoNameMetadata(worktreeRoot, {
+    await writePaseoWorktreeMetadata(worktreeRoot, { baseRefName: "main" });
+    await writePaseoWorktreeFirstAgentBranchAutoNameMetadata(worktreeRoot, {
       placeholderBranchName: "dazzling-yak",
     });
     writeConfig(repoRoot, {

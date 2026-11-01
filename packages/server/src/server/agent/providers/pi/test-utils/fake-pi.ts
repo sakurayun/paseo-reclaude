@@ -1,3 +1,5 @@
+import { existsSync, readFileSync } from "node:fs";
+
 import type {
   PiRuntime,
   PiRuntimeLaunch,
@@ -57,6 +59,7 @@ export class FakePi implements PiRuntime {
   private readonly command: [string, ...string[]];
   private readonly queuedCommands: PiRpcSlashCommand[][] = [];
   private readonly queuedSessionSetups: Array<(session: FakePiSession) => void> = [];
+  private readonly removedModels = new Set<string>();
 
   constructor(command: [string, ...string[]] = ["pi"]) {
     this.command = command;
@@ -68,9 +71,18 @@ export class FakePi implements PiRuntime {
       session: input,
     });
     this.recordedLaunches.push(launch);
-    const session = new FakePiSession(launch);
+    if (launch.model && this.removedModels.has(launch.model)) {
+      throw new Error(`Model "${launch.model}" not found`);
+    }
+    const session = new FakePiSession(launch, this.removedModels);
     session.commands = this.queuedCommands.shift() ?? [];
     this.queuedSessionSetups.shift()?.(session);
+    const missingSessionCwd = launch.noSession ? null : readMissingSessionCwd(launch.session);
+    if (missingSessionCwd !== null) {
+      session.getStateError = new Error(
+        `Pi RPC process exited with code 1 and signal null\nStored session working directory does not exist: ${missingSessionCwd}\nSession file: ${launch.session}\nCurrent working directory: ${launch.cwd}`,
+      );
+    }
     this.sessions.push(session);
     return session;
   }
@@ -83,6 +95,11 @@ export class FakePi implements PiRuntime {
     this.queuedSessionSetups.push(setup);
   }
 
+  // Pi refuses to launch with, or switch to, a model it no longer knows.
+  removeModel(modelId: string): void {
+    this.removedModels.add(modelId);
+  }
+
   latestSession(): FakePiSession {
     const session = this.sessions.at(-1);
     if (!session) {
@@ -92,8 +109,35 @@ export class FakePi implements PiRuntime {
   }
 }
 
+function readMissingSessionCwd(sessionFile: string | undefined): string | null {
+  if (!sessionFile || !existsSync(sessionFile)) {
+    return null;
+  }
+  const [headerLine = ""] = readFileSync(sessionFile, "utf8").split("\n", 1);
+  let header: unknown;
+  try {
+    header = JSON.parse(headerLine);
+  } catch {
+    return null;
+  }
+  if (typeof header !== "object" || header === null || !("cwd" in header)) {
+    return null;
+  }
+  const { type, cwd } = header as { type?: unknown; cwd?: unknown };
+  if (type !== "session" || typeof cwd !== "string" || !cwd || existsSync(cwd)) {
+    return null;
+  }
+  return cwd;
+}
+
 export class FakePiSession implements PiRuntimeSession {
+  readonly environment: Record<string, string>;
   readonly prompts: Array<{ message: string; imageCount: number }> = [];
+  readonly steerCalls: Array<{ message: string; imageCount: number }> = [];
+  steerError: Error | null = null;
+  readonly controlRequests: string[] = [];
+  clearQueueError: Error | null = null;
+  clearQueueCompletion: Promise<void> | null = null;
   readonly compactRequests: Array<{ customInstructions?: string }> = [];
   readonly setAutoCompactionRequests: boolean[] = [];
   readonly subagentSubscriptionRequests: FakePiSubagentSubscriptionLevel[] = [];
@@ -104,7 +148,10 @@ export class FakePiSession implements PiRuntimeSession {
   readonly handoffRequests: Array<{ customInstructions?: string }> = [];
   readonly sessionNameRequests: string[] = [];
   readonly rawFrames: Array<object & { type: string }> = [];
-  capturedUserEntries: Array<{ id: string; parentId: string | null; text: string }> = [];
+  // Every user entry in the session file, including rewound and compacted ones.
+  treeUserEntries: FakePiUserEntry[] = [];
+  // The user entries on the current branch that getMessages() replays.
+  contextUserEntries: FakePiUserEntry[] = [];
   abortRequested = false;
   readonly canceledExtensionUiRequests: string[] = [];
   readonly extensionUiResponses: Array<{
@@ -123,8 +170,10 @@ export class FakePiSession implements PiRuntimeSession {
   subagentSubscriptionError: Error | null = null;
   setSessionNameError: Error | null = null;
   compactError: Error | null = null;
+  compactCompletion: Promise<void> | null = null;
   emitCompactEnd = true;
   getStateError: Error | null = null;
+  getSessionStatsError: Error | null = null;
   promptAck: PiPromptAck = {};
   branchResponse: { text?: string; cancelled?: boolean } = { text: "" };
   readonly branchRequests: string[] = [];
@@ -136,7 +185,11 @@ export class FakePiSession implements PiRuntimeSession {
   private activeHeldPrompt: { promise: Promise<void>; reject: (error: Error) => void } | null =
     null;
 
-  constructor(launch: PiRuntimeLaunch) {
+  constructor(
+    launch: PiRuntimeLaunch,
+    private readonly removedModels: ReadonlySet<string> = new Set(),
+  ) {
+    this.environment = launch.env ?? {};
     this.state = {
       model: null,
       thinkingLevel: "medium",
@@ -199,9 +252,28 @@ export class FakePiSession implements PiRuntimeSession {
     await new Promise<void>((resolve) => setImmediate(resolve));
   }
 
+  async steer(
+    message: string,
+    images?: Array<{ type: "image"; data: string; mimeType: string }>,
+  ): Promise<void> {
+    this.steerCalls.push({ message, imageCount: images?.length ?? 0 });
+    if (this.steerError) {
+      throw this.steerError;
+    }
+  }
+
+  async clearQueue(): Promise<void> {
+    this.controlRequests.push("clear_queue");
+    await this.clearQueueCompletion;
+    if (this.clearQueueError) {
+      throw this.clearQueueError;
+    }
+  }
+
   async compact(customInstructions?: string): Promise<void> {
     this.compactRequests.push(customInstructions === undefined ? {} : { customInstructions });
     this.emit({ type: "compaction_start", reason: "manual" });
+    await this.compactCompletion;
     if (this.emitCompactEnd) {
       this.emit({ type: "compaction_end", reason: "manual" });
     }
@@ -219,6 +291,7 @@ export class FakePiSession implements PiRuntimeSession {
   }
 
   async abort(): Promise<void> {
+    this.controlRequests.push("abort");
     this.abortRequested = true;
   }
 
@@ -239,9 +312,13 @@ export class FakePiSession implements PiRuntimeSession {
 
   async setModel(provider: string, modelId: string): Promise<PiModel> {
     this.setModelRequests.push({ provider, modelId });
+    if (this.removedModels.has(`${provider}/${modelId}`)) {
+      throw new Error(`Model not found: ${provider}/${modelId}`);
+    }
     if (!this.setModelResult) {
       throw new Error("FakePi setModel requires setModelResult to be scripted");
     }
+    this.state = { ...this.state, model: this.setModelResult };
     return this.setModelResult;
   }
 
@@ -250,6 +327,9 @@ export class FakePiSession implements PiRuntimeSession {
   }
 
   async getSessionStats(): Promise<PiSessionStats> {
+    if (this.getSessionStatsError) {
+      throw this.getSessionStatsError;
+    }
     return this.stats;
   }
 
@@ -350,7 +430,25 @@ export class FakePiSession implements PiRuntimeSession {
     }
   }
 
+  finishAgentRun({ message, willRetry }: { message: PiAgentMessage; willRetry: boolean }): void {
+    this.messages = [...this.messages, message];
+    this.emit({
+      type: "agent_end",
+      messages: this.messages,
+      willRetry,
+    });
+  }
+
+  settleTurn(): void {
+    this.emit({ type: "agent_settled" });
+  }
+
   finishTurn(message: PiAgentMessage = { role: "assistant", content: [] }): void {
+    this.finishAgentRun({ message, willRetry: false });
+    this.settleTurn();
+  }
+
+  finishLegacyTurn(message: PiAgentMessage = { role: "assistant", content: [] }): void {
     this.messages = [...this.messages, message];
     this.emit({ type: "agent_end", messages: this.messages });
   }
@@ -409,7 +507,8 @@ export class FakePiSession implements PiRuntimeSession {
       message: `PASEO_ENTRY_CAPTURE ${JSON.stringify({
         reason,
         requestId,
-        entries: this.capturedUserEntries,
+        treeEntries: this.treeUserEntries,
+        contextEntries: this.contextUserEntries,
       })}`,
     });
   }

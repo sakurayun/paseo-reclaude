@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Text, View } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
-import { getProviderIcon } from "@/components/provider-icons";
+import { useProviderIcon } from "@/components/provider-icons";
 import { StatusBadge } from "@/components/ui/status-badge";
 import type { Theme } from "@/styles/theme";
 import { ProviderUsageBalanceBar } from "./balance-bar";
@@ -19,13 +19,15 @@ interface ProviderUsageIconProps {
 }
 
 function ProviderUsageIcon({ iconKey, size, color = "" }: ProviderUsageIconProps) {
-  const Icon = getProviderIcon(iconKey);
+  const Icon = useProviderIcon(iconKey);
   return <Icon size={size} color={color} />;
 }
 
 const ThemedProviderUsageIcon = withUnistyles(ProviderUsageIcon);
 
-const mutedIconColor = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
+const mutedIconColor = (theme: Theme) => ({
+  color: theme.colors.foregroundMuted,
+});
 const EMPTY_SOURCES: NonNullable<ProviderUsage["sources"]> = [];
 
 function statusText(
@@ -253,7 +255,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   statusLabel: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
   },
   bars: {
     gap: theme.spacing[3],
@@ -272,22 +274,22 @@ const styles = StyleSheet.create((theme) => ({
     flexShrink: 1,
     minWidth: 0,
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
   },
   detailValue: {
     flexShrink: 1,
     minWidth: 0,
     color: theme.colors.foreground,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     textAlign: "right",
   },
   error: {
     color: theme.colors.palette.red[300],
-    fontSize: theme.fontSize.xs,
-    lineHeight: theme.fontSize.xs * 1.4,
+    fontSize: theme.fontSize.sm,
+    lineHeight: theme.fontSize.sm * 1.4,
   },
   footer: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
   },
 }));

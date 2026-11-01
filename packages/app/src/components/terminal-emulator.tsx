@@ -1,14 +1,17 @@
 "use dom";
 
+import type {
+  TerminalFindHandle,
+  TerminalFindResult,
+} from "../terminal/runtime/terminal-emulator-runtime";
+
 import {
   useCallback,
   useEffect,
   useImperativeHandle,
   useMemo,
   useRef,
-  useState,
   type CSSProperties,
-  type DragEvent as ReactDragEvent,
   type MouseEvent as ReactMouseEvent,
   type Ref,
 } from "react";
@@ -16,7 +19,6 @@ import type { DOMProps } from "expo/dom";
 import { useDOMImperativeHandle, type DOMImperativeFactory } from "expo/dom";
 import "@xterm/xterm/css/xterm.css";
 import type { ITheme } from "@xterm/xterm";
-import type { TerminalState } from "@getpaseo/protocol/messages";
 import type { TerminalInputModeState } from "@getpaseo/protocol/terminal-input-mode";
 import type { PendingTerminalModifiers } from "../utils/terminal-keys";
 import {
@@ -25,6 +27,9 @@ import {
   type TerminalFontZoomDirection,
   type TerminalOutputData,
 } from "../terminal/runtime/terminal-emulator-runtime";
+import { encodeTerminalPaste } from "../terminal/runtime/terminal-paste";
+import type { TerminalFile } from "../terminal/file-paste";
+import type { TerminalCharacterWidths } from "../terminal/character-widths";
 import type {
   TerminalDesktopNotification,
   TerminalProgressState,
@@ -33,15 +38,12 @@ import type {
   TerminalLocalFileLinkSource,
   TerminalLocalFileLinkTarget,
 } from "../terminal/local-links/terminal-local-link-provider";
+import type { TerminalClipboardWriter } from "../terminal/native-renderer/terminal-selection";
 import type { TerminalRendererReadyChange } from "../utils/terminal-renderer-readiness";
 import { openExternalUrl } from "../utils/open-external-url";
 import { focusWithRetries } from "../utils/web-focus";
-import {
-  extractTerminalDropPaths,
-  isTerminalDragLeaveOutside,
-  isTerminalFileDrag,
-  prepareDroppedPathsForTerminal,
-} from "../terminal/drop/terminal-file-drop";
+import { routeTerminalDrop } from "../terminal/drop/terminal-file-drop";
+import { prepareDroppedPathsForTerminal } from "../terminal/drop/terminal-path";
 import {
   collectDroppedItems,
   type TerminalEmulatorFileDrop,
@@ -49,10 +51,14 @@ import {
 import { getDesktopHost } from "@/desktop/host";
 
 export interface TerminalEmulatorHandle {
+  find?: TerminalFindHandle;
   writeOutput: (data: TerminalOutputData) => void;
-  restoreOutput: (data: TerminalOutputData) => void;
-  renderSnapshot: (state: TerminalState | null) => void;
+  replay: (event: import("@getpaseo/client").TerminalReplayEvent) => void;
+  paste: (text: string) => void;
+  copySelection: (clipboard: TerminalClipboardWriter) => Promise<string>;
   clear: () => void;
+  claimSize: () => void;
+  showKeyboard: () => void;
   blur: () => void;
   findNext: (input: { query: string }) => boolean;
   findPrevious: (input: { query: string }) => boolean;
@@ -108,6 +114,8 @@ interface TerminalEmulatorProps {
   dom?: DOMProps;
   ref: Ref<TerminalEmulatorHandle>;
   streamKey: string;
+  supportsTerminalInputModeReplay: boolean;
+  characterWidths: TerminalCharacterWidths;
   testId?: string;
   xtermTheme?: ITheme;
   scrollbackLines: number;
@@ -115,13 +123,21 @@ interface TerminalEmulatorProps {
   fontSize?: number;
   letterSpacing?: number;
   ligaturesEnabled?: boolean;
+  keyboardInset?: number;
+  isKeyboardVisible?: boolean;
   swipeGesturesEnabled?: boolean;
   onSwipeLeft?: () => void;
   onSwipeRight?: () => void;
-  initialSnapshot?: TerminalState | null;
+  onFindRequest?: () => void;
+  onFindResult?: (result: TerminalFindResult) => void;
   onInput?: (data: string) => Promise<void> | void;
   onFocus?: () => Promise<void> | void;
-  onResize?: (input: { rows: number; cols: number; shouldClaim: boolean }) => Promise<void> | void;
+  onResize?: (input: {
+    rows: number;
+    cols: number;
+    shouldClaim: boolean;
+    forceClaim?: boolean;
+  }) => Promise<void> | void;
   onTerminalKey?: (input: {
     key: string;
     ctrl: boolean;
@@ -135,6 +151,7 @@ interface TerminalEmulatorProps {
   // Intercepts file drops (SSH terminals show a paste-or-upload choice).
   // Returning true consumes the drop; false falls back to paste-paths.
   onFileDrop?: (drop: TerminalEmulatorFileDrop) => boolean;
+  onSelectionChange?: (hasSelection: boolean) => void;
   onResolveLocalFileLink?: (
     source: TerminalLocalFileLinkSource,
   ) => Promise<TerminalLocalFileLinkTarget | null> | TerminalLocalFileLinkTarget | null;
@@ -148,6 +165,7 @@ interface TerminalEmulatorProps {
   onProgressChange?: (progress: TerminalProgressState) => Promise<void> | void;
   onCwdReport?: (cwd: string) => Promise<void> | void;
   onRequestFocus?: () => Promise<void> | void;
+  onFilePaste?: (file: Promise<TerminalFile | null>) => void;
   pendingModifiers?: PendingTerminalModifiers;
   focusRequestToken?: number;
   resizeRequestToken?: number;
@@ -155,16 +173,6 @@ interface TerminalEmulatorProps {
 
 declare global {
   interface Window {}
-}
-
-function isTerminalState(value: unknown): value is TerminalState {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "rows" in value &&
-    "cols" in value &&
-    "grid" in value
-  );
 }
 
 export default function TerminalEmulator({
@@ -177,6 +185,7 @@ export default function TerminalEmulator({
     cursor: "#e6e6e6",
   },
   scrollbackLines,
+  characterWidths,
   fontFamily,
   fontSize,
   letterSpacing,
@@ -184,7 +193,8 @@ export default function TerminalEmulator({
   swipeGesturesEnabled = false,
   onSwipeLeft,
   onSwipeRight,
-  initialSnapshot = null,
+  onFindRequest,
+  onFindResult,
   onInput,
   onFocus,
   onResize,
@@ -201,6 +211,7 @@ export default function TerminalEmulator({
   onProgressChange,
   onCwdReport,
   onRequestFocus,
+  onFilePaste,
   pendingModifiers = { ctrl: false, shift: false, alt: false },
   focusRequestToken = 0,
   resizeRequestToken = 0,
@@ -215,6 +226,8 @@ export default function TerminalEmulator({
   const ligaturesEnabledRef = useRef(ligaturesEnabled);
   const scrollbackLinesRef = useRef(scrollbackLines);
   scrollbackLinesRef.current = scrollbackLines;
+  const characterWidthsRef = useRef(characterWidths);
+  characterWidthsRef.current = characterWidths;
   fontFamilyRef.current = fontFamily;
   fontSizeRef.current = fontSize;
   letterSpacingRef.current = letterSpacing;
@@ -225,6 +238,8 @@ export default function TerminalEmulator({
   const onRendererReadyChangeRef = useRef(onRendererReadyChange);
   onRendererReadyChangeRef.current = onRendererReadyChange;
   const mountCallbacksRef = useRef({
+    onFindRequest,
+    onFindResult,
     onInput,
     onResize,
     onTerminalKey,
@@ -239,8 +254,11 @@ export default function TerminalEmulator({
     onProgressChange,
     onCwdReport,
     onRequestFocus,
+    onFilePaste,
   });
   mountCallbacksRef.current = {
+    onFindRequest,
+    onFindResult,
     onInput,
     onResize,
     onTerminalKey,
@@ -255,15 +273,24 @@ export default function TerminalEmulator({
     onProgressChange,
     onCwdReport,
     onRequestFocus,
+    onFilePaste,
   };
-  const initialSnapshotRef = useRef(initialSnapshot);
-  initialSnapshotRef.current = initialSnapshot;
   const pendingModifiersRef = useRef(pendingModifiers);
   pendingModifiersRef.current = pendingModifiers;
-  const [isDropActive, setIsDropActive] = useState(false);
-  const dropActiveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const domBridgeRef = useRef<DOMImperativeFactory | null>(null);
+  const pasteText = useCallback((text: string) => {
+    if (text.length === 0) {
+      return;
+    }
+    mountCallbacksRef.current.onInput?.(
+      encodeTerminalPaste({
+        text,
+        bracketedPaste: runtimeRef.current?.getInputModeState().bracketedPaste ?? false,
+      }),
+    );
+  }, []);
+
   useDOMImperativeHandle(
     domBridgeRef,
     (): DOMImperativeFactory => ({
@@ -271,41 +298,66 @@ export default function TerminalEmulator({
         const data = args[0];
         if (data instanceof Uint8Array) runtimeRef.current?.write({ data });
       },
-      restoreOutput: (...args) => {
-        const data = args[0];
-        if (data instanceof Uint8Array) runtimeRef.current?.restoreOutput({ data });
+      replay: (event) => {
+        if (!event || typeof event !== "object" || Array.isArray(event)) return;
+        if (event.type === "end") runtimeRef.current?.replay({ type: "end" });
+        if (event.type === "data" && event.data instanceof Uint8Array)
+          runtimeRef.current?.replay({ type: "data", data: event.data });
+        if (event.type === "begin")
+          runtimeRef.current?.replay({
+            type: "begin",
+            rows: typeof event.rows === "number" ? event.rows : undefined,
+            cols: typeof event.cols === "number" ? event.cols : undefined,
+          });
       },
-      renderSnapshot: (...args) => {
-        const state = args[0];
-        if (state === null) {
-          runtimeRef.current?.renderSnapshot({ state: null });
-        } else if (isTerminalState(state)) {
-          runtimeRef.current?.renderSnapshot({ state });
+      paste: (...args) => {
+        const text = args[0];
+        if (typeof text === "string" && text.length > 0) {
+          pasteText(text);
         }
       },
+      copySelection: async () => "",
       clear: () => {
         runtimeRef.current?.clear();
+      },
+      claimSize: () => {
+        runtimeRef.current?.resize({ forceClaim: true, shouldClaim: true });
+      },
+      showKeyboard: () => {
+        runtimeRef.current?.resize({ forceClaim: true, shouldClaim: true });
+        runtimeRef.current?.focus();
       },
       blur: () => {
         runtimeRef.current?.blur();
       },
     }),
-    [],
+    [pasteText],
   );
   useImperativeHandle(
     ref,
     (): TerminalEmulatorHandle => ({
+      find: {
+        setWidgetSize: (size) => runtimeRef.current?.find.setWidgetSize(size),
+        search: (query, direction) => runtimeRef.current?.find.search(query, direction),
+        clear: () => runtimeRef.current?.find.clear(),
+      },
       writeOutput: (data: TerminalOutputData) => {
         runtimeRef.current?.write({ data });
       },
-      restoreOutput: (data: TerminalOutputData) => {
-        runtimeRef.current?.restoreOutput({ data });
+      replay: (event) => runtimeRef.current?.replay(event),
+      paste: (text: string) => {
+        pasteText(text);
       },
-      renderSnapshot: (state: TerminalState | null) => {
-        runtimeRef.current?.renderSnapshot({ state });
-      },
+      copySelection: async () => "",
       clear: () => {
         runtimeRef.current?.clear();
+      },
+      claimSize: () => {
+        runtimeRef.current?.resize({ forceClaim: true, shouldClaim: true });
+      },
+      showKeyboard: () => {
+        runtimeRef.current?.resize({ forceClaim: true, shouldClaim: true });
+        runtimeRef.current?.focus();
       },
       blur: () => {
         runtimeRef.current?.blur();
@@ -335,7 +387,7 @@ export default function TerminalEmulator({
         })();
       },
     }),
-    [],
+    [pasteText],
   );
 
   useEffect(() => {
@@ -347,6 +399,10 @@ export default function TerminalEmulator({
   useEffect(() => {
     runtimeRef.current?.setScrollback({ lines: scrollbackLines });
   }, [scrollbackLines]);
+
+  useEffect(() => {
+    runtimeRef.current?.setCharacterWidths({ widths: characterWidths });
+  }, [characterWidths]);
 
   useEffect(() => {
     const root = rootRef.current;
@@ -480,10 +536,10 @@ export default function TerminalEmulator({
       },
     });
     runtime.setPendingModifiers({ pendingModifiers: pendingModifiersRef.current });
+    runtime.setCharacterWidths({ widths: characterWidthsRef.current });
     runtime.mount({
       root,
       host,
-      initialSnapshot: initialSnapshotRef.current,
       scrollback: scrollbackLinesRef.current,
       theme: mountedThemeRef.current,
       fontFamily: fontFamilyRef.current,
@@ -505,6 +561,8 @@ export default function TerminalEmulator({
   useEffect(() => {
     runtimeRef.current?.setCallbacks({
       callbacks: {
+        onFindRequest,
+        onFindResult,
         onInput,
         onResize,
         onTerminalKey,
@@ -518,6 +576,7 @@ export default function TerminalEmulator({
         onProgressChange,
         onCwdReport,
         onRequestFocus,
+        onFilePaste,
         onOpenExternalUrl: openExternalUrl,
       },
     });
@@ -526,6 +585,9 @@ export default function TerminalEmulator({
     onDesktopNotification,
     onFontZoom,
     onGpuRendererChange,
+    onFindRequest,
+    onFilePaste,
+    onFindResult,
     onInput,
     onInputModeChange,
     onOpenLocalFileLink,
@@ -557,7 +619,7 @@ export default function TerminalEmulator({
     if (focusRequestToken <= 0) {
       return () => {};
     }
-    runtimeRef.current?.resize({ force: true, shouldClaim: true });
+    runtimeRef.current?.resize({ forceClaim: true, shouldClaim: true });
     return focusWithRetries({
       focus: () => {
         runtimeRef.current?.focus();
@@ -577,7 +639,7 @@ export default function TerminalEmulator({
     if (resizeRequestToken <= 0) {
       return;
     }
-    runtimeRef.current?.resize({ force: true, shouldClaim: true });
+    runtimeRef.current?.resize({ forceClaim: false, shouldClaim: false });
   }, [resizeRequestToken]);
 
   const showTerminalContextMenu = useCallback(() => {
@@ -606,121 +668,32 @@ export default function TerminalEmulator({
     [showTerminalContextMenu],
   );
 
-  const clearDropActiveTimeout = useCallback(() => {
-    if (dropActiveTimeoutRef.current === null) {
-      return;
-    }
-    clearTimeout(dropActiveTimeoutRef.current);
-    dropActiveTimeoutRef.current = null;
-  }, []);
-
-  const clearTerminalDropActive = useCallback(() => {
-    clearDropActiveTimeout();
-    setIsDropActive(false);
-  }, [clearDropActiveTimeout]);
-
-  const keepTerminalDropActive = useCallback(() => {
-    clearDropActiveTimeout();
-    setIsDropActive(true);
-    dropActiveTimeoutRef.current = setTimeout(() => {
-      dropActiveTimeoutRef.current = null;
-      setIsDropActive(false);
-    }, 180);
-  }, [clearDropActiveTimeout]);
-
   useEffect(() => {
     const root = rootRef.current;
-    if (!root) {
-      return () => {};
-    }
-
-    const handleDragEnter = (event: DragEvent) => {
-      if (!isTerminalFileDrag(event.dataTransfer)) {
-        return;
-      }
-      event.preventDefault();
-      event.stopPropagation();
-      keepTerminalDropActive();
-    };
-
-    const handleDragOver = (event: DragEvent) => {
-      if (!isTerminalFileDrag(event.dataTransfer)) {
-        return;
-      }
-      event.preventDefault();
-      event.stopPropagation();
-      if (event.dataTransfer) {
-        event.dataTransfer.dropEffect = "copy";
-      }
-      keepTerminalDropActive();
-    };
-
+    if (!root) return;
     const handleDrop = (event: DragEvent) => {
-      if (!isTerminalFileDrag(event.dataTransfer)) {
-        return;
-      }
-
-      event.preventDefault();
-      event.stopPropagation();
-      clearTerminalDropActive();
-
-      const bridge = getDesktopHost();
-      const paths = extractTerminalDropPaths(event.dataTransfer, bridge);
-      const onDropOverride = mountCallbacksRef.current.onFileDrop;
-      if (onDropOverride) {
-        // SSH terminals intercept the drop with a paste-or-upload choice. The
-        // item handles must be collected synchronously — DataTransferItems are
-        // neutered once this handler returns.
-        const items = collectDroppedItems(event.dataTransfer);
-        const pasteText = paths.length > 0 ? prepareDroppedPathsForTerminal(paths, bridge) : null;
-        if (onDropOverride({ pasteText, items })) {
-          return;
-        }
-      }
-      if (paths.length === 0) {
-        return;
-      }
-
-      runtimeRef.current?.focus();
-      mountCallbacksRef.current.onInput?.(prepareDroppedPathsForTerminal(paths, bridge));
-    };
-
-    root.addEventListener("dragenter", handleDragEnter, { capture: true });
-    root.addEventListener("dragover", handleDragOver, { capture: true });
-    root.addEventListener("drop", handleDrop, { capture: true });
-    window.addEventListener("dragend", clearTerminalDropActive);
-    window.addEventListener("drop", clearTerminalDropActive);
-
-    return () => {
-      root.removeEventListener("dragenter", handleDragEnter, { capture: true });
-      root.removeEventListener("dragover", handleDragOver, { capture: true });
-      root.removeEventListener("drop", handleDrop, { capture: true });
-      window.removeEventListener("dragend", clearTerminalDropActive);
-      window.removeEventListener("drop", clearTerminalDropActive);
-      clearDropActiveTimeout();
-    };
-  }, [clearDropActiveTimeout, clearTerminalDropActive, keepTerminalDropActive]);
-
-  const handleRootDragLeave = useCallback(
-    (event: ReactDragEvent<HTMLDivElement>) => {
-      if (!isTerminalFileDrag(event.dataTransfer)) {
-        return;
-      }
-
-      event.preventDefault();
-      event.stopPropagation();
+      const override = mountCallbacksRef.current.onFileDrop;
+      if (!override) return;
+      const items = collectDroppedItems(event.dataTransfer);
+      if (!items.length) return;
+      const paths = items.flatMap(({ file }) => {
+        if (!file) return [];
+        const delivery = routeTerminalDrop(
+          { kind: "web-file", file },
+          { hostIsLocal: true, bridge: getDesktopHost() },
+        );
+        return delivery.kind === "path" ? [delivery.path] : [];
+      });
       if (
-        !isTerminalDragLeaveOutside({
-          currentTarget: event.currentTarget,
-          relatedTarget: event.relatedTarget,
-        })
+        override({ items, pasteText: paths.length ? prepareDroppedPathsForTerminal(paths) : null })
       ) {
-        return;
+        event.preventDefault();
+        event.stopPropagation();
       }
-      clearTerminalDropActive();
-    },
-    [clearTerminalDropActive],
-  );
+    };
+    root.addEventListener("drop", handleDrop, true);
+    return () => root.removeEventListener("drop", handleDrop, true);
+  }, []);
 
   const rootDivStyle = useMemo<CSSProperties>(
     () => ({
@@ -737,19 +710,6 @@ export default function TerminalEmulator({
     }),
     [xtermTheme.background],
   );
-  const dropOverlayStyle = useMemo<CSSProperties>(
-    () => ({
-      position: "absolute",
-      inset: 0,
-      zIndex: 9,
-      border: "1px solid rgba(78, 161, 255, 0.72)",
-      backgroundColor: "rgba(78, 161, 255, 0.16)",
-      opacity: isDropActive ? 1 : 0,
-      pointerEvents: "none",
-      transition: "opacity 120ms ease-out",
-    }),
-    [isDropActive],
-  );
   return (
     <div
       ref={rootRef}
@@ -758,10 +718,8 @@ export default function TerminalEmulator({
       style={rootDivStyle}
       onPointerDown={handleRootPointerDown}
       onContextMenu={handleRootContextMenu}
-      onDragLeave={handleRootDragLeave}
     >
       <div ref={hostRef} style={HOST_DIV_STYLE} />
-      <div style={dropOverlayStyle} />
     </div>
   );
 }

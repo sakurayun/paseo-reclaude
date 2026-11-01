@@ -14,6 +14,8 @@ function makeWorkspace(input: {
 }): WorkspaceDescriptor {
   return {
     id: input.id,
+    createdAt: new Date(0),
+    lastUserMessageAt: null,
     projectId: input.projectId ?? "project-1",
     projectDisplayName: "Project",
     projectRootPath: input.projectRootPath ?? "/repo",

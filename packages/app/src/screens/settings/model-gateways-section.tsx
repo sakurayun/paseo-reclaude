@@ -1,5 +1,6 @@
+import { PressHighlight } from "@/components/ui/press-highlight";
 import { useCallback, useMemo, useRef, useState } from "react";
-import { Alert, Pressable, Text, View } from "react-native";
+import { Alert, Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
@@ -13,7 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Combobox } from "@/components/ui/combobox";
 import { useDaemonConfig } from "@/hooks/use-daemon-config";
 import { useHostRuntimeClient } from "@/runtime/host-runtime";
-import { SettingsSection } from "@/screens/settings/settings-section";
+import { SettingsSection } from "@/components/settings/headings/settings-section";
 import { useSessionStore } from "@/stores/session-store";
 import { settingsStyles } from "@/styles/settings";
 import type { MutableDaemonConfig } from "@getpaseo/protocol/messages";
@@ -264,7 +265,7 @@ export function ModelGatewaysSection({ serverId }: { serverId: string }) {
 
   const trailing = useMemo(
     () => (
-      <Pressable
+      <PressHighlight
         onPress={handleAdd}
         hitSlop={8}
         style={settingsStyles.sectionHeaderLink}
@@ -274,7 +275,7 @@ export function ModelGatewaysSection({ serverId }: { serverId: string }) {
       >
         <Plus size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
         <Text style={settingsStyles.sectionHeaderLinkText}>{t("settings.modelGateways.add")}</Text>
-      </Pressable>
+      </PressHighlight>
     ),
     [handleAdd, theme.colors.foregroundMuted, theme.iconSize.sm, t],
   );
@@ -331,7 +332,6 @@ export function ModelGatewaysSection({ serverId }: { serverId: string }) {
           <View style={styles.fieldGroup}>
             <Text style={styles.fieldLabel}>{t("settings.modelGateways.fields.name")}</Text>
             <AdaptiveTextInput
-              value={label}
               initialValue={label}
               resetKey={`gateway-label-${editingId ?? "new"}-${draftResetKey}`}
               onChangeText={setLabel}
@@ -344,7 +344,6 @@ export function ModelGatewaysSection({ serverId }: { serverId: string }) {
           <View style={styles.fieldGroup}>
             <Text style={styles.fieldLabel}>{t("settings.modelGateways.fields.baseUrl")}</Text>
             <AdaptiveTextInput
-              value={baseUrl}
               initialValue={baseUrl}
               resetKey={`gateway-base-url-${editingId ?? "new"}-${draftResetKey}`}
               onChangeText={setBaseUrl}
@@ -358,7 +357,7 @@ export function ModelGatewaysSection({ serverId }: { serverId: string }) {
           <View style={styles.fieldGroup}>
             <Text style={styles.fieldLabel}>{t("settings.modelGateways.fields.protocol")}</Text>
             <View ref={protocolAnchorRef} collapsable={false}>
-              <Pressable
+              <PressHighlight
                 onPress={handleOpenProtocolSelector}
                 style={styles.modelSelector}
                 accessibilityRole="button"
@@ -371,7 +370,7 @@ export function ModelGatewaysSection({ serverId }: { serverId: string }) {
                   {protocol.trim() || CODEX_GATEWAY_PROTOCOL}
                 </Text>
                 <ChevronDown size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
-              </Pressable>
+              </PressHighlight>
               <Combobox
                 options={CODEX_PROTOCOL_OPTIONS}
                 value={protocol}
@@ -394,7 +393,6 @@ export function ModelGatewaysSection({ serverId }: { serverId: string }) {
           <View style={styles.fieldGroup}>
             <Text style={styles.fieldLabel}>{t("settings.modelGateways.fields.apiKey")}</Text>
             <AdaptiveTextInput
-              value={apiKey}
               initialValue={apiKey}
               resetKey={`gateway-api-key-${editingId ?? "new"}-${draftResetKey}`}
               onChangeText={setApiKey}
@@ -409,7 +407,7 @@ export function ModelGatewaysSection({ serverId }: { serverId: string }) {
           <View style={styles.fieldGroup}>
             <Text style={styles.fieldLabel}>{t("settings.modelGateways.fields.model")}</Text>
             <View ref={modelAnchorRef} collapsable={false}>
-              <Pressable
+              <PressHighlight
                 onPress={handleOpenModelSelector}
                 style={styles.modelSelector}
                 accessibilityRole="button"
@@ -422,7 +420,7 @@ export function ModelGatewaysSection({ serverId }: { serverId: string }) {
                   {model.trim() || t("settings.modelGateways.fields.modelPlaceholder")}
                 </Text>
                 <ChevronDown size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
-              </Pressable>
+              </PressHighlight>
               <Combobox
                 options={modelOptions}
                 value={model}
@@ -508,7 +506,7 @@ function ModelGatewayRow({
         </Text>
       </View>
       <View style={styles.rowActions}>
-        <Pressable
+        <PressHighlight
           hitSlop={8}
           onPress={handleEdit}
           accessibilityRole="button"
@@ -516,8 +514,8 @@ function ModelGatewayRow({
           testID={`edit-model-gateway-${id}`}
         >
           <Pencil size={theme.iconSize.md} color={theme.colors.foregroundMuted} />
-        </Pressable>
-        <Pressable
+        </PressHighlight>
+        <PressHighlight
           hitSlop={8}
           onPress={handleRemove}
           accessibilityRole="button"
@@ -525,7 +523,7 @@ function ModelGatewayRow({
           testID={`remove-model-gateway-${id}`}
         >
           <Trash2 size={theme.iconSize.md} color={theme.colors.destructive} />
-        </Pressable>
+        </PressHighlight>
       </View>
     </View>
   );

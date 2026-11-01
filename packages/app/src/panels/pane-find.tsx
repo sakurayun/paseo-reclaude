@@ -1,14 +1,17 @@
 import { ChevronDown, ChevronUp, X } from "lucide-react-native";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  Pressable,
   Text,
-  TextInput,
   View,
   type NativeSyntheticEvent,
   type TextInputKeyPressEventData,
 } from "react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
+import { PressHighlight as Pressable } from "@/components/ui/press-highlight";
+import {
+  EditingTextInput as TextInput,
+  type EditingTextInputHandle,
+} from "@/components/ui/text-input";
 import { useStableEvent } from "@/hooks/use-stable-event";
 import { usePaneContext } from "@/panels/pane-context";
 import { paneFindRegistry } from "@/panels/pane-find-registry";
@@ -50,7 +53,9 @@ export function usePaneFind(input: UsePaneFindInput): UsePaneFindResult {
   const { paneInstanceId } = usePaneContext();
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState("");
-  const [matchState, setMatchState] = useState<PaneFindMatchState>({ status: "empty" });
+  const [matchState, setMatchState] = useState<PaneFindMatchState>({
+    status: "empty",
+  });
   const [focusToken, setFocusToken] = useState(0);
   const onQuery = useStableEvent(input.onQuery);
   const onNextInput = useStableEvent(input.onNext);
@@ -173,7 +178,10 @@ export function FindBar({
   onPrev,
   onClose,
 }: FindBarProps) {
-  const inputRef = useRef<TextInput>(null);
+  const inputRef = useRef<EditingTextInputHandle>(null);
+  useEffect(() => {
+    if (inputRef.current?.getText() !== query) inputRef.current?.replaceText(query);
+  }, [query]);
   const { theme } = useUnistyles();
   const iconColor = theme.colors?.foregroundMuted ?? "#71717a";
 
@@ -218,7 +226,7 @@ export function FindBar({
       <TextInput
         ref={inputRef}
         testID="pane-find-input"
-        value={query}
+        initialValue={query}
         onChangeText={onQueryChange}
         onKeyPress={handleKeyPress}
         autoCapitalize="none"

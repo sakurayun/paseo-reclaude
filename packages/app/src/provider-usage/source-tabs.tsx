@@ -1,6 +1,7 @@
+import { PressHighlight } from "@/components/ui/press-highlight";
 import { useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { Pressable, Text, View } from "react-native";
+import { Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import type { ProviderUsageSource, ProviderUsageSourceKind } from "./types";
 
@@ -95,7 +96,7 @@ function SourceTab({
     : ACCESSIBILITY_STATE_UNSELECTED;
 
   return (
-    <Pressable
+    <PressHighlight
       style={tabStyle}
       onPress={handlePress}
       accessibilityRole="tab"
@@ -105,7 +106,7 @@ function SourceTab({
       <Text style={labelStyle} numberOfLines={1}>
         {label}
       </Text>
-    </Pressable>
+    </PressHighlight>
   );
 }
 
@@ -133,7 +134,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   tabLabel: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     fontWeight: theme.fontWeight.medium,
   },
   tabLabelSelected: {

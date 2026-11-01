@@ -24,7 +24,7 @@ import { HostStatusDotSlot } from "@/components/hosts/host-picker";
 import { createControlGeometry, type FieldControlSize } from "@/components/ui/control-geometry";
 import { Field, FormTextInput } from "@/components/ui/form-field";
 import { Switch } from "@/components/ui/switch";
-import { getProviderIcon } from "@/components/provider-icons";
+import { useProviderIcon } from "@/components/provider-icons";
 import { CadenceEditor } from "@/components/schedules/cadence-editor";
 import {
   SelectField,
@@ -33,7 +33,7 @@ import {
   type SelectFieldOption,
   type SelectFieldRenderOptionInput,
 } from "@/components/ui/select-field";
-import { formatThinkingOptionLabel } from "@/composer/agent-controls/utils";
+import { formatThinkingOptionLabel } from "@/agent-controls/labels";
 import {
   mergeProviderPreferences,
   useFormPreferences,
@@ -497,7 +497,6 @@ function ScheduleFormFields({
           testID="schedule-name-input"
           accessibilityLabel="Schedule name"
           initialValue={state.name}
-          value={state.name}
           onChangeText={model.setName}
           placeholder="Optional"
           autoCapitalize="none"
@@ -511,7 +510,6 @@ function ScheduleFormFields({
           testID="schedule-prompt-input"
           accessibilityLabel="Prompt"
           initialValue={state.prompt}
-          value={state.prompt}
           onChangeText={model.setPrompt}
           placeholder="What should the agent do each run?"
           style={styles.multilineInput}
@@ -543,7 +541,6 @@ function ScheduleFormFields({
           testID="schedule-max-runs-input"
           accessibilityLabel="Max runs"
           initialValue={state.maxRuns}
-          value={state.maxRuns}
           onChangeText={model.setMaxRuns}
           placeholder="Unlimited"
           keyboardType="number-pad"
@@ -664,8 +661,8 @@ function ScheduleTargetFields({
     [],
   );
   const modelTriggerLeading = useMemo(
-    () => <ProviderGlyph provider={state.selectedProvider} />,
-    [state.selectedProvider],
+    () => <ProviderGlyph provider={state.selectedProvider} serverId={state.selectedServerId} />,
+    [state.selectedProvider, state.selectedServerId],
   );
   const renderModelTrigger = useCallback(
     ({
@@ -1022,11 +1019,17 @@ function ThinkingOptionItem({
   );
 }
 
-function ProviderGlyph({ provider }: { provider: string | null }): ReactElement | null {
+function ProviderGlyph({
+  provider,
+  serverId,
+}: {
+  provider: string | null;
+  serverId: string | null;
+}): ReactElement | null {
+  const Icon = useProviderIcon(provider ?? "", serverId);
   if (!provider) {
     return null;
   }
-  const Icon = getProviderIcon(provider);
   return <Icon size={16} color={styles.providerIcon.color} />;
 }
 
@@ -1056,7 +1059,7 @@ const styles = StyleSheet.create((theme) => {
       color: theme.colors.foreground,
     },
     readonlyTextSm: {
-      fontSize: theme.fontSize.sm,
+      fontSize: theme.fontSize.base,
     },
     readonlyTextMd: {
       fontSize: theme.fontSize.base,
@@ -1077,7 +1080,7 @@ const styles = StyleSheet.create((theme) => {
     },
     submitError: {
       color: theme.colors.palette.red[300],
-      fontSize: theme.fontSize.xs,
+      fontSize: theme.fontSize.sm,
     },
     providerIcon: {
       color: theme.colors.foregroundMuted,

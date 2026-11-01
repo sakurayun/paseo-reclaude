@@ -1,5 +1,6 @@
+import { PressHighlight } from "@/components/ui/press-highlight";
 import { useCallback, useMemo, useState } from "react";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { ScrollView, Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { useLocalSearchParams, usePathname } from "expo-router";
 import { useTranslation } from "react-i18next";
@@ -83,9 +84,9 @@ export function SshScreen() {
   const headerRight = useMemo(
     () =>
       section === "hosts" ? (
-        <Pressable onPress={newHost} accessibilityRole="button" testID="ssh-new-host">
+        <PressHighlight onPress={newHost} accessibilityRole="button" testID="ssh-new-host">
           <Text style={styles.newHostLabel}>+ {t("ssh.hosts.newHost")}</Text>
-        </Pressable>
+        </PressHighlight>
       ) : undefined,
     [section, newHost, t],
   );

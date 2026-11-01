@@ -1,4 +1,4 @@
-import { existsSync, promises as fs } from "node:fs";
+import { promises as fs } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { Logger } from "pino";
@@ -107,7 +107,13 @@ export class KimiQuotaProvider implements ProviderUsageFetcher {
     ];
 
     for (const path of paths) {
-      if (!existsSync(path)) continue;
+      if (
+        !(await fs.access(path).then(
+          () => true,
+          () => false,
+        ))
+      )
+        continue;
       try {
         const credentials = KimiAuthSchema.parse(JSON.parse(await fs.readFile(path, "utf8")));
         if (credentials.access_token) return credentials.access_token;

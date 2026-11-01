@@ -45,7 +45,11 @@ const SECTION_ENTRIES: readonly SectionEntry[] = [
   { section: "hosts", icon: Server, labelKey: "ssh.sections.hosts" },
   { section: "keychain", icon: KeyRound, labelKey: "ssh.sections.keychain" },
   { section: "forwards", icon: Network, labelKey: "ssh.sections.forwards" },
-  { section: "knownhosts", icon: Fingerprint, labelKey: "ssh.sections.knownHosts" },
+  {
+    section: "knownhosts",
+    icon: Fingerprint,
+    labelKey: "ssh.sections.knownHosts",
+  },
   { section: "logs", icon: ScrollText, labelKey: "ssh.sections.logs" },
 ];
 
@@ -106,7 +110,9 @@ export function SidebarSshList({ serverId, onNavigate }: SidebarSshListProps) {
     }
     const confirmed = await confirmDialog({
       title: t("ssh.hosts.menu.closeAllShellsTitle"),
-      message: t("ssh.hosts.menu.closeAllShellsMessage", { count: sshTerminals.length }),
+      message: t("ssh.hosts.menu.closeAllShellsMessage", {
+        count: sshTerminals.length,
+      }),
       confirmLabel: t("workspace.tabs.confirmations.close"),
       cancelLabel: t("workspace.tabs.confirmations.cancel"),
       destructive: true,
@@ -242,12 +248,7 @@ function SshHostRow({
           </Text>
         </View>
       </ContextMenuTrigger>
-      <ContextMenuContent
-        align="start"
-        width={220}
-        mobileMode="sheet"
-        testID={`sidebar-ssh-host-context-${hostId}`}
-      >
+      <ContextMenuContent align="start" width={220} testID={`sidebar-ssh-host-context-${hostId}`}>
         <ContextMenuItem
           testID={`sidebar-ssh-host-context-${hostId}-new-tab`}
           onSelect={handleNewTab}
@@ -284,7 +285,7 @@ const styles = StyleSheet.create((theme: Theme) => ({
     gap: theme.spacing[1] / 2,
   },
   hostListHeader: {
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     fontWeight: theme.fontWeight.medium,
     color: theme.colors.foregroundMuted,
     paddingHorizontal: theme.spacing[2],
@@ -317,7 +318,7 @@ const styles = StyleSheet.create((theme: Theme) => ({
     color: theme.colors.foreground,
   },
   hostSubtitle: {
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     color: theme.colors.foregroundMuted,
   },
 }));

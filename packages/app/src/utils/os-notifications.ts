@@ -1,7 +1,8 @@
 import { Asset } from "expo-asset";
 import { getDesktopHost } from "@/desktop/host";
 import { isTerminalNotificationOsData } from "@/terminal/runtime/terminal-desktop-notification-actions";
-import { buildNotificationRoute, resolveNotificationTarget } from "./notification-routing";
+import { buildHostRootRoute } from "./host-routes";
+import { parseNotificationOpenTarget, WEB_NOTIFICATION_CLICK_EVENT } from "@/notification-open";
 import { isNative } from "@/constants/platform";
 
 interface OsNotificationPayload {
@@ -22,7 +23,7 @@ interface WebNotificationInstance {
   addEventListener: (type: "click" | "close", listener: (event: Event) => void) => void;
 }
 
-export const WEB_NOTIFICATION_CLICK_EVENT = "paseo:web-notification-click";
+export { WEB_NOTIFICATION_CLICK_EVENT };
 export const WEB_NOTIFICATION_CLOSE_EVENT = "paseo:web-notification-close";
 
 let permissionRequest: Promise<boolean> | null = null;
@@ -104,19 +105,7 @@ export async function ensureOsNotificationPermission(): Promise<boolean> {
 }
 
 function hasNotificationInteractionTarget(data: Record<string, unknown> | undefined): boolean {
-  if (!data) {
-    return false;
-  }
-  if (isTerminalNotificationOsData(data)) {
-    return true;
-  }
-  const target = resolveNotificationTarget(data);
-  return (
-    target.serverId !== null ||
-    target.agentId !== null ||
-    target.workspaceId !== null ||
-    target.terminalId !== null
-  );
+  return isTerminalNotificationOsData(data) || parseNotificationOpenTarget(data) !== null;
 }
 
 function getWebNotificationIconUrl(): string | undefined {
@@ -154,7 +143,9 @@ function dispatchWebNotificationEvent(
 }
 
 function fallbackNavigateToNotificationTarget(data: Record<string, unknown> | undefined): void {
-  const route = buildNotificationRoute(data);
+  const target = parseNotificationOpenTarget(data);
+  if (!target) return;
+  const route = buildHostRootRoute(target.serverId);
   const location = (globalThis as { location?: { assign?: (url: string) => void; href?: string } })
     .location;
   if (!location) {

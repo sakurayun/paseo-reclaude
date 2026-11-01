@@ -1,7 +1,9 @@
+import { PressHighlight as Pressable } from "@/components/ui/press-highlight";
+import { definePanel } from "@/panels/panel-registry";
 import { useCallback, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { GitBranch, History, SquareTerminal } from "lucide-react-native";
-import { Pressable, ScrollView, Text, View, type PressableStateCallbackType } from "react-native";
+import { ScrollView, Text, View, type PressableStateCallbackType } from "react-native";
 import { useQueryClient } from "@tanstack/react-query";
 import { useFetchQuery } from "@/data/query";
 import type { TerminalHistoryEntry } from "@getpaseo/protocol/messages";
@@ -10,7 +12,7 @@ import { navigateToPreparedWorkspaceTab } from "@/utils/workspace-navigation";
 import invariant from "tiny-invariant";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
-import { getProviderIcon } from "@/components/provider-icons";
+import { useProviderIcon } from "@/components/provider-icons";
 import { useAgentHistory } from "@/hooks/use-agent-history";
 import { usePaneContext } from "@/panels/pane-context";
 import type { PanelDescriptor, PanelRegistration } from "@/panels/panel-registry";
@@ -57,9 +59,10 @@ function SessionRow({
     ],
     [],
   );
+  const providerIcon = useProviderIcon(session.provider);
   const ProviderIcon = useMemo(
-    () => withUnistyles(getProviderIcon(session.provider), providerIconMapping),
-    [session.provider],
+    () => withUnistyles(providerIcon, providerIconMapping),
+    [providerIcon],
   );
 
   return (
@@ -243,7 +246,9 @@ function SessionsPanel() {
           console.warn("[sessions-panel] failed to restore terminal", error);
         } finally {
           setRestoringTerminalId(null);
-          void queryClient.invalidateQueries({ queryKey: ["terminal-history", serverId] });
+          void queryClient.invalidateQueries({
+            queryKey: ["terminal-history", serverId],
+          });
         }
       })();
     },
@@ -337,11 +342,10 @@ function SessionsPanel() {
   );
 }
 
-export const sessionsPanelRegistration: PanelRegistration<"sessions"> = {
-  kind: "sessions",
+export const sessionsPanelRegistration: PanelRegistration<"sessions"> = definePanel("sessions", {
   component: SessionsPanel,
   useDescriptor: useSessionsPanelDescriptor,
-};
+});
 
 const ThemedGitBranch = withUnistyles(GitBranch);
 const ThemedSquareTerminal = withUnistyles(SquareTerminal);

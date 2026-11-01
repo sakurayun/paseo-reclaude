@@ -3,16 +3,37 @@ import type { AgentModelDefinition, ProviderSnapshotEntry } from "@getpaseo/prot
 import type { AgentProviderDefinition } from "@getpaseo/protocol/provider-manifest";
 import { i18n } from "@/i18n/i18next";
 import {
+  buildProviderQualifiedDescription,
   buildProviderSelectorProviders,
   buildSelectableProviderSelectorProviders,
   buildSelectedTriggerLabel,
   filterAndRankModelRows,
   matchesModelSearch,
+  resolveEffectiveComposerModeId,
   resolveSelectedModelLabel,
   resolveSubmissionReadiness,
 } from "./provider-selection";
 
 describe("combined model selector data", () => {
+  it("shows a disconnected error for unfinished catalogs while keeping known models", () => {
+    const providers = buildSelectableProviderSelectorProviders(
+      [
+        snapshotEntry({ provider: "waiting", status: "loading", models: [] }),
+        snapshotEntry({
+          provider: "codex",
+          status: "ready",
+          models: [codexModel],
+        }),
+      ],
+      false,
+    );
+    expect(providers[0].modelSelection).toEqual({
+      kind: "error",
+      message: "Host is not connected",
+    });
+    expect(providers[1].modelSelection.kind).toBe("models");
+  });
+
   const codexModel: AgentModelDefinition = {
     provider: "codex",
     id: "gpt-5.4",
@@ -66,6 +87,27 @@ describe("combined model selector data", () => {
     ]);
   });
 
+  it("hides compatibility-only model entries from new clients", () => {
+    const compatibilityModel: AgentModelDefinition = {
+      ...codexModel,
+      id: "gpt-5.4-legacy",
+      label: "GPT-5.4 legacy",
+      isSelectable: false,
+    };
+
+    const [provider] = buildSelectableProviderSelectorProviders([
+      snapshotEntry({
+        provider: "codex",
+        models: [codexModel, compatibilityModel],
+      }),
+    ]);
+
+    expect(provider?.modelSelection).toMatchObject({
+      kind: "models",
+      rows: [{ modelId: "gpt-5.4" }],
+    });
+  });
+
   it("synthesizes a default model row for ready enabled providers without explicit models", () => {
     expect(
       buildSelectableProviderSelectorProviders([
@@ -113,7 +155,11 @@ describe("combined model selector data", () => {
   it("surfaces non-ready providers with their state-specific selection", () => {
     expect(
       buildSelectableProviderSelectorProviders([
-        snapshotEntry({ provider: "loading-provider", status: "loading", models: [] }),
+        snapshotEntry({
+          provider: "loading-provider",
+          status: "loading",
+          models: [],
+        }),
         snapshotEntry({
           provider: "error-provider",
           status: "error",
@@ -228,6 +274,20 @@ describe("combined model selector data", () => {
     expect(buildSelectedTriggerLabel("GPT-5.4")).toBe("GPT-5.4");
   });
 
+  it("names the provider first when a model row is shown outside its provider", () => {
+    const row = {
+      favoriteKey: "copilot:claude-opus-5",
+      provider: "copilot",
+      providerLabel: "Copilot",
+      modelId: "claude-opus-5",
+      modelLabel: "Opus 5",
+      description: "claude-opus-5",
+    };
+
+    expect(buildProviderQualifiedDescription(row)).toBe("Copilot · claude-opus-5");
+    expect(buildProviderQualifiedDescription({ ...row, description: undefined })).toBe("Copilot");
+  });
+
   it("resolves selected labels from explicit provider model-selection state", () => {
     const providers = buildSelectableProviderSelectorProviders([
       snapshotEntry({
@@ -284,7 +344,14 @@ describe("combined model selector data", () => {
       snapshotEntry({
         provider: "codex",
         label: "Codex",
-        models: [{ provider: "codex", id: "gpt-5.4", label: "GPT-5.4", isDefault: true }],
+        models: [
+          {
+            provider: "codex",
+            id: "gpt-5.4",
+            label: "GPT-5.4",
+            isDefault: true,
+          },
+        ],
       }),
     ]);
 
@@ -333,7 +400,7 @@ describe("combined model selector data", () => {
         },
         autoSubmitConfig: null,
         workspaceDirectory: "/repo",
-        hasClient: true,
+        isConnected: true,
       }),
     ).toEqual({
       ok: false,
@@ -353,7 +420,7 @@ describe("combined model selector data", () => {
         },
         autoSubmitConfig: null,
         workspaceDirectory: "/repo",
-        hasClient: true,
+        isConnected: true,
       }),
     ).toEqual({ ok: true });
   });
@@ -392,7 +459,7 @@ describe("combined model selector data", () => {
           },
           autoSubmitConfig: null,
           workspaceDirectory: "/repo",
-          hasClient: true,
+          isConnected: true,
         }),
       ).toEqual({ ok: false, reason: "初始 prompt 必填" });
     } finally {
@@ -408,3 +475,56 @@ function getAllModelLabels(providers: ReturnType<typeof buildSelectableProviderS
       : [],
   );
 }
+
+describe("resolveEffectiveComposerModeId", () => {
+  const selection = {
+    provider: "pi",
+    modelId: "",
+    thinkingOptionId: "",
+    availableModels: [],
+  };
+
+  it("drops a remembered mode when the provider offers no modes", () => {
+    expect(
+      resolveEffectiveComposerModeId({ ...selection, modeId: "build", modeOptions: [] }, false),
+    ).toBe("");
+  });
+
+  it("submits the mode the picker shows when the remembered mode is not offered", () => {
+    expect(
+      resolveEffectiveComposerModeId(
+        {
+          ...selection,
+          modeId: "plan",
+          modeOptions: [
+            { id: "build", label: "Build" },
+            { id: "ask", label: "Ask" },
+          ],
+        },
+        false,
+      ),
+    ).toBe("build");
+  });
+
+  it("keeps a selected mode the provider offers", () => {
+    expect(
+      resolveEffectiveComposerModeId(
+        {
+          ...selection,
+          modeId: "ask",
+          modeOptions: [
+            { id: "build", label: "Build" },
+            { id: "ask", label: "Ask" },
+          ],
+        },
+        false,
+      ),
+    ).toBe("ask");
+  });
+
+  it("keeps the selected mode while the provider's modes are still loading", () => {
+    expect(
+      resolveEffectiveComposerModeId({ ...selection, modeId: "build", modeOptions: [] }, true),
+    ).toBe("build");
+  });
+});

@@ -275,8 +275,8 @@ function main() {
 
   console.log("==> Building app workspace deps");
   npm(["run", "build:app-deps"], { cwd: rootDir, env: prebuildEnv });
-  npm(["run", "build:terminal-webview"], { cwd: appDir, env: prebuildEnv });
-  npm(["run", "build:mermaid-webview"], { cwd: appDir, env: prebuildEnv });
+  // 新版终端使用原生渲染，Mermaid 使用上游统一运行时构建入口。
+  npm(["run", "build:mermaid-runtime"], { cwd: appDir, env: prebuildEnv });
 
   console.log("==> Expo prebuild (production Android)");
   if (existsSync(androidDir)) {

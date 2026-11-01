@@ -219,37 +219,15 @@ const CodexThreadItemSchema = z.discriminatedUnion("type", [
   CodexSubAgentActivityItemSchema,
 ]);
 
-function maybeUnwrapShellWrapperCommand(command: string): string {
+function unwrapShellCommand(command: string): string {
   const trimmed = command.trim();
-  const unixWrapperMatch = trimmed.match(
-    /^(?:(?:\/[^/\s]+)*\/)?(?:zsh|bash|sh)\s+-(?:lc|c)\s+([\s\S]+)$/,
+  const unix = trimmed.match(/^(?:(?:\/[^/\s]+)*\/)?(?:zsh|bash|sh)\s+-(?:lc|c)\s+([\s\S]+)$/);
+  if (unix?.[1]) return stripMatchingEdgeQuotes(unix[1].trim());
+
+  const windows = trimmed.match(
+    /^(?:"[^"]*\\)?(?:pwsh|powershell|cmd)(?:\.exe)?"?(?:\s+-[A-Za-z]+(?:\s+[^-\s][^\s]*)?)*\s+(?:-Command|-c|\/c)\s+([\s\S]+)$/i,
   );
-  if (unixWrapperMatch) {
-    const candidate = unixWrapperMatch[1]?.trim() ?? "";
-    if (!candidate) {
-      return trimmed;
-    }
-    return stripMatchingEdgeQuotes(candidate);
-  }
-  const windowsWrapperMatch = trimmed.match(
-    /^(?:"[^"]*\\)?(?:pwsh|powershell|cmd)(?:\.exe)?"?\s+((?:-[A-Za-z]+(?:\s+[^-\s][^\s]*)?\s+)*)((?:-Command|-c|\/c)\s+[\s\S]+)$/i,
-  );
-  if (!windowsWrapperMatch) {
-    return trimmed;
-  }
-  const wrappedCommand = windowsWrapperMatch[2]?.trim() ?? "";
-  if (!wrappedCommand) {
-    return trimmed;
-  }
-  const commandMatch = wrappedCommand.match(/^(?:-Command|-c|\/c)\s+([\s\S]+)$/i);
-  if (!commandMatch) {
-    return trimmed;
-  }
-  const candidate = commandMatch[1]?.trim() ?? "";
-  if (!candidate) {
-    return trimmed;
-  }
-  return stripMatchingEdgeQuotes(candidate);
+  return windows?.[1] ? stripMatchingEdgeQuotes(windows[1].trim()) : trimmed;
 }
 
 function stripMatchingEdgeQuotes(value: string): string {
@@ -267,9 +245,9 @@ function isWindowsShellCommand(command: string): boolean {
   return /(?:^|\\)(?:pwsh|powershell|cmd)(?:\.exe)?$/i.test(normalized);
 }
 
-function normalizeCommandExecutionCommand(value: unknown): string | undefined {
+export function normalizeCommandExecutionCommand(value: unknown): string | undefined {
   if (typeof value === "string") {
-    const normalized = maybeUnwrapShellWrapperCommand(value);
+    const normalized = unwrapShellCommand(value);
     return normalized.length > 0 ? normalized : undefined;
   }
   if (!Array.isArray(value)) {
@@ -569,10 +547,17 @@ function readStatus(value: unknown): string | undefined {
 
 function normalizeCollabAgentChildStatus(status: string): ToolCallTimelineItem["status"] {
   const normalized = status.trim().toLowerCase();
-  if (normalized === "error" || normalized === "errored") {
-    return "running";
+  switch (normalized) {
+    case "error":
+    case "errored":
+      return "running";
+    case "shutdown":
+      return "canceled";
+    case "notfound":
+      return "failed";
+    default:
+      return normalizeToolCallStatus(status, null, null);
   }
-  return normalizeToolCallStatus(status, null, null);
 }
 
 function resolveCollabAgentStatus(
@@ -965,6 +950,7 @@ function mapCollabAgentToolCallItem(
     type: "sub_agent",
     subAgentType: "Sub-agent",
     ...(item.prompt ? { description: item.prompt } : {}),
+    // COMPAT(subagent-log): remove after 2027-04-30.
     log: "",
     actions: [],
   };
@@ -1021,6 +1007,7 @@ function mapSubAgentActivityItem(
       type: "sub_agent",
       subAgentType: nativeName,
       description,
+      // COMPAT(subagent-log): remove after 2027-04-30.
       log: "",
       actions: [],
     },

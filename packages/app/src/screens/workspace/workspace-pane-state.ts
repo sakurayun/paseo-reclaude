@@ -58,6 +58,7 @@ function normalizeWorkspaceTab(tab: WorkspaceTab): WorkspaceTab | null {
     tabId,
     target,
     createdAt: tab.createdAt,
+    state: tab.state,
   };
 }
 
@@ -98,6 +99,7 @@ function normalizeWorkspacePaneTabs(tabs: WorkspaceTab[]): NormalizeWorkspacePan
         tabId: normalizedTab.tabId,
         kind: normalizedTab.target.kind,
         target: normalizedTab.target,
+        state: normalizedTab.state,
       },
     });
   }
@@ -123,7 +125,10 @@ function getActiveTabId(input: {
     const matchingTab =
       input.tabs.find((tab) => workspaceTabTargetsEqual(tab.descriptor.target, preferredTarget)) ??
       null;
-    return matchingTab?.descriptor.tabId ?? buildDeterministicWorkspaceTabId(preferredTarget);
+    if (matchingTab) return matchingTab.descriptor.tabId;
+    return preferredTarget.kind === "new_tab"
+      ? null
+      : buildDeterministicWorkspaceTabId(preferredTarget);
   })();
 
   if (preferredTabId && input.openTabIds.has(preferredTabId)) {

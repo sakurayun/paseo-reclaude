@@ -6,6 +6,7 @@ import type {
 import {
   buildSidebarProjectRowModel,
   resolveSidebarProjectIconTarget,
+  resolveSidebarProjectIconTargets,
   resolveSidebarProjectLocalPath,
 } from "./sidebar-project-row-model";
 
@@ -14,9 +15,10 @@ function workspace(overrides: Partial<SidebarWorkspaceEntry> = {}): SidebarWorks
     workspaceKey: "srv:ws-root",
     serverId: "srv",
     workspaceId: "ws-root",
-    projectKey: "project-1",
+    projectViewKey: "project-1",
     projectName: "paseo",
     workspaceDirectory: "/repo",
+    workspaceDirectoryLabel: "/repo",
     projectKind: "git",
     workspaceKind: "checkout",
     name: "paseo",
@@ -43,12 +45,16 @@ function project(overrides: ProjectOverrides = {}): SidebarProjectEntry {
   const projectKind = overrides.projectKind ?? "git";
   const hosts = Array.from(
     overrides.hosts ?? [
-      { serverId: "srv", iconWorkingDir: "/repo", canCreateWorktree: projectKind === "git" },
+      {
+        serverId: "srv",
+        iconWorkingDir: "/repo",
+        worktreeSupport: projectKind === "git" ? "supported" : "unsupported",
+      },
     ],
     (host) => Object.assign({}, host, { projectId: host.projectId ?? `project-${host.serverId}` }),
   );
   return {
-    projectKey: "project-1",
+    viewKey: "project-1",
     projectName: "paseo",
     projectKind,
     iconWorkingDir: "/repo",
@@ -59,6 +65,45 @@ function project(overrides: ProjectOverrides = {}): SidebarProjectEntry {
 }
 
 describe("buildSidebarProjectRowModel", () => {
+  it("prefers the active host when the grouped project can create there", () => {
+    const result = buildSidebarProjectRowModel({
+      project: project({
+        hosts: [
+          { serverId: "host-a", iconWorkingDir: "/repo/a", worktreeSupport: "supported" },
+          { serverId: "host-b", iconWorkingDir: "/repo/b", worktreeSupport: "supported" },
+        ],
+      }),
+      collapsed: false,
+      preferredServerId: "host-b",
+    });
+
+    expect(result.trailingAction).toEqual({
+      kind: "new_workspace",
+      target: { serverId: "host-b", projectId: "project-host-b", iconWorkingDir: "/repo/b" },
+    });
+  });
+
+  it.each(["host-b", "another-host"])(
+    "keeps the first eligible placement when preferred host %s cannot create here",
+    (preferredServerId) => {
+      const result = buildSidebarProjectRowModel({
+        project: project({
+          hosts: [
+            { serverId: "host-a", iconWorkingDir: "/repo/a", worktreeSupport: "supported" },
+            { serverId: "host-b", iconWorkingDir: "/repo/b", worktreeSupport: "unsupported" },
+          ],
+        }),
+        collapsed: false,
+        preferredServerId,
+      });
+
+      expect(result.trailingAction).toEqual({
+        kind: "new_workspace",
+        target: { serverId: "host-a", projectId: "project-host-a", iconWorkingDir: "/repo/a" },
+      });
+    },
+  );
+
   it("renders a non-git single-workspace project as an expandable section", () => {
     const result = buildSidebarProjectRowModel({
       project: project({
@@ -134,8 +179,12 @@ describe("buildSidebarProjectRowModel", () => {
     const result = buildSidebarProjectRowModel({
       project: project({
         hosts: [
-          { serverId: "host-a", iconWorkingDir: "/repo/a", canCreateWorktree: false },
-          { serverId: "host-b", iconWorkingDir: "/repo/b", canCreateWorktree: true },
+          {
+            serverId: "host-a",
+            iconWorkingDir: "/repo/a",
+            worktreeSupport: "unsupported" as const,
+          },
+          { serverId: "host-b", iconWorkingDir: "/repo/b", worktreeSupport: "supported" as const },
         ],
       }),
       collapsed: false,
@@ -154,8 +203,16 @@ describe("buildSidebarProjectRowModel", () => {
       project: project({
         projectKind: "directory",
         hosts: [
-          { serverId: "host-a", iconWorkingDir: "/repo/a", canCreateWorktree: false },
-          { serverId: "host-b", iconWorkingDir: "/repo/b", canCreateWorktree: false },
+          {
+            serverId: "host-a",
+            iconWorkingDir: "/repo/a",
+            worktreeSupport: "unsupported" as const,
+          },
+          {
+            serverId: "host-b",
+            iconWorkingDir: "/repo/b",
+            worktreeSupport: "unsupported" as const,
+          },
         ],
       }),
       collapsed: false,
@@ -196,8 +253,8 @@ describe("buildSidebarProjectRowModel", () => {
     const iconTarget = resolveSidebarProjectIconTarget(
       project({
         hosts: [
-          { serverId: "host-b", iconWorkingDir: "/repo/b", canCreateWorktree: true },
-          { serverId: "host-a", iconWorkingDir: "/repo/a", canCreateWorktree: true },
+          { serverId: "host-b", iconWorkingDir: "/repo/b", worktreeSupport: "supported" as const },
+          { serverId: "host-a", iconWorkingDir: "/repo/a", worktreeSupport: "supported" as const },
         ],
       }),
     );
@@ -209,12 +266,40 @@ describe("buildSidebarProjectRowModel", () => {
     });
   });
 
+  it("keys project icon results by the rendered project view", () => {
+    const [iconTarget] = resolveSidebarProjectIconTargets([
+      project({
+        viewKey: '["placement","host-b","project-b"]',
+        hosts: [
+          {
+            serverId: "host-b",
+            iconWorkingDir: "/repo/b",
+            worktreeSupport: "supported" as const,
+            iconRevision: "effective-revision",
+          },
+        ],
+      }),
+    ]);
+
+    expect(iconTarget).toEqual({
+      projectViewKey: '["placement","host-b","project-b"]',
+      serverId: "host-b",
+      projectId: "project-host-b",
+      iconWorkingDir: "/repo/b",
+      iconRevision: "effective-revision",
+    });
+  });
+
   it("resolves desktop file actions from the local project placement", () => {
     const groupedProject = project({
       iconWorkingDir: "/remote/repo",
       hosts: [
-        { serverId: "remote", iconWorkingDir: "/remote/repo", canCreateWorktree: true },
-        { serverId: "local", iconWorkingDir: "/local/repo", canCreateWorktree: true },
+        {
+          serverId: "remote",
+          iconWorkingDir: "/remote/repo",
+          worktreeSupport: "supported" as const,
+        },
+        { serverId: "local", iconWorkingDir: "/local/repo", worktreeSupport: "supported" as const },
       ],
     });
 

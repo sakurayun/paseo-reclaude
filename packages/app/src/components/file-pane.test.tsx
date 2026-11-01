@@ -1,447 +1,317 @@
-/**
- * @vitest-environment jsdom
- */
-import React from "react";
-import { act } from "react";
+/** @vitest-environment jsdom */
+import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ExplorerFile } from "@/stores/session-store";
 import { FilePane } from "@/file-pane/pane";
-import {
-  PaneFocusProvider,
-  PaneProvider,
-  createPaneFocusContextValue,
-  type PaneContextValue,
-} from "@/panels/pane-context";
-import {
-  clearActivePaneFindPaneId,
-  handlePaneFindKeyboardAction,
-  setActivePaneFindPaneId,
-} from "@/panels/pane-find-registry";
+import { PaneProvider, type PaneContextValue } from "@/panels/pane-context";
+import type { FileHandleSnapshot } from "@/file-panels/file/handle";
 
-const { queryState, theme } = vi.hoisted(() => ({
-  queryState: {
-    current: {
-      data: null as null | {
-        error: string | null;
-        file: ExplorerFile | null;
-        imageAttachment?: unknown;
-      },
-      isFetching: false,
-    },
-  },
-  theme: {
-    spacing: { 1: 4, 2: 8, 3: 12, 4: 16 },
-    fontSize: { sm: 13, code: 13 },
-    fontFamily: { ui: "system-ui", mono: "monospace" },
-    colors: {
-      accentBorder: "#444",
-      destructive: "#f43f5e",
-      foreground: "#fff",
-      foregroundMuted: "#aaa",
-      primary: "#0a84ff",
-      surface0: "#111",
-      surface1: "#222",
-      surface2: "#333",
-    },
-    colorScheme: "dark",
-  },
+const m = vi.hoisted(() => ({
+  snapshot: { status: "loading" } as FileHandleSnapshot,
+  panel: null as null | { id: string },
+  outsideKind: null as null | "directory" | "file" | "unknown",
+  connected: true,
+  active: true,
+  visible: true,
+  local: false,
+  electron: false,
+  file: { path: "/repo/src/example.ts" },
+  useHandle: vi.fn(),
+  choice: vi.fn(),
+  view: vi.fn(),
+  publish: vi.fn(),
+  retry: vi.fn(),
+  holdWrites: vi.fn(),
+  download: vi.fn(),
+  reveal: vi.fn().mockResolvedValue(undefined),
+  toastError: vi.fn(),
+  openExplorer: vi.fn(),
+  listing: vi.fn(),
+  select: vi.fn(),
+  expand: vi.fn(),
 }));
-
-vi.mock("@tanstack/react-query", () => ({
-  useQuery: () => queryState.current,
+vi.mock("react-native", () => ({
+  View: ({ children, testID }: { children?: React.ReactNode; testID?: string }) => (
+    <div data-testid={testID}>{children}</div>
+  ),
+  Text: ({ children }: { children?: React.ReactNode }) => <span>{children}</span>,
 }));
-
-vi.mock("react-native", () => {
-  const MockView = React.forwardRef<
-    HTMLDivElement,
-    { children?: React.ReactNode; testID?: string }
-  >(function View({ children, testID }, ref) {
-    return React.createElement("div", { "data-testid": testID, ref }, children);
-  });
-  const MockScrollView = React.forwardRef<
-    HTMLDivElement,
-    { children?: React.ReactNode; horizontal?: boolean }
-  >(function ScrollView({ children, horizontal }, ref) {
-    return React.createElement(
-      "div",
-      { "data-horizontal": horizontal ? "true" : undefined, ref },
-      children,
-    );
-  });
-  const flattenMockStyle = (value: unknown): React.CSSProperties => {
-    if (Array.isArray(value)) {
-      return value.reduce<React.CSSProperties>(
-        (acc, item) => Object.assign(acc, flattenMockStyle(item)),
-        {},
-      );
-    }
-    return (value as React.CSSProperties | null | undefined) ?? {};
-  };
-  const MockText = ({ children, style }: { children?: React.ReactNode; style?: unknown }) =>
-    React.createElement("span", { style: flattenMockStyle(style) }, children);
-  const MockPressable = ({
+vi.mock("react-native-unistyles", () => ({
+  StyleSheet: { create: () => ({}) },
+}));
+vi.mock("@/components/ui/button", () => ({
+  Button: ({
     children,
-    disabled,
     onPress,
     testID,
   }: {
     children?: React.ReactNode;
-    disabled?: boolean;
     onPress?: () => void;
     testID?: string;
-  }) =>
-    React.createElement(
-      "button",
-      {
-        "data-testid": testID,
-        disabled,
-        onClick: () => {
-          if (!disabled) {
-            onPress?.();
-          }
-        },
-        type: "button",
-      },
-      children,
-    );
-  const MockTextInput = React.forwardRef<
-    HTMLInputElement,
-    {
-      value?: string;
-      onChangeText?: (text: string) => void;
-      onKeyPress?: (event: {
-        nativeEvent: { key: string; shiftKey?: boolean };
-        preventDefault: () => void;
-      }) => void;
-      testID?: string;
-      placeholder?: string;
-    }
-  >(function TextInput({ value, onChangeText, onKeyPress, testID, placeholder }, ref) {
-    return React.createElement("input", {
-      "data-testid": testID,
-      onChange: (event: React.ChangeEvent<HTMLInputElement>) =>
-        onChangeText?.(event.currentTarget.value),
-      onKeyDown: (event: React.KeyboardEvent<HTMLInputElement>) =>
-        onKeyPress?.({
-          nativeEvent: { key: event.key, shiftKey: event.shiftKey },
-          preventDefault: () => event.preventDefault(),
-        }),
-      placeholder,
-      ref,
-      value: value ?? "",
-    });
-  });
-  const MockImage = ({ source }: { source?: { uri?: string } }) =>
-    React.createElement("img", { alt: "", src: source?.uri ?? "" });
-
-  return {
-    ActivityIndicator: () => React.createElement("span", { "data-testid": "activity" }),
-    Image: MockImage,
-    Platform: {
-      OS: "web",
-      select: (options: Record<string, unknown>) => options.web ?? options.default,
-    },
-    Pressable: MockPressable,
-    ScrollView: MockScrollView,
-    Text: MockText,
-    TextInput: MockTextInput,
-    View: MockView,
-  };
-});
-
-vi.mock("lucide-react-native", () => {
-  const createIcon = (name: string) =>
-    function Icon() {
-      return React.createElement("span", { "data-icon": name });
-    };
-  return {
-    ChevronDown: createIcon("ChevronDown"),
-    ChevronUp: createIcon("ChevronUp"),
-    X: createIcon("X"),
-  };
-});
-
-vi.mock("react-native-markdown-display", () => ({
-  default: ({ children }: { children?: React.ReactNode }) =>
-    React.createElement("article", { "data-testid": "markdown-preview" }, children),
-  MarkdownIt: () => ({}),
+  }) => (
+    <button type="button" data-testid={testID} onClick={onPress}>
+      {children}
+    </button>
+  ),
 }));
-
-vi.mock("react-native-unistyles", () => ({
-  StyleSheet: {
-    create: (factory: unknown) =>
-      typeof factory === "function" ? (factory as (t: typeof theme) => unknown)(theme) : factory,
+vi.mock("@/components/retained-panel", () => ({
+  useRetainedPanelActive: () => m.active,
+}));
+vi.mock("@/hooks/use-app-visible", () => ({
+  useAppActivelyVisible: () => m.visible,
+}));
+vi.mock("@/file-panels/file", () => ({
+  useFileHandle: (input: unknown) => {
+    m.useHandle(input);
+    return { file: m.file, retry: m.retry, holdWrites: m.holdWrites };
   },
-  useUnistyles: () => ({ theme }),
-  withUnistyles: (component: unknown) => component,
+  useFileHandleSnapshot: () => m.snapshot,
 }));
-
-// expo-clipboard ships untranspiled JSX in its build output (ClipboardPasteButton),
-// which vitest's node transform can't parse — stub the whole module.
-vi.mock("expo-clipboard", () => ({
-  setStringAsync: vi.fn(async () => true),
-  getStringAsync: vi.fn(async () => ""),
+vi.mock("@/file-panels/loading", () => ({
+  FilePanelLoading: () => <span data-testid="file-loading" />,
 }));
-
-// Pure styling boundary (withUnistyles wrapper) — pass children through.
-vi.mock("@/components/appearance-style-boundary", () => ({
-  AppearanceStyleBoundary: ({ children }: { children: unknown }) => children,
+vi.mock("@/file-panels", () => ({
+  useFilePanelChoice: (input: unknown) => {
+    m.choice(input);
+    return { panel: m.panel, choice: null };
+  },
+  FilePanelPicker: () => <span data-testid="file-picker" />,
+  FilePanelView: (props: unknown) => {
+    m.view(props);
+    return <span data-testid="plugin-panel" />;
+  },
 }));
-
-vi.mock("@/styles/syntax-token-styles", () => ({
-  syntaxTokenStyleFor: () => ({ color: "#fff" }),
+vi.mock("@/file-pane/use-outside-path-kind", () => ({
+  useOutsidePathKind: () => m.outsideKind,
 }));
-
-vi.mock("@/attachments/use-attachment-preview-url", () => ({
-  useAttachmentPreviewUrl: (metadata: unknown) => (metadata ? "blob:preview" : null),
+vi.mock("@/file-pane/directory-browser", () => ({
+  DirectoryBrowser: ({
+    absolutePath,
+    onOpenFile,
+  }: {
+    absolutePath: string;
+    onOpenFile: (path: string) => void;
+  }) => {
+    const handleOpen = React.useCallback(
+      () => onOpenFile(`${absolutePath}/readme.md`),
+      [absolutePath, onOpenFile],
+    );
+    return (
+      <button type="button" data-testid="directory-browser" onClick={handleOpen}>
+        {absolutePath}
+      </button>
+    );
+  },
 }));
-
-vi.mock("@/hooks/use-web-scrollbar-style", () => ({
-  useWebScrollbarStyle: () => ({}),
+vi.mock("@/constants/layout", () => ({ useIsCompactFormFactor: () => false }));
+vi.mock("@/constants/platform", () => ({ getIsElectron: () => m.electron }));
+vi.mock("@/stores/panel-store", () => ({
+  usePanelStore: (selector: (state: unknown) => unknown) =>
+    selector({ setExpandedPathsForWorkspace: m.expand }),
 }));
-
-vi.mock("@/constants/layout", () => ({
-  useIsCompactFormFactor: () => false,
+vi.mock("@/hooks/use-file-explorer-actions", () => ({
+  useFileExplorerActions: () => ({
+    workspaceStateKey: "server:workspace",
+    requestDirectoryListing: m.listing,
+    selectExplorerEntry: m.select,
+  }),
 }));
-
-vi.mock("@/constants/platform", () => ({
-  isWeb: true,
+vi.mock("@/hooks/use-file-download", () => ({
+  useFileDownload: () => m.download,
 }));
-
-vi.mock("@/styles/markdown-styles", () => ({
-  createMarkdownStyles: () => ({}),
+vi.mock("@/hooks/use-is-local-daemon", () => ({
+  useIsLocalDaemon: () => m.local,
 }));
-
+vi.mock("@/contexts/toast-context", () => ({
+  useToast: () => ({ error: m.toastError }),
+}));
+vi.mock("@/desktop/shell", () => ({ revealItemInFolder: m.reveal }));
+vi.mock("@/desktop/host", () => ({ isElectronRuntimeMac: () => false }));
+vi.mock("@/panels/panel-instance-attributes", () => ({
+  usePublishPanelInstanceAttributes: m.publish,
+}));
+vi.mock("@/workspace-tabs/explorer-sidebar", () => ({
+  openExplorerSidebarView: m.openExplorer,
+}));
 vi.mock("@/stores/session-store", () => ({
-  useSessionStore: (selector: (state: unknown) => unknown) => selector({ sessions: {} }),
+  useSessionStore: (selector: (state: unknown) => unknown) =>
+    selector({ sessions: { server: { client: m.connected ? {} : null } } }),
 }));
-
-let root: Root | null = null;
-let container: HTMLElement | null = null;
-const paneInstanceId = "server:workspace:file";
-const paneContext: PaneContextValue = {
+const context: PaneContextValue = {
   serverId: "server",
   workspaceId: "workspace",
-  paneInstanceId,
+  paneInstanceId: "file-pane",
+  host: "main",
   tabId: "file",
   target: { kind: "file", path: "src/example.ts" },
-  openTab: () => {},
-  closeCurrentTab: () => {},
-  retargetCurrentTab: () => {},
-  openFileInWorkspace: () => {},
-  openImportSheet: () => {},
+  state: { scrollTop: 42 },
+  openTab: vi.fn(),
+  openPreferredTarget: vi.fn(),
+  closeCurrentTab: vi.fn(),
+  retargetCurrentTab: vi.fn(),
+  setCurrentTabState: vi.fn(),
+  openFileInWorkspace: vi.fn(),
+  openImportSheet: vi.fn(),
 };
-const paneFocus = createPaneFocusContextValue({
-  isPaneFocused: true,
-  isWorkspaceFocused: true,
-});
-
+let root: Root, container: HTMLDivElement;
 beforeEach(() => {
+  vi.clearAllMocks();
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
-  vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
-    callback(0);
-    return 1;
-  });
-  HTMLElement.prototype.scrollIntoView = vi.fn();
+  m.snapshot = { status: "loading" };
+  m.panel = null;
+  m.outsideKind = null;
+  m.connected = m.active = m.visible = true;
+  m.local = m.electron = false;
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
 });
-
 afterEach(() => {
-  if (root) {
-    act(() => {
-      root?.unmount();
-    });
-  }
-  clearActivePaneFindPaneId(paneInstanceId);
-  root = null;
-  container?.remove();
-  container = null;
-  queryState.current = { data: null, isFetching: false };
+  act(() => root.unmount());
+  container.remove();
   vi.unstubAllGlobals();
 });
-
-function renderFilePane(location: { path: string } = { path: "src/example.ts" }) {
-  act(() => {
-    root?.render(
-      <PaneProvider value={paneContext}>
-        <PaneFocusProvider value={paneFocus}>
-          <FilePane
-            serverId="server"
-            workspaceRoot="/repo"
-            location={location}
-            navigationRevision={0}
-          />
-        </PaneFocusProvider>
+function fileLocation(path: string, lineStart?: number) {
+  return { path, lineStart };
+}
+function render(path = "src/example.ts", lineStart?: number, revision = 0) {
+  const location = fileLocation(path, lineStart);
+  act(() =>
+    root.render(
+      <PaneProvider value={context}>
+        <FilePane
+          serverId="server"
+          workspaceId="workspace"
+          workspaceRoot="/repo"
+          location={location}
+          navigationRevision={revision}
+        />
       </PaneProvider>,
-    );
-  });
-  setActivePaneFindPaneId(paneInstanceId);
+    ),
+  );
 }
-
-function inputElement(): HTMLInputElement {
-  const input = container?.querySelector('[data-testid="pane-find-input"]');
-  expect(input).toBeInstanceOf(HTMLInputElement);
-  return input as HTMLInputElement;
+function click(id: string) {
+  const button = container.querySelector(`[data-testid="${id}"]`);
+  expect(button).not.toBeNull();
+  act(() => button!.dispatchEvent(new MouseEvent("click", { bubbles: true })));
 }
-
-function changeInput(value: string): void {
-  const input = inputElement();
-  act(() => {
-    const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
-    valueSetter?.call(input, value);
-    input.dispatchEvent(new Event("input", { bubbles: true }));
-    input.dispatchEvent(new Event("change", { bubbles: true }));
-  });
-}
-
-function click(testId: string): void {
-  const element = container?.querySelector(`[data-testid="${testId}"]`);
-  expect(element).toBeInstanceOf(HTMLElement);
-  act(() => {
-    element?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-  });
-}
-
-function makeFile(file: Partial<ExplorerFile>): ExplorerFile {
-  return {
-    content: "",
-    encoding: "utf-8",
-    kind: "text",
-    hasBom: false,
-    modifiedAt: "2026-05-02T00:00:00.000Z",
-    path: file.path ?? "src/example.ts",
-    size: file.size ?? 0,
-    ...file,
+function ready(kind: "text" | "image" | "binary" = "text", size = 1200) {
+  m.snapshot = {
+    status: "ready",
+    kind,
+    size,
+    modifiedAt: "2026-11-01T00:00:00.000Z",
+    mimeType: "application/octet-stream",
   };
 }
-
-describe("FilePane preview rendering", () => {
-  it("renders code/text previews with line numbers and highlighted token text", () => {
-    queryState.current = {
-      data: {
-        error: null,
-        file: makeFile({ content: "const answer = 42;\nconsole.log(answer);" }),
-      },
-      isFetching: false,
-    };
-
-    renderFilePane();
-
-    const text = container?.textContent ?? "";
-    expect(text).toContain("1");
-    expect(text).toContain("2");
-    expect(text).toContain("const answer = 42;");
-    expect(text).toContain("console.log(answer);");
-  });
-
-  it("keeps markdown files on the markdown preview path", () => {
-    queryState.current = {
-      data: {
-        error: null,
-        file: makeFile({ content: "# Guide", path: "README.md" }),
-      },
-      isFetching: false,
-    };
-
-    renderFilePane({ path: "README.md" });
-
-    expect(container?.querySelector('[data-testid="markdown-preview"]')?.textContent).toBe(
-      "# Guide",
+describe("FilePane plugin architecture", () => {
+  it.each([
+    ["src/example.ts", "text", "source"],
+    ["README.md", "text", "markdown"],
+    ["image.png", "image", "image"],
+  ] as const)("delegates %s with navigation and tab state", (path, kind, id) => {
+    ready(kind);
+    m.panel = { id };
+    render(path, 12, 3);
+    expect(container.querySelector('[data-testid="plugin-panel"]')).not.toBeNull();
+    expect(m.choice).toHaveBeenLastCalledWith(
+      expect.objectContaining({ path, fileKind: kind, lineNavigation: 3 }),
     );
-  });
-
-  it("renders image previews from the attachment preview URL", () => {
-    queryState.current = {
-      data: {
-        error: null,
-        file: makeFile({ content: undefined, encoding: "none", kind: "image", path: "logo.png" }),
-        imageAttachment: { id: "preview" },
-      },
-      isFetching: false,
-    };
-
-    renderFilePane({ path: "logo.png" });
-
-    expect(container?.querySelector("img")?.getAttribute("src")).toBe("blob:preview");
-  });
-
-  it("keeps binary previews on the unavailable state with file size", () => {
-    queryState.current = {
-      data: {
-        error: null,
-        file: makeFile({
-          content: undefined,
-          encoding: "none",
-          kind: "binary",
-          path: "tool",
-          size: 2048,
+    expect(m.view).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        panel: { id },
+        file: m.file,
+        params: { path, lineStart: 12, lineEnd: undefined },
+        revision: 3,
+        tab: expect.objectContaining({
+          state: context.state,
+          setState: context.setCurrentTabState,
         }),
-      },
-      isFetching: false,
-    };
-
-    renderFilePane({ path: "tool" });
-
-    expect(container?.textContent).toContain("Binary preview unavailable");
-    expect(container?.textContent).toContain("2.0 KB");
-  });
-
-  it("searches code/text previews case-insensitively and navigates matches", () => {
-    queryState.current = {
-      data: {
-        error: null,
-        file: makeFile({ content: "const answer = 42;\nconsole.log(ANSWER);" }),
-      },
-      isFetching: false,
-    };
-    renderFilePane();
-
-    act(() => {
-      handlePaneFindKeyboardAction({ id: "workspace.find.open", scope: "workspace" });
-    });
-    changeInput("answer");
-
-    expect(container?.textContent).toContain("1 / 2");
-    expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalledTimes(1);
-    expect(container?.querySelectorAll('span[style*="background-color"]').length).toBeGreaterThan(
-      0,
+      }),
     );
-
-    click("pane-find-next");
-    expect(container?.textContent).toContain("2 / 2");
-    expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalledTimes(2);
-
-    click("pane-find-prev");
-    expect(container?.textContent).toContain("1 / 2");
-    expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalledTimes(3);
-  });
-
-  it("clears file highlights on empty query and close", () => {
-    queryState.current = {
-      data: {
-        error: null,
-        file: makeFile({ content: "needle\nneedle" }),
-      },
-      isFetching: false,
+    const props = m.view.mock.lastCall![0] as {
+      tab: { setModified: (modified: boolean) => void };
     };
-    renderFilePane();
-
-    act(() => {
-      handlePaneFindKeyboardAction({ id: "workspace.find.open", scope: "workspace" });
+    act(() => props.tab.setModified(true));
+    expect(m.publish).toHaveBeenLastCalledWith({
+      modified: true,
+      suspendPendingSave: m.holdWrites,
     });
-    changeInput("needle");
-    expect(container?.textContent).toContain("1 / 2");
-
-    changeInput("");
-    expect(container?.textContent).toContain("0 / 0");
-    expect(container?.querySelectorAll('span[style*="background-color"]').length).toBe(0);
-
-    changeInput("needle");
-    click("pane-find-close");
-    expect(container?.querySelector('[data-testid="pane-find-input"]')).toBeNull();
-    expect(container?.querySelectorAll('span[style*="background-color"]').length).toBe(0);
+  });
+  it("observes only while panel and app are visible", () => {
+    render();
+    expect(m.useHandle).toHaveBeenLastCalledWith(expect.objectContaining({ observing: true }));
+    m.active = false;
+    render();
+    expect(m.useHandle).toHaveBeenLastCalledWith(expect.objectContaining({ observing: false }));
+    m.active = true;
+    m.visible = false;
+    render();
+    expect(m.useHandle).toHaveBeenLastCalledWith(expect.objectContaining({ observing: false }));
+    expect(container.querySelector('[data-testid="file-loading"]')).not.toBeNull();
+  });
+  it("renders a missing file with retry", () => {
+    m.snapshot = { status: "missing" };
+    render();
+    const retry = container.querySelector("button");
+    expect(retry).not.toBeNull();
+    act(() => retry!.click());
+    expect(m.retry).toHaveBeenCalledOnce();
+  });
+  it("shows disconnected state without mounting a plugin", () => {
+    ready();
+    m.panel = { id: "source" };
+    m.connected = false;
+    render();
+    expect(container.querySelector('[data-testid="plugin-panel"]')).toBeNull();
+    expect(container.textContent).toContain("not connected");
+  });
+  it("keeps binary size and remote download", () => {
+    ready("binary", 2048);
+    render("build/app.bin");
+    expect(container.querySelector('[data-testid="file-binary-preview"]')).not.toBeNull();
+    expect(container.textContent).toContain("2.0 KB");
+    click("file-binary-download");
+    expect(m.download).toHaveBeenCalledWith({
+      fileName: "app.bin",
+      path: "build/app.bin",
+    });
+    expect(container.querySelector('[data-testid="file-binary-reveal"]')).toBeNull();
+  });
+  it("reveals local desktop binaries by absolute path", () => {
+    ready("binary");
+    m.local = m.electron = true;
+    render("/repo/build/app.bin");
+    click("file-binary-reveal");
+    expect(m.reveal).toHaveBeenCalledWith("/repo/build/app.bin");
+  });
+  it("opens workspace directories in explorer", () => {
+    render("src/nested/");
+    expect(container.querySelector('[data-testid="file-directory-redirect"]')).not.toBeNull();
+    expect(m.openExplorer).toHaveBeenCalledWith({
+      isCompact: false,
+      view: "files",
+      workspaceKey: "server:workspace",
+    });
+    expect(m.listing).toHaveBeenCalledWith("src/nested", {
+      recordHistory: true,
+      setCurrentPath: true,
+    });
+  });
+  it("recovers directories reported by string errors", () => {
+    m.snapshot = { status: "error", error: "Path is not a file" };
+    render("src/nested");
+    expect(container.querySelector('[data-testid="file-directory-redirect"]')).not.toBeNull();
+    expect(m.select).toHaveBeenCalledWith("src/nested");
+  });
+  it("browses outside directories and opens selected files", () => {
+    m.outsideKind = "directory";
+    render("/outside");
+    click("directory-browser");
+    expect(context.openFileInWorkspace).toHaveBeenCalledWith({
+      location: { path: "/outside/readme.md" },
+      disposition: "main",
+    });
+    expect(m.useHandle).toHaveBeenLastCalledWith(expect.objectContaining({ target: null }));
   });
 });

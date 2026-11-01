@@ -5,6 +5,7 @@ import type { StreamItem, TodoListItem } from "@/types/stream";
 function todoListItem(id: string, items: TodoListItem["items"]): TodoListItem {
   return {
     kind: "todo_list",
+    activity: { type: "created", count: 1 },
     id,
     timestamp: new Date(0),
     provider: "claude",

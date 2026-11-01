@@ -9,7 +9,7 @@ import {
   invalidateSourceControlDataQueries,
 } from "@/git/query-keys";
 import { type CheckoutPrStatusPayload, normalizeCheckoutPrStatusPayload } from "@/git/pr-status";
-import { expireStaleDiffModeOverrides } from "@/review/store";
+import { resetDraftAgentCommandsForCheckout } from "@/agent-commands/cache";
 
 export type CheckoutStatusPayload = CheckoutStatusResponse["payload"];
 export type { CheckoutPrStatusPayload } from "@/git/pr-status";
@@ -18,13 +18,8 @@ export interface CheckoutStatusClient {
   getCheckoutStatus: (cwd: string) => Promise<CheckoutStatusPayload>;
 }
 
-// Checkout status enters the app through exactly two doors: daemon pushes
-// (applyCheckoutStatusUpdateFromEvent) and query fetches (fetchCheckoutStatus). Both run
-// the dirty-state reactions, so they hold regardless of which screens are mounted.
-
 export async function fetchCheckoutStatus({
   client,
-  serverId,
   cwd,
 }: {
   client: CheckoutStatusClient;
@@ -32,7 +27,6 @@ export async function fetchCheckoutStatus({
   cwd: string;
 }): Promise<CheckoutStatusPayload> {
   const payload = await client.getCheckoutStatus(cwd);
-  expireStaleDiffModeOverrides({ serverId, cwd, isDirty: payload.isGit && payload.isDirty });
   return payload;
 }
 
@@ -49,6 +43,24 @@ function checkoutStatusesEquivalent(
   return normalize(left) === normalize(right);
 }
 
+export async function ensureCheckoutStatus({
+  queryClient,
+  client,
+  serverId,
+  cwd,
+}: {
+  queryClient: QueryClient;
+  client: CheckoutStatusClient;
+  serverId: string;
+  cwd: string;
+}): Promise<CheckoutStatusPayload> {
+  return await queryClient.fetchQuery({
+    queryKey: checkoutStatusQueryKey(serverId, cwd),
+    queryFn: () => fetchCheckoutStatus({ client, serverId, cwd }),
+    staleTime: Infinity,
+  });
+}
+
 export function applyCheckoutStatusUpdateFromEvent({
   queryClient,
   serverId,
@@ -63,16 +75,15 @@ export function applyCheckoutStatusUpdateFromEvent({
     ? normalizeCheckoutPrStatusPayload(payload.prStatus)
     : undefined;
   const cachePayload = prStatus ? { ...payload, prStatus } : payload;
-  const queryKey = checkoutStatusQueryKey(serverId, payload.cwd);
-  const previous = queryClient.getQueryData<CheckoutStatusPayload>(queryKey);
-  queryClient.setQueryData(queryKey, cachePayload);
+  const previousStatus = queryClient.getQueryData<CheckoutStatusPayload>(
+    checkoutStatusQueryKey(serverId, payload.cwd),
+  );
+  queryClient.setQueryData(checkoutStatusQueryKey(serverId, payload.cwd), cachePayload);
+  if (previousStatus?.currentBranch !== payload.currentBranch) {
+    void resetDraftAgentCommandsForCheckout(queryClient, { serverId, cwd: payload.cwd });
+  }
   void queryClient.invalidateQueries({
     queryKey: checkoutCommitsQueryKey(serverId, payload.cwd),
-  });
-  expireStaleDiffModeOverrides({
-    serverId,
-    cwd: payload.cwd,
-    isDirty: payload.isGit && payload.isDirty,
   });
 
   // The daemon pushes this update to every connected client (local sockets
@@ -81,7 +92,7 @@ export function applyCheckoutStatusUpdateFromEvent({
   // source-control queries so every client's panel converges. The setQueryData
   // above makes repeat deliveries of the same snapshot compare equal, so
   // multiple subscribed components don't fan out duplicate invalidations.
-  if (previous && !checkoutStatusesEquivalent(previous, cachePayload)) {
+  if (previousStatus && !checkoutStatusesEquivalent(previousStatus, cachePayload)) {
     void invalidateSourceControlDataQueries(queryClient, { serverId, cwd: payload.cwd });
   }
 

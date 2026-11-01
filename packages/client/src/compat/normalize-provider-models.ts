@@ -1,5 +1,6 @@
 import type { AgentModelDefinition, ProviderSnapshotEntry } from "@getpaseo/protocol/agent-types";
 import { normalizeAgentModelDefinition } from "@getpaseo/protocol/agent-types";
+import { expandProviderSnapshot } from "@getpaseo/protocol/provider-snapshot-codec";
 import type {
   GetProvidersSnapshotResponseMessage,
   ListProviderModelsResponseMessage,
@@ -58,17 +59,28 @@ export function normalizeListProviderModelsPayload(
 
 export function normalizeProvidersSnapshotPayload<
   T extends GetProvidersSnapshotPayload | ProvidersSnapshotUpdatePayload,
->(payload: T): T {
-  const entries = normalizeProviderSnapshotEntries(payload.entries);
+>(payload: T, expand = true): T {
+  if (payload.compactSnapshot && !expand) return payload;
+  const decoded = payload.compactSnapshot
+    ? expandProviderSnapshot(payload.compactSnapshot)
+    : normalizeProviderSnapshotEntries(payload.entries);
+  const freshness = payload.fetchedAt;
+  const entries =
+    freshness && expand
+      ? decoded.map((entry) =>
+          freshness[entry.provider] ? { ...entry, fetchedAt: freshness[entry.provider] } : entry,
+        )
+      : decoded;
   return entries === payload.entries ? payload : { ...payload, entries };
 }
 
 export function normalizeProviderSnapshotUpdateMessage(
   msg: SessionOutboundMessage,
+  expand = true,
 ): SessionOutboundMessage {
   if (msg.type !== "providers_snapshot_update") {
     return msg;
   }
 
-  return { ...msg, payload: normalizeProvidersSnapshotPayload(msg.payload) };
+  return { ...msg, payload: normalizeProvidersSnapshotPayload(msg.payload, expand) };
 }

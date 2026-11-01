@@ -1,5 +1,5 @@
 import type { ChildProcessWithoutNullStreams } from "node:child_process";
-import { existsSync } from "node:fs";
+import { access } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { Logger } from "pino";
@@ -96,14 +96,23 @@ export interface CodexAccountRpcOptions {
 // Cheap pre-check so we never spawn an app-server for users who have never
 // logged Codex in. Existence-only (matches the legacy provider's candidate
 // list); apiKey-mode auth still spawns and yields nulls, handled downstream.
-export function codexAuthFileExists(codexHome?: string): boolean {
+export async function codexAuthFileExists(codexHome?: string): Promise<boolean> {
   const home = codexHome || process.env.CODEX_HOME || join(homedir(), ".codex");
   const candidates = [
     ...(process.env.CODEX_HOME ? [join(process.env.CODEX_HOME, "auth.json")] : []),
     join(homedir(), ".config", "codex", "auth.json"),
     join(home, "auth.json"),
   ];
-  return candidates.some((path) => existsSync(path));
+  return (
+    await Promise.all(
+      candidates.map((path) =>
+        access(path).then(
+          () => true,
+          () => false,
+        ),
+      ),
+    )
+  ).some(Boolean);
 }
 
 async function withCodexAppServer<T>(

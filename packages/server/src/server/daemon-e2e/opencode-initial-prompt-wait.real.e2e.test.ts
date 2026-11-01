@@ -29,7 +29,7 @@ async function createHarness(): Promise<{
   });
   const client = new DaemonClient({ url: `ws://127.0.0.1:${daemon.port}/ws` });
   await client.connect();
-  await client.fetchAgents({ subscribe: { subscriptionId: "opencode-init-prompt" } });
+  await client.fetchAgents({ subscribe: {} });
   return { client, daemon };
 }
 
@@ -46,7 +46,7 @@ describe("daemon E2E (real opencode) - initial prompt wait", () => {
     }
   });
 
-  test("waitForFinish does not resolve before an initial prompt using opencode/big-pickle actually completes", async () => {
+  test("waitForFinish does not resolve before an OpenCode initial prompt completes", async () => {
     const cwd = tmpCwd();
     const { client, daemon } = await createHarness();
 

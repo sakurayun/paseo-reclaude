@@ -73,7 +73,7 @@ export class CodexQuotaProvider implements ProviderUsageFetcher {
   }
 
   private async fetchOfficialUsage(): Promise<ProviderUsage | null> {
-    const hasAuthFile = codexAuthFileExists(this.codexHome);
+    const hasAuthFile = await codexAuthFileExists(this.codexHome);
     if (!hasAuthFile) return null;
 
     // API-key-only installs must NOT spawn app-server.
@@ -92,25 +92,31 @@ export class CodexQuotaProvider implements ProviderUsageFetcher {
       const windows: ProviderUsageWindow[] = [];
       if (limits.primary) {
         const usedPct = limits.primary.usedPct ?? 0;
+        let tone: ProviderUsageWindow["tone"] = "ok";
+        if (usedPct >= 95) tone = "danger";
+        else if (usedPct >= 90) tone = "warning";
         windows.push(
           windowFromUsedPct({
             id: "session",
             label: "Session",
             utilizationPct: limits.primary.usedPct,
             resetsAt: limits.primary.resetsAt,
-            tone: usedPct >= 90 ? "warning" : "ok",
+            tone,
           }),
         );
       }
       if (limits.secondary) {
         const usedPct = limits.secondary.usedPct ?? 0;
+        let tone: ProviderUsageWindow["tone"] = "ok";
+        if (usedPct >= 95) tone = "danger";
+        else if (usedPct >= 70) tone = "warning";
         windows.push(
           windowFromUsedPct({
             id: "weekly",
             label: "Weekly",
             utilizationPct: limits.secondary.usedPct,
             resetsAt: limits.secondary.resetsAt,
-            tone: usedPct >= 70 ? "warning" : "ok",
+            tone,
           }),
         );
       }

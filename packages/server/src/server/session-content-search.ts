@@ -37,6 +37,7 @@ function getTimelineItemSearchableSegments(item: AgentTimelineItem): SearchableS
       return getToolCallDetailSearchableSegments(item.detail);
     case "todo":
     case "compaction":
+    default:
       return [];
   }
 }

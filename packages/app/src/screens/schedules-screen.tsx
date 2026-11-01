@@ -7,7 +7,7 @@ import {
   type ReactElement,
 } from "react";
 import { ScrollView, Text, View } from "react-native";
-import { useIsFocused } from "@react-navigation/native";
+import { useIsFocused } from "expo-router/react-navigation";
 import { CalendarClock, Plus } from "lucide-react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { MenuHeader } from "@/components/headers/menu-header";
@@ -408,7 +408,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   errorsBannerText: {
     color: theme.colors.palette.red[300],
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
   },
   filterEmpty: {
     flexGrow: 1,
@@ -439,12 +439,12 @@ const styles = StyleSheet.create((theme) => ({
   },
   emptyDescription: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.sm,
+    fontSize: theme.fontSize.base,
     textAlign: "center",
   },
   message: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.lg,
+    fontSize: theme.fontSize.base,
     textAlign: "center",
   },
   // Static color holder read by the spinner; keeps the muted token without

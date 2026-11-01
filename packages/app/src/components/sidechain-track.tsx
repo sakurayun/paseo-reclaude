@@ -1,7 +1,7 @@
+import { PressHighlight } from "@/components/ui/press-highlight";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from "react";
 import {
   ActivityIndicator,
-  Pressable,
   ScrollView,
   Text,
   View,
@@ -15,7 +15,6 @@ import { useStoreWithEqualityFn } from "zustand/traditional";
 import { Bot, Check, ChevronDown, ChevronRight, X } from "lucide-react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { GlassSurface } from "@/components/ui/glass-surface";
-import { MAX_CONTENT_WIDTH } from "@/constants/layout";
 import { useSessionStore } from "@/stores/session-store";
 import { colorSchemeForThemeName, type Theme } from "@/styles/theme";
 import { resolveToolCallColor, type ToolCallSchemeColor } from "@/utils/tool-call-colors";
@@ -90,13 +89,14 @@ function SidechainTrackRow({
   const lastPressAtRef = useRef(0);
   const typeLabel = call.agentType;
 
-  // Pressable has no double-click event on native or web; a timed window
+  // PressHighlight has no double-click event on native or web; a timed window
   // covers double-click and double-tap with the same code path.
   const handlePress = useCallback(() => {
     const now = Date.now();
     if (now - lastPressAtRef.current <= DOUBLE_PRESS_WINDOW_MS) {
       lastPressAtRef.current = 0;
       openToolCall({
+        toolName: call.agentType,
         displayName: typeLabel,
         summary: call.description || undefined,
         detail: call.detail,
@@ -131,7 +131,7 @@ function SidechainTrackRow({
   );
 
   return (
-    <Pressable
+    <PressHighlight
       onPress={handlePress}
       style={rowStyle}
       accessibilityRole="button"
@@ -148,7 +148,7 @@ function SidechainTrackRow({
         {call.description}
       </Text>
       {call.status !== "running" ? (
-        <Pressable
+        <PressHighlight
           onPressIn={stopPressPropagation}
           onPress={handleDismiss}
           style={closeButtonStyle}
@@ -165,9 +165,9 @@ function SidechainTrackRow({
               }
             />
           )}
-        </Pressable>
+        </PressHighlight>
       ) : null}
-    </Pressable>
+    </PressHighlight>
   );
 }
 
@@ -329,7 +329,7 @@ function SidechainTrackContent({
   const { t } = useTranslation();
   return (
     <>
-      <Pressable
+      <PressHighlight
         accessibilityRole="button"
         accessibilityLabel={progressLabel}
         testID="sidechain-track-header"
@@ -351,7 +351,7 @@ function SidechainTrackContent({
           {headerDetail}
         </Text>
         {runningCount === 0 ? (
-          <Pressable
+          <PressHighlight
             onPressIn={stopPressPropagation}
             onPress={onDismissPanel}
             style={closeButtonStyle}
@@ -368,9 +368,9 @@ function SidechainTrackContent({
                 }
               />
             )}
-          </Pressable>
+          </PressHighlight>
         ) : null}
-      </Pressable>
+      </PressHighlight>
       {expanded ? (
         <ScrollView
           style={styles.scroll}
@@ -395,7 +395,7 @@ const styles = StyleSheet.create((theme, rt) => ({
   },
   track: {
     width: "100%",
-    maxWidth: MAX_CONTENT_WIDTH,
+    maxWidth: theme.contentMaxWidth,
     marginBottom: -theme.spacing[4],
   },
   surface: {

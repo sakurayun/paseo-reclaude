@@ -1,5 +1,6 @@
+import { PressHighlight } from "@/components/ui/press-highlight";
 import { useCallback, useMemo } from "react";
-import { Pressable, Text, View } from "react-native";
+import { Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
 import { StyleSheet } from "react-native-unistyles";
 import { SegmentedControl } from "@/components/ui/segmented-control";
@@ -278,7 +279,7 @@ function DayButton({
   );
   const accessibilityState = useMemo(() => ({ selected }), [selected]);
   return (
-    <Pressable
+    <PressHighlight
       onPress={handlePress}
       disabled={disabled}
       style={dayButtonStyle}
@@ -288,7 +289,7 @@ function DayButton({
       testID={`schedule-cadence-day-${day}`}
     >
       <Text style={dayLabelStyle}>{label}</Text>
-    </Pressable>
+    </PressHighlight>
   );
 }
 

@@ -4,6 +4,9 @@ import { HostRouteBootstrapBoundary } from "@/components/host-route-bootstrap-bo
 import { useFetchQuery } from "@/data/query";
 import { resolveAgentRoute, type AgentRouteLookup } from "@/navigation/agent-route-resolution";
 import { AgentRouteResolutionView } from "@/navigation/agent-route-resolution-view";
+import { useHasHydratedWorkspaces } from "@/stores/session-store-hooks";
+import { useDirectoryDemand } from "@/hooks/use-directory-demand";
+import { useWorkspaceLayoutStoreHydrated } from "@/stores/workspace-layout-store";
 import { useSessionStore } from "@/stores/session-store";
 import { getHostRuntimeStore, useHostRuntimeSnapshot, useHosts } from "@/runtime/host-runtime";
 import { buildHostRootRoute, buildSettingsHostRoute } from "@/utils/host-routes";
@@ -48,6 +51,12 @@ function HostAgentReadyRouteContent() {
       null
     );
   });
+  useEffect(() => {
+    if (!serverId || !agentId || agentWorkspaceId) return;
+    void getHostRuntimeStore()
+      .prepareAgentRoute(serverId, agentId)
+      .catch(() => undefined);
+  }, [agentId, agentWorkspaceId, serverId]);
   const shouldLookupAgent = Boolean(
     serverId && agentId && client && connectionStatus === "online" && !agentWorkspaceId,
   );
@@ -87,7 +96,12 @@ function HostAgentReadyRouteContent() {
     lookupQuery.isSuccess,
     shouldLookupAgent,
   ]);
+  const hasHydratedWorkspaces = useHasHydratedWorkspaces(serverId);
+  const hasHydratedLayout = useWorkspaceLayoutStoreHydrated();
+  useDirectoryDemand(serverId);
   const resolution = resolveAgentRoute({
+    hasHydratedWorkspaces,
+    hasHydratedLayout,
     serverId,
     agentId,
     cachedWorkspaceId: agentWorkspaceId,
@@ -110,7 +124,7 @@ function HostAgentReadyRouteContent() {
     handledNavigationRef.current = navigationKey;
 
     if (resolution.kind === "resolved") {
-      navigateToAgent({ serverId, agentId, workspaceId: resolution.workspaceId });
+      navigateToAgent({ serverId, agentId, workspaceId: resolution.workspaceId, pin: true });
       return;
     }
     router.replace(resolution.kind === "invalid" ? ("/" as Href) : buildHostRootRoute(serverId));

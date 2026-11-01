@@ -462,24 +462,25 @@ export function createSshSessionController(deps: SshSessionControllerDeps): SshS
         return undefined;
       }
       case "ssh.known_hosts.import.request": {
-        try {
-          const { imported, skipped } = knownHostStore.importFromFile(msg.path);
-          emit({
-            type: "ssh.known_hosts.import.response",
-            payload: { imported, skipped, error: null, requestId: msg.requestId },
-          });
-        } catch (error) {
-          emit({
-            type: "ssh.known_hosts.import.response",
-            payload: {
-              imported: 0,
-              skipped: 0,
-              error: getErrorMessage(error),
-              requestId: msg.requestId,
-            },
-          });
-        }
-        return undefined;
+        return (async () => {
+          try {
+            const { imported, skipped } = await knownHostStore.importFromFile(msg.path);
+            emit({
+              type: "ssh.known_hosts.import.response",
+              payload: { imported, skipped, error: null, requestId: msg.requestId },
+            });
+          } catch (error) {
+            emit({
+              type: "ssh.known_hosts.import.response",
+              payload: {
+                imported: 0,
+                skipped: 0,
+                error: getErrorMessage(error),
+                requestId: msg.requestId,
+              },
+            });
+          }
+        })();
       }
       default:
         return undefined;

@@ -1,10 +1,10 @@
+import { PressHighlight } from "@/components/ui/press-highlight";
 import { useCallback, useMemo, useState, type ReactElement } from "react";
-import { Pressable, ScrollView, Text, View, type PressableStateCallbackType } from "react-native";
+import { ScrollView, Text, View, type PressableStateCallbackType } from "react-native";
 import { useTranslation } from "react-i18next";
 import { ChevronDown, ChevronRight, CloudDownload } from "lucide-react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { GlassSurface } from "@/components/ui/glass-surface";
-import { MAX_CONTENT_WIDTH } from "@/constants/layout";
 import type { Theme } from "@/styles/theme";
 
 const ThemedChevronDown = withUnistyles(ChevronDown);
@@ -55,7 +55,7 @@ export function RemoteDraftConflictDrawer({
     <View style={styles.outer} testID="remote-draft-conflict-drawer">
       <View style={styles.track}>
         <GlassSurface backdropStyle={styles.surfaceBackdrop} style={surfaceStyle}>
-          <Pressable
+          <PressHighlight
             accessibilityRole="button"
             accessibilityLabel={t("composer.draftConflict.title")}
             testID="remote-draft-conflict-header"
@@ -72,7 +72,7 @@ export function RemoteDraftConflictDrawer({
             <Text style={styles.headerPreview} numberOfLines={1}>
               {remoteText}
             </Text>
-          </Pressable>
+          </PressHighlight>
           {expanded ? (
             <View style={styles.body}>
               <ScrollView
@@ -85,7 +85,7 @@ export function RemoteDraftConflictDrawer({
                   {remoteText}
                 </Text>
               </ScrollView>
-              <Pressable
+              <PressHighlight
                 accessibilityRole="button"
                 accessibilityLabel={t("composer.draftConflict.overwrite")}
                 testID="remote-draft-conflict-accept"
@@ -93,7 +93,7 @@ export function RemoteDraftConflictDrawer({
                 style={styles.acceptButton}
               >
                 <Text style={styles.acceptText}>{t("composer.draftConflict.overwrite")}</Text>
-              </Pressable>
+              </PressHighlight>
             </View>
           ) : null}
         </GlassSurface>
@@ -110,7 +110,6 @@ const styles = StyleSheet.create((theme) => ({
   },
   track: {
     width: "100%",
-    maxWidth: MAX_CONTENT_WIDTH,
     marginBottom: -theme.spacing[4],
   },
   surface: {
@@ -146,13 +145,13 @@ const styles = StyleSheet.create((theme) => ({
   },
   headerTitle: {
     flexShrink: 0,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     color: theme.colors.foregroundMuted,
   },
   headerPreview: {
     flexShrink: 1,
     minWidth: 0,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     color: theme.colors.foreground,
   },
   body: {

@@ -18,37 +18,52 @@ import {
   DEFAULT_CODE_FONT_SIZE,
   DEFAULT_GROK_USAGE_REFRESH_INTERVAL_MINUTES,
   DEFAULT_PROVIDER_USAGE_METER_PERCENTAGE_MODE,
+  DEFAULT_CONTENT_FONT_SIZE,
+  DEFAULT_CONTENT_MAX_WIDTH,
   DEFAULT_TERMINAL_SCROLLBACK_LINES,
-  DEFAULT_UI_FONT_SIZE,
+  DEFAULT_THEME_PREFERENCE,
+  DEFAULT_UI_BASE_FONT_SIZE,
   MAX_CODE_FONT_SIZE,
   MAX_TERMINAL_LETTER_SPACING,
   MAX_TERMINAL_SCROLLBACK_LINES,
-  MAX_UI_FONT_SIZE,
   MAX_TERMINAL_PADDING,
   MIN_CODE_FONT_SIZE,
   MIN_TERMINAL_LETTER_SPACING,
   MIN_TERMINAL_PADDING,
   MIN_TERMINAL_SCROLLBACK_LINES,
-  MIN_UI_FONT_SIZE,
   VALID_GROK_USAGE_REFRESH_INTERVAL_MINUTES,
+  MAX_CONTENT_FONT_SIZE,
+  MAX_CONTENT_MAX_WIDTH,
+  MAX_UI_BASE_FONT_SIZE,
+  MIN_CONTENT_FONT_SIZE,
+  MIN_CONTENT_MAX_WIDTH,
+  MIN_UI_BASE_FONT_SIZE,
   loadAppSettingsFromStorage as loadAppSettingsFromStoragePure,
   loadSettingsFromStorage as loadSettingsFromStoragePure,
   normalizeAppSettings,
   parseClampedFontSize,
   parseTerminalLetterSpacing,
   parseTerminalPadding,
+  parseContentMaxWidth,
   parseTerminalScrollbackLines,
+  resolveContentMaxWidth,
   sanitizeFontFamily,
   saveAppSettings as saveAppSettingsPure,
   type AppSettings,
+  type AppSettingsUpdate,
+  type ChatDisplay,
+  type OpenInSidePanePreferences,
+  type PullRequestOpenLocation,
   type DesktopSettingsBridge,
   type GrokUsageRefreshIntervalMinutes,
   type KeyValueStorage,
   type ProviderUsageMeterPercentageMode,
   type ReleaseChannel,
   type SendBehavior,
+  type SendShortcut,
   type ServiceUrlBehavior,
   type Settings,
+  type SidebarWorkspaceTrailing,
   type SettingsDeps,
   type WorkspaceTitleSource,
 } from "./storage";
@@ -60,39 +75,71 @@ export {
   DEFAULT_CODE_FONT_SIZE,
   DEFAULT_GROK_USAGE_REFRESH_INTERVAL_MINUTES,
   DEFAULT_PROVIDER_USAGE_METER_PERCENTAGE_MODE,
+  DEFAULT_CONTENT_FONT_SIZE,
+  DEFAULT_CONTENT_MAX_WIDTH,
   DEFAULT_TERMINAL_SCROLLBACK_LINES,
-  DEFAULT_UI_FONT_SIZE,
+  DEFAULT_THEME_PREFERENCE,
+  DEFAULT_UI_BASE_FONT_SIZE,
   MAX_CODE_FONT_SIZE,
   MAX_TERMINAL_LETTER_SPACING,
   MAX_TERMINAL_PADDING,
+  MAX_CONTENT_FONT_SIZE,
+  MAX_CONTENT_MAX_WIDTH,
   MAX_TERMINAL_SCROLLBACK_LINES,
-  MAX_UI_FONT_SIZE,
+  MAX_UI_BASE_FONT_SIZE,
   MIN_CODE_FONT_SIZE,
   MIN_TERMINAL_LETTER_SPACING,
   MIN_TERMINAL_PADDING,
   MIN_TERMINAL_SCROLLBACK_LINES,
-  MIN_UI_FONT_SIZE,
   VALID_GROK_USAGE_REFRESH_INTERVAL_MINUTES,
   parseClampedFontSize,
   parseTerminalLetterSpacing,
   parseTerminalPadding,
+  MIN_CONTENT_FONT_SIZE,
+  MIN_CONTENT_MAX_WIDTH,
+  MIN_UI_BASE_FONT_SIZE,
+  parseContentMaxWidth,
   parseTerminalScrollbackLines,
+  resolveContentMaxWidth,
   sanitizeFontFamily,
 };
 export type {
   AppSettings,
+  AppSettingsUpdate,
+  ChatDisplay,
   AppLanguage,
+  OpenInSidePanePreferences,
+  PullRequestOpenLocation,
   DesktopSettingsBridge,
   GrokUsageRefreshIntervalMinutes,
   KeyValueStorage,
   ProviderUsageMeterPercentageMode,
   ReleaseChannel,
   SendBehavior,
+  SendShortcut,
   ServiceUrlBehavior,
   Settings,
   SettingsDeps,
+  SidebarWorkspaceTrailing,
   WorkspaceTitleSource,
 };
+
+/**
+ * Split a `Settings` patch into the part the app owns. The two halves persist to different
+ * places (AsyncStorage vs the Electron settings bridge), and the app's half is exactly the
+ * key set of `DEFAULT_CLIENT_SETTINGS` — reading the keys off it means a new app setting
+ * flows through here without anyone remembering to widen a hand-written list.
+ */
+function pickDefinedAppSettings(updates: Partial<Settings>): Partial<AppSettings> {
+  const appUpdates: Partial<AppSettings> = {};
+  for (const key of Object.keys(DEFAULT_CLIENT_SETTINGS) as (keyof AppSettings)[]) {
+    const value = updates[key];
+    if (value !== undefined) {
+      Object.assign(appUpdates, { [key]: value });
+    }
+  }
+  return appUpdates;
+}
 
 const productionDeps: SettingsDeps = {
   storage: AsyncStorage,
@@ -107,7 +154,7 @@ export interface UseAppSettingsReturn {
   settings: AppSettings;
   isLoading: boolean;
   error: unknown;
-  updateSettings: (updates: Partial<AppSettings>) => Promise<void>;
+  updateSettings: (updates: AppSettingsUpdate) => Promise<void>;
   resetSettings: () => Promise<void>;
 }
 
@@ -131,7 +178,7 @@ export function useAppSettings(): UseAppSettingsReturn {
   });
 
   const updateSettings = useCallback(
-    async (updates: Partial<AppSettings>) => {
+    async (updates: AppSettingsUpdate) => {
       try {
         await saveAppSettings({ queryClient, updates });
       } catch (err) {
@@ -173,49 +220,7 @@ export function useSettings<TSelected>(
 
   const updateSettings = useCallback(
     async (updates: Partial<Settings>) => {
-      const appUpdates: Partial<AppSettings> = {};
-      if (updates.theme !== undefined) {
-        appUpdates.theme = updates.theme;
-      }
-      if (updates.language !== undefined) {
-        appUpdates.language = updates.language;
-      }
-      if (updates.sendBehavior !== undefined) {
-        appUpdates.sendBehavior = updates.sendBehavior;
-      }
-      if (updates.serviceUrlBehavior !== undefined) {
-        appUpdates.serviceUrlBehavior = updates.serviceUrlBehavior;
-      }
-      if (updates.terminalScrollbackLines !== undefined) {
-        appUpdates.terminalScrollbackLines = updates.terminalScrollbackLines;
-      }
-      if (updates.uiFontFamily !== undefined) {
-        appUpdates.uiFontFamily = updates.uiFontFamily;
-      }
-      if (updates.monoFontFamily !== undefined) {
-        appUpdates.monoFontFamily = updates.monoFontFamily;
-      }
-      if (updates.uiFontSize !== undefined) {
-        appUpdates.uiFontSize = updates.uiFontSize;
-      }
-      if (updates.codeFontSize !== undefined) {
-        appUpdates.codeFontSize = updates.codeFontSize;
-      }
-      if (updates.syntaxTheme !== undefined) {
-        appUpdates.syntaxTheme = updates.syntaxTheme;
-      }
-      if (updates.workspaceTitleSource !== undefined) {
-        appUpdates.workspaceTitleSource = updates.workspaceTitleSource;
-      }
-      if (updates.autoExpandReasoning !== undefined) {
-        appUpdates.autoExpandReasoning = updates.autoExpandReasoning;
-      }
-      if (updates.toolCallDetailLevel !== undefined) {
-        appUpdates.toolCallDetailLevel = updates.toolCallDetailLevel;
-      }
-      if (updates.vimKeybindings !== undefined) {
-        appUpdates.vimKeybindings = updates.vimKeybindings;
-      }
+      const appUpdates = pickDefinedAppSettings(updates);
       const promises: Promise<void>[] = [];
       if (Object.keys(appUpdates).length > 0) {
         promises.push(appSettings.updateSettings(appUpdates));
@@ -275,7 +280,7 @@ export async function persistAppSettings(updates: Partial<AppSettings>): Promise
 
 export async function saveAppSettings(input: {
   queryClient: QueryClient;
-  updates: Partial<AppSettings>;
+  updates: AppSettingsUpdate;
   deps?: SettingsDeps;
 }): Promise<void> {
   await saveAppSettingsPure({

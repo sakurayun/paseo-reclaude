@@ -1,14 +1,28 @@
-import { chmodSync, mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { resolveSpeechConfig } from "./speech/speech-config-resolver.js";
+import {
+  chmodSync,
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, test } from "vitest";
 
 import {
   loadPersistedConfig,
+  loadPersistedConfigAsync,
   PersistedConfigSchema,
+  readPersistedConfig,
   savePersistedConfig,
+  savePersistedConfigAsync,
 } from "./persisted-config.js";
-import { PRIVATE_FILE_MODE } from "./private-files.js";
+import { PRIVATE_DIRECTORY_MODE, PRIVATE_FILE_MODE } from "./private-files.js";
 
 const MODE_MASK = 0o777;
 const PERMISSIVE_FILE_MODE = 0o644;
@@ -146,20 +160,33 @@ describe("PersistedConfigSchema worktrees config", () => {
 });
 
 describe("PersistedConfigSchema provider credentials", () => {
-  test("accepts OpenAI voice credentials", () => {
+  test("accepts separate inline STT and TTS credentials", () => {
     const parsed = PersistedConfigSchema.parse({
-      providers: {
-        openai: {
-          voice: {
-            apiKey: " voice-secret ",
-            baseUrl: " https://voice.example.com/v1 ",
+      features: {
+        voiceMode: {
+          stt: {
+            provider: "openai",
+            apiKey: " stt-secret ",
+            baseUrl: " https://stt.example.com/v1 ",
+          },
+          tts: {
+            provider: "openai",
+            apiKey: " tts-secret ",
+            baseUrl: " https://tts.example.com/v1 ",
           },
         },
       },
     });
-
-    expect(parsed.providers?.openai?.voice?.apiKey).toBe("voice-secret");
-    expect(parsed.providers?.openai?.voice?.baseUrl).toBe("https://voice.example.com/v1");
+    expect(parsed.features?.voiceMode?.stt).toEqual({
+      provider: "openai",
+      apiKey: "stt-secret",
+      baseUrl: "https://stt.example.com/v1",
+    });
+    expect(parsed.features?.voiceMode?.tts).toEqual({
+      provider: "openai",
+      apiKey: "tts-secret",
+      baseUrl: "https://tts.example.com/v1",
+    });
   });
 });
 
@@ -252,6 +279,20 @@ describe("PersistedConfigSchema agent provider runtime settings", () => {
         { provider: "codex", model: "gpt-5.4-mini", thinkingOptionId: "low" },
       ],
     });
+  });
+
+  test("accepts a custom provider catalog refresh timeout", () => {
+    const parsed = PersistedConfigSchema.parse({
+      agents: { catalogRefreshTimeoutMs: 180_000 },
+    });
+
+    expect(parsed.agents?.catalogRefreshTimeoutMs).toBe(180_000);
+  });
+
+  test("rejects provider catalog refresh timeouts that overflow Node timers", () => {
+    expect(() =>
+      PersistedConfigSchema.parse({ agents: { catalogRefreshTimeoutMs: 2_147_483_648 } }),
+    ).toThrow();
   });
 });
 
@@ -400,19 +441,23 @@ describe("provider overrides (new format)", () => {
     expect(parsed.agents?.providers?.claude?.order).toBe(1);
   });
 
-  test("new provider without extends → error", () => {
-    const result = PersistedConfigSchema.safeParse({
-      agents: {
-        providers: {
-          zai: {
-            label: "ZAI",
-          },
-        },
-      },
+  test("accepts a plugin override before plugin registration", () => {
+    const override = { enabled: false, command: ["/opt/agent"], env: { LOGIN: "yes" } };
+    const parsed = PersistedConfigSchema.parse({
+      agents: { providers: { "plugin-agent": override } },
     });
-
-    expect(result.success).toBe(false);
+    expect(parsed.agents?.providers?.["plugin-agent"]).toEqual(override);
   });
+
+  test.each(["plugin.agent", "plugin_agent"])(
+    "keeps %s outside the config provider ID alphabet",
+    (id) => {
+      expect(
+        PersistedConfigSchema.safeParse({ agents: { providers: { [id]: { enabled: false } } } })
+          .success,
+      ).toBe(false);
+    },
+  );
 
   test("new provider without label → error", () => {
     const result = PersistedConfigSchema.safeParse({
@@ -633,23 +678,48 @@ describe("PersistedConfigSchema voice mode config", () => {
       features: {
         dictation: {
           stt: {
+            provider: "openai",
             language: " fr ",
           },
         },
         voiceMode: {
           stt: {
+            provider: "openai",
             language: " de ",
           },
         },
       },
     });
 
-    expect(parsed.features?.dictation?.stt?.language).toBe("fr");
-    expect(parsed.features?.voiceMode?.stt?.language).toBe("de");
+    expect(parsed.features?.dictation?.stt).toMatchObject({ language: "fr" });
+    expect(parsed.features?.voiceMode?.stt).toMatchObject({ language: "de" });
+  });
+
+  test("accepts a voice and model from a self-hosted OpenAI-compatible server", () => {
+    const parsed = PersistedConfigSchema.parse({
+      features: {
+        voiceMode: {
+          tts: { provider: "openai", model: "kokoro-v1:Q8_0", voice: "aiden" },
+        },
+      },
+    });
+
+    expect(parsed.features?.voiceMode?.tts?.model).toBe("kokoro-v1:Q8_0");
+    expect(parsed.features?.voiceMode?.tts).toMatchObject({ voice: "aiden" });
   });
 });
 
 describe("loadPersistedConfig", () => {
+  test("materializes relay disabled for a new Paseo home", () => {
+    const home = createTempHome();
+    try {
+      const config = loadPersistedConfig(home);
+      expect(config.daemon?.relay?.enabled).toBe(false);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
   test("accepts the documented config schema marker", () => {
     const home = createTempHome();
     const configPath = path.join(home, "config.json");
@@ -680,13 +750,101 @@ describe("loadPersistedConfig", () => {
       rmSync(home, { recursive: true, force: true });
     }
   });
+
+  test("loads a config that still uses the removed providers.openai.voice block", () => {
+    const home = createTempHome();
+    const configPath = path.join(home, "config.json");
+    try {
+      writeFileSync(
+        configPath,
+        `${JSON.stringify(
+          {
+            version: 1,
+            providers: {
+              openai: {
+                apiKey: "global-key",
+                voice: { apiKey: "voice-key", baseUrl: "https://voice.example.com/v1" },
+              },
+            },
+          },
+          null,
+          2,
+        )}\n`,
+      );
+
+      const config = loadPersistedConfig(home);
+
+      expect(config.providers).not.toHaveProperty("openai");
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
 });
 
-describe.skipIf(process.platform === "win32")("persisted config file permissions", () => {
-  test("initializes config.json with private permissions", () => {
+describe("config.json saved with a UTF-8 byte order mark", () => {
+  // Windows Notepad writes this shape: a BOM, then CRLF line endings.
+  const notepadConfig =
+    '﻿{\r\n  "version": 1,\r\n  "daemon": { "listen": "127.0.0.1:6767" }\r\n}\r\n';
+
+  test("loadPersistedConfig reads it", () => {
     const home = createTempHome();
     try {
-      loadPersistedConfig(home);
+      writeFileSync(path.join(home, "config.json"), notepadConfig);
+
+      expect(loadPersistedConfig(home).daemon?.listen).toBe("127.0.0.1:6767");
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  test("readPersistedConfig reads it", () => {
+    const home = createTempHome();
+    try {
+      writeFileSync(path.join(home, "config.json"), notepadConfig);
+
+      expect(readPersistedConfig(home).daemon?.listen).toBe("127.0.0.1:6767");
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("readPersistedConfig with an unreadable config.json", () => {
+  test("names the file when it is not valid JSON", () => {
+    const home = createTempHome();
+    const configPath = path.join(home, "config.json");
+    try {
+      writeFileSync(configPath, '{"version":1,');
+
+      expect(() => readPersistedConfig(home)).toThrow(`[Config] Invalid JSON in ${configPath}: `);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  test("names the file and the field when it does not match the schema", () => {
+    const home = createTempHome();
+    const configPath = path.join(home, "config.json");
+    try {
+      writeFileSync(configPath, '{"daemon":{"listen":5}}');
+
+      expect(() => readPersistedConfig(home)).toThrow(
+        `[Config] Invalid config in ${configPath}:\n  - daemon.listen: `,
+      );
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+});
+
+describe.skipIf(process.platform === "win32").each([
+  { name: "startup", load: loadPersistedConfig, save: savePersistedConfig },
+  { name: "runtime", load: loadPersistedConfigAsync, save: savePersistedConfigAsync },
+])("persisted config file permissions ($name)", ({ load, save }) => {
+  test("initializes config.json with private permissions", async () => {
+    const home = createTempHome();
+    try {
+      await load(home);
 
       expect(modeOf(path.join(home, "config.json"))).toBe(PRIVATE_FILE_MODE);
     } finally {
@@ -694,14 +852,14 @@ describe.skipIf(process.platform === "win32")("persisted config file permissions
     }
   });
 
-  test("repairs permissive config.json permissions when loading", () => {
+  test("repairs permissive config.json permissions when loading", async () => {
     const home = createTempHome();
     const configPath = path.join(home, "config.json");
     try {
       writeFileSync(configPath, "{}\n", { mode: PERMISSIVE_FILE_MODE });
       chmodSync(configPath, PERMISSIVE_FILE_MODE);
 
-      loadPersistedConfig(home);
+      await load(home);
 
       expect(modeOf(configPath)).toBe(PRIVATE_FILE_MODE);
     } finally {
@@ -709,18 +867,231 @@ describe.skipIf(process.platform === "win32")("persisted config file permissions
     }
   });
 
-  test("saves config.json with private permissions", () => {
+  test("repairs unreadable owner permissions before reading config.json", async () => {
     const home = createTempHome();
+    const configPath = path.join(home, "config.json");
     try {
-      savePersistedConfig(home, {
-        providers: {
-          openai: {
-            apiKey: "secret",
-          },
-        },
+      writeFileSync(configPath, "{}\n");
+      chmodSync(configPath, 0);
+      expect(await load(home)).toEqual({});
+      expect(modeOf(configPath)).toBe(PRIVATE_FILE_MODE);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  test("saves config.json with private permissions", async () => {
+    const parent = createTempHome();
+    const home = path.join(parent, "home");
+    try {
+      await save(home, {
+        features: { dictation: { stt: { provider: "openai", apiKey: "secret" } } },
       });
 
+      expect(modeOf(home)).toBe(PRIVATE_DIRECTORY_MODE);
       expect(modeOf(path.join(home, "config.json"))).toBe(PRIVATE_FILE_MODE);
+    } finally {
+      rmSync(parent, { recursive: true, force: true });
+    }
+  });
+});
+
+describe.skipIf(process.platform === "win32").each([
+  { name: "startup", save: savePersistedConfig },
+  { name: "runtime", save: savePersistedConfigAsync },
+])("config.json symlinked from another directory ($name)", ({ save }) => {
+  test("saving writes through the symlink and leaves it in place", async () => {
+    const parent = createTempHome();
+    const home = path.join(parent, "home");
+    const dotfiles = path.join(parent, "dotfiles");
+    const linkedConfigPath = path.join(dotfiles, "config.json");
+    const configPath = path.join(home, "config.json");
+    try {
+      mkdirSync(home);
+      mkdirSync(dotfiles, { mode: 0o755 });
+      chmodSync(dotfiles, 0o755);
+      writeFileSync(linkedConfigPath, '{ "version": 1 }\n');
+      symlinkSync(linkedConfigPath, configPath);
+
+      await save(home, { version: 1, daemon: { relay: { enabled: false } } });
+
+      expect(lstatSync(configPath).isSymbolicLink()).toBe(true);
+      expect(JSON.parse(readFileSync(linkedConfigPath, "utf8"))).toEqual({
+        version: 1,
+        daemon: { relay: { enabled: false } },
+      });
+      expect(modeOf(dotfiles)).toBe(0o755);
+      expect(modeOf(linkedConfigPath)).toBe(PRIVATE_FILE_MODE);
+    } finally {
+      rmSync(parent, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("speech provider config normalization", () => {
+  test.each([undefined, "local"])(
+    "preserves local STT language on load and save (provider: %s)",
+    (provider) => {
+      const home = createTempHome();
+      try {
+        writeFileSync(
+          path.join(home, "config.json"),
+          JSON.stringify({
+            features: { dictation: { stt: { provider, language: "fr" } } },
+          }),
+        );
+        const loaded = loadPersistedConfig(home);
+        expect(loaded.features?.dictation?.stt).toEqual({ provider: "local", language: "fr" });
+        expect(
+          resolveSpeechConfig({ paseoHome: home, env: {}, persisted: loaded }).speech.sttLanguages
+            .dictation,
+        ).toBe("fr");
+        savePersistedConfig(home, loaded);
+        expect(loadPersistedConfig(home).features?.dictation?.stt).toEqual({
+          provider: "local",
+          language: "fr",
+        });
+        expect(
+          JSON.parse(readFileSync(path.join(home, "config.json"), "utf8")).features.dictation.stt,
+        ).toEqual({ provider: "local", language: "fr" });
+      } finally {
+        rmSync(home, { recursive: true, force: true });
+      }
+    },
+  );
+
+  test("loads and resolves legacy fields ignored by each site's provider", () => {
+    const home = mkdtempSync(path.join(tmpdir(), "speech-unused-options-"));
+    try {
+      const legacy = {
+        features: {
+          dictation: { stt: { provider: "local", language: "fr", confidenceThreshold: -1 } },
+          voiceMode: {
+            enabled: true,
+            tts: { provider: "local", voice: "alloy", speakerId: 3, speed: 1.2 },
+          },
+        },
+      };
+      writeFileSync(path.join(home, "config.json"), JSON.stringify(legacy));
+      const local = loadPersistedConfig(home);
+      expect(local.features?.dictation?.stt).toEqual({ provider: "local", language: "fr" });
+      expect(local.features?.voiceMode?.tts).toEqual({
+        provider: "local",
+        speakerId: 3,
+        speed: 1.2,
+      });
+      expect(
+        resolveSpeechConfig({ paseoHome: home, env: {}, persisted: local }).speech.local?.models,
+      ).toMatchObject({ voiceTtsSpeakerId: 3, voiceTtsSpeed: 1.2 });
+      writeFileSync(
+        path.join(home, "config.json"),
+        JSON.stringify({
+          features: {
+            voiceMode: {
+              enabled: true,
+              tts: { provider: "openai", apiKey: "key", voice: "alloy", speakerId: 3, speed: 1.2 },
+            },
+          },
+        }),
+      );
+      const openai = loadPersistedConfig(home);
+      expect(openai.features?.voiceMode?.tts).toEqual({
+        provider: "openai",
+        apiKey: "key",
+        voice: "alloy",
+      });
+      expect(
+        resolveSpeechConfig({ paseoHome: home, env: {}, persisted: openai }).openai?.tts,
+      ).toMatchObject({ apiKey: "key", voice: "alloy" });
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  test("warns with the path, never the discarded legacy key", () => {
+    const home = mkdtempSync(path.join(tmpdir(), "speech-warning-"));
+    try {
+      writeFileSync(
+        path.join(home, "config.json"),
+        JSON.stringify({
+          providers: { openai: { apiKey: "discarded-secret" } },
+          features: { voiceMode: { enabled: true, tts: { provider: "local" } } },
+        }),
+      );
+      const warnings: unknown[][] = [];
+      const logger = {
+        child: () => logger,
+        info: () => {},
+        warn: (...args: unknown[]) => {
+          warnings.push(args);
+        },
+      };
+      const config = loadPersistedConfig(home, logger);
+      expect(config.providers).not.toHaveProperty("openai");
+      expect(warnings).toHaveLength(1);
+      expect(JSON.stringify(warnings)).toContain("providers.openai.apiKey");
+      expect(JSON.stringify(warnings)).toContain("no use site in config.json selects OpenAI");
+      const resolved = resolveSpeechConfig({
+        paseoHome: home,
+        persisted: config,
+        env: { PASEO_VOICE_TTS_PROVIDER: "openai" },
+      });
+      expect(resolved.speech.providers.voiceTts.provider).toBe("openai");
+      expect(resolved.openai).toBeUndefined();
+      expect(JSON.stringify(warnings)).not.toContain("discarded-secret");
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  test("folds legacy endpoint credentials into OpenAI sites on load and saves inline", () => {
+    const home = mkdtempSync(path.join(tmpdir(), "speech-normalize-"));
+    try {
+      writeFileSync(
+        path.join(home, "config.json"),
+        JSON.stringify({
+          providers: {
+            openai: {
+              apiKey: "global-key",
+              baseUrl: "https://global/v1",
+              stt: { apiKey: "stt-key" },
+            },
+          },
+          features: {
+            dictation: { stt: { model: "whisper-base", language: "en" } },
+            voiceMode: {
+              enabled: true,
+              stt: { provider: "OPENAI", baseUrl: "https://site/v1" },
+              tts: { provider: "openai" },
+            },
+          },
+        }),
+      );
+      const config = loadPersistedConfig(home);
+      expect(config.features?.dictation?.stt).toEqual({
+        provider: "local",
+        model: "whisper-base",
+        language: "en",
+      });
+      expect(config.features?.voiceMode?.stt).toEqual({
+        provider: "openai",
+        apiKey: "stt-key",
+        baseUrl: "https://site/v1",
+      });
+      expect(config.features?.voiceMode?.tts).toEqual({
+        provider: "openai",
+        apiKey: "global-key",
+        baseUrl: "https://global/v1",
+      });
+      expect(config.providers).not.toHaveProperty("openai");
+      const resolved = resolveSpeechConfig({ paseoHome: home, env: {}, persisted: config });
+      expect(resolved.openai?.stt?.apiKey).toBe("stt-key");
+      expect(resolved.speech.providers.voiceStt).toMatchObject({
+        provider: "openai",
+        enabled: true,
+      });
+      savePersistedConfig(home, config);
+      expect(JSON.parse(readFileSync(path.join(home, "config.json"), "utf8"))).toEqual(config);
     } finally {
       rmSync(home, { recursive: true, force: true });
     }

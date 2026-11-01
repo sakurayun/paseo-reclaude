@@ -6,6 +6,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ProviderSnapshotEntry } from "@getpaseo/protocol/agent-types";
 import type { MutableDaemonConfig } from "@getpaseo/protocol/messages";
+import { ToastApiProvider } from "@/contexts/toast-api-context";
 
 const { theme, snapshotState, configState, patchConfigMock, openProviderSettingsMock } = vi.hoisted(
   () => ({
@@ -14,7 +15,8 @@ const { theme, snapshotState, configState, patchConfigMock, openProviderSettings
       iconSize: { sm: 14, md: 20 },
       fontSize: { xs: 11, sm: 13, base: 15 },
       fontWeight: { normal: "400" },
-      borderRadius: { lg: 8 },
+      borderRadius: { lg: 8, xl: 12 },
+      shadow: { sm: {} },
       opacity: { 50: 0.5 },
       colors: {
         surface1: "#111",
@@ -134,6 +136,36 @@ vi.mock("react-i18next", () => ({
   }),
 }));
 
+vi.mock("@/components/ui/segmented-control", () => ({
+  SegmentedControl: ({
+    options,
+    onValueChange,
+    testID,
+  }: {
+    options: Array<{ value: string; label: string; disabled?: boolean }>;
+    onValueChange: (value: string) => void;
+    testID?: string;
+  }) =>
+    React.createElement(
+      "div",
+      { "data-testid": testID },
+      options.map((option) =>
+        React.createElement(
+          "button",
+          {
+            type: "button",
+            key: option.value,
+            disabled: option.disabled,
+            onClick: () => onValueChange(option.value),
+          },
+          option.label,
+        ),
+      ),
+    ),
+}));
+vi.mock("@/stores/session-store", () => ({
+  useSessionStore: (selector: (state: unknown) => unknown) => selector({ sessions: {} }),
+}));
 vi.mock("@/components/ui/switch", () => ({
   Switch: ({
     value,
@@ -164,6 +196,10 @@ vi.mock("@/components/ui/switch", () => ({
 
 vi.mock("@/components/ui/loading-spinner", () => ({
   LoadingSpinner: () => React.createElement("span", { "data-testid": "loading-spinner" }),
+}));
+
+vi.mock("@/components/settings/headings/settings-info-tip", () => ({
+  SettingsInfoTip: () => null,
 }));
 
 vi.mock("@/components/ui/dropdown-menu", () => ({
@@ -229,7 +265,7 @@ vi.mock("@/components/ui/dropdown-menu", () => ({
 }));
 
 vi.mock("@/components/provider-icons", () => ({
-  getProviderIcon: (provider: string) => () =>
+  useProviderIcon: (provider: string) => () =>
     React.createElement("span", { "data-icon": `provider-${provider}` }),
 }));
 
@@ -278,6 +314,12 @@ vi.mock("@/utils/confirm-dialog", () => ({
 
 import { ProvidersSection } from "./providers-section";
 
+function unexpectedToast(): never {
+  throw new Error("Provider row interactions should not display a toast");
+}
+
+const toastApi = { show: unexpectedToast, copied: unexpectedToast, error: unexpectedToast };
+
 const claudeEntry: ProviderSnapshotEntry = {
   provider: "claude",
   status: "ready",
@@ -305,6 +347,7 @@ const disabledCodexEntry: ProviderSnapshotEntry = {
 
 function makeConfig(providers: MutableDaemonConfig["providers"] = {}): MutableDaemonConfig {
   return {
+    relay: { enabled: false },
     mcp: { injectIntoAgents: false },
     browserTools: { enabled: false },
     providers,
@@ -363,7 +406,11 @@ describe("ProvidersSection", () => {
 
   function render(): void {
     act(() => {
-      root?.render(<ProvidersSection serverId="server-1" />);
+      root?.render(
+        <ToastApiProvider api={toastApi}>
+          <ProvidersSection serverId="server-1" />
+        </ToastApiProvider>,
+      );
     });
   }
 

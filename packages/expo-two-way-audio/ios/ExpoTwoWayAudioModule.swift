@@ -39,12 +39,30 @@ public class ExpoTwoWayAudioModule: Module {
             }
         }
 
+        // Safety net for the JS-driven release in `stopCapture`/`processQueue`: never leave
+        // the non-mixing `.playAndRecord` session active while backgrounded, or iOS
+        // re-asserts it on the next foreground and kills the user's music again.
+        OnAppEntersBackground {
+            guard self.audioEngine?.isRecording == false else { return }
+            self.audioEngine?.releaseAudioSession()
+        }
+
+        Function("releaseAudioSession") {
+            self.audioEngine?.releaseAudioSession()
+        }
+
         Function("isRecording") { () -> Bool in
             guard let audioEngine = self.audioEngine else {
                 print("AudioEngine not initialized")
                 return false
             }
             return audioEngine.isRecording
+        }
+
+        Function("startDictation") { () -> Bool in
+            let isRecording = self.audioEngine?.toggleRecording(true) ?? false
+            self.sendEvent(ON_RECORDING_CHANGE_EVENT_NAME, ["data": isRecording])
+            return isRecording
         }
 
         Function("toggleRecording") { (val: Bool) -> Bool in
@@ -134,7 +152,7 @@ public class ExpoTwoWayAudioModule: Module {
             EXPermissionsMethodsDelegate.getPermissionWithPermissionsManager(
                 self.appContext?.permissions,
                 withRequester: MicrophonePermissionRequester.self,
-                resolve: promise.resolver,
+                resolve: promise.legacyResolver,
                 reject: promise.legacyRejecter
             )
         }
@@ -143,7 +161,7 @@ public class ExpoTwoWayAudioModule: Module {
             EXPermissionsMethodsDelegate.askForPermission(
                 withPermissionsManager: self.appContext?.permissions,
                 withRequester: MicrophonePermissionRequester.self,
-                resolve: promise.resolver,
+                resolve: promise.legacyResolver,
                 reject: promise.legacyRejecter
             )
         }

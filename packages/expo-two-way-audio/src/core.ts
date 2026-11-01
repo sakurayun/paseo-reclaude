@@ -17,8 +17,32 @@ export function toggleRecording(val: boolean): boolean {
   return ExpoTwoWayAudioModule.toggleRecording(val);
 }
 
+/** Capture speech without treating another app's playback focus as a microphone failure. */
+export function startDictation(): boolean {
+  // COMPAT(dictationCapture): added after v0.11.2, remove after 2027-01-16 once
+  // the native binary floor includes startDictation. Older OTA clients retain legacy capture.
+  if (typeof ExpoTwoWayAudioModule.startDictation !== "function") {
+    return ExpoTwoWayAudioModule.toggleRecording(true);
+  }
+  return ExpoTwoWayAudioModule.startDictation();
+}
+
 export function isRecording(): boolean {
   return ExpoTwoWayAudioModule.isRecording();
+}
+
+/**
+ * Hand the OS audio session / audio focus back once nothing is being captured or played,
+ * so other apps' audio can resume. Safe to call when already released.
+ */
+export function releaseAudioSession() {
+  // COMPAT(releaseAudioSession): added in v0.2.6. An OTA JS update can land on an older
+  // binary whose native module lacks this function, so probe the native object rather than
+  // this wrapper (which always exists). Drop the guard once the binary floor is >= v0.2.6.
+  if (typeof ExpoTwoWayAudioModule.releaseAudioSession !== "function") {
+    return;
+  }
+  return ExpoTwoWayAudioModule.releaseAudioSession();
 }
 
 export function tearDown() {

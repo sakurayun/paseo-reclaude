@@ -12,6 +12,7 @@ import {
   type ResolveWorkspaceDraftOpenTargetInput,
   type WorkspaceDraftBusyInput,
 } from "./prepare-workspace-tab";
+import type { WorkspaceTabTarget } from "@/workspace-tabs/model";
 
 export type {
   PrepareWorkspaceTabInput,
@@ -51,8 +52,13 @@ function draftDeps() {
 function layoutStoreDeps() {
   const store = useWorkspaceLayoutStore.getState();
   return {
-    openTabFocused: store.openTabFocused,
-    pinAgent: store.pinAgent,
+    openTab: (input: {
+      workspaceKey: string;
+      target: WorkspaceTabTarget;
+      intent: "reveal";
+      pin?: boolean;
+      placement?: import("@/stores/workspace-layout-actions").WorkspaceTabPlacement;
+    }) => store.openTab(input),
     getWorkspaceTabs: store.getWorkspaceTabs,
     ...draftDeps(),
   };

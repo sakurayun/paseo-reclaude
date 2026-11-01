@@ -46,13 +46,13 @@ const styles = StyleSheet.create((theme) => ({
     flexShrink: 0,
   },
   additions: {
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     fontWeight: theme.fontWeight.normal,
-    color: theme.colors.diffAddition,
+    color: theme.colors.statusSuccess,
   },
   deletions: {
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     fontWeight: theme.fontWeight.normal,
-    color: theme.colors.diffDeletion,
+    color: theme.colors.statusDanger,
   },
 }));

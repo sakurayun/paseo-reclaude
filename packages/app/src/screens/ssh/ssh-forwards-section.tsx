@@ -1,5 +1,6 @@
+import { PressHighlight } from "@/components/ui/press-highlight";
 import { useCallback, useMemo, useState } from "react";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { ScrollView, Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
 import { Field, FormTextInput } from "@/components/ui/form-field";
@@ -98,9 +99,9 @@ function ForwardCard({
       <Button variant="secondary" size="sm" onPress={handleToggle}>
         {isActive ? t("ssh.forwards.stop") : t("ssh.forwards.start")}
       </Button>
-      <Pressable onPress={handleDelete} accessibilityRole="button" style={styles.deleteButton}>
+      <PressHighlight onPress={handleDelete} accessibilityRole="button" style={styles.deleteButton}>
         <Text style={styles.deleteLabel}>×</Text>
-      </Pressable>
+      </PressHighlight>
     </View>
   );
 }
@@ -229,7 +230,6 @@ function NewForwardSheet({
           <FormTextInput
             size={controlSize}
             initialValue={label}
-            value={label}
             onChangeText={setLabel}
             autoCapitalize="none"
             autoCorrect={false}
@@ -239,7 +239,6 @@ function NewForwardSheet({
           <FormTextInput
             size={controlSize}
             initialValue={bindAddress}
-            value={bindAddress}
             onChangeText={setBindAddress}
             autoCapitalize="none"
             autoCorrect={false}
@@ -249,7 +248,6 @@ function NewForwardSheet({
           <FormTextInput
             size={controlSize}
             initialValue={listenPort}
-            value={listenPort}
             onChangeText={setListenPort}
             keyboardType="number-pad"
             testID="ssh-forward-listen-port"
@@ -261,7 +259,6 @@ function NewForwardSheet({
               <FormTextInput
                 size={controlSize}
                 initialValue={targetHost}
-                value={targetHost}
                 onChangeText={setTargetHost}
                 autoCapitalize="none"
                 autoCorrect={false}
@@ -271,7 +268,6 @@ function NewForwardSheet({
               <FormTextInput
                 size={controlSize}
                 initialValue={targetPort}
-                value={targetPort}
                 onChangeText={setTargetPort}
                 keyboardType="number-pad"
               />

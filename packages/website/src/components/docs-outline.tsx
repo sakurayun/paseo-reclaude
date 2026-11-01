@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { type DocHeading } from "~/docs";
+import { openEnclosingExamples } from "~/docs-example-target";
 
 interface DocsOutlineProps {
   headings: DocHeading[];
@@ -23,6 +25,7 @@ function OutlineLink({
       event.preventDefault();
       const element = document.getElementById(heading.id);
       if (element) {
+        openEnclosingExamples(element);
         element.scrollIntoView({ behavior: "smooth" });
         window.history.replaceState(null, "", `#${heading.id}`);
         onActivate(heading.id);
@@ -51,6 +54,7 @@ function OutlineLink({
 }
 
 export function DocsOutline({ headings }: DocsOutlineProps) {
+  const { t } = useTranslation();
   const [activeId, setActiveId] = useState<string | null>(() =>
     headings.length > 0 ? headings[0].id : null,
   );
@@ -89,10 +93,12 @@ export function DocsOutline({ headings }: DocsOutlineProps) {
 
   return (
     <nav
-      aria-label="On this page"
+      aria-label={t("docs.onThisPage")}
       className="sticky top-8 max-h-[calc(100vh-4rem)] overflow-y-auto py-8 pr-4"
     >
-      <div className="text-xs font-medium text-muted-foreground mb-3 px-3">On this page</div>
+      <div className="text-xs font-medium text-muted-foreground mb-3 px-3">
+        {t("docs.onThisPage")}
+      </div>
       <ul className="space-y-1 border-l border-border">
         {headings.map((heading) => (
           <li key={heading.id} className="text-sm">

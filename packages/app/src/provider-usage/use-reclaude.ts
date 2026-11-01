@@ -95,7 +95,10 @@ export function useReclaude(serverId: string | null | undefined): UseReclaudeRes
       const result = await client.reclaudeLogin(params);
       await queryClient.invalidateQueries({ queryKey: statusKey });
       if (result.step === "mfa_required") {
-        return { step: "mfa_required", mfaChallengeToken: result.mfaChallengeToken ?? "" };
+        return {
+          step: "mfa_required",
+          mfaChallengeToken: result.mfaChallengeToken ?? "",
+        };
       }
       return { step: "completed" };
     },

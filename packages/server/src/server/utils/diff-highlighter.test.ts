@@ -1,7 +1,11 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { setImmediate } from "node:timers/promises";
+import { measureMainThreadWork } from "../../test-utils/main-thread-work.js";
+import { SessionDelivery } from "../session/owned-subscriptions/index.js";
+import { highlightCode, highlightCodeWithBudget } from "@getpaseo/highlight";
 import {
   parseDiff,
   reconstructNewFile,
@@ -160,7 +164,143 @@ index 1234567..abcdefg 100644
  </config>
 `;
 
+const SVELTE_DIFF = `diff --git a/Counter.svelte b/Counter.svelte
+index 1234567..abcdefg 100644
+--- a/Counter.svelte
++++ b/Counter.svelte
+@@ -1,7 +1,7 @@
+ <script lang="ts">
+-  let count: number = 1;
++  let count: number = 2;
+ </script>
+
+ {#if count > 0}
+   <span class="badge">{count}</span>
+ {/if}
+`;
+
+const ASTRO_DIFF = `diff --git a/Page.astro b/Page.astro
+index 1234567..abcdefg 100644
+--- a/Page.astro
++++ b/Page.astro
+@@ -1,7 +1,7 @@
+ ---
+-const title = "Hello";
++const title = "Hello, Astro";
+ ---
+ <main class="page">
+   <h1>{title}</h1>
+ </main>
+`;
+
 describe("parseDiff", () => {
+  it.each(["-- comment", "++ marker"])(
+    "preserves hunk content resembling patch headers: %s",
+    (content) => {
+      const files = parseDiff(`diff --git a/example.txt b/example.txt
+index 1234567..abcdefg 100644
+--- a/example.txt
++++ b/example.txt
+@@ -1 +1 @@
+-${content} before
++${content} after
+`);
+
+      expect(files).toHaveLength(1);
+      expect(files[0]).toMatchObject({
+        path: "example.txt",
+        isNew: false,
+        isDeleted: false,
+        additions: 1,
+        deletions: 1,
+      });
+      expect(files[0].hunks[0].lines).toEqual([
+        { type: "header", content: "@@ -1 +1 @@" },
+        { type: "remove", content: `${content} before` },
+        { type: "add", content: `${content} after` },
+      ]);
+    },
+  );
+
+  it("decodes quoted Git patch paths before matching files", () => {
+    const files = parseDiff(
+      [
+        'diff --git "a/report \\"draft\\".txt" "b/report \\"draft\\".txt"',
+        "index 1234567..abcdefg 100644",
+        '--- "a/report \\"draft\\".txt"',
+        '+++ "b/report \\"draft\\".txt"',
+        "@@ -1 +1 @@",
+        "-before",
+        "+after",
+        "",
+      ].join("\n"),
+    );
+
+    expect(files).toEqual([
+      {
+        path: 'report "draft".txt',
+        isNew: false,
+        isDeleted: false,
+        additions: 1,
+        deletions: 1,
+        hunks: [
+          {
+            oldStart: 1,
+            oldCount: 1,
+            newStart: 1,
+            newCount: 1,
+            lines: [
+              { type: "header", content: "@@ -1 +1 @@" },
+              { type: "remove", content: "before" },
+              { type: "add", content: "after" },
+            ],
+          },
+        ],
+      },
+    ]);
+  });
+
+  it.each([
+    ["tab\\tname.txt", "tab\tname.txt"],
+    ["line\\nname.txt", "line\nname.txt"],
+    ["back\\\\slash.txt", "back\\slash.txt"],
+    ["bell\\aname.txt", "bell\u0007name.txt"],
+    ["vertical\\vname.txt", "vertical\u000bname.txt"],
+    ["\\346\\265\\213\\350\\257\\225.txt", "测试.txt"],
+    ['测试 \\"draft\\".txt', '测试 "draft".txt'],
+  ])("decodes C-quoted path %s without changing its diff lines", (encoded, path) => {
+    const files = parseDiff(
+      [
+        'diff --git "a/' + encoded + '" "b/' + encoded + '"',
+        "index 1234567..abcdefg 100644",
+        '--- "a/' + encoded + '"',
+        '+++ "b/' + encoded + '"',
+        "@@ -1 +1 @@",
+        "-before",
+        "+after",
+        "",
+      ].join("\n"),
+    );
+
+    expect(files).toHaveLength(1);
+    expect(files[0]).toMatchObject({ path, additions: 1, deletions: 1 });
+    expect(files[0].hunks[0].lines).toEqual([
+      { type: "header", content: "@@ -1 +1 @@" },
+      { type: "remove", content: "before" },
+      { type: "add", content: "after" },
+    ]);
+  });
+
+  it.each([
+    ['"a/old \\"draft\\".txt" b/new with spaces.txt', "new with spaces.txt"],
+    ['a/old with spaces.txt "b/new \\"draft\\".txt"', 'new "draft".txt'],
+    ['"report \\"draft\\".txt" "report \\"draft\\".txt"', 'report "draft".txt'],
+  ])("reads quoted paths from header-only patches: %s", (header, path) => {
+    expect(parseDiff("diff --git " + header + "\nsimilarity index 100%\n")).toEqual([
+      { path, isNew: false, isDeleted: false, additions: 0, deletions: 0, hunks: [] },
+    ]);
+  });
+
   it("parses a simple diff with one hunk", () => {
     const files = parseDiff(SIMPLE_DIFF);
 
@@ -331,6 +471,28 @@ describe("reconstructOldFile", () => {
 });
 
 describe("highlightDiffFromHunks", () => {
+  it("continues highlighting large diffs whose lines stay bounded", () => {
+    const sourceLines = Array.from(
+      { length: 101 },
+      (_, index) => `const value${index} = "${"x".repeat(990)}";`,
+    );
+    const [file] = parseDiff(
+      [
+        "diff --git a/example.ts b/example.ts",
+        "--- /dev/null",
+        "+++ b/example.ts",
+        `@@ -0,0 +1,${sourceLines.length} @@`,
+        ...sourceLines.map((line) => `+${line}`),
+      ].join("\n"),
+    );
+
+    const highlighted = highlightDiffFromHunks(file);
+    const contentLines = highlighted.hunks[0].lines.slice(1);
+
+    expect(contentLines[0].tokens).toContainEqual({ text: "const", style: "keyword" });
+    expect(contentLines[100].tokens).toContainEqual({ text: "const", style: "keyword" });
+  });
+
   it("adds syntax highlighting tokens to TypeScript code", () => {
     const files = parseDiff(SIMPLE_DIFF);
     const highlighted = highlightDiffFromHunks(files[0]);
@@ -449,6 +611,45 @@ describe("highlightDiffFromHunks", () => {
     expect(addedLine!.tokens!.some((t) => t.text === "2" && t.style === "number")).toBe(true);
   });
 
+  it("adds syntax highlighting tokens to Svelte components", () => {
+    const files = parseDiff(SVELTE_DIFF);
+    const highlighted = highlightDiffFromHunks(files[0]);
+    const hunk = highlighted.hunks[0];
+
+    const scriptLine = hunk.lines[1];
+    expect(scriptLine.tokens).toBeDefined();
+    expect(scriptLine.tokens!.some((t) => t.text === "script" && t.style === "tag")).toBe(true);
+
+    const addedLine = hunk.lines.find(
+      (line) => line.type === "add" && line.content.includes("count"),
+    );
+    expect(addedLine?.tokens).toBeDefined();
+    expect(addedLine!.tokens!.some((t) => t.text === "let" && t.style === "keyword")).toBe(true);
+    expect(addedLine!.tokens!.some((t) => t.text === "number" && t.style === "type")).toBe(true);
+    expect(addedLine!.tokens!.some((t) => t.text === "2" && t.style === "number")).toBe(true);
+
+    const blockLine = hunk.lines.find((line) => line.content.includes("{#if"));
+    expect(blockLine?.tokens).toBeDefined();
+    expect(blockLine!.tokens!.some((t) => t.text === "if" && t.style === "keyword")).toBe(true);
+    expect(blockLine!.tokens!.some((t) => t.text === "count" && t.style === "variable")).toBe(true);
+
+    const markupLine = hunk.lines.find((line) => line.content.includes("<span"));
+    expect(markupLine?.tokens).toBeDefined();
+    expect(markupLine!.tokens!.some((t) => t.text === "span" && t.style === "tag")).toBe(true);
+  });
+
+  it("adds syntax highlighting tokens to Astro components", () => {
+    const [file] = parseDiff(ASTRO_DIFF);
+    const highlighted = highlightDiffFromHunks(file);
+    const addedLine = highlighted.hunks[0].lines.find((line) => line.type === "add");
+    const markupLine = highlighted.hunks[0].lines.find((line) => line.content.includes("<main"));
+
+    expect(addedLine?.tokens).toContainEqual({ text: "const", style: "keyword" });
+    expect(addedLine?.tokens).toContainEqual({ text: '"Hello, Astro"', style: "string" });
+    expect(markupLine?.tokens).toContainEqual({ text: "main", style: "tag" });
+    expect(markupLine?.tokens).toContainEqual({ text: "class", style: "attribute" });
+  });
+
   it("adds syntax highlighting tokens to Objective-C file extensions", () => {
     const files = parseDiff(OBJECTIVE_C_DIFF);
     const highlighted = highlightDiffFromHunks(files[0]);
@@ -507,6 +708,62 @@ describe("highlightDiffFromHunks", () => {
 });
 
 describe("highlightDiffWithFileContent", () => {
+  it("renders an Astro diff with an empty expression and keeps surrounding highlighting", async () => {
+    const diff = ASTRO_DIFF.replace("{title}", "{title} {}");
+    const file = parseDiff(diff)[0];
+    const highlighted = await highlightDiffWithFileContent(file, ".", {
+      oldFileContent:
+        '---\nconst title = "Hello";\n---\n<main class="page">\n  <h1>{title} {}</h1>\n</main>',
+      newFileContent:
+        '---\nconst title = "Hello, Astro";\n---\n<main class="page">\n  <h1>{title} {}</h1>\n</main>',
+    });
+
+    expect(highlighted.hunks[0].lines.find((line) => line.type === "add")?.tokens).toContainEqual({
+      text: '"Hello, Astro"',
+      style: "string",
+    });
+    expect(highlighted.hunks[0].lines.map(({ content }) => content)).toEqual(
+      file.hunks[0].lines.map(({ content }) => content),
+    );
+    expect(
+      highlightDiffFromHunks(file).hunks[0].lines.find((line) => line.type === "add")?.tokens,
+    ).toContainEqual({ text: '"Hello, Astro"', style: "string" });
+  });
+
+  it("leaves files with an oversized line unhighlighted", async () => {
+    const oversizedLine = `const payload = "${"x".repeat(10_001)}";`;
+    const [file] = parseDiff(
+      [
+        "diff --git a/example.ts b/example.ts",
+        "--- /dev/null",
+        "+++ b/example.ts",
+        "@@ -0,0 +1 @@",
+        `+${oversizedLine}`,
+      ].join("\n"),
+    );
+
+    const highlighted = await highlightDiffWithFileContent(file, ".", {
+      newFileContent: oversizedLine,
+    });
+
+    expect(highlighted.hunks[0].lines[1]).toEqual({
+      type: "add",
+      content: oversizedLine,
+    });
+  });
+
+  it("uses hunk context when the full file has an oversized line elsewhere", async () => {
+    const file = parseDiff(SIMPLE_DIFF)[0];
+    const oversizedUnchangedLine = `const payload = "${"x".repeat(10_001)}";`;
+
+    const highlighted = await highlightDiffWithFileContent(file, ".", {
+      newFileContent: `${oversizedUnchangedLine}\nconst bar = 3;`,
+    });
+    const addedLine = highlighted.hunks[0].lines.find((line) => line.type === "add");
+
+    expect(addedLine?.tokens).toContainEqual({ text: "3", style: "number" });
+  });
+
   it("uses the old file content to preserve syntax context for removed lines", async () => {
     const cwd = mkdtempSync(join(tmpdir(), "diff-highlight-old-file-"));
 
@@ -565,4 +822,140 @@ index 1111111..2222222 100644
       rmSync(cwd, { recursive: true, force: true });
     }
   });
+});
+
+describe("diff highlighting budget", () => {
+  it.each(["supplied", "local"] as const)(
+    "keeps a one-line diff on a 5 MiB %s source responsive using hunk tokens",
+    async (source) => {
+      const cwd = mkdtempSync(join(tmpdir(), "diff-highlight-budget-"));
+      const oldFileContent = "const value = Math.max(42, 7);\n".repeat(
+        Math.ceil((5 * 1024 * 1024) / 30),
+      );
+      const newFileContent = oldFileContent.replace("42", "43");
+      writeFileSync(join(cwd, "example.ts"), newFileContent);
+      const file = parseDiff(`diff --git a/example.ts b/example.ts
+--- a/example.ts
++++ b/example.ts
+@@ -1 +1 @@
+-const value = Math.max(42, 7);
++const value = Math.max(43, 7);`)[0];
+      try {
+        const { result: highlighted, blockingMs } = await measureMainThreadWork(
+          `diff highlight 5MiB ${source} main-thread work`,
+          () =>
+            highlightDiffWithFileContent(
+              file,
+              cwd,
+              source === "supplied" ? { oldFileContent } : {},
+            ),
+        );
+        expect(blockingMs).toBeLessThan(50);
+        expect(highlighted).toEqual(highlightDiffFromHunks(file));
+      } finally {
+        rmSync(cwd, { recursive: true, force: true });
+      }
+    },
+    30_000,
+  );
+
+  it("preserves byte-identical tokens below the budget, including multiline syntax", async () => {
+    const oldFileContent = "/*\nold comment\n*/\nconst value = 42;";
+    const newFileContent = oldFileContent.replace("old", "new");
+    const file = parseDiff(`diff --git a/example.ts b/example.ts
+--- a/example.ts
++++ b/example.ts
+@@ -2 +2 @@
+-old comment
++new comment`)[0];
+    const highlighted = await highlightDiffWithFileContent(file, ".", {
+      oldFileContent,
+      newFileContent,
+    });
+    expect(JSON.stringify(highlighted.hunks[0].lines[1].tokens)).toBe(
+      JSON.stringify(highlightCode(oldFileContent, file.path)[1]),
+    );
+    expect(JSON.stringify(highlighted.hunks[0].lines[2].tokens)).toBe(
+      JSON.stringify(highlightCode(newFileContent, file.path)[1]),
+    );
+  });
+});
+
+it("disconnecting the requesting source stops a parser between highlight steps", async () => {
+  const delivery = new SessionDelivery(() => {});
+  const source = {};
+  delivery.attach(source, true);
+  const yielded = Promise.withResolvers<void>();
+  let result: Awaited<ReturnType<typeof highlightCodeWithBudget>> = [];
+  const pending = delivery.request(source, { type: "ping", requestId: "highlight" }, async () => {
+    result = await highlightCodeWithBudget(
+      "const value = Math.max(42, 7);\n".repeat(3_000),
+      "file.ts",
+      {
+        signal: delivery.requestSignal,
+        yieldToEventLoop: () => {
+          yielded.resolve();
+          return setImmediate();
+        },
+      },
+    );
+  });
+  await yielded.promise;
+  await delivery.detach(source);
+  await pending;
+  expect(result).toBeNull();
+});
+
+it("keeps real session.ts diffs highlighted and byte-identical under the source budget", async () => {
+  const cwd = mkdtempSync(join(tmpdir(), "diff-highlight-real-source-"));
+  try {
+    const oldFileContent = readFileSync(new URL("../session.ts", import.meta.url), "utf8");
+    const newFileContent = oldFileContent.replace(
+      "WorkspaceRuntimeStore",
+      "WorkspaceRuntimeSnapshot",
+    );
+    writeFileSync(join(cwd, "session.ts"), newFileContent);
+    const oldLine = oldFileContent.split("\n")[0];
+    const newLine = newFileContent.split("\n")[0];
+    const [file] = parseDiff(`diff --git a/session.ts b/session.ts
+--- a/session.ts
++++ b/session.ts
+@@ -1 +1 @@
+-${oldLine}
++${newLine}`);
+    const highlighted = await highlightDiffWithFileContent(file, cwd, { oldFileContent });
+    const removed = highlighted.hunks[0].lines.find((line) => line.type === "remove");
+    const added = highlighted.hunks[0].lines.find((line) => line.type === "add");
+    expect(removed?.tokens).toEqual(highlightCode(oldFileContent, "session.ts")[0]);
+    expect(added?.tokens).toEqual(highlightCode(newFileContent, "session.ts")[0]);
+    expect(added?.tokens?.some((token) => token.style !== null)).toBe(true);
+  } finally {
+    rmSync(cwd, { recursive: true, force: true });
+  }
+});
+
+it("highlights a one-line hunk from an over-budget JSON source without blocking the loop", async () => {
+  const cwd = mkdtempSync(join(tmpdir(), "diff-highlight-large-json-"));
+  const oldFileContent = `{\n${'  "value": 42,\n'.repeat(100_000)}  "last": true\n}`;
+  const newFileContent = oldFileContent.replace("42", "43");
+  writeFileSync(join(cwd, "package-lock.json"), newFileContent);
+  const [file] = parseDiff(`diff --git a/package-lock.json b/package-lock.json
+--- a/package-lock.json
++++ b/package-lock.json
+@@ -2 +2 @@
+-  "value": 42,
++  "value": 43,`);
+  try {
+    const { result, blockingMs } = await measureMainThreadWork(
+      "diff highlight large JSON main-thread work",
+      () => highlightDiffWithFileContent(file, cwd, { oldFileContent }),
+    );
+    expect(blockingMs).toBeLessThan(50);
+    expect(result.hunks[0].lines.find((line) => line.type === "add")?.tokens).toContainEqual({
+      text: "43",
+      style: "number",
+    });
+  } finally {
+    rmSync(cwd, { recursive: true, force: true });
+  }
 });

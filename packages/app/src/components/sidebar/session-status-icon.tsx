@@ -9,7 +9,7 @@ import Animated, {
   withRepeat,
   withTiming,
 } from "react-native-reanimated";
-import { getProviderBrandColor, getProviderIcon } from "@/components/provider-icons";
+import { getProviderBrandColor, useProviderIcon } from "@/components/provider-icons";
 import type { SidebarStateBucket } from "@/utils/sidebar-agent-state";
 import type { Theme } from "@/styles/theme";
 
@@ -34,6 +34,7 @@ export function SessionStatusIcon({
   stateBucket,
   size = DEFAULT_ICON_SIZE,
 }: SessionStatusIconProps): ReactElement {
+  const Icon = useProviderIcon(provider);
   const ProviderIcon = useMemo(() => {
     let colorMapping = mutedColorMapping;
     if (stateBucket === "failed") {
@@ -41,8 +42,8 @@ export function SessionStatusIcon({
     } else if (stateBucket === "needs_input") {
       colorMapping = needsInputColorMapping;
     }
-    return withUnistyles(getProviderIcon(provider), colorMapping);
-  }, [provider, stateBucket]);
+    return withUnistyles(Icon, colorMapping);
+  }, [Icon, stateBucket]);
 
   const containerStyle = useMemo(() => [styles.sessionIcon, { width: size + 2 }], [size]);
 
@@ -85,8 +86,8 @@ function SessionRunningIconOverlay({
   const overlayStyle = useAnimatedStyle(() => ({ opacity: breath.value }));
   const containerStyle = useMemo(() => [styles.iconOverlay, overlayStyle], [overlayStyle]);
 
+  const Icon = useProviderIcon(provider);
   const OverlayIcon = useMemo((): ComponentType<{ size: number }> => {
-    const Icon = getProviderIcon(provider);
     const brandColor = getProviderBrandColor(provider);
     if (brandColor) {
       const BrandedIcon = ({ size: iconSize }: { size: number }) => (
@@ -95,8 +96,10 @@ function SessionRunningIconOverlay({
       BrandedIcon.displayName = `BrandedProviderIcon(${provider})`;
       return BrandedIcon;
     }
-    return withUnistyles(Icon, accentColorMapping) as unknown as ComponentType<{ size: number }>;
-  }, [provider]);
+    return withUnistyles(Icon, accentColorMapping) as unknown as ComponentType<{
+      size: number;
+    }>;
+  }, [Icon, provider]);
 
   return (
     <Animated.View style={containerStyle} pointerEvents="none">

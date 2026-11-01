@@ -1,3 +1,4 @@
+import * as codexAccountRpc from "../../server/agent/providers/codex/account-rpc.js";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -1060,27 +1061,29 @@ describe("usage bars escalate as they fill", () => {
   });
 
   it("a Codex window can reach danger, not just warning", async () => {
-    writeCodexAuth(codexHome, "at_codex");
-    const usage = await new CodexQuotaProvider({
-      logger: createLogger(),
-      codexHome,
-      fetch: mockFetch(
-        new Map([
-          [
-            "https://chatgpt.com/backend-api/wham/usage",
-            () =>
-              jsonResponse(
-                makeCodexResponse({
-                  rate_limit: {
-                    primary_window: { used_percent: 12, reset_at: 1_748_812_800 },
-                    secondary_window: { used_percent: 96, reset_at: 1_749_072_000 },
-                  },
-                }),
-              ),
-          ],
-        ]),
-      ),
-    }).fetchUsage();
+    writeFileSync(
+      join(codexHome, "auth.json"),
+      JSON.stringify({ tokens: { access_token: "at_codex" } }),
+    );
+    const readLimits = vi.spyOn(codexAccountRpc, "readCodexAccountRateLimits").mockResolvedValue({
+      planType: "pro",
+      rateLimitReached: false,
+      rateLimitReachedType: null,
+      primary: { usedPct: 12, resetsAt: null, windowDurationMins: 300 },
+      secondary: { usedPct: 96, resetsAt: null, windowDurationMins: 10080 },
+      credits: null,
+      availableResetCredits: null,
+    });
+    let usage: ProviderUsage;
+    try {
+      usage = await new CodexQuotaProvider({
+        logger: createLogger(),
+        codexHome,
+        env: {},
+      }).fetchUsage();
+    } finally {
+      readLimits.mockRestore();
+    }
 
     expect(usage.windows).toEqual(
       expect.arrayContaining([

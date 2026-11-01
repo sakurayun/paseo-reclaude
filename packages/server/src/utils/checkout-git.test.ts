@@ -14,12 +14,13 @@ import { join } from "path";
 import { win32 } from "node:path";
 import { tmpdir } from "os";
 import pino from "pino";
-import { base64EncryptedWireByteLength } from "@getpaseo/relay";
+import { base64EncryptedWireByteLength, maxSecuredPlaintextByteLength } from "@getpaseo/relay";
 import {
   __resetCheckoutShortstatCacheForTests,
   __resetPullRequestStatusCacheForTests,
   __setPullRequestStatusCacheTtlForTests,
   commitAll,
+  discardChanges,
   CHECKOUT_DIFF_MAX_STRUCTURED_BYTES,
   createPullRequest,
   getCachedCheckoutShortstat,
@@ -66,7 +67,7 @@ interface LegacyCreateWorktreeTestOptions {
   cwd: string;
   baseBranch: string;
   worktreeSlug: string;
-  runSetup?: boolean;
+
   paseoHome?: string;
 }
 
@@ -85,11 +86,15 @@ function createLegacyWorktreeForTest(
       baseBranch: options.baseBranch,
       branchName: options.branchName,
     },
-    runSetup: options.runSetup ?? true,
+
     paseoHome: options.paseoHome,
   });
 }
-import { getPaseoWorktreeMetadataPath } from "./worktree-metadata.js";
+import {
+  getPaseoWorktreeMetadataPath,
+  readPaseoWorktreeMetadata,
+  writePaseoWorktreeMetadata,
+} from "./worktree-metadata.js";
 
 function initRepo(): { tempDir: string; repoDir: string } {
   const tempDir = realpathSync.native(mkdtempSync(join(tmpdir(), "checkout-git-test-")));
@@ -102,6 +107,10 @@ function initRepo(): { tempDir: string; repoDir: string } {
   execFileSync("git", ["add", "."], { cwd: repoDir });
   execFileSync("git", ["-c", "commit.gpgsign=false", "commit", "-m", "initial"], { cwd: repoDir });
   return { tempDir, repoDir };
+}
+
+function readTextFile(path: string): string {
+  return readFileSync(path, "utf8").replaceAll("\r\n", "\n");
 }
 
 function sleep(ms: number): Promise<void> {
@@ -512,6 +521,147 @@ describe("checkout git utilities", () => {
     expect(message).toBe("update file");
   });
 
+  it("honors commit signing configuration", async () => {
+    execFileSync("git", ["config", "commit.gpgsign", "true"], { cwd: repoDir });
+    execFileSync("git", ["config", "gpg.format", "openpgp"], { cwd: repoDir });
+    execFileSync("git", ["config", "gpg.program", process.execPath], { cwd: repoDir });
+    writeFileSync(join(repoDir, "file.txt"), "signed\n");
+
+    await expect(commitAll(repoDir, "signed update")).rejects.toThrow("failed to sign the data");
+  });
+
+  it("includes both paths for a staged rename in structured diffs", async () => {
+    execFileSync("git", ["mv", "file.txt", "renamed.txt"], { cwd: repoDir });
+
+    const diff = await getCheckoutDiff(repoDir, {
+      mode: "uncommitted",
+      includeStructured: true,
+    });
+
+    expect(diff.structured).toContainEqual(
+      expect.objectContaining({
+        path: "renamed.txt",
+        oldPath: "file.txt",
+        additions: 0,
+        deletions: 0,
+        hunks: [],
+      }),
+    );
+  });
+
+  it.each([
+    { mode: "uncommitted", oldPath: "to-rename.txt", path: "renamed.txt" },
+    { mode: "base", oldPath: "to-rename.txt", path: "renamed.txt" },
+    { mode: "uncommitted", oldPath: "old [file].txt", path: "new [file].txt" },
+  ] as const)(
+    "shows only the edited line of a rename ($mode, $path)",
+    async ({ mode, oldPath, path }) => {
+      const original = Array.from({ length: 12 }, (_, index) => `line ${index + 1}`);
+      commitFile(repoDir, oldPath, original.join("\n") + "\n", "file to rename");
+      if (mode === "base") {
+        execFileSync("git", ["checkout", "-b", "feature/rename"], { cwd: repoDir });
+      }
+      execFileSync("git", ["mv", oldPath, path], { cwd: repoDir });
+      const edited = [...original];
+      edited[5] = "edited line 6";
+      writeFileSync(join(repoDir, path), edited.join("\n") + "\n");
+      execFileSync("git", ["add", path], { cwd: repoDir });
+
+      expect(
+        execFileSync("git", ["diff", "--name-status", "HEAD"], { cwd: repoDir }).toString(),
+      ).toMatch(/R\d+\t/);
+      if (mode === "base") {
+        execFileSync("git", ["-c", "commit.gpgsign=false", "commit", "-m", "rename and edit"], {
+          cwd: repoDir,
+        });
+      }
+
+      const diff = await getCheckoutDiff(repoDir, {
+        mode,
+        ...(mode === "base" ? { baseRef: "main" } : {}),
+        includeStructured: true,
+      });
+
+      expect(diff.structured).toEqual([
+        expect.objectContaining({
+          path,
+          oldPath,
+          isNew: false,
+          isDeleted: false,
+          additions: 1,
+          deletions: 1,
+          status: "ok",
+        }),
+      ]);
+      expect(diff.diff).toContain(`rename from ${oldPath}`);
+      expect(diff.diff).toContain(`rename to ${path}`);
+      expect(diff.diff).toContain("-line 6\n+edited line 6");
+      expect(diff.diff).not.toContain("new file mode");
+    },
+  );
+
+  it("includes a changed copy source only once in the diff", async () => {
+    const original =
+      Array.from({ length: 12 }, (_, index) => `line ${index + 1}`).join("\n") + "\n";
+    commitFile(repoDir, "source.txt", original, "copy source");
+    execFileSync("git", ["config", "diff.renames", "copies"], { cwd: repoDir });
+    writeFileSync(join(repoDir, "copy.txt"), original);
+    writeFileSync(join(repoDir, "source.txt"), original.replace("line 6", "edited line 6"));
+    execFileSync("git", ["add", "copy.txt", "source.txt"], { cwd: repoDir });
+    expect(
+      execFileSync("git", ["diff", "--name-status", "HEAD"], { cwd: repoDir }).toString(),
+    ).toContain("C100\tsource.txt\tcopy.txt");
+
+    const diff = await getCheckoutDiff(repoDir, {
+      mode: "uncommitted",
+      includeStructured: true,
+    });
+    expect(diff.structured).toEqual([
+      expect.objectContaining({
+        path: "copy.txt",
+        oldPath: "source.txt",
+        additions: 0,
+        deletions: 0,
+      }),
+      expect.objectContaining({ path: "source.txt", additions: 1, deletions: 1 }),
+    ]);
+    expect(diff.diff.match(/^diff --git a\/source.txt b\/source.txt$/gm)).toHaveLength(1);
+    expect(diff.diff).toContain("copy from source.txt");
+    expect(diff.diff).toContain("copy to copy.txt");
+  });
+
+  it("keeps a small copy patch when its edited source exceeds the patch limit", async () => {
+    const original =
+      Array.from({ length: 12 }, (_, index) => `line ${index + 1}`).join("\n") + "\n";
+    commitFile(repoDir, "source.txt", original, "copy source");
+    execFileSync("git", ["config", "diff.renames", "copies"], { cwd: repoDir });
+    writeFileSync(join(repoDir, "copy.txt"), original);
+    writeFileSync(join(repoDir, "source.txt"), original + "added source line\n".repeat(80_000));
+    execFileSync("git", ["add", "copy.txt", "source.txt"], { cwd: repoDir });
+    expect(
+      execFileSync("git", ["diff", "--name-status", "HEAD"], { cwd: repoDir }).toString(),
+    ).toContain("C100\tsource.txt\tcopy.txt");
+
+    const diff = await getCheckoutDiff(repoDir, {
+      mode: "uncommitted",
+      includeStructured: true,
+    });
+    expect(diff.structured).toEqual([
+      expect.objectContaining({
+        path: "copy.txt",
+        oldPath: "source.txt",
+        additions: 0,
+        deletions: 0,
+        hunks: [],
+        status: "ok",
+      }),
+      expect.objectContaining({ path: "source.txt", status: "too_large", hunks: [] }),
+    ]);
+    expect(diff.diff).toContain("copy from source.txt");
+    expect(diff.diff).toContain("copy to copy.txt");
+    expect(diff.diff).not.toContain("+added source line");
+  });
+
   it("reads the origin URL once when collecting facts for an origin-tracking branch", async () => {
     setupRemoteTrackingMain(repoDir, tempDir);
 
@@ -733,27 +883,105 @@ const x = 1;
     execFileSync("git", ["push"], { cwd: cloneDir });
     execFileSync("git", ["fetch", "origin"], { cwd: repoDir });
 
-    const facts = await getCheckoutSnapshotFacts(repoDir);
     startGitCommandMetrics();
+    const facts = await getCheckoutSnapshotFacts(repoDir);
     const divergedStatus = await getCheckoutStatus(repoDir, { facts });
     const metrics = stopGitCommandMetrics();
     const upstreamCountCommands = metrics.commands.filter(
-      (command) => command.args[0] === "rev-list" && command.args.join(" ").includes("main"),
+      (command) =>
+        command.args[0] === "for-each-ref" && command.args.join(" ").includes("%(upstream)"),
     );
 
     expect(divergedStatus.isGit).toBe(true);
     if (!divergedStatus.isGit) {
       return;
     }
+    expect(divergedStatus.upstreamRef).toBe("refs/remotes/origin/main");
     expect(divergedStatus.aheadOfOrigin).toBe(3);
     expect(divergedStatus.behindOfOrigin).toBe(2);
     expect(upstreamCountCommands).toHaveLength(1);
     expect(upstreamCountCommands[0]?.args).toEqual([
-      "rev-list",
-      "--left-right",
-      "--count",
-      "main...origin/main",
+      "for-each-ref",
+      "--format=%(upstream)%00%(upstream:track,nobracket)",
+      "refs/heads/main",
     ]);
+  });
+
+  it("reports the fork remote, not origin, when the branch tracks a second remote", async () => {
+    setupRemoteTrackingMain(repoDir, tempDir);
+    const forkDir = join(tempDir, "fork.git");
+    execFileSync("git", ["init", "--bare", "-b", "main", forkDir]);
+    execFileSync("git", ["remote", "add", "upstream", forkDir], { cwd: repoDir });
+    execFileSync("git", ["push", "-u", "upstream", "main"], { cwd: repoDir });
+
+    const status = await getCheckoutStatus(repoDir);
+    expect(status.isGit).toBe(true);
+    if (!status.isGit) {
+      return;
+    }
+    expect(status.upstreamRef).toBe("refs/remotes/upstream/main");
+  });
+
+  it("reports the upstream branch name when it differs from the local branch name", async () => {
+    setupRemoteTrackingMain(repoDir, tempDir);
+    execFileSync("git", ["checkout", "-b", "feature"], { cwd: repoDir });
+    commitFile(repoDir, "feature.txt", "feature\n", "feature commit");
+    execFileSync("git", ["push", "-u", "origin", "HEAD:other-name"], { cwd: repoDir });
+
+    const status = await getCheckoutStatus(repoDir);
+    expect(status.isGit).toBe(true);
+    if (!status.isGit) {
+      return;
+    }
+    expect(status.upstreamRef).toBe("refs/remotes/origin/other-name");
+  });
+
+  it("reports the upstream when the repo's only remote is not origin", async () => {
+    const forkDir = join(tempDir, "fork.git");
+    execFileSync("git", ["init", "--bare", "-b", "main", forkDir]);
+    execFileSync("git", ["remote", "add", "upstream", forkDir], { cwd: repoDir });
+    execFileSync("git", ["push", "-u", "upstream", "main"], { cwd: repoDir });
+
+    const status = await getCheckoutStatus(repoDir);
+    expect(status.isGit).toBe(true);
+    if (!status.isGit) {
+      return;
+    }
+    expect(status.upstreamRef).toBe("refs/remotes/upstream/main");
+    expect(status.aheadOfOrigin).toBe(0);
+  });
+
+  // A legal local branch named "origin/main" shadows the short form "origin/main" in git's
+  // ref resolution. The counts and the reported ref have to describe the same commit.
+  it("is not fooled by a local branch named like the remote-tracking ref", async () => {
+    setupRemoteTrackingMain(repoDir, tempDir);
+    commitFile(repoDir, "shadow.txt", "shadow\n", "shadow commit");
+    // Pointed at HEAD, so comparing against the shadow reports 0 ahead while the real
+    // remote-tracking ref reports 1.
+    execFileSync("git", ["branch", "origin/main", "main"], { cwd: repoDir });
+
+    const status = await getCheckoutStatus(repoDir);
+    expect(status.isGit).toBe(true);
+    if (!status.isGit) {
+      return;
+    }
+    expect(status.upstreamRef).toBe("refs/remotes/origin/main");
+    expect(status.aheadOfOrigin).toBe(1);
+    expect(status.behindOfOrigin).toBe(0);
+  });
+
+  it("reports no upstream ref for a branch that was never pushed", async () => {
+    setupRemoteTrackingMain(repoDir, tempDir);
+    execFileSync("git", ["checkout", "-b", "local-only"], { cwd: repoDir });
+    commitFile(repoDir, "local-only.txt", "local\n", "local commit");
+
+    const status = await getCheckoutStatus(repoDir);
+    expect(status.isGit).toBe(true);
+    if (!status.isGit) {
+      return;
+    }
+    expect(status.upstreamRef).toBeNull();
+    expect(status.aheadOfOrigin).toBeNull();
   });
 
   it("reports a PR worktree as not ahead when its branch is pushed to the configured PR remote", async () => {
@@ -883,9 +1111,9 @@ const x = 1;
   });
 
   it("does not report local-only no-track worktree commits as ahead of origin", async () => {
-    setupRemoteTrackingMain(repoDir, tempDir);
-    commitFile(repoDir, "second.txt", "second\n", "second commit");
-    execFileSync("git", ["push"], { cwd: repoDir });
+    // This case needs a remote base ref, not a second clone or extra base history.
+    execFileSync("git", ["remote", "add", "origin", repoDir], { cwd: repoDir });
+    execFileSync("git", ["fetch", "origin", "main:refs/remotes/origin/main"], { cwd: repoDir });
 
     const worktree = await createLegacyWorktreeForTest({
       branchName: "fresh-feature",
@@ -899,6 +1127,7 @@ const x = 1;
     const status = await getCheckoutStatus(worktree.worktreePath, { paseoHome });
     expect(status).toMatchObject({
       isGit: true,
+      hasRemote: true,
       isPaseoOwnedWorktree: true,
       baseRef: "main",
       aheadBehind: { ahead: 1, behind: 0 },
@@ -1169,6 +1398,92 @@ const x = 1;
     expect(diff.structured).toEqual([]);
   });
 
+  it.each([
+    { contents: "hello\n", expectedFiles: [], patch: "" },
+    {
+      contents: "restored\n",
+      expectedFiles: [
+        { path: "file.txt", isNew: false, isDeleted: false, additions: 1, deletions: 1 },
+      ],
+      patch: "-hello\n+restored\n",
+    },
+  ])(
+    "compares restored untracked base files against disk: $contents",
+    async ({ contents, expectedFiles, patch }) => {
+      execFileSync("git", ["checkout", "-b", "feature"], { cwd: repoDir });
+      execFileSync("git", ["rm", "file.txt"], { cwd: repoDir });
+      execFileSync("git", ["-c", "commit.gpgsign=false", "commit", "-m", "delete"], {
+        cwd: repoDir,
+      });
+      writeFileSync(join(repoDir, "file.txt"), contents);
+      const indexPath = execFileSync("git", ["rev-parse", "--git-path", "index"], {
+        cwd: repoDir,
+        encoding: "utf8",
+      }).trim();
+      const beforeIndex = readFileSync(join(repoDir, indexPath));
+      const beforeStatus = execFileSync("git", ["status", "--porcelain=v1", "-z"], {
+        cwd: repoDir,
+      });
+      const result = await getCheckoutDiff(repoDir, {
+        mode: "all",
+        baseRef: "main",
+        includeStructured: true,
+      });
+      expect(
+        result.structured?.map(({ path, isNew, isDeleted, additions, deletions }) => ({
+          path,
+          isNew,
+          isDeleted,
+          additions,
+          deletions,
+        })),
+      ).toEqual(expectedFiles);
+      expect(result.diff).toContain(patch);
+      expect(result.diff.length === 0).toBe(expectedFiles.length === 0);
+      expect(readFileSync(join(repoDir, indexPath))).toEqual(beforeIndex);
+      expect(execFileSync("git", ["status", "--porcelain=v1", "-z"], { cwd: repoDir })).toEqual(
+        beforeStatus,
+      );
+      expect(readFileSync(join(repoDir, "file.txt"), "utf8")).toBe(contents);
+      expect((await getCheckoutDiff(repoDir, { mode: "base", baseRef: "main" })).diff).toContain(
+        "deleted file mode",
+      );
+      expect((await getCheckoutDiff(repoDir, { mode: "uncommitted" })).diff).toContain(
+        "new file mode",
+      );
+    },
+  );
+
+  it("compares all changes as one net patch including untracked files", async () => {
+    execFileSync("git", ["checkout", "-b", "feature"], { cwd: repoDir });
+    writeFileSync(join(repoDir, "file.txt"), "committed\n");
+    execFileSync("git", ["add", "."], { cwd: repoDir });
+    execFileSync("git", ["-c", "commit.gpgsign=false", "commit", "-m", "feature"], {
+      cwd: repoDir,
+    });
+    writeFileSync(join(repoDir, "file.txt"), "working\n");
+    writeFileSync(join(repoDir, "new.txt"), "untracked\n");
+    const compare = { mode: "all", baseRef: "main", includeStructured: true } as const;
+    const before = await getCheckoutDiff(repoDir, compare);
+    expect(before.structured?.map((file) => file.path)).toEqual(["file.txt", "new.txt"]);
+    expect(before.diff).toContain("-hello\n+working\n");
+    expect(before.diff).not.toContain("committed");
+    expect(before.diff).toContain("+untracked");
+    const committed = await getCheckoutDiff(repoDir, { ...compare, mode: "base" });
+    expect(committed.diff).toContain("-hello\n+committed\n");
+    const uncommitted = await getCheckoutDiff(repoDir, { ...compare, mode: "uncommitted" });
+    expect(uncommitted.diff).toContain("-committed\n+working\n");
+    execFileSync("git", ["add", "."], { cwd: repoDir });
+    execFileSync("git", ["-c", "commit.gpgsign=false", "commit", "-m", "working"], {
+      cwd: repoDir,
+    });
+    expect((await getCheckoutDiff(repoDir, compare)).diff).toBe(before.diff);
+    writeFileSync(join(repoDir, "file.txt"), "hello\n");
+    expect((await getCheckoutDiff(repoDir, compare)).structured?.map((file) => file.path)).toEqual([
+      "new.txt",
+    ]);
+  });
+
   it("falls back to the local base branch when origin is absent", async () => {
     execFileSync("git", ["checkout", "-b", "feature"], { cwd: repoDir });
     writeFileSync(join(repoDir, "local-feature.txt"), "feature\n");
@@ -1274,19 +1589,15 @@ const x = 1;
   it("warms shortstat cache in the background without blocking listing callers", async () => {
     expect(getCachedCheckoutShortstat(repoDir)).toBeUndefined();
 
-    warmCheckoutShortstatInBackground(repoDir);
+    const warmed = new Promise<void>((resolve) => {
+      warmCheckoutShortstatInBackground(repoDir, undefined, resolve);
+    });
+    // The warm hands off to git and returns; listing callers see no value yet.
+    expect(getCachedCheckoutShortstat(repoDir)).toBeUndefined();
 
+    await warmed;
     // A repo with no origin/main computes to null, but null should still be cached.
-    for (let attempts = 0; attempts < 20; attempts += 1) {
-      const cached = getCachedCheckoutShortstat(repoDir);
-      if (cached !== undefined) {
-        expect(cached).toBeNull();
-        return;
-      }
-      await sleep(25);
-    }
-
-    throw new Error("shortstat background warm did not populate cache in time");
+    expect(getCachedCheckoutShortstat(repoDir)).toBeNull();
   });
 
   it("commits messages with quotes safely", async () => {
@@ -1343,9 +1654,14 @@ const x = 1;
       CHECKOUT_DIFF_MAX_STRUCTURED_BYTES + frameEnvelopeHeadroomBytes,
     );
 
-    expect(CHECKOUT_DIFF_MAX_STRUCTURED_BYTES).toBe(24_117_208);
+    // The cap is sized for the tighter of the legacy and protected relay framings.
+    expect(CHECKOUT_DIFF_MAX_STRUCTURED_BYTES).toBe(
+      maxSecuredPlaintextByteLength(relayFrameBytes) - frameEnvelopeHeadroomBytes,
+    );
+    expect(CHECKOUT_DIFF_MAX_STRUCTURED_BYTES).toBeLessThanOrEqual(24_117_208);
+    expect(CHECKOUT_DIFF_MAX_STRUCTURED_BYTES).toBeGreaterThan(24_000_000);
     expect(diffWireBytes).toBeLessThan(relayFrameBytes);
-    expect(maximumFrameWireBytes).toBe(relayFrameBytes);
+    expect(maximumFrameWireBytes).toBeLessThanOrEqual(relayFrameBytes);
   });
 
   it("marks tracked generated one-line diffs as too_large by content size", async () => {
@@ -1398,9 +1714,12 @@ const x = 1;
     expect(diff.diff).toContain("# generated.js: diff too large omitted");
     expect(diff.diff).toContain(`-export const value = "old";`);
     expect(diff.diff).toContain(`+export const value = "new";`);
-    expect(commands).toContain("diff --numstat HEAD");
-    expect(commands).toContain("diff HEAD -- generated.js");
-    expect(commands).toContain("diff HEAD -- small.ts");
+    expect(commands).toContain(
+      "diff --no-ext-diff --no-color --src-prefix=a/ --dst-prefix=b/ -z --numstat HEAD",
+    );
+    expect(commands).toContain(
+      "diff --no-ext-diff --no-color --src-prefix=a/ --dst-prefix=b/ HEAD -- :(literal)generated.js :(literal)small.ts",
+    );
     expect(metrics.maxConcurrent).toBeLessThanOrEqual(8);
   });
 
@@ -2165,6 +2484,45 @@ const x = 1;
     expect(branches.find((branch) => branch.name === "feature/shared")).toMatchObject({
       hasLocal: true,
       hasRemote: true,
+      localAhead: 0,
+      localBehind: 0,
+    });
+    await expect(listBranchSuggestions(repoDir, { query: "origin/main" })).resolves.toEqual([
+      expect.objectContaining({ name: "main", hasLocal: true, hasRemote: true }),
+    ]);
+  });
+
+  it("reports local and origin divergence for branch suggestions", async () => {
+    const remoteDir = join(tempDir, "remote.git");
+    execFileSync("git", ["init", "--bare", "-b", "main", remoteDir]);
+    execFileSync("git", ["remote", "add", "origin", remoteDir], { cwd: repoDir });
+    execFileSync("git", ["push", "-u", "origin", "main"], { cwd: repoDir });
+
+    writeFileSync(join(repoDir, "local.txt"), "local\n");
+    execFileSync("git", ["add", "local.txt"], { cwd: repoDir });
+    execFileSync("git", ["-c", "commit.gpgsign=false", "commit", "-m", "local commit"], {
+      cwd: repoDir,
+    });
+
+    const otherClone = join(tempDir, "diverged-clone");
+    execFileSync("git", ["clone", remoteDir, otherClone]);
+    execFileSync("git", ["config", "user.email", "test@test.com"], { cwd: otherClone });
+    execFileSync("git", ["config", "user.name", "Test"], { cwd: otherClone });
+    writeFileSync(join(otherClone, "remote.txt"), "remote\n");
+    execFileSync("git", ["add", "remote.txt"], { cwd: otherClone });
+    execFileSync("git", ["-c", "commit.gpgsign=false", "commit", "-m", "remote commit"], {
+      cwd: otherClone,
+    });
+    execFileSync("git", ["push", "origin", "main"], { cwd: otherClone });
+    execFileSync("git", ["fetch", "origin"], { cwd: repoDir });
+
+    const branches = await listBranchSuggestions(repoDir, { limit: 50 });
+
+    expect(branches.find((branch) => branch.name === "main")).toMatchObject({
+      hasLocal: true,
+      hasRemote: true,
+      localAhead: 1,
+      localBehind: 1,
     });
   });
 
@@ -2480,6 +2838,403 @@ const x = 1;
     expect(lookupTarget?.headSha).toMatch(/^[0-9a-f]{40}$/);
   });
 
+  it.each([
+    { state: "open", isMerged: false },
+    { state: "closed", isMerged: false },
+    { state: "merged", isMerged: true },
+  ])(
+    "shows a $state PR for the branch currently checked out after workspace creation",
+    async ({ state, isMerged }) => {
+      execFileSync("git", ["remote", "add", "origin", "https://github.com/acme/repo.git"], {
+        cwd: repoDir,
+      });
+      execFileSync("git", ["branch", "contributor/old-change"], { cwd: repoDir });
+      execFileSync("git", ["branch", "new-change"], { cwd: repoDir });
+      execFileSync("git", ["config", "branch.new-change.remote", "origin"], { cwd: repoDir });
+      execFileSync("git", ["config", "branch.new-change.merge", "refs/heads/new-change"], {
+        cwd: repoDir,
+      });
+      const workspaceDir = join(paseoHome, "worktrees", "repo", "pr-worktree");
+      mkdirSync(join(paseoHome, "worktrees", "repo"), { recursive: true });
+      execFileSync("git", ["worktree", "add", workspaceDir, "contributor/old-change"], {
+        cwd: repoDir,
+      });
+      await writePaseoWorktreeMetadata(workspaceDir, {
+        baseRefName: "main",
+        changeRequestLookupTarget: {
+          headRef: "old-change",
+          headRepositoryOwner: "contributor",
+          changeRequestNumber: 41,
+          localBranchName: "contributor/old-change",
+        },
+      });
+
+      execFileSync("git", ["checkout", "new-change"], { cwd: workspaceDir });
+      const requestedTargets: RequestedPullRequestTarget[] = [];
+      const facts = await getCheckoutSnapshotFacts(workspaceDir, { paseoHome });
+      const result = await getPullRequestStatus(
+        workspaceDir,
+        createGitHubServiceRecordingPullRequestTargets({
+          requestedTargets,
+          statusOverrides: { state, isMerged },
+        }),
+        { force: true, reason: "current-checkout-pr" },
+        { paseoHome, facts },
+      );
+
+      expect(requestedTargets).toEqual([expect.objectContaining({ headRef: "new-change" })]);
+      expect(result.status).toMatchObject({
+        headRefName: "new-change",
+        state,
+        isMerged,
+      });
+    },
+  );
+
+  it("shows the PR after an agent renames the branch directly with git", async () => {
+    execFileSync("git", ["remote", "add", "origin", "https://github.com/acme/repo.git"], {
+      cwd: repoDir,
+    });
+    execFileSync("git", ["branch", "placeholder"], { cwd: repoDir });
+    const workspaceDir = join(paseoHome, "worktrees", "repo", "renamed-by-agent");
+    mkdirSync(join(paseoHome, "worktrees", "repo"), { recursive: true });
+    execFileSync("git", ["worktree", "add", workspaceDir, "placeholder"], { cwd: repoDir });
+    await writePaseoWorktreeMetadata(workspaceDir, {
+      baseRefName: "main",
+      changeRequestLookupTarget: {
+        headRef: "placeholder",
+        localBranchName: "placeholder",
+      },
+    });
+
+    execFileSync("git", ["branch", "-m", "agent-chosen-name"], { cwd: workspaceDir });
+    const requestedTargets: RequestedPullRequestTarget[] = [];
+    const facts = await getCheckoutSnapshotFacts(workspaceDir, { paseoHome });
+    const result = await getPullRequestStatus(
+      workspaceDir,
+      createGitHubServiceRecordingPullRequestTargets({ requestedTargets }),
+      { force: true, reason: "agent-renamed-branch-pr" },
+      { paseoHome, facts },
+    );
+
+    expect(requestedTargets).toEqual([expect.objectContaining({ headRef: "agent-chosen-name" })]);
+    expect(result.status).toMatchObject({
+      headRefName: "agent-chosen-name",
+      state: "open",
+      isMerged: false,
+    });
+  });
+
+  it("does not replace a managed branch pin from shared push config", async () => {
+    execFileSync("git", ["branch", "feature/pinned"], { cwd: repoDir });
+    execFileSync("git", ["remote", "add", "origin", "https://github.com/acme/repo.git"], {
+      cwd: repoDir,
+    });
+    execFileSync("git", ["remote", "add", "fork", "https://github.com/other/repo.git"], {
+      cwd: repoDir,
+    });
+    const workspaceDir = join(paseoHome, "worktrees", "repo", "pinned-worktree");
+    mkdirSync(join(paseoHome, "worktrees", "repo"), { recursive: true });
+    execFileSync("git", ["worktree", "add", workspaceDir, "feature/pinned"], { cwd: repoDir });
+    await writePaseoWorktreeMetadata(workspaceDir, {
+      baseRefName: "main",
+      changeRequestLookupTarget: {
+        headRef: "feature/pinned",
+        localBranchName: "feature/pinned",
+      },
+    });
+    execFileSync("git", ["config", "branch.feature/pinned.pushRemote", "fork"], {
+      cwd: repoDir,
+    });
+    execFileSync("git", ["config", "remote.fork.push", "HEAD:refs/heads/unrelated"], {
+      cwd: repoDir,
+    });
+
+    expect(await readPullRequestLookupTargetFromFacts(workspaceDir, paseoHome)).toMatchObject({
+      headRef: "feature/pinned",
+    });
+  });
+
+  it("uses the checked-out branch when a managed worktree has no metadata", async () => {
+    execFileSync("git", ["branch", "feature/unpinned"], { cwd: repoDir });
+    const workspaceDir = join(paseoHome, "worktrees", "repo", "unpinned-worktree");
+    mkdirSync(join(paseoHome, "worktrees", "repo"), { recursive: true });
+    execFileSync("git", ["worktree", "add", workspaceDir, "feature/unpinned"], {
+      cwd: repoDir,
+    });
+
+    expect(await readPullRequestLookupTargetFromFacts(workspaceDir, paseoHome)).toMatchObject({
+      headRef: "feature/unpinned",
+    });
+  });
+
+  it("uses the checked-out branch instead of ambiguous legacy PR metadata", async () => {
+    execFileSync("git", ["branch", "contributor/old-change-1"], { cwd: repoDir });
+    const workspaceDir = join(paseoHome, "worktrees", "repo", "legacy-pr-worktree");
+    mkdirSync(join(paseoHome, "worktrees", "repo"), { recursive: true });
+    execFileSync("git", ["worktree", "add", workspaceDir, "contributor/old-change-1"], {
+      cwd: repoDir,
+    });
+    await writePaseoWorktreeMetadata(workspaceDir, {
+      baseRefName: "main",
+      changeRequestLookupTarget: {
+        headRef: "old-change",
+        headRepositoryOwner: "contributor",
+        changeRequestNumber: 41,
+      },
+    });
+
+    const lookupTarget = await readPullRequestLookupTargetFromFacts(workspaceDir, paseoHome);
+
+    expect(lookupTarget).toMatchObject({ headRef: "contributor/old-change-1" });
+  });
+
+  it("does not apply a legacy fork hint to an ownerless branch with the same head", async () => {
+    execFileSync("git", ["branch", "contributor/old-change"], { cwd: repoDir });
+    execFileSync("git", ["branch", "old-change"], { cwd: repoDir });
+    const workspaceDir = join(paseoHome, "worktrees", "repo", "legacy-fork-worktree");
+    mkdirSync(join(paseoHome, "worktrees", "repo"), { recursive: true });
+    execFileSync("git", ["worktree", "add", workspaceDir, "contributor/old-change"], {
+      cwd: repoDir,
+    });
+    await writePaseoWorktreeMetadata(workspaceDir, {
+      baseRefName: "main",
+      changeRequestLookupTarget: {
+        headRef: "old-change",
+        headRepositoryOwner: "contributor",
+        changeRequestNumber: 41,
+      },
+    });
+    const requestedTargets: RequestedPullRequestTarget[] = [];
+    const forge = createGitHubServiceRecordingPullRequestTargets({ requestedTargets });
+
+    const forkFacts = await getCheckoutSnapshotFacts(workspaceDir, { paseoHome });
+    await getPullRequestStatus(
+      workspaceDir,
+      forge,
+      { force: true, reason: "legacy-fork-branch" },
+      { paseoHome, facts: forkFacts },
+    );
+    expect(requestedTargets.at(-1)).toMatchObject({
+      headRef: "old-change",
+      headRepositoryOwner: "contributor",
+    });
+
+    execFileSync("git", ["checkout", "old-change"], { cwd: workspaceDir });
+    const ownerlessFacts = await getCheckoutSnapshotFacts(workspaceDir, { paseoHome });
+    await getPullRequestStatus(
+      workspaceDir,
+      forge,
+      { force: true, reason: "ownerless-same-head" },
+      { paseoHome, facts: ownerlessFacts },
+    );
+
+    expect(requestedTargets).toEqual([
+      expect.objectContaining({
+        headRef: "old-change",
+        headRepositoryOwner: "contributor",
+      }),
+      expect.objectContaining({ headRef: "old-change" }),
+    ]);
+    expect(requestedTargets[1]).not.toHaveProperty("headRepositoryOwner");
+  });
+
+  it("recognizes a normalized GitHub owner branch from legacy Enterprise metadata", async () => {
+    execFileSync("git", ["remote", "add", "origin", "git@github.acme.internal:base/repo.git"], {
+      cwd: repoDir,
+    });
+    execFileSync(
+      "git",
+      ["remote", "add", "enterprise-fork", "git@github.acme.internal:MixedOwner/repo.git"],
+      {
+        cwd: repoDir,
+      },
+    );
+    execFileSync("git", ["branch", "mixedowner/old-change"], { cwd: repoDir });
+    execFileSync("git", ["config", "branch.mixedowner/old-change.remote", "enterprise-fork"], {
+      cwd: repoDir,
+    });
+    execFileSync("git", ["config", "branch.mixedowner/old-change.merge", "refs/heads/old-change"], {
+      cwd: repoDir,
+    });
+    const workspaceDir = join(paseoHome, "worktrees", "repo", "legacy-enterprise-worktree");
+    mkdirSync(join(paseoHome, "worktrees", "repo"), { recursive: true });
+    execFileSync("git", ["worktree", "add", workspaceDir, "mixedowner/old-change"], {
+      cwd: repoDir,
+    });
+    await writePaseoWorktreeMetadata(workspaceDir, {
+      baseRefName: "main",
+      changeRequestLookupTarget: {
+        headRef: "old-change",
+        headRepositoryOwner: "MixedOwner",
+        changeRequestNumber: 41,
+      },
+    });
+    const requestedTargets: RequestedPullRequestTarget[] = [];
+    const forge = createGitHubServiceRecordingPullRequestTargets({ requestedTargets });
+
+    const facts = await getCheckoutSnapshotFacts(workspaceDir, { paseoHome });
+    await getPullRequestStatus(
+      workspaceDir,
+      forge,
+      { force: true, reason: "legacy-enterprise-owner" },
+      { paseoHome, facts },
+    );
+
+    expect(requestedTargets).toEqual([
+      expect.objectContaining({ headRef: "old-change", headRepositoryOwner: "MixedOwner" }),
+    ]);
+
+    execFileSync(
+      "git",
+      ["remote", "add", "replacement-fork", "git@github.acme.internal:OtherOwner/repo.git"],
+      { cwd: repoDir },
+    );
+    execFileSync("git", ["config", "branch.mixedowner/old-change.remote", "replacement-fork"], {
+      cwd: repoDir,
+    });
+    const repointedFacts = await getCheckoutSnapshotFacts(workspaceDir, { paseoHome });
+    await getPullRequestStatus(
+      workspaceDir,
+      forge,
+      { force: true, reason: "repointed-enterprise-owner" },
+      { paseoHome, facts: repointedFacts },
+    );
+
+    expect(requestedTargets.at(-1)).toMatchObject({
+      headRef: "old-change",
+      headRepositoryOwner: "MixedOwner",
+    });
+  });
+
+  it("keeps a ref-only change request across rename and follows a later branch switch", async () => {
+    execFileSync("git", ["branch", "feature/gitlab-mr"], { cwd: repoDir });
+    const workspaceDir = join(paseoHome, "worktrees", "repo", "gitlab-mr-worktree");
+    mkdirSync(join(paseoHome, "worktrees", "repo"), { recursive: true });
+    execFileSync("git", ["worktree", "add", workspaceDir, "feature/gitlab-mr"], {
+      cwd: repoDir,
+    });
+    await writePaseoWorktreeMetadata(workspaceDir, {
+      baseRefName: "main",
+      changeRequestLookupTarget: {
+        headRef: "feature/gitlab-mr",
+        changeRequestNumber: 14,
+        localBranchName: "feature/gitlab-mr",
+      },
+    });
+    const workspaceCwd = join(workspaceDir, "packages", "service");
+    mkdirSync(workspaceCwd, { recursive: true });
+    const requestedTargets: RequestedPullRequestTarget[] = [];
+    const forge = createGitHubServiceRecordingPullRequestTargets({ requestedTargets });
+
+    await renameCurrentBranch(workspaceCwd, "feature/renamed");
+    expect(
+      (await readPaseoWorktreeMetadata(workspaceDir))?.changeRequestLookupTarget,
+    ).toMatchObject({
+      localBranchName: "feature/renamed",
+    });
+    const renamedFacts = await getCheckoutSnapshotFacts(workspaceDir, { paseoHome });
+    const renamedStatus = await getPullRequestStatus(
+      workspaceDir,
+      forge,
+      { force: true, reason: "renamed-change-request" },
+      { paseoHome, facts: renamedFacts },
+    );
+
+    expect(requestedTargets).toEqual([expect.objectContaining({ headRef: "feature/gitlab-mr" })]);
+    expect(renamedStatus.status?.headRefName).toBe("feature/gitlab-mr");
+
+    execFileSync("git", ["checkout", "-b", "other-branch"], { cwd: workspaceDir });
+    const switchedFacts = await getCheckoutSnapshotFacts(workspaceDir, { paseoHome });
+    await getPullRequestStatus(
+      workspaceDir,
+      forge,
+      { force: true, reason: "switched-after-rename" },
+      { paseoHome, facts: switchedFacts },
+    );
+
+    expect(requestedTargets).toEqual([
+      expect.objectContaining({ headRef: "feature/gitlab-mr" }),
+      expect.objectContaining({ headRef: "other-branch" }),
+    ]);
+  });
+
+  it("moves a managed branch identity pin when its branch is renamed", async () => {
+    execFileSync("git", ["branch", "feature/placeholder"], { cwd: repoDir });
+    const workspaceDir = join(paseoHome, "worktrees", "repo", "renamed-worktree");
+    mkdirSync(join(paseoHome, "worktrees", "repo"), { recursive: true });
+    execFileSync("git", ["worktree", "add", workspaceDir, "feature/placeholder"], {
+      cwd: repoDir,
+    });
+    await writePaseoWorktreeMetadata(workspaceDir, {
+      baseRefName: "main",
+      changeRequestLookupTarget: {
+        headRef: "feature/placeholder",
+        localBranchName: "feature/placeholder",
+      },
+    });
+
+    await renameCurrentBranch(workspaceDir, "feature/generated");
+
+    expect((await readPaseoWorktreeMetadata(workspaceDir))?.changeRequestLookupTarget).toEqual({
+      headRef: "feature/generated",
+      localBranchName: "feature/generated",
+    });
+    const facts = await getCheckoutSnapshotFacts(workspaceDir, { paseoHome });
+    expect(facts.isGit && facts.pullRequestLookupTarget).toMatchObject({
+      headRef: "feature/generated",
+    });
+  });
+
+  it("keeps fork identity when the local and tracked branch names match", async () => {
+    execFileSync("git", ["remote", "add", "origin", "https://github.com/getpaseo/paseo.git"], {
+      cwd: repoDir,
+    });
+    execFileSync("git", ["remote", "add", "contributor", "git@github.com:contributor/paseo.git"], {
+      cwd: repoDir,
+    });
+    execFileSync("git", ["checkout", "-b", "topic"], { cwd: repoDir });
+    execFileSync("git", ["config", "branch.topic.remote", "contributor"], { cwd: repoDir });
+    execFileSync("git", ["config", "branch.topic.merge", "refs/heads/topic"], { cwd: repoDir });
+
+    const lookupTarget = await readPullRequestLookupTargetFromFacts(repoDir, paseoHome);
+
+    expect(lookupTarget).toMatchObject({
+      headRef: "topic",
+      headRepositoryOwner: "contributor",
+    });
+  });
+
+  it.each([
+    "git@github.com:contributor/paseo.git",
+    "https://github.com/contributor/paseo.git",
+    "ssh://git@github.com/contributor/paseo.git",
+  ])("preserves fork PR identity with branch.remote=%s", async (branchRemote) => {
+    execFileSync("git", ["remote", "add", "origin", "git@github.com:getpaseo/paseo.git"], {
+      cwd: repoDir,
+    });
+    execFileSync("git", ["checkout", "-b", "topic"], { cwd: repoDir });
+    execFileSync("git", ["config", "branch.topic.remote", branchRemote], {
+      cwd: repoDir,
+    });
+    execFileSync("git", ["config", "branch.topic.pushRemote", branchRemote], {
+      cwd: repoDir,
+    });
+    execFileSync("git", ["config", "branch.topic.merge", "refs/heads/topic"], {
+      cwd: repoDir,
+    });
+    const headSha = execFileSync("git", ["rev-parse", "HEAD"], {
+      cwd: repoDir,
+      encoding: "utf8",
+    }).trim();
+
+    expect(await readPullRequestLookupTargetFromFacts(repoDir, paseoHome)).toEqual({
+      headRef: "topic",
+      headRepositoryOwner: "contributor",
+      headSha,
+    });
+  });
+
   it("does not attach an owner when the tracked remote is the same GitHub repository", async () => {
     execFileSync("git", ["checkout", "-b", "local-feature"], { cwd: repoDir });
     execFileSync("git", ["remote", "add", "origin", "git@github.com:getpaseo/paseo.git"], {
@@ -2569,6 +3324,50 @@ const x = 1;
 
     expect(lookupTarget).toMatchObject({ headRef: "tender-parrot" });
     expect(lookupTarget?.headSha).toMatch(/^[0-9a-f]{40}$/);
+  });
+
+  it("keeps the local branch lookup when a fork tracks the upstream base branch", async () => {
+    execFileSync("git", ["checkout", "-b", "local-feature"], { cwd: repoDir });
+    execFileSync("git", ["remote", "add", "origin", "git@github.com:contributor/paseo.git"], {
+      cwd: repoDir,
+    });
+    execFileSync("git", ["remote", "add", "upstream", "https://github.com/getpaseo/paseo.git"], {
+      cwd: repoDir,
+    });
+    execFileSync("git", ["config", "branch.local-feature.remote", "upstream"], {
+      cwd: repoDir,
+    });
+    execFileSync("git", ["config", "branch.local-feature.merge", "refs/heads/main"], {
+      cwd: repoDir,
+    });
+
+    const lookupTarget = await readPullRequestLookupTargetFromFacts(repoDir, paseoHome);
+
+    expect(lookupTarget).toMatchObject({ headRef: "local-feature" });
+    expect(lookupTarget).not.toHaveProperty("headRepositoryOwner");
+  });
+
+  it("treats differently cased Enterprise remotes as the same repository", async () => {
+    execFileSync("git", ["checkout", "-b", "local-feature"], { cwd: repoDir });
+    execFileSync("git", ["remote", "add", "origin", "git@github.acme.internal:Acme/Repo.git"], {
+      cwd: repoDir,
+    });
+    execFileSync(
+      "git",
+      ["remote", "add", "enterprise-alias", "git@github.acme.internal:acme/repo.git"],
+      { cwd: repoDir },
+    );
+    execFileSync("git", ["config", "branch.local-feature.remote", "enterprise-alias"], {
+      cwd: repoDir,
+    });
+    execFileSync("git", ["config", "branch.local-feature.merge", "refs/heads/main"], {
+      cwd: repoDir,
+    });
+
+    const lookupTarget = await readPullRequestLookupTargetFromFacts(repoDir, paseoHome);
+
+    expect(lookupTarget).toMatchObject({ headRef: "local-feature" });
+    expect(lookupTarget).not.toHaveProperty("headRepositoryOwner");
   });
 
   it("derives the same origin tracked head for on-demand PR status reads", async () => {
@@ -2982,6 +3781,22 @@ const x = 1;
     );
   });
 
+  it("honors commit signing configuration for squash merges", async () => {
+    execFileSync("git", ["checkout", "-b", "feature"], { cwd: repoDir });
+    writeFileSync(join(repoDir, "feature.txt"), "feature\n");
+    execFileSync("git", ["add", "feature.txt"], { cwd: repoDir });
+    execFileSync("git", ["-c", "commit.gpgsign=false", "commit", "-m", "feature commit"], {
+      cwd: repoDir,
+    });
+    execFileSync("git", ["config", "commit.gpgsign", "true"], { cwd: repoDir });
+    execFileSync("git", ["config", "gpg.format", "openpgp"], { cwd: repoDir });
+    execFileSync("git", ["config", "gpg.program", process.execPath], { cwd: repoDir });
+
+    await expect(mergeToBase(repoDir, { baseRef: "main", mode: "squash" })).rejects.toThrow(
+      "failed to sign the data",
+    );
+  });
+
   it("uses stored baseRefName for Paseo worktrees (no heuristics)", async () => {
     // Create a non-default base branch with a unique commit.
     execFileSync("git", ["checkout", "-b", "develop"], { cwd: repoDir });
@@ -3028,7 +3843,7 @@ const x = 1;
 
     await expect(
       getCheckoutDiff(worktree.worktreePath, { mode: "base", baseRef: "other" }, { paseoHome }),
-    ).rejects.toThrow("Base ref mismatch: stored main, requested other");
+    ).rejects.toThrow("Base ref mismatch: stored refs/heads/main, requested other");
   });
 
   it("excludes dirty working tree changes from Paseo worktree base diffs", async () => {
@@ -3138,7 +3953,7 @@ const x = 1;
       cwd: worktree.worktreePath,
     });
 
-    const metadataPath = getPaseoWorktreeMetadataPath(worktree.worktreePath);
+    const metadataPath = await getPaseoWorktreeMetadataPath(worktree.worktreePath);
     rmSync(metadataPath, { force: true });
 
     const baseDiff = await getCheckoutDiff(worktree.worktreePath, { mode: "base" }, { paseoHome });
@@ -3157,7 +3972,7 @@ const x = 1;
       paseoHome,
     });
 
-    const metadataPath = getPaseoWorktreeMetadataPath(worktree.worktreePath);
+    const metadataPath = await getPaseoWorktreeMetadataPath(worktree.worktreePath);
     rmSync(metadataPath, { force: true });
 
     const status = await getCheckoutStatus(worktree.worktreePath, { paseoHome });
@@ -3250,5 +4065,134 @@ const x = 1;
     it("is case insensitive on Windows paths", () => {
       expect(isDescendantPath("c:\\repo\\child", "C:\\repo")).toBe(true);
     });
+  });
+});
+
+describe("discardChanges", () => {
+  it("discards staged and unstaged modifications, deletions, and untracked files", async () => {
+    const { tempDir, repoDir } = initRepo();
+    try {
+      writeFileSync(join(repoDir, "file.txt"), "changed\n");
+      writeFileSync(join(repoDir, "staged.txt"), "staged\n");
+      execFileSync("git", ["add", "staged.txt"], { cwd: repoDir });
+      mkdirSync(join(repoDir, "junk"), { recursive: true });
+      writeFileSync(join(repoDir, "junk", "scratch.txt"), "scratch\n");
+
+      await discardChanges(repoDir, ["file.txt", "staged.txt", "junk"]);
+
+      expect(readTextFile(join(repoDir, "file.txt"))).toBe("hello\n");
+      expect(existsSync(join(repoDir, "staged.txt"))).toBe(false);
+      expect(existsSync(join(repoDir, "junk"))).toBe(false);
+      const status = execFileSync("git", ["status", "--porcelain"], { cwd: repoDir })
+        .toString()
+        .trim();
+      expect(status).toBe("");
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("restores both sides of a staged rename", async () => {
+    const { tempDir, repoDir } = initRepo();
+    try {
+      execFileSync("git", ["mv", "file.txt", "renamed.txt"], { cwd: repoDir });
+
+      await discardChanges(repoDir, ["file.txt", "renamed.txt"]);
+
+      expect(readTextFile(join(repoDir, "file.txt"))).toBe("hello\n");
+      expect(existsSync(join(repoDir, "renamed.txt"))).toBe(false);
+      expect(execFileSync("git", ["status", "--porcelain"], { cwd: repoDir }).toString()).toBe("");
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("unstages and removes files in a repository with an unborn HEAD", async () => {
+    const tempDir = realpathSync.native(mkdtempSync(join(tmpdir(), "checkout-git-unborn-")));
+    const repoDir = join(tempDir, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    try {
+      execFileSync("git", ["init", "-b", "main"], { cwd: repoDir });
+      writeFileSync(join(repoDir, "new.txt"), "new\n");
+      execFileSync("git", ["add", "new.txt"], { cwd: repoDir });
+
+      await discardChanges(repoDir, ["new.txt"]);
+
+      expect(existsSync(join(repoDir, "new.txt"))).toBe(false);
+      expect(execFileSync("git", ["status", "--porcelain"], { cwd: repoDir }).toString()).toBe("");
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("discards a nested folder pathspec without touching sibling changes", async () => {
+    const { tempDir, repoDir } = initRepo();
+    try {
+      mkdirSync(join(repoDir, "nested"));
+      writeFileSync(join(repoDir, "nested", "tracked.txt"), "original\n");
+      execFileSync("git", ["add", "nested/tracked.txt"], { cwd: repoDir });
+      execFileSync("git", ["-c", "commit.gpgsign=false", "commit", "-m", "add nested"], {
+        cwd: repoDir,
+      });
+      writeFileSync(join(repoDir, "nested", "tracked.txt"), "changed\n");
+      writeFileSync(join(repoDir, "nested", "untracked.txt"), "remove\n");
+      writeFileSync(join(repoDir, "outside.txt"), "keep\n");
+
+      await discardChanges(repoDir, ["nested"]);
+
+      expect(readTextFile(join(repoDir, "nested", "tracked.txt"))).toBe("original\n");
+      expect(existsSync(join(repoDir, "nested", "untracked.txt"))).toBe(false);
+      expect(readFileSync(join(repoDir, "outside.txt"), "utf8")).toBe("keep\n");
+      expect(execFileSync("git", ["status", "--porcelain"], { cwd: repoDir }).toString()).toBe(
+        "?? outside.txt\n",
+      );
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("restores a staged deletion", async () => {
+    const { tempDir, repoDir } = initRepo();
+    try {
+      execFileSync("git", ["rm", "file.txt"], { cwd: repoDir });
+      await discardChanges(repoDir, ["file.txt"]);
+      expect(readTextFile(join(repoDir, "file.txt"))).toBe("hello\n");
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("leaves files outside the given pathspecs untouched", async () => {
+    const { tempDir, repoDir } = initRepo();
+    try {
+      writeFileSync(join(repoDir, "file.txt"), "changed\n");
+      writeFileSync(join(repoDir, "other.txt"), "keep\n");
+      await discardChanges(repoDir, ["file.txt"]);
+      expect(readTextFile(join(repoDir, "file.txt"))).toBe("hello\n");
+      expect(readFileSync(join(repoDir, "other.txt"), "utf8")).toBe("keep\n");
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("treats requested filenames as literal pathspecs", async () => {
+    const { tempDir, repoDir } = initRepo();
+    try {
+      writeFileSync(join(repoDir, "foo[ab].txt"), "literal original\n");
+      writeFileSync(join(repoDir, "fooa.txt"), "sibling original\n");
+      execFileSync("git", ["add", "foo[ab].txt", "fooa.txt"], { cwd: repoDir });
+      execFileSync("git", ["-c", "commit.gpgsign=false", "commit", "-m", "add pathspec files"], {
+        cwd: repoDir,
+      });
+      writeFileSync(join(repoDir, "foo[ab].txt"), "literal changed\n");
+      writeFileSync(join(repoDir, "fooa.txt"), "sibling changed\n");
+
+      await discardChanges(repoDir, ["foo[ab].txt"]);
+
+      expect(readTextFile(join(repoDir, "foo[ab].txt"))).toBe("literal original\n");
+      expect(readTextFile(join(repoDir, "fooa.txt"))).toBe("sibling changed\n");
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
   });
 });

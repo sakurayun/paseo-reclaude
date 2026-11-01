@@ -6,7 +6,7 @@ export const FOOTER_HEIGHT = 75;
 // Shared header inner height (excluding safe area insets and border)
 // Used by both agent header (ScreenHeader) and explorer sidebar header
 // This ensures both headers have the same visual height
-export const HEADER_INNER_HEIGHT = 48;
+export const HEADER_INNER_HEIGHT = 36;
 export const HEADER_INNER_HEIGHT_MOBILE = 56;
 // New theme: shorter, tighter desktop header exposed on the #fafafa shell.
 // Classic + mobile keep HEADER_INNER_HEIGHT / HEADER_INNER_HEIGHT_MOBILE.
@@ -14,12 +14,11 @@ export const NEW_THEME_HEADER_HEIGHT_DESKTOP = 40;
 export const WORKSPACE_SECONDARY_HEADER_HEIGHT = 36;
 export const HEADER_TOP_PADDING_MOBILE = 8;
 
-// Max width for chat content (stream view, input area, new agent form)
-export const MAX_CONTENT_WIDTH = 820;
-export const COMPACT_FORM_FACTOR_WIDTH = 500;
+// Measured composer width; independent of the window's compact/wide breakpoint.
+export const COMPACT_CONTENT_WIDTH = 500;
 
-// Settings uses the canonical desktop list + detail layout. Its sidebar and
-// detail target must fit together before it can share width with app navigation.
+// Settings navigation can shrink below its preferred width to preserve the detail
+// minimum. Both targets must fit before Settings shares width with app navigation.
 export const SETTINGS_DESKTOP_SIDEBAR_WIDTH = 320;
 export const SETTINGS_DESKTOP_DETAIL_MIN_WIDTH = 400;
 export const SETTINGS_DESKTOP_SPLIT_MIN_WIDTH =
@@ -49,13 +48,18 @@ export {
   getIsElectronMac as getIsElectronRuntimeMac,
 } from "./platform";
 
+/** Below md (600 points), sidebars overlay the workspace; wider layouts can dock them. */
+export function isCompactBreakpoint(breakpoint: string | undefined): boolean {
+  return breakpoint === "xs" || breakpoint === "sm";
+}
+
 /**
  * Reactive hook — re-renders the component when the breakpoint changes.
  * Always use this instead of reading UnistylesRuntime.breakpoint directly.
  */
 export function useIsCompactFormFactor(): boolean {
   const { rt } = useUnistyles();
-  return rt.breakpoint === "xs" || rt.breakpoint === "sm";
+  return isCompactBreakpoint(rt.breakpoint);
 }
 
 // SplitContainer relies on dnd-kit and DOM-backed accessibility helpers.

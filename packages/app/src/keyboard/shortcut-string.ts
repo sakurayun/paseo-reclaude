@@ -74,6 +74,13 @@ for (let i = 1; i <= 12; i++) {
   KEY_MAP[`F${i}`] = { code: `F${i}` };
 }
 
+/**
+ * Every key name a combo string can carry. Exported so the display path can be
+ * driven over the whole vocabulary instead of a hand-copied sample that goes
+ * stale the moment `KEY_MAP` gains an entry.
+ */
+export const SHORTCUT_KEY_NAMES: readonly string[] = Object.keys(KEY_MAP);
+
 const CODE_TO_KEY: Record<string, string> = {};
 for (const [humanKey, mapping] of Object.entries(KEY_MAP)) {
   if (!CODE_TO_KEY[mapping.code]) {
@@ -177,12 +184,33 @@ const MODIFIER_CODES = new Set([
   "ShiftRight",
 ]);
 
+/**
+ * Key names as combo strings spell them, mapped to the names `KEY_DISPLAY` in
+ * `format-shortcut` is keyed on. The two vocabularies were never reconciled:
+ * `keyboardEventToComboString` emits `ArrowLeft` and `Escape` (from `KEY_MAP`),
+ * while the display table only knows `Left` and `Esc`. Without this bridge an
+ * override on a named key renders as a raw code — `ARROWLEFT`, not `←`.
+ */
+const DISPLAY_KEY_ALIASES: Record<string, string> = {
+  Digit: "1-9",
+  ArrowLeft: "Left",
+  ArrowRight: "Right",
+  ArrowUp: "Up",
+  ArrowDown: "Down",
+  Escape: "Esc",
+};
+
 export function comboStringToShortcutKeys(comboString: string): ShortcutKey[] {
   const parts = comboString.split("+");
   const keys: ShortcutKey[] = [];
   for (const part of parts) {
     switch (part) {
       case "Cmd":
+        keys.push("mod");
+        break;
+      // `parseShortcutString` accepts `Mod`, so the display path has to as well
+      // or a combo it can match would render the literal word.
+      case "Mod":
         keys.push("mod");
         break;
       case "Ctrl":
@@ -195,7 +223,10 @@ export function comboStringToShortcutKeys(comboString: string): ShortcutKey[] {
         keys.push("shift");
         break;
       default:
-        keys.push(part.toUpperCase());
+        // Pass the key through unchanged. `normalizeKey` already uppercases
+        // single characters, and uppercasing here is what used to push
+        // multi-character names past `KEY_DISPLAY` into raw output.
+        keys.push(DISPLAY_KEY_ALIASES[part] ?? part);
         break;
     }
   }
@@ -215,8 +246,17 @@ export function heldModifiersFromEvent(event: KeyboardEvent): string | null {
   return parts.length > 0 ? parts.join("+") : null;
 }
 
+/**
+ * Whether a keydown carries a modifier key itself rather than a key pressed
+ * with one. The browser emits one of these before every combo that holds a
+ * modifier, and it is the prefix of a combo, never a combo of its own.
+ */
+export function isModifierKeyCode(code: string): boolean {
+  return MODIFIER_CODES.has(code);
+}
+
 export function keyboardEventToComboString(event: KeyboardEvent): string | null {
-  if (MODIFIER_CODES.has(event.code)) {
+  if (isModifierKeyCode(event.code)) {
     return null;
   }
 
@@ -227,7 +267,16 @@ export function keyboardEventToComboString(event: KeyboardEvent): string | null 
   if (event.shiftKey) parts.push("Shift");
   if (event.metaKey) parts.push("Cmd");
 
-  const humanKey = CODE_TO_KEY[event.code];
+  // Capture the same logical character that dispatch matches. Keep the code
+  // fallback for named keys and Option combinations whose key is rewritten.
+  const eventKey = event.key.toLowerCase();
+  const logicalKey = Object.entries(KEY_MAP).find(
+    ([, mapping]) =>
+      mapping.key?.length === 1 &&
+      (mapping.key.toLowerCase() === eventKey ||
+        (event.shiftKey && mapping.shiftedKey === event.key)),
+  )?.[0];
+  const humanKey = logicalKey ?? CODE_TO_KEY[event.code];
   if (humanKey) {
     parts.push(humanKey);
   } else {

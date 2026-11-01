@@ -10,6 +10,7 @@ export interface WorkspaceAgentVisibility {
   // Unarchived agents whose session is currently running. Used for auto-open of
   // new root sessions (not for stripping idle tabs from a saved layout).
   runningAgentIds: Set<string>;
+  foreignAgentIds: Set<string>;
 }
 
 function agentBelongsToWorkspace(agent: Agent, workspaceId: string): boolean {
@@ -36,12 +37,13 @@ export function deriveWorkspaceAgentVisibility(input: {
 }): WorkspaceAgentVisibility {
   const { sessionAgents, agentDetails } = input;
   const workspaceId = normalizeWorkspaceOpaqueId(input.workspaceId);
-  if ((!sessionAgents && !agentDetails) || !workspaceId) {
+  if (!workspaceId) {
     return {
       activeAgentIds: new Set<string>(),
       autoOpenAgentIds: new Set<string>(),
       knownAgentIds: new Set<string>(),
       runningAgentIds: new Set<string>(),
+      foreignAgentIds: new Set<string>(),
     };
   }
 
@@ -50,35 +52,74 @@ export function deriveWorkspaceAgentVisibility(input: {
   const knownAgentIds = new Set<string>();
   const runningAgentIds = new Set<string>();
   const agentsById = buildAgentIndex(sessionAgents, agentDetails);
+  const foreignAgentIds = new Set<string>();
+  collectKnownAgents(agentsById, workspaceId, knownAgentIds, runningAgentIds);
   for (const agent of sessionAgents?.values() ?? []) {
-    if (!agentBelongsToWorkspace(agent, workspaceId)) {
+    const ownerId = normalizeWorkspaceOpaqueId(agent.workspaceId);
+    if (ownerId !== workspaceId) {
+      if (ownerId) {
+        foreignAgentIds.add(agent.id);
+      }
       continue;
     }
-    knownAgentIds.add(agent.id);
     if (!agent.archivedAt) {
       activeAgentIds.add(agent.id);
-      const isRunning = agent.status === "running";
-      if (isRunning) {
-        runningAgentIds.add(agent.id);
-      }
-      const parentAgent = agent.parentAgentId ? agentsById.get(agent.parentAgentId) : undefined;
-      // Only auto-open running root sessions that are not already in the
-      // layout. Idle sessions stay out of auto-open but keep persisted tabs.
-      // A subagent whose parent lives in another workspace counts as a root
-      // here (isWorkspaceRootAgent), so cross-workspace subagents still open.
-      if (isRunning && isWorkspaceRootAgent(agent, parentAgent)) {
+      const parentAgent = agent.parentAgentId
+        ? (sessionAgents?.get(agent.parentAgentId) ?? agentDetails?.get(agent.parentAgentId))
+        : undefined;
+      if (agent.status === "running" && isWorkspaceRootAgent(agent, parentAgent)) {
         autoOpenAgentIds.add(agent.id);
       }
     }
   }
-  for (const agent of agentDetails?.values() ?? []) {
-    if (!agentBelongsToWorkspace(agent, workspaceId)) {
-      continue;
-    }
-    knownAgentIds.add(agent.id);
-  }
+  collectForeignDetails(agentDetails, sessionAgents, workspaceId, foreignAgentIds);
+  return {
+    activeAgentIds,
+    autoOpenAgentIds,
+    foreignAgentIds,
+    knownAgentIds,
+    runningAgentIds,
+  };
+}
 
-  return { activeAgentIds, autoOpenAgentIds, knownAgentIds, runningAgentIds };
+interface AgentMapsSnapshot {
+  sessions: Record<
+    string,
+    { agents: Map<string, Agent>; agentDetails: Map<string, Agent> } | undefined
+  >;
+}
+
+// Session-store selectors run on every store update, including every stream tick, which
+// leaves the agent maps untouched. Reuse the previous result until either map changes, and
+// keep it when a recompute yields the same sets so the hook's equality check stays O(1).
+export function createWorkspaceAgentVisibilitySelector(input: {
+  serverId: string;
+  workspaceId: string | null | undefined;
+}): (state: AgentMapsSnapshot) => WorkspaceAgentVisibility {
+  let previousAgents: Map<string, Agent> | undefined;
+  let previousAgentDetails: Map<string, Agent> | undefined;
+  let previousVisibility: WorkspaceAgentVisibility | null = null;
+
+  return (state) => {
+    const session = state.sessions[input.serverId];
+    const agents = session?.agents;
+    const agentDetails = session?.agentDetails;
+    if (previousVisibility && agents === previousAgents && agentDetails === previousAgentDetails) {
+      return previousVisibility;
+    }
+
+    const visibility = deriveWorkspaceAgentVisibility({
+      sessionAgents: agents,
+      agentDetails,
+      workspaceId: input.workspaceId,
+    });
+    previousAgents = agents;
+    previousAgentDetails = agentDetails;
+    if (!previousVisibility || !workspaceAgentVisibilityEqual(previousVisibility, visibility)) {
+      previousVisibility = visibility;
+    }
+    return previousVisibility;
+  };
 }
 
 export function buildWorkspaceTabSnapshot(input: {
@@ -87,6 +128,7 @@ export function buildWorkspaceTabSnapshot(input: {
   terminalsHydrated: boolean;
   knownTerminalIds: Iterable<string>;
   standaloneTerminalIds: Iterable<string>;
+  hasActivePendingTerminalCreate: boolean;
   hasActivePendingDraftCreate: boolean;
 }): WorkspaceTabSnapshot {
   return {
@@ -96,8 +138,10 @@ export function buildWorkspaceTabSnapshot(input: {
     autoOpenAgentIds: input.agentVisibility.autoOpenAgentIds,
     knownAgentIds: input.agentVisibility.knownAgentIds,
     runningAgentIds: input.agentVisibility.runningAgentIds,
+    foreignAgentIds: input.agentVisibility.foreignAgentIds,
     knownTerminalIds: input.knownTerminalIds,
     standaloneTerminalIds: input.standaloneTerminalIds,
+    hasActivePendingTerminalCreate: input.hasActivePendingTerminalCreate,
     hasActivePendingDraftCreate: input.hasActivePendingDraftCreate,
   };
 }
@@ -107,10 +151,12 @@ export function workspaceAgentVisibilityEqual(
   b: WorkspaceAgentVisibility,
 ): boolean {
   return (
-    setsEqual(a.activeAgentIds, b.activeAgentIds) &&
-    setsEqual(a.autoOpenAgentIds, b.autoOpenAgentIds) &&
-    setsEqual(a.knownAgentIds, b.knownAgentIds) &&
-    setsEqual(a.runningAgentIds, b.runningAgentIds)
+    a === b ||
+    (setsEqual(a.activeAgentIds, b.activeAgentIds) &&
+      setsEqual(a.autoOpenAgentIds, b.autoOpenAgentIds) &&
+      setsEqual(a.foreignAgentIds, b.foreignAgentIds) &&
+      setsEqual(a.knownAgentIds, b.knownAgentIds) &&
+      setsEqual(a.runningAgentIds, b.runningAgentIds))
   );
 }
 
@@ -140,4 +186,35 @@ export function shouldPruneWorkspaceAgentTab(input: {
     return false;
   }
   return !input.activeAgentIds.has(input.agentId);
+}
+
+function collectKnownAgents(
+  agentsById: Map<string, Agent>,
+  workspaceId: string,
+  knownAgentIds: Set<string>,
+  runningAgentIds: Set<string>,
+): void {
+  for (const agent of agentsById.values()) {
+    if (agentBelongsToWorkspace(agent, workspaceId)) {
+      knownAgentIds.add(agent.id);
+      if (!agent.archivedAt && agent.status === "running") runningAgentIds.add(agent.id);
+    }
+  }
+}
+
+function collectForeignDetails(
+  agentDetails: Map<string, Agent> | undefined,
+  sessionAgents: Map<string, Agent> | undefined,
+  workspaceId: string,
+  foreignAgentIds: Set<string>,
+): void {
+  for (const agent of agentDetails?.values() ?? []) {
+    if (sessionAgents?.has(agent.id)) {
+      continue;
+    }
+    const ownerId = normalizeWorkspaceOpaqueId(agent.workspaceId);
+    if (ownerId && ownerId !== workspaceId) {
+      foreignAgentIds.add(agent.id);
+    }
+  }
 }

@@ -1,9 +1,9 @@
+import { PressHighlight } from "@/components/ui/press-highlight";
 import { useCallback, useEffect, useRef, type ReactElement } from "react";
 import {
   type LayoutChangeEvent,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
-  Pressable,
   type PressableStateCallbackType,
   ScrollView,
   Text,
@@ -13,7 +13,7 @@ import { useTranslation } from "react-i18next";
 import { Clock, MessageSquareQuote } from "lucide-react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import type { AutocompleteOption } from "@/components/ui/autocomplete";
-import { getAutocompleteScrollOffset } from "@/components/ui/autocomplete-utils";
+import { getScrollOffsetToRevealItem } from "@/components/ui/scroll-reveal";
 import { GlassSurface } from "@/components/ui/glass-surface";
 import { Shortcut } from "@/components/ui/shortcut";
 import { isWeb } from "@/constants/platform";
@@ -78,14 +78,14 @@ function HistoryTrackRow({
   );
 
   return (
-    <Pressable onLayout={handleLayout} onPress={handlePress} style={rowStyle}>
+    <PressHighlight onLayout={handleLayout} onPress={handlePress} style={rowStyle}>
       <View style={styles.indexBadge}>
         <Text style={styles.indexBadgeText}>{index + 1}</Text>
       </View>
       <Text style={styles.rowLabel} numberOfLines={2}>
         {option.label}
       </Text>
-    </Pressable>
+    </PressHighlight>
   );
 }
 
@@ -115,7 +115,7 @@ export function HistoryTrack({
     if (selectedIndex < 0) return;
     const layout = rowLayoutsRef.current.get(selectedIndex);
     if (!layout) return;
-    const nextOffset = getAutocompleteScrollOffset({
+    const nextOffset = getScrollOffsetToRevealItem({
       currentOffset: scrollOffsetRef.current,
       viewportHeight: viewportHeightRef.current,
       itemTop: layout.top,
@@ -256,7 +256,7 @@ const styles = StyleSheet.create((theme: Theme) => ({
   headerLabel: {
     flex: 1,
     minWidth: 0,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     color: theme.colors.foregroundMuted,
   },
   // Rounded-rectangle badge with the total count, sitting at the end of the header.
@@ -271,7 +271,7 @@ const styles = StyleSheet.create((theme: Theme) => ({
     justifyContent: "center",
   },
   countBadgeText: {
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     fontWeight: theme.fontWeight.bold,
     color: theme.colors.foreground,
   },
@@ -283,7 +283,7 @@ const styles = StyleSheet.create((theme: Theme) => ({
     gap: theme.spacing[1],
   },
   switchHintText: {
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     color: theme.colors.foregroundMuted,
   },
   scroll: {
@@ -316,7 +316,7 @@ const styles = StyleSheet.create((theme: Theme) => ({
     justifyContent: "center",
   },
   indexBadgeText: {
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     fontWeight: theme.fontWeight.bold,
     color: theme.colors.foreground,
   },

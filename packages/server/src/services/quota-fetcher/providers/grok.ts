@@ -1,4 +1,4 @@
-import { existsSync, promises as fs } from "node:fs";
+import { promises as fs } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { Logger } from "pino";
@@ -216,7 +216,13 @@ export async function readGrokAuthToken(homeDir?: string): Promise<string | null
 
 export async function readGrokAuthRecord(homeDir?: string): Promise<GrokAuthRecord | null> {
   const path = join(homeDir ?? homedir(), ".grok", "auth.json");
-  if (!existsSync(path)) return null;
+  if (
+    !(await fs.access(path).then(
+      () => true,
+      () => false,
+    ))
+  )
+    return null;
   try {
     const raw: unknown = JSON.parse(await fs.readFile(path, "utf8"));
     const extracted = extractGrokAuthRecordFromJson(raw);

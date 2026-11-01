@@ -1,3 +1,5 @@
+import { PressHighlight as Pressable } from "@/components/ui/press-highlight";
+import { ProjectIconView } from "@/components/project-icon-view";
 import {
   memo,
   useCallback,
@@ -9,7 +11,6 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 import {
-  Pressable,
   ScrollView,
   StyleSheet as RNStyleSheet,
   Text,
@@ -103,7 +104,12 @@ function orderedSessionKeysFromGroups(
   const keys: SidebarSessionSelectionKey[] = [];
   for (const group of groups) {
     for (const session of group.sessions) {
-      keys.push(toSidebarSessionSelectionKey({ serverId: session.serverId, id: session.id }));
+      keys.push(
+        toSidebarSessionSelectionKey({
+          serverId: session.serverId,
+          id: session.id,
+        }),
+      );
     }
   }
   return keys;
@@ -123,8 +129,12 @@ interface SidebarSessionsListProps {
 
 const EMPTY_EXPANDED: ReadonlySet<string> = new Set();
 const HOST_HEADER_PRESS_SCALE = 0.97;
-const foregroundColorMapping = (theme: Theme) => ({ color: theme.colors.foreground });
-const foregroundMutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
+const foregroundColorMapping = (theme: Theme) => ({
+  color: theme.colors.foreground,
+});
+const foregroundMutedColorMapping = (theme: Theme) => ({
+  color: theme.colors.foregroundMuted,
+});
 const ThemedChevronDown = withUnistyles(ChevronDown);
 const ThemedChevronRight = withUnistyles(ChevronRight);
 const ThemedFolder = withUnistyles(Folder);
@@ -137,7 +147,9 @@ const ThemedSquareTerminal = withUnistyles(SquareTerminal);
 const terminalRunningColorMapping = (theme: Theme) => ({
   color: theme.colors.palette.green[500],
 });
-const terminalFailedColorMapping = (theme: Theme) => ({ color: theme.colors.palette.red[500] });
+const terminalFailedColorMapping = (theme: Theme) => ({
+  color: theme.colors.palette.red[500],
+});
 
 type SidebarTerminalTone = "running" | "failed" | "idle";
 
@@ -390,7 +402,10 @@ const SidebarHostSection = memo(function SidebarHostSection({
   const collapsedOrderedKeys = useMemo(
     () =>
       activeSessions.map((session) =>
-        toSidebarSessionSelectionKey({ serverId: session.serverId, id: session.id }),
+        toSidebarSessionSelectionKey({
+          serverId: session.serverId,
+          id: session.id,
+        }),
       ),
     [activeSessions],
   );
@@ -508,7 +523,9 @@ function SidebarHostHeader({
     });
   }, [expanded, reduceMotion, rotation]);
 
-  const scaleStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
+  const scaleStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
   // Chevron points right when collapsed and rotates to point down when open.
   const chevronStyle = useAnimatedStyle(() => ({
     transform: [{ rotate: `${rotation.value * 90}deg` }],
@@ -593,7 +610,9 @@ function HostNewChatButton({
   testID: string;
 }) {
   const scale = useSharedValue(1);
-  const scaleStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
+  const scaleStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
 
   const handlePressIn = useCallback(() => {
     if (reduceMotion) return;
@@ -651,7 +670,9 @@ function GroupNewAgentButton({
   testID: string;
 }) {
   const scale = useSharedValue(1);
-  const scaleStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
+  const scaleStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
 
   const handlePressIn = useCallback(() => {
     if (reduceMotion) return;
@@ -812,6 +833,13 @@ const SidebarSessionsGroupView = memo(function SidebarSessionsGroupView({
 }) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
+  const appearance = useSessionStore((state) =>
+    serverId && group.projectKey
+      ? Array.from(state.sessions[serverId]?.projects.values() ?? []).find(
+          (project) => project.projectKey === group.projectKey,
+        )?.projectAppearance
+      : undefined,
+  );
   const displayLabel = group.label.length > 0 ? group.label : unknownLabel;
   const baseLabel = group.baseLabel.length > 0 ? group.baseLabel : null;
   const showBaseLabel = Boolean(baseLabel && displayLabel !== baseLabel);
@@ -881,10 +909,12 @@ const SidebarSessionsGroupView = memo(function SidebarSessionsGroupView({
       const trimmed = nextTitle.trim();
       const customName = trimmed === baseLabel ? null : trimmed;
       await client.renameProject(group.projectKey, customName);
-      getHostRuntimeStore().refreshAllAgentDirectories({ serverIds: [serverId] });
+      getHostRuntimeStore().refreshAgentDirectory({ serverId });
       // Refresh history-derived placement labels so the rename surfaces for
       // sessions that aren't live in the session store.
-      void queryClient.invalidateQueries({ queryKey: agentHistoryQueryKey(serverId) });
+      void queryClient.invalidateQueries({
+        queryKey: agentHistoryQueryKey(serverId),
+      });
     },
     [baseLabel, group.projectKey, serverId, queryClient, t],
   );
@@ -939,7 +969,22 @@ const SidebarSessionsGroupView = memo(function SidebarSessionsGroupView({
               style={styles.groupHeaderLeadingSlot}
               testID={`sidebar-sessions-group-${group.key}-toggle`}
             >
-              <GroupLeadingIcon hovered={isHovered} expanded={expanded} iconKind={group.iconKind} />
+              {!isHovered && appearance ? (
+                <ProjectIconView
+                  iconDataUri={null}
+                  initial={displayLabel.slice(0, 1)}
+                  projectKey={group.projectKey ?? group.key}
+                  appearance={appearance}
+                  size={16}
+                  textStyle={styles.groupLabel}
+                />
+              ) : (
+                <GroupLeadingIcon
+                  hovered={isHovered}
+                  expanded={expanded}
+                  iconKind={group.iconKind}
+                />
+              )}
             </Pressable>
             <ContextMenu>
               <ContextMenuTrigger
@@ -959,7 +1004,6 @@ const SidebarSessionsGroupView = memo(function SidebarSessionsGroupView({
                 <ContextMenuContent
                   align="start"
                   width={200}
-                  mobileMode="sheet"
                   testID={`sidebar-sessions-group-context-${group.key}`}
                 >
                   <ContextMenuItem
@@ -1158,7 +1202,6 @@ const SidebarTerminalRow = memo(function SidebarTerminalRow({
         <ContextMenuContent
           align="start"
           width={200}
-          mobileMode="sheet"
           testID={`sidebar-terminal-context-${terminal.id}`}
         >
           <ContextMenuItem
@@ -1274,7 +1317,7 @@ const styles = StyleSheet.create((theme) => ({
     fontWeight: theme.fontWeight.semibold,
   },
   hostCount: {
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     color: theme.colors.foregroundMuted,
     flexShrink: 0,
     fontVariant: ["tabular-nums"],
@@ -1371,7 +1414,7 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.foreground,
   },
   groupBaseLabel: {
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     fontWeight: theme.fontWeight.normal,
     color: theme.colors.foregroundMuted,
   },
@@ -1397,7 +1440,7 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.palette.red[500],
   },
   groupCount: {
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     color: theme.colors.foregroundMuted,
     flexShrink: 0,
     fontVariant: ["tabular-nums"],

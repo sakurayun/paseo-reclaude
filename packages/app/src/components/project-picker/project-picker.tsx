@@ -39,7 +39,7 @@ interface ProjectOptionData {
 function computeProjectOptionData(projects: readonly HostProjectListItem[]): ProjectOptionData {
   const projectByOptionId = new Map<string, HostProjectListItem>();
   const options = projects.map((project) => {
-    const id = projectOptionId(project.projectKey);
+    const id = projectOptionId(project.viewKey);
     projectByOptionId.set(id, project);
     return { id, label: project.projectName };
   });
@@ -60,6 +60,7 @@ export interface ProjectPickerTriggerArgs {
   selectedProject: HostProjectListItem | null;
   /** Data URI for the selected project's icon, if any. */
   iconDataUri: string | null;
+  appearance?: HostProjectListItem["hosts"][number]["projectAppearance"];
 }
 
 /** Default trigger: the badge used by the New workspace screen. */
@@ -71,6 +72,7 @@ function ProjectPickerBadgeTrigger({
   label,
   selectedProject,
   iconDataUri,
+  appearance,
 }: ProjectPickerTriggerArgs): ReactElement {
   const placeholderLabel = projectIconPlaceholderLabelFromDisplayName(label);
   const placeholderInitial = placeholderLabel.charAt(0).toUpperCase() || "?";
@@ -100,7 +102,8 @@ function ProjectPickerBadgeTrigger({
               <ProjectIconView
                 iconDataUri={iconDataUri}
                 initial={placeholderInitial}
-                projectKey={selectedProject.projectKey}
+                projectKey={selectedProject.viewKey}
+                appearance={appearance}
                 imageStyle={styles.projectIcon}
                 fallbackStyle={styles.projectIconFallback}
                 textStyle={styles.projectIconFallbackText}
@@ -124,6 +127,7 @@ function ProjectPickerBadgeTrigger({
 function ProjectOptionItem({
   testID,
   projectKey,
+  appearance,
   iconDataUri,
   label,
   description,
@@ -134,6 +138,7 @@ function ProjectOptionItem({
 }: {
   testID: string;
   projectKey: string;
+  appearance?: HostProjectListItem["hosts"][number]["projectAppearance"];
   iconDataUri: string | null;
   label: string;
   description: string | undefined;
@@ -151,13 +156,14 @@ function ProjectOptionItem({
           iconDataUri={iconDataUri}
           initial={placeholderInitial}
           projectKey={projectKey}
+          appearance={appearance}
           imageStyle={styles.projectIcon}
           fallbackStyle={styles.projectIconFallback}
           textStyle={styles.projectIconFallbackText}
         />
       </View>
     ),
-    [iconDataUri, placeholderInitial, projectKey],
+    [iconDataUri, placeholderInitial, projectKey, appearance],
   );
 
   return (
@@ -222,10 +228,9 @@ export function ProjectPicker({
         if (!iconWorkingDir) {
           return [];
         }
-        const projectAppearance = project.hosts.find(
-          (host) => host.serverId === serverId,
-        )?.projectAppearance;
-        return [{ serverId, projectKey: project.projectKey, iconWorkingDir, projectAppearance }];
+        const placement = project.hosts.find((host) => host.serverId === serverId);
+        if (!placement) return [];
+        return [{ ...placement, projectViewKey: project.viewKey, iconWorkingDir }];
       }),
     [projects, serverId],
   );
@@ -236,7 +241,11 @@ export function ProjectPicker({
   const selectableProjects = useMemo(
     () =>
       projects.filter((project) =>
-        canCreateWorkspaceForHostProject({ project, serverId, allowAllProjects }),
+        canCreateWorkspaceForHostProject({
+          project,
+          serverId,
+          allowAllProjects,
+        }),
       ),
     [allowAllProjects, projects, serverId],
   );
@@ -245,10 +254,12 @@ export function ProjectPicker({
     [selectableProjects],
   );
   const selectedProject = useMemo(
-    () => projects.find((project) => project.projectKey === selectedProjectKey) ?? null,
+    () =>
+      projects.find((project) => (project.projectKey ?? project.viewKey) === selectedProjectKey) ??
+      null,
     [projects, selectedProjectKey],
   );
-  const selectedOptionId = selectedProject ? projectOptionId(selectedProject.projectKey) : "";
+  const selectedOptionId = selectedProject ? projectOptionId(selectedProject.viewKey) : "";
   const label = selectedProject?.projectName ?? "Choose project";
 
   const openPicker = useCallback(() => setOpen(true), []);
@@ -259,7 +270,14 @@ export function ProjectPicker({
     (id: string) => {
       const project = projectByOptionId.get(id);
       if (!project) return;
-      if (!canCreateWorkspaceForHostProject({ project, serverId, allowAllProjects })) return;
+      if (
+        !canCreateWorkspaceForHostProject({
+          project,
+          serverId,
+          allowAllProjects,
+        })
+      )
+        return;
       onSelectProject(project);
       setOpen(false);
     },
@@ -283,14 +301,20 @@ export function ProjectPicker({
       return (
         <ProjectOptionItem
           testID={`${testIDPrefix}-option-${project.projectKey}`}
-          projectKey={project.projectKey}
-          iconDataUri={projectIconDataByProjectKey.get(project.projectKey) ?? null}
+          projectKey={project.viewKey}
+          appearance={project.hosts.find((host) => host.serverId === serverId)?.projectAppearance}
+          iconDataUri={projectIconDataByProjectKey.get(project.viewKey) ?? null}
           label={project.projectName}
           description={getHostProjectSourceDirectory(project, serverId) ?? project.iconWorkingDir}
           selected={selected}
           active={active}
           disabled={
-            disabled || !canCreateWorkspaceForHostProject({ project, serverId, allowAllProjects })
+            disabled ||
+            !canCreateWorkspaceForHostProject({
+              project,
+              serverId,
+              allowAllProjects,
+            })
           }
           onPress={onPress}
         />
@@ -318,8 +342,10 @@ export function ProjectPicker({
     disabled: disabled || options.length === 0,
     label,
     selectedProject,
+    appearance: selectedProject?.hosts.find((host) => host.serverId === serverId)
+      ?.projectAppearance,
     iconDataUri: selectedProject
-      ? (projectIconDataByProjectKey.get(selectedProject.projectKey) ?? null)
+      ? (projectIconDataByProjectKey.get(selectedProject.viewKey) ?? null)
       : null,
   };
 

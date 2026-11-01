@@ -26,17 +26,37 @@
         let
           pkgs = pkgsFor system;
           paseo = pkgs.callPackage ./nix/package.nix { };
-          isLinux = nixpkgs.lib.elem system [
-            "x86_64-linux"
-            "aarch64-linux"
+          versionParts = pkgs.lib.splitString "." paseo.version;
+          sourceRevision = if self ? revCount && self.revCount != null then self.revCount else 0;
+          buildRevision = sourceRevision - (sourceRevision / 10000) * 10000;
+          desktopBuildVersion = pkgs.lib.concatStringsSep "." [
+            (builtins.elemAt versionParts 0)
+            (builtins.elemAt versionParts 1)
+            (toString buildRevision)
           ];
         in
         {
           default = paseo;
           paseo = paseo;
+          desktop = pkgs.callPackage ./nix/desktop-package.nix {
+            inherit paseo;
+            buildVersion = desktopBuildVersion;
+          };
         }
-        // nixpkgs.lib.optionalAttrs isLinux {
-          desktop = pkgs.callPackage ./nix/desktop-package.nix { inherit paseo; };
+      );
+
+      checks = forAllSystems (
+        system:
+        let
+          pkgs = pkgsFor system;
+          packages = self.packages.${system};
+          license = (builtins.fromJSON (builtins.readFile ./package.json)).license;
+        in
+        {
+          license-metadata =
+            assert packages.paseo.meta.license.spdxId == license;
+            assert packages.desktop.meta.license.spdxId == license;
+            pkgs.runCommand "paseo-license-metadata" { } "touch $out";
         }
       );
 

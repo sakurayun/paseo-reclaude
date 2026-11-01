@@ -21,7 +21,9 @@ const ThemedSun = withUnistyles(Sun);
 const ThemedMoon = withUnistyles(Moon);
 const ThemedMonitor = withUnistyles(Monitor);
 
-const foregroundColorMapping = (theme: Theme) => ({ color: theme.colors.foreground });
+const foregroundColorMapping = (theme: Theme) => ({
+  color: theme.colors.foreground,
+});
 const foregroundMutedColorMapping = (theme: Theme) => ({
   color: theme.colors.foregroundMuted,
 });
@@ -57,6 +59,8 @@ function getThemeLabel(t: TFunction, value: AppSettings["theme"]): string {
     >,
     string
   > = {
+    plugin: "settings.appearance.theme.title",
+    pureBlack: "settings.appearance.theme.options.pureBlack",
     light: "settings.appearance.theme.options.light",
     dark: "settings.appearance.theme.options.dark",
     zinc: "settings.appearance.theme.options.zinc",
@@ -81,6 +85,7 @@ function ThemeLeading({
       return <ThemedSun size={ICON_SIZE.md} uniProps={colorMapping} />;
     case "dark":
       return <ThemedMoon size={ICON_SIZE.md} uniProps={colorMapping} />;
+    case "plugin":
     case "auto":
       return <ThemedMonitor size={ICON_SIZE.md} uniProps={colorMapping} />;
     default:

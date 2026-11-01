@@ -387,6 +387,34 @@ describe("opencode tool-call mapper", () => {
     });
   });
 
+  it("maps OpenCode v2 patch payloads from GPT models into edit detail", () => {
+    const item = expectMapped(
+      mapOpencodeToolCall({
+        toolName: "patch",
+        callId: "opencode-v2-patch-1",
+        status: "completed",
+        input: {
+          patchText:
+            "*** Begin Patch\n*** Update File: patch.txt\n@@\n-north south\n+NORTH south\n*** End Patch",
+        },
+        output: "Success. Updated the following files:\nM patch.txt",
+      }),
+    );
+
+    expect(item.detail).toEqual({
+      type: "edit",
+      filePath: "patch.txt",
+      unifiedDiff: [
+        "diff --git a/patch.txt b/patch.txt",
+        "--- a/patch.txt",
+        "+++ b/patch.txt",
+        "@@",
+        "-north south",
+        "+NORTH south",
+      ].join("\n"),
+    });
+  });
+
   it("maps unknown tools to unknown detail with raw payloads", () => {
     const item = expectMapped(
       mapOpencodeToolCall({
@@ -432,7 +460,7 @@ describe("opencode tool-call mapper", () => {
     });
   });
 
-  it("maps completed task calls with final output log to sub_agent detail", () => {
+  it("maps completed task calls to sub_agent detail", () => {
     const item = expectMapped(
       mapOpencodeToolCall({
         toolName: "task",
@@ -452,12 +480,12 @@ describe("opencode tool-call mapper", () => {
       type: "sub_agent",
       subAgentType: "explore",
       description: "Explore agent-tools codebase",
-      log: "Found the CLI entrypoint and provider registry.",
+      log: "",
       actions: [],
     });
   });
 
-  it("extracts child session ids from completed task output", () => {
+  it("extracts child session ids from current task metadata", () => {
     const item = expectMapped(
       mapOpencodeToolCall({
         toolName: "task",
@@ -467,7 +495,8 @@ describe("opencode tool-call mapper", () => {
           subagent_type: "explore",
           description: "Explore current directory",
         },
-        output: "task_id: ses_2268db431ffe299vL1bbot8R7Z\n\n<task_result>done</task_result>",
+        output: '<task id="ses_2268db431ffe299vL1bbot8R7Z">done</task>',
+        metadata: { sessionId: "ses_2268db431ffe299vL1bbot8R7Z" },
       }),
     );
 
@@ -476,12 +505,12 @@ describe("opencode tool-call mapper", () => {
       subAgentType: "explore",
       description: "Explore current directory",
       childSessionId: "ses_2268db431ffe299vL1bbot8R7Z",
-      log: "task_id: ses_2268db431ffe299vL1bbot8R7Z\n\n<task_result>done</task_result>",
+      log: "",
       actions: [],
     });
   });
 
-  it("maps aborted task calls with preserved error log to sub_agent detail", () => {
+  it("maps aborted task calls to sub_agent detail", () => {
     const item = expectMapped(
       mapOpencodeToolCall({
         toolName: "task",
@@ -502,7 +531,7 @@ describe("opencode tool-call mapper", () => {
       type: "sub_agent",
       subAgentType: "explore",
       description: "Explore agent-tools codebase",
-      log: "Tool execution aborted",
+      log: "",
       actions: [],
     });
   });

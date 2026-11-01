@@ -1,12 +1,13 @@
+import { PressHighlight } from "@/components/ui/press-highlight";
 import { useCallback, useMemo, useState } from "react";
-import { ActivityIndicator, Pressable, Text, View } from "react-native";
+import { ActivityIndicator, Text, View } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { SvgXml } from "react-native-svg";
 import { ChevronDown, ChevronRight } from "lucide-react-native";
 import { useTranslation } from "react-i18next";
 import type { GitCommitFileStatus } from "@getpaseo/protocol/messages";
 import type { Theme } from "@/styles/theme";
-import { getFileIconSvg } from "@/components/material-file-icons";
+import { getFileIconSvg } from "@/components/file-icon-svg";
 import { isNative } from "@/constants/platform";
 import {
   buildCommitFileTree,
@@ -130,7 +131,7 @@ function CommitDirRow({
   const accessibilityState = useMemo(() => ({ expanded: !collapsed }), [collapsed]);
 
   return (
-    <Pressable
+    <PressHighlight
       accessibilityRole="button"
       accessibilityLabel={dir.name}
       accessibilityState={accessibilityState}
@@ -146,7 +147,7 @@ function CommitDirRow({
       <Text style={styles.dirName} numberOfLines={1}>
         {dir.name}
       </Text>
-    </Pressable>
+    </PressHighlight>
   );
 }
 
@@ -202,7 +203,7 @@ function CommitFileRow({
       onPointerEnter={handlePointerEnter}
       onPointerLeave={handlePointerLeave}
     >
-      <Pressable
+      <PressHighlight
         accessibilityRole="button"
         accessibilityLabel={accessibilityLabel}
         onPress={handlePress}
@@ -220,7 +221,7 @@ function CommitFileRow({
           </Text>
         ) : null}
         <Text style={letterStyle}>{STATUS_LETTER[file.status]}</Text>
-      </Pressable>
+      </PressHighlight>
     </View>
   );
 }

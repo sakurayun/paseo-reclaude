@@ -1,3 +1,4 @@
+import { claudeManifestModelSupportsFastMode } from "./model-manifest.js";
 import type {
   AgentFeature,
   AgentFeatureSelect,
@@ -6,15 +7,11 @@ import type {
 } from "../../agent-sdk-types.js";
 import { normalizeClaudeRuntimeModelId } from "./models.js";
 
-const CLAUDE_FAST_MODE_SUPPORTED_MODEL_PREFIXES = [
-  "claude-fable-5",
-  "claude-opus-4-8",
-  "claude-opus-4-7",
-  "claude-opus-4-6",
-] as const;
-const CLAUDE_FAST_MODE_SUPPORTED_MODEL_ALIASES = ["opus"] as const;
-
 const CLAUDE_ULTRACODE_SUPPORTED_MODEL_PREFIXES = [
+  "claude-opus-5",
+  "claude-mythos-5",
+  "claude-sonnet-5",
+  "claude-haiku-5-5",
   "claude-fable-5",
   "claude-opus-4-8",
   "claude-opus-4-7",
@@ -93,18 +90,7 @@ function modelIdMatchesAlias(modelId: string, aliases: readonly string[]): boole
 }
 
 export function claudeModelSupportsFastMode(modelId: string | null | undefined): boolean {
-  const normalizedModelId = normalizeClaudeModelId(modelId);
-  if (!normalizedModelId) {
-    return false;
-  }
-
-  if (modelIdMatchesAlias(normalizedModelId, CLAUDE_FAST_MODE_SUPPORTED_MODEL_ALIASES)) {
-    return true;
-  }
-
-  return CLAUDE_FAST_MODE_SUPPORTED_MODEL_PREFIXES.some((prefix) =>
-    modelIdMatchesPrefix(normalizedModelId, prefix),
-  );
+  return modelId === "opus" || claudeManifestModelSupportsFastMode(modelId);
 }
 
 export function claudeModelSupportsUltracode(modelId: string | null | undefined): boolean {

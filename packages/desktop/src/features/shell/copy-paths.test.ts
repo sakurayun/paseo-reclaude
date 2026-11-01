@@ -1,51 +1,58 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { copyFilePathsToClipboard, type FilePathClipboard } from "./copy-paths.js";
 
+vi.mock("electron", () => ({ clipboard: {}, ClipboardItem: vi.fn() }));
+
 function createRecordingClipboard(): FilePathClipboard & {
-  buffers: Array<{ type: string; buffer: Buffer }>;
-  texts: string[];
+  writes: Array<Record<string, string | Blob>>;
 } {
-  const buffers: Array<{ type: string; buffer: Buffer }> = [];
-  const texts: string[] = [];
+  const writes: Array<Record<string, string | Blob>> = [];
   return {
-    buffers,
-    texts,
-    writeBuffer(type, buffer) {
-      buffers.push({ type, buffer });
-    },
-    writeText(text) {
-      texts.push(text);
+    writes,
+    async write(items) {
+      writes.push(items);
     },
   };
 }
 
 describe("copyFilePathsToClipboard", () => {
-  it("writes NSFilenamesPboardType on macOS", () => {
+  it("writes NSFilenamesPboardType on macOS", async () => {
     const fileClipboard = createRecordingClipboard();
-    expect(copyFilePathsToClipboard(["/tmp/a.txt", "/tmp/b"], "darwin", fileClipboard)).toBe(true);
-    expect(fileClipboard.buffers).toHaveLength(1);
-    expect(fileClipboard.buffers[0]?.type).toBe("NSFilenamesPboardType");
-    const plist = fileClipboard.buffers[0]?.buffer.toString("utf8") ?? "";
+    expect(await copyFilePathsToClipboard(["/tmp/a.txt", "/tmp/b"], "darwin", fileClipboard)).toBe(
+      true,
+    );
+    expect(fileClipboard.writes).toHaveLength(1);
+    const blob = fileClipboard.writes[0][
+      'electron application/osclipboard;format="NSFilenamesPboardType"'
+    ] as Blob;
+    const plist = await blob.text();
     expect(plist).toContain("<string>/tmp/a.txt</string>");
     expect(plist).toContain("<string>/tmp/b</string>");
   });
 
-  it("writes CF_HDROP on Windows", () => {
+  it("writes CF_HDROP on Windows", async () => {
     const fileClipboard = createRecordingClipboard();
-    expect(copyFilePathsToClipboard(["C:\\repo\\a.txt"], "win32", fileClipboard)).toBe(true);
-    expect(fileClipboard.buffers[0]?.type).toBe("CF_HDROP");
+    expect(await copyFilePathsToClipboard(["C:\\repo\\a.txt"], "win32", fileClipboard)).toBe(true);
+    const blob = fileClipboard.writes[0][
+      'electron application/osclipboard;format="CF_HDROP"'
+    ] as Blob;
+    const buffer = Buffer.from(await blob.arrayBuffer());
+    expect(buffer.readUInt32LE(0)).toBe(20);
+    expect(buffer.readUInt32LE(16)).toBe(1);
+    expect(buffer.subarray(20).toString("utf16le")).toBe("C:\\repo\\a.txt\0\0");
   });
 
-  it("writes uri-list and text on Linux", () => {
+  it("writes uri-list and text on Linux", async () => {
     const fileClipboard = createRecordingClipboard();
-    expect(copyFilePathsToClipboard(["/tmp/a.txt"], "linux", fileClipboard)).toBe(true);
-    expect(fileClipboard.buffers[0]?.type).toBe("text/uri-list");
-    expect(fileClipboard.texts).toEqual(["/tmp/a.txt"]);
+    expect(await copyFilePathsToClipboard(["/tmp/a.txt"], "linux", fileClipboard)).toBe(true);
+    expect(fileClipboard.writes).toEqual([
+      { "text/uri-list": "file:///tmp/a.txt", "text/plain": "/tmp/a.txt" },
+    ]);
   });
 
-  it("returns false for an empty path list", () => {
+  it("returns false for an empty path list", async () => {
     const fileClipboard = createRecordingClipboard();
-    expect(copyFilePathsToClipboard([], "darwin", fileClipboard)).toBe(false);
-    expect(fileClipboard.buffers).toHaveLength(0);
+    expect(await copyFilePathsToClipboard([], "darwin", fileClipboard)).toBe(false);
+    expect(fileClipboard.writes).toHaveLength(0);
   });
 });

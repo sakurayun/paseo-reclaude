@@ -1,12 +1,13 @@
+import { ACPProviderOptionsSchema } from "./acp-options.js";
 import type { Logger } from "pino";
-import { z } from "zod";
 
-import type { AgentCapabilityFlags, AgentMode, AgentModelDefinition } from "../agent-sdk-types.js";
+import type { AgentMode, AgentModelDefinition } from "../agent-sdk-types.js";
 import { checkProviderLaunchAvailable, resolveProviderLaunch } from "../provider-launch-config.js";
 import type { ClientSideConnection, SessionConfigOption } from "@agentclientprotocol/sdk";
 import {
   ACPAgentClient,
   type ACPBeforeModeWriteResult,
+  type ACPCatalogModelResolver,
   type ACPClientCapabilityMeta,
   type ACPConfigFeatureOption,
   DEFAULT_ACP_CAPABILITIES,
@@ -24,26 +25,8 @@ import {
   toDiagnosticErrorMessage,
 } from "./diagnostic-utils.js";
 
-export const GenericACPProviderParamsSchema = z
-  .object({
-    supportsMcpServers: z.boolean().optional(),
-    clientCapabilities: z
-      .object({
-        fs: z
-          .object({
-            readTextFile: z.boolean().optional(),
-            writeTextFile: z.boolean().optional(),
-          })
-          .optional(),
-        terminal: z.boolean().optional(),
-      })
-      .optional(),
-  })
-  .passthrough();
-
-type GenericACPProviderParams = z.infer<typeof GenericACPProviderParamsSchema>;
-
 interface GenericACPAgentClientOptions {
+  providerParams?: unknown;
   logger: Logger;
   command: [string, ...string[]];
   env?: Record<string, string>;
@@ -51,7 +34,7 @@ interface GenericACPAgentClientOptions {
   provider?: string;
   providerId?: string;
   label?: string;
-  providerParams?: unknown;
+  usageProvider?: string;
   waitForInitialCommands?: boolean;
   initialCommandsWaitTimeoutMs?: number;
   diagnosticPhaseTimeoutMs?: number;
@@ -80,6 +63,8 @@ interface GenericACPAgentClientOptions {
   launchArgsTransformer?: (args: string[], modeId: string | null) => string[];
   shouldSuppressUserMessageChunk?: ACPUserMessageChunkFilter;
   extensionNotificationHandler?: ACPExtensionNotificationHandler;
+  catalogModelResolver?: ACPCatalogModelResolver;
+  now?: () => number;
 }
 
 export class GenericACPAgentClient extends ACPAgentClient {
@@ -89,18 +74,25 @@ export class GenericACPAgentClient extends ACPAgentClient {
   private readonly diagnosticPhaseTimeoutMs?: number;
 
   constructor(options: GenericACPAgentClientOptions) {
-    const providerParams = parseGenericACPProviderParams(options.providerParams);
+    const defaults = ACPProviderOptionsSchema.parse(options.providerParams ?? {});
     super({
       provider: options.provider ?? "acp",
+      usageProvider: options.usageProvider,
       logger: options.logger,
       runtimeSettings: {
         env: options.env,
       },
       defaultCommand: options.command,
-      capabilities: buildGenericACPCapabilities(providerParams),
-      waitForInitialCommands: options.waitForInitialCommands,
+      capabilities: {
+        ...DEFAULT_ACP_CAPABILITIES,
+        supportsMcpServers:
+          defaults.supportsMcpServers ?? DEFAULT_ACP_CAPABILITIES.supportsMcpServers,
+      },
+      clientCapabilities: defaults.clientCapabilities,
+      // ACP agents advertise slash commands with available_commands_update after
+      // session/new, so the first listCommands() waits for that batch.
+      waitForInitialCommands: options.waitForInitialCommands ?? true,
       initialCommandsWaitTimeoutMs: options.initialCommandsWaitTimeoutMs,
-      clientCapabilities: providerParams.clientCapabilities,
       clientCapabilityMeta: options.clientCapabilityMeta,
       configFeatureOptions: options.configFeatureOptions,
       extensionCommandsParser: options.extensionCommandsParser,
@@ -116,6 +108,8 @@ export class GenericACPAgentClient extends ACPAgentClient {
       launchArgsTransformer: options.launchArgsTransformer,
       shouldSuppressUserMessageChunk: options.shouldSuppressUserMessageChunk,
       extensionNotificationHandler: options.extensionNotificationHandler,
+      catalogModelResolver: options.catalogModelResolver,
+      now: options.now,
     });
 
     this.command = options.command;
@@ -199,17 +193,6 @@ export class GenericACPAgentClient extends ACPAgentClient {
       ];
     }
   }
-}
-
-function buildGenericACPCapabilities(params: GenericACPProviderParams): AgentCapabilityFlags {
-  return {
-    ...DEFAULT_ACP_CAPABILITIES,
-    supportsMcpServers: params.supportsMcpServers ?? DEFAULT_ACP_CAPABILITIES.supportsMcpServers,
-  };
-}
-
-function parseGenericACPProviderParams(params: unknown): GenericACPProviderParams {
-  return GenericACPProviderParamsSchema.parse(params ?? {});
 }
 
 export interface CommandInvocation {

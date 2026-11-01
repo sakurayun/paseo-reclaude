@@ -5,14 +5,13 @@ import {
 } from "@/attachments/workspace-attachments-store";
 import {
   buildReviewDraftKey,
-  buildReviewDraftScopeKey,
   useInlineReviewController,
-  useResolvedDiffMode,
   useReviewAttachmentSnapshot,
-  useSetDiffModeOverride,
+  useReviewFeedback,
 } from "@/review";
 import { useCheckoutDiffQuery } from "@/git/use-diff-query";
 import { useCheckoutStatusQuery } from "@/git/use-status-query";
+import { useWorkingDiffComparison } from "@/git/working-diff-comparison";
 
 interface UseWorkingDiffOptions {
   serverId: string;
@@ -21,6 +20,7 @@ interface UseWorkingDiffOptions {
   ignoreWhitespace: boolean;
   enabled: boolean;
   queryScope?: string;
+  presentation?: string;
 }
 
 export function useWorkingDiff({
@@ -30,6 +30,7 @@ export function useWorkingDiff({
   ignoreWhitespace,
   enabled,
   queryScope,
+  presentation,
 }: UseWorkingDiffOptions) {
   const {
     status,
@@ -44,37 +45,17 @@ export function useWorkingDiff({
     status?.error?.message ??
     (isStatusError && statusError instanceof Error ? statusError.message : null);
   const baseRef = gitStatus?.baseRef ?? undefined;
-  const hasUncommittedChanges = Boolean(gitStatus?.isDirty);
   const currentBranchName =
     gitStatus?.currentBranch && gitStatus.currentBranch !== "HEAD" ? gitStatus.currentBranch : null;
 
-  const reviewDraftScopeKey = useMemo(
-    () =>
-      buildReviewDraftScopeKey({
-        serverId,
-        workspaceId,
-        cwd,
-        baseRef,
-        ignoreWhitespace,
-      }),
-    [baseRef, cwd, ignoreWhitespace, serverId, workspaceId],
-  );
-  const diffMode = useResolvedDiffMode({
-    scopeKey: reviewDraftScopeKey,
-    hasUncommittedChanges,
+  const { comparison: diffMode, selectComparison } = useWorkingDiffComparison({
+    serverId,
+    workspaceId,
+    cwd,
   });
-  const setDiffModeOverride = useSetDiffModeOverride();
-  const selectDiffMode = useCallback(
-    (mode: "uncommitted" | "base") => {
-      setDiffModeOverride({
-        scopeKey: reviewDraftScopeKey,
-        override: { serverId, cwd, mode, isDirtyAtSelection: hasUncommittedChanges },
-      });
-    },
-    [cwd, hasUncommittedChanges, reviewDraftScopeKey, serverId, setDiffModeOverride],
-  );
-  const selectUncommitted = useCallback(() => selectDiffMode("uncommitted"), [selectDiffMode]);
-  const selectBase = useCallback(() => selectDiffMode("base"), [selectDiffMode]);
+  const selectUncommitted = useCallback(() => selectComparison("uncommitted"), [selectComparison]);
+  const selectAll = useCallback(() => selectComparison("all"), [selectComparison]);
+  const selectBase = useCallback(() => selectComparison("base"), [selectComparison]);
 
   const {
     files,
@@ -102,13 +83,20 @@ export function useWorkingDiff({
       }),
     [baseRef, cwd, diffMode, ignoreWhitespace, serverId, workspaceId],
   );
-  const reviewActions = useInlineReviewController({ reviewDraftKey });
+  const reviewActions = useInlineReviewController({ reviewDraftKey, presentation });
   const reviewAttachment = useReviewAttachmentSnapshot({
     key: reviewDraftKey,
     diffFiles: files,
     cwd,
     mode: diffMode,
     baseRef,
+  });
+
+  const reviewFeedback = useReviewFeedback({
+    serverId,
+    workspaceId,
+    reviewDraftKey,
+    attachment: reviewAttachment,
   });
 
   return {
@@ -122,12 +110,14 @@ export function useWorkingDiff({
     diffMode,
     selectUncommitted,
     selectBase,
+    selectAll,
     files,
     diffPayloadError,
     diffTooLarge,
     isDiffLoading,
     reviewActions,
     reviewAttachment,
+    reviewFeedback,
   };
 }
 

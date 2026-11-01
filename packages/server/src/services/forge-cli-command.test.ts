@@ -140,6 +140,30 @@ describe.skipIf(isPlatform("win32"))("createForgeCliRunner", () => {
   });
 });
 
+describe("native forge command arguments", () => {
+  it("preserves multiline GraphQL and punctuation without shell expansion", async () => {
+    const runner = createForgeCliRunner({
+      binary: "node",
+      envOverlay: {},
+      timeoutMs: 5000,
+      isAuthFailureText: () => false,
+      errorClasses: {
+        isAlreadyClassified: () => false,
+        isCommandError: (error): error is Error & { stderr: string } =>
+          error instanceof Error && "stderr" in error,
+        createAuthError: (stderr) => new Error(stderr),
+        createMissingError: () => new Error("missing"),
+        createCommandError: (params) => new Error(params.stderr),
+      },
+    });
+    const query = 'query Test {\n  repository(owner: "name", name: "repo") { id }\n}\n# & | %NAME%';
+    const result = await runner.run(["-e", "process.stdout.write(process.argv[1])", query], {
+      cwd: process.cwd(),
+    });
+    expect(result.stdout).toBe(query);
+  });
+});
+
 describe("createCachedCliPathResolver", () => {
   it("resolves once and reuses the cached path on later calls", async () => {
     let calls = 0;

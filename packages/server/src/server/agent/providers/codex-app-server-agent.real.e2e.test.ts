@@ -61,7 +61,7 @@ describe("Codex app-server provider (real)", () => {
         model: model.id,
         cwd,
         thinkingOptionId: "medium",
-        extra: { codex: { features: { multi_agent_v2: true } } },
+        providerOptions: { features: { multi_agent_v2: true } },
       });
       const events: AgentStreamEvent[] = [];
       const unsubscribe = session.subscribe((event) => events.push(event));
@@ -77,12 +77,19 @@ CHILD_SENTINEL in your own response.
 
         const completedChildIndex = events.findIndex(
           (event) =>
-            event.type === "timeline" &&
-            event.item.type === "tool_call" &&
-            event.item.status === "completed" &&
-            event.item.detail.type === "sub_agent" &&
-            event.item.detail.log.includes("CHILD_SENTINEL"),
+            event.type === "provider_subagent" &&
+            event.event.type === "upsert" &&
+            event.event.status === "completed",
         );
+        const childAssistantText = events
+          .flatMap((event) =>
+            event.type === "provider_subagent" &&
+            event.event.type === "timeline" &&
+            event.event.item.type === "assistant_message"
+              ? [event.event.item.text]
+              : [],
+          )
+          .join("");
         const rootMessageIndexes = events.flatMap((event, index) =>
           event.type === "timeline" && event.item.type === "assistant_message" ? [index] : [],
         );
@@ -105,6 +112,7 @@ CHILD_SENTINEL in your own response.
           .map((item) => item.text)
           .join("");
         expect(topLevelAssistantText).not.toContain("CHILD_SENTINEL");
+        expect(childAssistantText).toContain("CHILD_SENTINEL");
         expect(completedChildIndex).toBeGreaterThanOrEqual(0);
         expect(rootMessageIndexes[0]).toBeGreaterThan(completedChildIndex);
         expect(terminalIndexes).toHaveLength(1);

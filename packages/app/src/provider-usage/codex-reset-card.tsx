@@ -1,6 +1,7 @@
+import { PressHighlight } from "@/components/ui/press-highlight";
 import { useCallback, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Pressable, Text, View } from "react-native";
+import { Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import type { PressableStateCallbackType, StyleProp, TextStyle, ViewStyle } from "react-native";
 import { useHostRuntimeClient } from "@/runtime/host-runtime";
@@ -109,12 +110,14 @@ export function CodexResetCard({ serverId, agentId }: CodexResetCardProps) {
       ) : null}
       {result ? <Text style={styles.result}>{result}</Text> : null}
       <View style={styles.footer}>
-        <Pressable onPress={handleConsume} disabled={!canConsume} style={buttonStyle}>
+        <PressHighlight onPress={handleConsume} disabled={!canConsume} style={buttonStyle}>
           <Text style={consumeTextStyle}>{buttonLabel}</Text>
-        </Pressable>
+        </PressHighlight>
         <View style={styles.remainingBadge}>
           <Text style={styles.remainingText}>
-            {t("providerUsage.codexReset.remaining", { count: availableResets })}
+            {t("providerUsage.codexReset.remaining", {
+              count: availableResets,
+            })}
           </Text>
         </View>
       </View>
@@ -145,7 +148,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   result: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
   },
   footer: {
     flexDirection: "row",
@@ -168,7 +171,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   consumeText: {
     color: theme.colors.foreground,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     fontWeight: theme.fontWeight.medium,
   },
   consumeTextDisabled: {
@@ -182,7 +185,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   remainingText: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     fontWeight: theme.fontWeight.medium,
   },
 }));

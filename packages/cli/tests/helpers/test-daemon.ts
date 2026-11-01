@@ -18,7 +18,7 @@ import { tmpdir } from "os";
 import { join } from "path";
 import { fileURLToPath } from "url";
 import { ChildProcess, spawn } from "child_process";
-import { getAvailablePort } from "./network.ts";
+import { readDaemonInstance } from "@getpaseo/server/daemon-control";
 
 export interface TestDaemonContext {
   /** Available local port for test daemon (never 6767) */
@@ -169,19 +169,24 @@ export async function createTempDirs(): Promise<{ paseoHome: string; workDir: st
  * Wait for daemon to be ready by running `paseo agent ls`
  * This connects via WebSocket and ensures the daemon is responsive
  */
-async function probeDaemonReady(port: number): Promise<boolean> {
+async function probeDaemonReady(
+  port: number,
+  paseoHome: string,
+  env?: NodeJS.ProcessEnv,
+): Promise<boolean> {
   try {
     const { exitCode } = await runPaseoCli(
       {
         port,
         wsUrl: `ws://${TEST_DAEMON_HOST}:${port}`,
-        paseoHome: "",
+        paseoHome,
         workDir: "",
         process: null,
         isReady: false,
         stop: async () => {},
       },
-      ["agent", "ls"],
+      ["agent", "ls", "--host", `${TEST_DAEMON_HOST}:${port}`],
+      { env },
     );
     return exitCode === 0;
   } catch {
@@ -189,13 +194,21 @@ async function probeDaemonReady(port: number): Promise<boolean> {
   }
 }
 
-async function waitForDaemonReady(port: number, timeout = 30000): Promise<void> {
+async function waitForDaemonReady(
+  paseoHome: string,
+  timeout = 30000,
+  env?: NodeJS.ProcessEnv,
+): Promise<number> {
   const deadline = Date.now() + timeout;
 
-  async function poll(): Promise<void> {
-    if (await probeDaemonReady(port)) return;
+  async function poll(): Promise<number> {
+    const instance = await readDaemonInstance(paseoHome);
+    if (instance?.listen) {
+      const port = Number(new URL(`http://${instance.listen}`).port);
+      if (await probeDaemonReady(port, paseoHome, env)) return port;
+    }
     if (Date.now() >= deadline) {
-      throw new Error(`Daemon failed to become ready on port ${port} within ${timeout}ms`);
+      throw new Error(`Daemon failed to publish a ready endpoint within ${timeout}ms`);
     }
     await sleep(100);
     return poll();
@@ -221,37 +234,36 @@ export async function startTestDaemon(options?: {
   timeout?: number;
   env?: NodeJS.ProcessEnv;
 }): Promise<TestDaemonContext> {
-  const port = options?.port ?? (await getAvailablePort());
+  // Let the listening process allocate its port, without a reserve/release race.
+  const requestedPort = options?.port ?? 0;
   const { paseoHome, workDir } =
     options?.paseoHome && options?.workDir
       ? { paseoHome: options.paseoHome, workDir: options.workDir }
       : await createTempDirs();
   const timeout = options?.timeout ?? 30000;
 
-  const wsUrl = `ws://${TEST_DAEMON_HOST}:${port}`;
-
   // Find the CLI entry point - use the source file directly with tsx
   const cliDir = join(import.meta.dirname, "..", "..");
   const cliSrcPath = join(cliDir, "src", "index.ts");
 
   // Start daemon process using tsx to run TypeScript directly
-  const daemonProcess = spawn(
-    process.execPath,
-    [TSX_ENTRY, cliSrcPath, "daemon", "start", "--foreground"],
-    {
-      env: {
-        ...process.env,
-        ...TEST_DAEMON_ENV_DEFAULTS,
-        PASEO_HOME: paseoHome,
-        PASEO_LISTEN: `${TEST_DAEMON_HOST}:${port}`,
-        // Force no TTY to prevent QR code output
-        CI: "true",
-        ...options?.env,
-      },
-      stdio: ["ignore", "pipe", "pipe"],
-      detached: process.platform !== "win32",
+  const daemonProcess = spawn(process.execPath, [TSX_ENTRY, cliSrcPath, "daemon", "run"], {
+    env: {
+      ...Object.fromEntries(
+        Object.entries(process.env).filter(([key]) => !key.startsWith("PASEO_")),
+      ),
+      ...TEST_DAEMON_ENV_DEFAULTS,
+      PASEO_HOME: paseoHome,
+      PASEO_LISTEN: `${TEST_DAEMON_HOST}:${requestedPort}`,
+      // Force no TTY to prevent QR code output
+      CI: "true",
+      ...options?.env,
+      HOME: paseoHome,
+      USERPROFILE: paseoHome,
     },
-  );
+    stdio: ["ignore", "pipe", "pipe"],
+    detached: process.platform !== "win32",
+  });
 
   const stdout = createOutputCapture();
   const stderr = createOutputCapture();
@@ -302,20 +314,18 @@ export async function startTestDaemon(options?: {
     }
   });
 
-  const ctx: TestDaemonContext = {
-    port,
-    wsUrl,
-    paseoHome,
-    workDir,
-    process: daemonProcess,
-    isReady: false,
-    stop: cleanup,
-  };
-
   // Wait for daemon to be ready
   try {
-    await waitForDaemonReady(port, timeout);
-    ctx.isReady = true;
+    const port = await waitForDaemonReady(paseoHome, timeout, options?.env);
+    return {
+      port,
+      wsUrl: `ws://${TEST_DAEMON_HOST}:${port}`,
+      paseoHome,
+      workDir,
+      process: daemonProcess,
+      isReady: true,
+      stop: cleanup,
+    };
   } catch (err) {
     // Daemon failed to start - clean up and rethrow
     await cleanup();
@@ -325,8 +335,6 @@ export async function startTestDaemon(options?: {
       { cause: err },
     );
   }
-
-  return ctx;
 }
 
 /**
@@ -342,6 +350,8 @@ export async function runPaseoCli(
     timeout?: number;
     cwd?: string;
     env?: NodeJS.ProcessEnv;
+    /** Close the reading end of the CLI's stdout, as a launcher that discards output does. */
+    closedStdout?: boolean;
   },
 ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
   const timeout = options?.timeout ?? 60000;
@@ -353,11 +363,14 @@ export async function runPaseoCli(
   return new Promise((resolve, reject) => {
     const proc = spawn(process.execPath, [TSX_ENTRY, cliSrcPath, ...args], {
       env: {
-        ...process.env,
+        ...Object.fromEntries(
+          Object.entries(process.env).filter(([key]) => !key.startsWith("PASEO_")),
+        ),
         ...TEST_DAEMON_ENV_DEFAULTS,
-        PASEO_HOST: `${TEST_DAEMON_HOST}:${ctx.port}`,
         PASEO_HOME: ctx.paseoHome,
         ...options?.env,
+        HOME: ctx.paseoHome,
+        USERPROFILE: ctx.paseoHome,
       },
       cwd,
       stdio: ["ignore", "pipe", "pipe"],
@@ -366,6 +379,10 @@ export async function runPaseoCli(
 
     const stdout = createOutputCapture();
     const stderr = createOutputCapture();
+
+    if (options?.closedStdout) {
+      proc.stdout?.destroy();
+    }
 
     proc.stdout?.on("data", (data) => {
       appendOutputCapture(stdout, data);

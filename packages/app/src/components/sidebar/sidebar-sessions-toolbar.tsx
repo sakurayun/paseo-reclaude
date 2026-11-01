@@ -1,6 +1,6 @@
+import { PressHighlight as Pressable } from "@/components/ui/press-highlight";
 import { useCallback, useMemo } from "react";
 import {
-  Pressable,
   StyleSheet as RNStyleSheet,
   Text,
   View,
@@ -25,8 +25,12 @@ import {
 } from "lucide-react-native";
 import type { Theme } from "@/styles/theme";
 
-const foregroundColorMapping = (theme: Theme) => ({ color: theme.colors.foreground });
-const foregroundMutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
+const foregroundColorMapping = (theme: Theme) => ({
+  color: theme.colors.foreground,
+});
+const foregroundMutedColorMapping = (theme: Theme) => ({
+  color: theme.colors.foregroundMuted,
+});
 
 export interface SidebarSessionsToolbarLabels {
   newConversation: string;
@@ -169,7 +173,9 @@ function ToolbarButton({
 }) {
   const ThemedIcon = useMemo(() => withUnistyles(Icon), [Icon]);
   const scale = useSharedValue(1);
-  const animatedStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
   const innerStyle = useMemo(() => [a.inner, animatedStyle], [animatedStyle]);
 
   const handlePressIn = useCallback(() => {
@@ -294,7 +300,7 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor: theme.colors.surfaceSidebarHover,
   },
   label: {
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     fontWeight: theme.fontWeight.normal,
     color: theme.colors.foregroundMuted,
   },

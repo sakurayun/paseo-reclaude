@@ -44,7 +44,13 @@ describe("removeTransientTabsFromLayout", () => {
   function layoutWith(...targets: Parameters<typeof openTabInLayoutFocused>[0]["target"][]) {
     let layout: WorkspaceLayout = createDefaultLayout();
     for (const target of targets) {
-      layout = openTabInLayoutFocused({ layout, target, now: 1 }).layout;
+      layout = openTabInLayoutFocused({
+        layout,
+        target,
+        now: 1,
+        placement: { mode: "focused" },
+        explorerSidebarPaneId: null,
+      })!.layout;
     }
     return layout;
   }

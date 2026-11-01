@@ -13,29 +13,27 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { DensityIcon } from "@/components/ui/density-icon";
+import { SidebarFooterIconHighlight } from "./sidebar-footer-icon-highlight";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { useIsCompactFormFactor } from "@/constants/layout";
-import { isNative } from "@/constants/platform";
 import { useAppDiagnosticStore } from "@/diagnostics/store";
+import { useKeyboardShortcutsAvailable } from "@/keyboard/availability";
 import { useHostRuntimeIsConnected, useHosts } from "@/runtime/host-runtime";
 import { useKeyboardShortcutsStore } from "@/stores/keyboard-shortcuts-store";
 import { useSessionStore } from "@/stores/session-store";
+import { density } from "@/styles/density";
 import { ICON_SIZE, type Theme } from "@/styles/theme";
 import type { HostProfile } from "@/types/host-connection";
 import { formatVersionWithPrefix } from "@/desktop/updates/desktop-updates";
 import { resolveAppVersion } from "@/utils/app-version";
+
 import { openExternalUrl } from "@/utils/open-external-url";
 
-/** Fork repo for help / issue / changelog links. */
-const GITHUB_REPO_URL = "https://github.com/sakurayun/paseo-reclaude";
-const GITHUB_ISSUE_URL = `${GITHUB_REPO_URL}/issues/new`;
-const CHANGELOG_URL = `${GITHUB_REPO_URL}/blob/main/CHANGELOG.md`;
+const GITHUB_ISSUE_URL = "https://github.com/sakurayun/paseo-reclaude/issues/new";
 const ThemedActivity = withUnistyles(Activity);
-const ThemedCircleHelp = withUnistyles(CircleHelp);
 const ThemedGift = withUnistyles(Gift);
 const ThemedKeyboard = withUnistyles(Keyboard);
 const ThemedGitHubIcon = withUnistyles(GitHubIcon);
-const foregroundColorMapping = (theme: Theme) => ({ color: theme.colors.foreground });
 const foregroundMutedColorMapping = (theme: Theme) => ({
   color: theme.colors.foregroundMuted,
 });
@@ -65,20 +63,20 @@ function HostVersionHint({ host }: { host: HostProfile }) {
   return (
     <DropdownMenuHint
       style={styles.versionHint}
+      trailing={version}
       testID={`sidebar-help-host-version-${host.serverId}`}
     >
-      {host.label} {version}
+      {host.label}
     </DropdownMenuHint>
   );
 }
 
 export function SidebarHelpMenu() {
   const { t } = useTranslation();
-  const isCompactLayout = useIsCompactFormFactor();
+  const shortcutsAvailable = useKeyboardShortcutsAvailable();
   const openAppDiagnostic = useAppDiagnosticStore((state) => state.open);
   const setShortcutsDialogOpen = useKeyboardShortcutsStore((state) => state.setShortcutsDialogOpen);
   const [open, setOpen] = useState(false);
-  const showKeyboardShortcuts = !isNative && !isCompactLayout;
   const version = formatVersionWithPrefix(resolveAppVersion());
   const hosts = useHosts();
 
@@ -86,12 +84,11 @@ export function SidebarHelpMenu() {
     setShortcutsDialogOpen(true);
   }, [setShortcutsDialogOpen]);
 
+  const openChangelog = useCallback(() => {
+    void openExternalUrl("https://github.com/sakurayun/paseo-reclaude/blob/main/CHANGELOG.md");
+  }, []);
   const openGitHubIssue = useCallback(() => {
     void openExternalUrl(GITHUB_ISSUE_URL);
-  }, []);
-
-  const openChangelog = useCallback(() => {
-    void openExternalUrl(CHANGELOG_URL);
   }, []);
 
   return (
@@ -105,11 +102,15 @@ export function SidebarHelpMenu() {
               accessibilityRole="button"
               accessibilityLabel={t("sidebar.help.trigger")}
             >
-              {({ hovered }) => (
-                <ThemedCircleHelp
-                  size={ICON_SIZE.md}
-                  uniProps={hovered ? foregroundColorMapping : foregroundMutedColorMapping}
-                />
+              {({ hovered, pressed, open: menuOpen }) => (
+                <>
+                  <SidebarFooterIconHighlight visible={pressed || menuOpen} />
+                  <DensityIcon
+                    icon={CircleHelp}
+                    size="md"
+                    color={hovered ? "foreground" : "foregroundMuted"}
+                  />
+                </>
               )}
             </DropdownMenuTrigger>
           </View>
@@ -120,7 +121,7 @@ export function SidebarHelpMenu() {
       </Tooltip>
       <DropdownMenuContent side="top" align="end" offset={8} width={280} testID="sidebar-help-menu">
         <DropdownMenuLabel>{t("sidebar.help.sectionHelp")}</DropdownMenuLabel>
-        {showKeyboardShortcuts ? (
+        {shortcutsAvailable ? (
           <DropdownMenuItem
             testID="sidebar-help-shortcuts"
             leading={shortcutsLeadingIcon}
@@ -154,8 +155,12 @@ export function SidebarHelpMenu() {
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <View style={styles.versionList}>
-          <DropdownMenuHint style={styles.versionHint} testID="sidebar-help-version">
-            {t("sidebar.help.version", { version })}
+          <DropdownMenuHint
+            style={styles.versionHint}
+            trailing={version}
+            testID="sidebar-help-version"
+          >
+            {t("sidebar.help.appName")}
           </DropdownMenuHint>
           {hosts.map((host) => (
             <HostVersionHint key={host.serverId} host={host} />
@@ -168,15 +173,15 @@ export function SidebarHelpMenu() {
 
 const styles = StyleSheet.create((theme) => ({
   trigger: {
-    width: 28,
-    height: 28,
+    width: density.iconButton,
+    height: density.iconButton,
     alignItems: "center",
     justifyContent: "center",
     paddingVertical: theme.spacing[1],
     paddingHorizontal: theme.spacing[1],
   },
   tooltipText: {
-    fontSize: theme.fontSize.sm,
+    fontSize: theme.fontSize.base,
     color: theme.colors.popoverForeground,
   },
   versionList: {

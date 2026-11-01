@@ -52,7 +52,7 @@ export async function runFeaturesCommand(
   const resolved = resolveProviderAndModel({ provider, model: options.model });
   const cwd = options.cwd ?? process.cwd();
   const featureValues = parseFeatureFlagValues(options.feature);
-  const client = await connectToDaemon({ host: options.host });
+  const client = await connectToDaemon({ target: options.daemonTarget });
   try {
     const result = await client.listProviderFeatures({
       provider: resolved.provider,

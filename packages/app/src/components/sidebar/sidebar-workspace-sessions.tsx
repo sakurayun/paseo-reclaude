@@ -1,6 +1,7 @@
+import { PressHighlight as Pressable } from "@/components/ui/press-highlight";
 import { memo, useCallback, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Pressable, Text, View, type PressableStateCallbackType } from "react-native";
+import { Text, View, type PressableStateCallbackType } from "react-native";
 import { useQueryClient } from "@tanstack/react-query";
 import { StyleSheet } from "react-native-unistyles";
 import { SessionStatusIcon } from "@/components/sidebar/session-status-icon";
@@ -110,6 +111,7 @@ function useMergedAgentHistory(serverId: string): AgentDirectoryEntry[] {
         serverLabel: agent.serverId,
         title: agent.title ?? null,
         status: agent.status,
+        turn: agent.turn,
         lastActivityAt: agent.lastActivityAt,
         cwd: agent.cwd,
         provider: agent.provider,
@@ -150,7 +152,11 @@ export const SidebarSessionRow = memo(function SidebarSessionRow({
   const { archiveAgent } = useArchiveAgent();
   const selection = useSidebarSessionSelection();
   const selectionKey = useMemo(
-    () => toSidebarSessionSelectionKey({ serverId: session.serverId, id: session.id }),
+    () =>
+      toSidebarSessionSelectionKey({
+        serverId: session.serverId,
+        id: session.id,
+      }),
     [session.id, session.serverId],
   );
   const isRowSelected = selection?.isSelected(selectionKey) ?? false;
@@ -192,7 +198,9 @@ export const SidebarSessionRow = memo(function SidebarSessionRow({
         throw new Error(t("workspace.terminal.hostDisconnected"));
       }
       await client.updateAgent(session.id, { name: nextTitle.trim() });
-      void queryClient.invalidateQueries({ queryKey: agentHistoryQueryKey(session.serverId) });
+      void queryClient.invalidateQueries({
+        queryKey: agentHistoryQueryKey(session.serverId),
+      });
     },
     [queryClient, session.id, session.serverId, t],
   );
@@ -225,7 +233,10 @@ export const SidebarSessionRow = memo(function SidebarSessionRow({
       try {
         for (const target of targets) {
           try {
-            await archiveAgent({ serverId: target.serverId, agentId: target.agentId });
+            await archiveAgent({
+              serverId: target.serverId,
+              agentId: target.agentId,
+            });
           } catch (error) {
             toast.error(toErrorMessage(error));
           }
@@ -263,7 +274,9 @@ export const SidebarSessionRow = memo(function SidebarSessionRow({
   );
 
   const archiveLabel = isBulkContext
-    ? t("sidebar.workspace.sessions.archiveSelected", { count: selection!.selectedCount })
+    ? t("sidebar.workspace.sessions.archiveSelected", {
+        count: selection!.selectedCount,
+      })
     : t("sidebar.workspace.sessions.archive");
 
   return (
@@ -297,7 +310,6 @@ export const SidebarSessionRow = memo(function SidebarSessionRow({
       <ContextMenuContent
         align="start"
         width={200}
-        mobileMode="sheet"
         testID={`sidebar-session-context-${session.id}`}
       >
         {isBulkContext ? null : (
@@ -347,7 +359,10 @@ export const SidebarWorkspaceSessions = memo(function SidebarWorkspaceSessions({
   const orderedSessionKeys = useMemo(
     () =>
       visibleSessions.map((session) =>
-        toSidebarSessionSelectionKey({ serverId: session.serverId, id: session.id }),
+        toSidebarSessionSelectionKey({
+          serverId: session.serverId,
+          id: session.id,
+        }),
       ),
     [visibleSessions],
   );
@@ -425,11 +440,11 @@ const styles = StyleSheet.create((theme) => ({
     minWidth: 0,
   },
   sessionTitle: {
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     color: theme.colors.foreground,
   },
   sessionSubtitle: {
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     color: theme.colors.foregroundMuted,
     marginTop: 1,
   },
@@ -440,7 +455,7 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.palette.amber[500],
   },
   sessionTime: {
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     color: theme.colors.foregroundMuted,
     flexShrink: 0,
   },
@@ -450,7 +465,7 @@ const styles = StyleSheet.create((theme) => ({
     borderRadius: theme.borderRadius.md,
   },
   viewAllText: {
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     color: theme.colors.accent,
   },
 }));

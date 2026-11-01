@@ -112,7 +112,48 @@ vi.mock("react-native", () => {
     });
   });
 
-  return { Pressable: MockPressable, Text: MockText, TextInput: MockTextInput, View: MockView };
+  return {
+    Pressable: MockPressable,
+    Text: MockText,
+    TextInput: MockTextInput,
+    View: MockView,
+  };
+});
+
+vi.mock("@/components/ui/text-input", async () => {
+  const { TextInput } = await import("react-native");
+  return {
+    EditingTextInput: React.forwardRef(function EditingInput(
+      {
+        initialValue = "",
+        onChangeText,
+        ...props
+      }: { initialValue?: string; onChangeText?: (text: string) => void },
+      ref,
+    ) {
+      const [value, setValue] = React.useState(initialValue);
+      const inputRef = React.useRef<HTMLInputElement>(null);
+      React.useImperativeHandle(
+        ref,
+        () => ({
+          getText: () => value,
+          replaceText: setValue,
+          focus: () => inputRef.current?.focus(),
+        }),
+        [value],
+      );
+      const handleChange = React.useCallback(
+        (text: string) => {
+          setValue(text);
+          onChangeText?.(text);
+        },
+        [onChangeText],
+      );
+      return (
+        <TextInput {...props} ref={inputRef as never} value={value} onChangeText={handleChange} />
+      );
+    }),
+  };
 });
 
 vi.mock("react-native-unistyles", () => ({
@@ -122,6 +163,14 @@ vi.mock("react-native-unistyles", () => ({
       typeof factory === "function" ? (factory as (t: typeof theme) => unknown)(theme) : factory,
   },
   useUnistyles: () => ({ theme }),
+}));
+
+vi.mock("@/utils/render-profiler", () => ({
+  RenderProfile: ({ children }: { children?: React.ReactNode }) => children,
+}));
+
+vi.mock("@/composer/editing-session", () => ({
+  ComposerEditingScope: ({ children }: { children?: React.ReactNode }) => children,
 }));
 
 vi.mock("@/panels/register-panels", () => ({
@@ -213,6 +262,9 @@ const leftPaneInstanceId = createPaneFindPaneId({
   paneId: "left",
 });
 const harnessPaneContext: PaneContextValue = {
+  host: "main",
+  openPreferredTarget: vi.fn(),
+  setCurrentTabState: vi.fn(),
   serverId: "server-a",
   workspaceId: "workspace-a",
   paneInstanceId: leftPaneInstanceId,
@@ -307,7 +359,10 @@ describe("FindBar", () => {
     expect(container?.querySelector('[data-testid="pane-find-input"]')).toBeNull();
 
     act(() => {
-      handlePaneFindKeyboardAction({ id: "workspace.find.open", scope: "workspace" });
+      handlePaneFindKeyboardAction({
+        id: "workspace.find.open",
+        scope: "workspace",
+      });
     });
 
     expect(inputElement()).toBe(document.activeElement);
@@ -319,7 +374,10 @@ describe("FindBar", () => {
     renderFindHarness(controller);
 
     act(() => {
-      handlePaneFindKeyboardAction({ id: "workspace.find.open", scope: "workspace" });
+      handlePaneFindKeyboardAction({
+        id: "workspace.find.open",
+        scope: "workspace",
+      });
     });
 
     expect(container?.textContent).toContain("0 / 0");
@@ -340,7 +398,10 @@ describe("FindBar", () => {
     renderFindHarness(controller);
 
     act(() => {
-      handlePaneFindKeyboardAction({ id: "workspace.find.open", scope: "workspace" });
+      handlePaneFindKeyboardAction({
+        id: "workspace.find.open",
+        scope: "workspace",
+      });
     });
     changeInput("abc");
 
@@ -367,7 +428,10 @@ describe("FindBar", () => {
     expect(container?.querySelector('[data-testid="pane-find-input"]')).toBeNull();
 
     act(() => {
-      handlePaneFindKeyboardAction({ id: "workspace.find.open", scope: "workspace" });
+      handlePaneFindKeyboardAction({
+        id: "workspace.find.open",
+        scope: "workspace",
+      });
     });
     act(() => {
       button("pane-find-close").dispatchEvent(new MouseEvent("click", { bubbles: true }));
@@ -380,7 +444,10 @@ describe("FindBar", () => {
     renderFindHarness(controller);
 
     act(() => {
-      handlePaneFindKeyboardAction({ id: "workspace.find.open", scope: "workspace" });
+      handlePaneFindKeyboardAction({
+        id: "workspace.find.open",
+        scope: "workspace",
+      });
     });
     changeInput("abc");
 
@@ -392,7 +459,10 @@ describe("FindBar", () => {
 
     act(() => {
       setActivePaneFindPaneId(leftPaneInstanceId);
-      handlePaneFindKeyboardAction({ id: "workspace.find.open", scope: "workspace" });
+      handlePaneFindKeyboardAction({
+        id: "workspace.find.open",
+        scope: "workspace",
+      });
     });
     changeInput("abc");
     act(() => {
@@ -426,7 +496,10 @@ describe("FindBar", () => {
     setActivePaneFindPaneId(leftPaneInstanceId);
 
     act(() => {
-      handlePaneFindKeyboardAction({ id: "workspace.find.open", scope: "workspace" });
+      handlePaneFindKeyboardAction({
+        id: "workspace.find.open",
+        scope: "workspace",
+      });
     });
     changeInput("needle");
 
@@ -448,6 +521,9 @@ describe("FindBar", () => {
       paneId: "left",
       normalizedServerId: "server-a",
       normalizedWorkspaceId: "workspace-a",
+      host: "main",
+      onOpenPreferredTarget: vi.fn(),
+      onSetCurrentTabState: vi.fn(),
       onOpenTab: vi.fn(),
       onCloseCurrentTab: vi.fn(),
       onRetargetCurrentTab: vi.fn(),
@@ -460,6 +536,9 @@ describe("FindBar", () => {
       paneId: "right",
       normalizedServerId: "server-a",
       normalizedWorkspaceId: "workspace-a",
+      host: "main",
+      onOpenPreferredTarget: vi.fn(),
+      onSetCurrentTabState: vi.fn(),
       onOpenTab: vi.fn(),
       onCloseCurrentTab: vi.fn(),
       onRetargetCurrentTab: vi.fn(),
@@ -491,7 +570,10 @@ describe("FindBar", () => {
     });
 
     act(() => {
-      handlePaneFindKeyboardAction({ id: "workspace.find.open", scope: "workspace" });
+      handlePaneFindKeyboardAction({
+        id: "workspace.find.open",
+        scope: "workspace",
+      });
     });
 
     changeInput("abc");

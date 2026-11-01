@@ -1,21 +1,29 @@
+import { createWorkspaceRuntimeStore } from "./workspace-runtime-store/index.js";
+import { createAgentMessageDeliveryStub } from "./test-utils/session-stubs.js";
+import {
+  createMessageReceiptsStub,
+  createTestCreationService,
+} from "./test-utils/session-stubs.js";
 import pino from "pino";
 import { z } from "zod";
 import { describe, expect, test } from "vitest";
 
 import { CLIENT_CAPS } from "@getpaseo/protocol/client-capabilities";
 import {
-  AgentSnapshotPayloadSchema,
   AgentTimelineItemPayloadSchema,
   FetchAgentTimelineResponseMessageSchema,
-  ServerInfoStatusPayloadSchema,
   SessionInboundMessageSchema,
   SessionOutboundMessageSchema,
   type SessionOutboundMessage,
-  WSHelloMessageSchema,
 } from "@getpaseo/protocol/messages";
 import { Session, type SessionOptions } from "./session.js";
+import { WorkspaceSetupObservation } from "./workspace-setup-observation.js";
+import { OWNER_PERMISSIONS } from "./authorization/index.js";
+import { DirectorySyncService } from "./directory-sync/index.js";
 import { createProviderSnapshotManagerStub } from "./test-utils/session-stubs.js";
 import type { AgentTimelineRow } from "./agent/agent-manager.js";
+import { InMemoryAgentTimelineStore } from "./agent/agent-timeline-store.js";
+import type { AgentTimelineFetchOptions } from "./agent/agent-timeline-store-types.js";
 import { handleCreatePaseoWorktreeRequest } from "./worktree-session.js";
 import { createPersistedProjectRecord } from "./workspace-registry.js";
 
@@ -42,41 +50,6 @@ const LegacyFetchAgentTimelineResponseMessageSchema = z.object({
   }),
 });
 
-const LegacySubAgentToolCallSchema = z.object({
-  type: z.literal("tool_call"),
-  callId: z.string(),
-  name: z.string(),
-  status: z.enum(["running", "completed", "failed", "canceled"]),
-  error: z.unknown().nullable(),
-  detail: z.object({
-    type: z.literal("sub_agent"),
-    subAgentType: z.string().optional(),
-    description: z.string().optional(),
-    log: z.string(),
-    // Copied from v0.1.65-beta.3: actions was required even though the UI ignored it.
-    actions: z.array(
-      z.object({
-        index: z.number().int().positive(),
-        toolName: z.string(),
-        summary: z.string().optional(),
-      }),
-    ),
-  }),
-});
-
-const LegacyAgentCapabilityFlagsSchema = z.object({
-  supportsStreaming: z.boolean(),
-  supportsSessionPersistence: z.boolean(),
-  supportsDynamicModes: z.boolean(),
-  supportsMcpServers: z.boolean(),
-  supportsReasoningStream: z.boolean(),
-  supportsToolInvocations: z.boolean(),
-});
-
-const LegacyAgentSnapshotPayloadSchema = AgentSnapshotPayloadSchema.extend({
-  capabilities: LegacyAgentCapabilityFlagsSchema,
-});
-
 interface SessionInternals {
   handleFetchAgentTimelineRequest: (
     message: Extract<
@@ -87,7 +60,15 @@ interface SessionInternals {
 }
 
 class InMemoryAgentManager {
-  constructor(private readonly rows: AgentTimelineRow[]) {}
+  private readonly timeline = new InMemoryAgentTimelineStore();
+
+  constructor(rows: AgentTimelineRow[]) {
+    this.timeline.initialize("agent-1", {
+      epoch: "epoch-1",
+      rows,
+      nextSeq: (rows.at(-1)?.seq ?? 0) + 1,
+    });
+  }
 
   getAgent() {
     return {
@@ -133,17 +114,8 @@ class InMemoryAgentManager {
     };
   }
 
-  fetchTimeline() {
-    return {
-      epoch: "epoch-1",
-      reset: false,
-      staleCursor: false,
-      gap: false,
-      window: { minSeq: 1, maxSeq: 3, nextSeq: 4 },
-      rows: this.rows,
-      hasOlder: false,
-      hasNewer: false,
-    };
+  fetchTimeline(_agentId: string, options?: AgentTimelineFetchOptions) {
+    return this.timeline.fetch("agent-1", options);
   }
 
   listAgents() {
@@ -217,7 +189,11 @@ class InMemoryWorktreeWorkflow {
 
 function createSessionForWireCompatTest(options?: {
   clientCapabilities?: Record<string, unknown> | null;
+  directorySync?: DirectorySyncService;
   messages?: SessionOutboundMessage[];
+  onMessageToSource?: SessionOptions["onMessageToSource"];
+  rows?: AgentTimelineRow[];
+  workspaceRegistry?: SessionOptions["workspaceRegistry"];
 }): Session {
   const messages = options?.messages ?? [];
   const rows: AgentTimelineRow[] = [
@@ -239,22 +215,29 @@ function createSessionForWireCompatTest(options?: {
   ];
 
   const session = new Session({
+    workspaceRuntimeStore: createWorkspaceRuntimeStore(),
+    messageReceipts: createMessageReceiptsStub(),
+    agentMessages: createAgentMessageDeliveryStub(),
+    creationService: createTestCreationService(),
     clientId: "wire-compat-client",
-    scopes: ["*"],
+    permissions: OWNER_PERMISSIONS,
     clientCapabilities: options?.clientCapabilities ?? null,
     onMessage: (message) => messages.push(message),
+    onMessageToSource: options?.onMessageToSource ?? ((_source, message) => messages.push(message)),
     logger: pino({ level: "silent" }),
     downloadTokenStore: {} as SessionOptions["downloadTokenStore"],
-    pushTokenStore: {} as SessionOptions["pushTokenStore"],
+    pushNotifications: {} as SessionOptions["pushNotifications"],
     paseoHome: "/tmp/paseo-home",
-    agentManager: new InMemoryAgentManager(rows) as unknown as SessionOptions["agentManager"],
+    agentManager: new InMemoryAgentManager(
+      options?.rows ?? rows,
+    ) as unknown as SessionOptions["agentManager"],
     agentStorage: new EmptyAgentStorage() as unknown as SessionOptions["agentStorage"],
     projectRegistry: new EmptyProjectRegistry() as unknown as SessionOptions["projectRegistry"],
     workspaceRegistry:
-      new EmptyWorkspaceRegistry() as unknown as SessionOptions["workspaceRegistry"],
-    chatService: {} as SessionOptions["chatService"],
+      options?.workspaceRegistry ??
+      (new EmptyWorkspaceRegistry() as unknown as SessionOptions["workspaceRegistry"]),
+    directorySync: options?.directorySync,
     scheduleService: {} as SessionOptions["scheduleService"],
-    loopService: {} as SessionOptions["loopService"],
     checkoutDiffManager: {
       scheduleRefreshForCwd() {},
       onWorkspaceStateMayHaveChanged() {},
@@ -281,9 +264,7 @@ function createSessionForWireCompatTest(options?: {
       async listStashes() {
         return [];
       },
-      peekSnapshot() {
-        return null;
-      },
+
       async validateBranchRef() {
         return { ok: false, error: "not found" };
       },
@@ -305,14 +286,23 @@ function createSessionForWireCompatTest(options?: {
     terminalManager: null,
   });
 
+  session.updateClientCapabilities(options?.clientCapabilities ?? null, {});
   return session;
 }
 
-async function emitTimelineResponse(
-  clientCapabilities?: Record<string, unknown> | null,
-): Promise<Extract<SessionOutboundMessage, { type: "fetch_agent_timeline_response" }>> {
+async function emitTimelineResponse(options?: {
+  clientCapabilities?: Record<string, unknown> | null;
+  rows?: AgentTimelineRow[];
+  request?: Partial<
+    Extract<z.infer<typeof SessionInboundMessageSchema>, { type: "fetch_agent_timeline_request" }>
+  >;
+}): Promise<Extract<SessionOutboundMessage, { type: "fetch_agent_timeline_response" }>> {
   const messages: SessionOutboundMessage[] = [];
-  const session = createSessionForWireCompatTest({ clientCapabilities, messages });
+  const session = createSessionForWireCompatTest({
+    clientCapabilities: options?.clientCapabilities,
+    rows: options?.rows,
+    messages,
+  });
   const internals = session as unknown as SessionInternals;
 
   await internals.handleFetchAgentTimelineRequest({
@@ -320,6 +310,7 @@ async function emitTimelineResponse(
     requestId: "req-timeline",
     agentId: "agent-1",
     projection: "projected",
+    ...options?.request,
   });
 
   const response = messages[0];
@@ -331,7 +322,7 @@ async function emitTimelineResponse(
 }
 
 describe("wire compatibility", () => {
-  test("sends project updates only to clients that declare support", () => {
+  test("sends project updates only to clients that declare support", async () => {
     const project = createPersistedProjectRecord({
       projectId: "project-1",
       rootPath: "/tmp/project",
@@ -349,22 +340,28 @@ describe("wire compatibility", () => {
       messages: capableMessages,
     });
 
-    legacy.emitProjectUpdate({ kind: "upsert", project });
-    legacy.emitProjectUpdate({ kind: "remove", projectId: project.projectId });
-    capable.emitProjectUpdate({ kind: "upsert", project });
-    capable.emitProjectUpdate({ kind: "remove", projectId: project.projectId });
+    await Promise.all([
+      legacy.emitProjectUpdate({ kind: "upsert", project }),
+      legacy.emitProjectUpdate({ kind: "remove", projectId: project.projectId }),
+      capable.emitProjectUpdate({ kind: "upsert", project }),
+      capable.emitProjectUpdate({ kind: "remove", projectId: project.projectId }),
+    ]);
 
     expect(legacyMessages).toEqual([]);
     expect(capableMessages.map((message) => SessionOutboundMessageSchema.parse(message))).toEqual([
       {
         type: "project.update",
         payload: {
+          generation: expect.any(String),
+          seq: 1,
           kind: "upsert",
           project: {
             projectId: "project-1",
             projectDisplayName: "Favorite project",
             projectCustomName: "Favorite project",
             projectAppearance: null,
+            projectCustomIconRevision: null,
+            projectIconRevision: "automatic:none:v1",
             projectRootPath: "/tmp/project",
             projectKind: "git",
           },
@@ -372,79 +369,52 @@ describe("wire compatibility", () => {
       },
       {
         type: "project.update",
-        payload: { kind: "remove", projectId: "project-1" },
+        payload: { kind: "remove", projectId: "project-1", generation: expect.any(String), seq: 2 },
       },
     ]);
   });
 
-  test("hello parses with and without the project update capability", () => {
-    const legacy = WSHelloMessageSchema.parse({
-      type: "hello",
-      clientId: "legacy-client",
-      clientType: "mobile",
-      protocolVersion: 1,
+  test("publishes rapid project mutations in order before incremental reconciliation", async () => {
+    const directorySync = new DirectorySyncService("generation");
+    const initial = directorySync.synchronizeProjects([], {});
+    const messages: SessionOutboundMessage[] = [];
+    const session = createSessionForWireCompatTest({
+      clientCapabilities: { [CLIENT_CAPS.projectUpdates]: true },
+      directorySync,
+      messages,
     });
-    const capable = WSHelloMessageSchema.parse({
-      type: "hello",
-      clientId: "capable-client",
-      clientType: "mobile",
-      protocolVersion: 1,
-      capabilities: { [CLIENT_CAPS.projectUpdates]: true },
+    const project = createPersistedProjectRecord({
+      projectId: "project-ordered",
+      rootPath: "/tmp/project-ordered",
+      kind: "git",
+      displayName: "Ordered project",
+      createdAt: "2026-07-15T00:00:00.000Z",
+      updatedAt: "2026-07-15T00:00:00.000Z",
     });
 
-    expect([legacy, capable]).toEqual([
-      {
-        type: "hello",
-        clientId: "legacy-client",
-        clientType: "mobile",
-        protocolVersion: 1,
-      },
-      {
-        type: "hello",
-        clientId: "capable-client",
-        clientType: "mobile",
-        protocolVersion: 1,
-        capabilities: { project_updates: true },
-      },
+    await Promise.all([
+      session.emitProjectUpdate({ kind: "upsert", project }),
+      session.emitProjectUpdate({ kind: "remove", projectId: project.projectId }),
     ]);
-  });
 
-  test("server info accepts legacy feature payloads without stable project identity", () => {
-    const parsed = ServerInfoStatusPayloadSchema.parse({
-      status: "server_info",
-      serverId: "legacy-server",
-      features: { workspaceGithubClone: true },
-    });
-
-    expect(parsed).toEqual({
-      status: "server_info",
-      serverId: "legacy-server",
-      hostname: null,
-      version: null,
-      features: {},
-    });
-  });
-
-  test("assistant timeline message ids are optional on the wire", () => {
     expect(
-      AgentTimelineItemPayloadSchema.parse({
-        type: "assistant_message",
-        text: "old daemon shape",
+      messages.flatMap((message) =>
+        message.type === "project.update" ? [message.payload.kind] : [],
+      ),
+    ).toEqual(["upsert", "remove"]);
+    expect(
+      directorySync.synchronizeProjects([], {
+        generation: initial.sync.generation,
+        afterSeq: initial.sync.headSeq,
       }),
     ).toEqual({
-      type: "assistant_message",
-      text: "old daemon shape",
-    });
-    expect(
-      AgentTimelineItemPayloadSchema.parse({
-        type: "assistant_message",
-        text: "new daemon shape",
-        messageId: "msg-1",
-      }),
-    ).toEqual({
-      type: "assistant_message",
-      text: "new daemon shape",
-      messageId: "msg-1",
+      projects: [],
+      sync: {
+        generation: "generation",
+        mode: "changes",
+        headSeq: 2,
+        removals: [{ id: "project-ordered", seq: 2 }],
+      },
     });
   });
 
@@ -460,105 +430,37 @@ describe("wire compatibility", () => {
 
   test("preserves reasoning_merge for clients that declare the capability", async () => {
     const response = await emitTimelineResponse({
-      [CLIENT_CAPS.reasoningMergeEnum]: true,
+      clientCapabilities: { [CLIENT_CAPS.reasoningMergeEnum]: true },
     });
 
     const currentParsed = FetchAgentTimelineResponseMessageSchema.parse(response);
     expect(currentParsed.payload.entries[0]?.collapsed).toContain("reasoning_merge");
   });
 
-  test("sub_agent tool-call payload still parses against the v0.1.65-beta.3 schema", () => {
-    const parsed = LegacySubAgentToolCallSchema.parse({
-      type: "tool_call",
-      callId: "call-sub-agent-1",
-      name: "Task",
-      status: "completed",
-      error: null,
-      detail: {
-        type: "sub_agent",
-        subAgentType: "Explore",
-        description: "Inspect repository structure",
-        childSessionId: "child-session-1",
-        log: "[Read] README.md",
-        actions: [],
-      },
+  test("carries canonical turn IDs to new clients while legacy schemas ignore them", async () => {
+    const response = await emitTimelineResponse({
+      rows: [
+        {
+          seq: 1,
+          timestamp: "2026-05-02T00:00:00.000Z",
+          turnId: "turn-1",
+          item: { type: "user_message", text: "prompt", clientMessageId: "message-1" },
+        },
+        {
+          seq: 2,
+          timestamp: "2026-05-02T00:00:01.000Z",
+          turnId: "turn-1",
+          item: { type: "assistant_message", text: "done" },
+        },
+      ],
     });
 
-    expect(parsed.detail.actions).toEqual([]);
-  });
-
-  test("old clients parse agent snapshots with rewind capabilities", () => {
-    const parsed = LegacyAgentSnapshotPayloadSchema.parse({
-      id: "agent-1",
-      provider: "claude",
-      cwd: "/tmp/project",
-      model: null,
-      thinkingOptionId: null,
-      effectiveThinkingOptionId: null,
-      createdAt: "2026-05-23T00:00:00.000Z",
-      updatedAt: "2026-05-23T00:00:00.000Z",
-      lastUserMessageAt: null,
-      status: "idle",
-      capabilities: {
-        supportsStreaming: true,
-        supportsSessionPersistence: true,
-        supportsDynamicModes: true,
-        supportsMcpServers: true,
-        supportsReasoningStream: true,
-        supportsToolInvocations: true,
-        supportsRewindConversation: true,
-        supportsRewindFiles: true,
-        supportsRewindBoth: true,
-      },
-      currentModeId: null,
-      availableModes: [],
-      pendingPermissions: [],
-      persistence: null,
-      title: null,
-      labels: {},
-    });
-
-    expect(parsed.capabilities).toEqual({
-      supportsStreaming: true,
-      supportsSessionPersistence: true,
-      supportsDynamicModes: true,
-      supportsMcpServers: true,
-      supportsReasoningStream: true,
-      supportsToolInvocations: true,
-    });
-  });
-
-  test("new clients parse agent snapshots without rewind capabilities", () => {
-    const parsed = AgentSnapshotPayloadSchema.parse({
-      id: "agent-1",
-      provider: "claude",
-      cwd: "/tmp/project",
-      model: null,
-      thinkingOptionId: null,
-      effectiveThinkingOptionId: null,
-      createdAt: "2026-05-23T00:00:00.000Z",
-      updatedAt: "2026-05-23T00:00:00.000Z",
-      lastUserMessageAt: null,
-      status: "idle",
-      capabilities: {
-        supportsStreaming: true,
-        supportsSessionPersistence: true,
-        supportsDynamicModes: true,
-        supportsMcpServers: true,
-        supportsReasoningStream: true,
-        supportsToolInvocations: true,
-      },
-      currentModeId: null,
-      availableModes: [],
-      pendingPermissions: [],
-      persistence: null,
-      title: null,
-      labels: {},
-    });
-
-    expect(parsed.capabilities.supportsRewindConversation).toBe(false);
-    expect(parsed.capabilities.supportsRewindFiles).toBe(false);
-    expect(parsed.capabilities.supportsRewindBoth).toBe(false);
+    expect(FetchAgentTimelineResponseMessageSchema.parse(response).payload.entries).toEqual(
+      expect.arrayContaining([expect.objectContaining({ turnId: "turn-1" })]),
+    );
+    expect(LegacyFetchAgentTimelineResponseMessageSchema.parse(response).payload.entries).toEqual(
+      expect.arrayContaining([expect.not.objectContaining({ turnId: expect.anything() })]),
+    );
   });
 
   test("legacy worktree request shape normalizes to the same internal input as the new shape", async () => {
@@ -651,8 +553,259 @@ describe("wire compatibility", () => {
       refName: undefined,
       action: undefined,
       githubPrNumber: undefined,
-      runSetup: false,
+
       paseoHome: "/tmp/paseo-home",
     });
   });
+});
+
+test("setup progress is adapted per socket without changing the canonical snapshot", async () => {
+  const legacy = {};
+  const capable = {};
+  const modern = {};
+  const modernCapable = {};
+  const delivered = new Map<object, SessionOutboundMessage[]>();
+  const session = createSessionForWireCompatTest({
+    onMessageToSource: (source, message) =>
+      delivered.set(source, [...(delivered.get(source) ?? []), message]),
+  });
+  for (const [source, blocked, owned] of [
+    [legacy, false, false],
+    [capable, true, false],
+    [modern, false, true],
+    [modernCapable, true, true],
+  ] as const) {
+    session.updateClientCapabilities(
+      {
+        explicit_event_subscriptions: true,
+        owned_subscriptions: owned,
+        workspace_setup_blocked: blocked,
+      },
+      source,
+    );
+    await session.handleMessage(
+      {
+        type: "session.events.set_subscription.request",
+        requestId: "setup",
+        events: ["workspace_setup_progress"],
+      },
+      source,
+    );
+    expect(delivered.get(source)).toContainEqual(
+      expect.objectContaining({ type: "session.events.set_subscription.response" }),
+    );
+  }
+  delivered.clear();
+  const message = {
+    type: "workspace_setup_progress" as const,
+    payload: {
+      workspaceId: "fork-workspace",
+      status: "blocked" as const,
+      error: null,
+      detail: {
+        type: "worktree_setup" as const,
+        worktreePath: "/workspace",
+        branchName: "fork",
+        log: "",
+        commands: [],
+      },
+      blockedSource: {
+        kind: "change_request" as const,
+        forge: "github",
+        number: 42,
+        headRepository: "contributor/project",
+      },
+    },
+  };
+  session.publish(message);
+  expect(delivered.get(capable)).toEqual([message]);
+  expect(delivered.get(legacy)).toEqual([
+    {
+      ...message,
+      payload: {
+        ...message.payload,
+        status: "failed",
+        error:
+          "Workspace setup is blocked pending approval of code from a fork pull request. Update Paseo to review and run setup.",
+      },
+    },
+  ]);
+  expect(delivered.get(modernCapable)).toEqual([
+    { ...message, payload: { ...message.payload, subscriptionId: expect.any(String) } },
+  ]);
+  expect(delivered.get(modern)).toEqual([
+    {
+      ...message,
+      payload: {
+        ...message.payload,
+        status: "failed",
+        error: expect.stringContaining("Update Paseo"),
+        subscriptionId: expect.any(String),
+      },
+    },
+  ]);
+  expect(message.payload.status).toBe("blocked");
+  await session.cleanup();
+});
+
+test("scoped setup clients never receive session-wide setup output", async () => {
+  const messages: SessionOutboundMessage[] = [];
+  const session = createSessionForWireCompatTest({
+    messages,
+    clientCapabilities: { owned_subscriptions: true, workspace_setup_observation: true },
+  });
+  const source = {};
+  session.updateClientCapabilities(
+    { owned_subscriptions: true, workspace_setup_observation: true },
+    source,
+  );
+  await session.handleMessage(
+    {
+      type: "session.events.set_subscription.request",
+      requestId: "events",
+      events: ["workspace_setup_progress"],
+    },
+    source,
+  );
+  messages.length = 0;
+  for (const workspaceId of ["setup-a", "setup-b", "setup-c"]) {
+    for (let chunk = 0; chunk < 10; chunk++) {
+      session.publish({
+        type: "workspace_setup_progress",
+        payload: {
+          workspaceId,
+          status: "running",
+          error: null,
+          detail: {
+            type: "worktree_setup",
+            worktreePath: "/workspace",
+            branchName: "setup",
+            log: "output".repeat(chunk * 1000),
+            commands: [],
+          },
+        },
+      });
+    }
+  }
+  expect(messages).toEqual([]);
+  await session.cleanup();
+});
+
+test("setup output invalidates directory metadata only when visible setup status changes", () => {
+  const setup = new WorkspaceSetupObservation();
+  const earlier = {
+    status: "failed" as const,
+    error: "failed before any connection",
+    detail: {
+      type: "worktree_setup" as const,
+      worktreePath: "/workspace",
+      branchName: "test",
+      log: "earlier output",
+      commands: [],
+    },
+  };
+  setup.publish("earlier", earlier);
+  expect(setup.get("earlier")).toEqual(earlier);
+  expect(setup.status({ workspaceId: "earlier", untrustedSource: null })).toBe("failed");
+  const changes: boolean[] = [];
+  setup.subscribe((_workspaceId, _snapshot, changed) => changes.push(changed));
+  const detail = {
+    type: "worktree_setup" as const,
+    worktreePath: "/workspace",
+    branchName: "test",
+    log: "",
+    commands: [
+      {
+        index: 0,
+        command: "setup",
+        cwd: "/workspace",
+        log: "",
+        status: "running" as const,
+        exitCode: null,
+      },
+    ],
+  };
+  for (const log of ["", "one", "one two", "one two three"])
+    setup.publish("workspace", { status: "running", error: null, detail: { ...detail, log } });
+  setup.publish("workspace", { status: "failed", error: "failed", detail });
+  expect(changes).toEqual([true, false, false, false, true]);
+  expect(setup.status({ workspaceId: "workspace", untrustedSource: null })).toBe("failed");
+  expect(setup.status({ workspaceId: "empty", untrustedSource: null })).toBeNull();
+  setup.publish("empty", { status: "completed", error: null, detail: { ...detail, commands: [] } });
+  expect(setup.status({ workspaceId: "empty", untrustedSource: null })).toBeNull();
+});
+
+test("setup observation includes a transition that happens during its initial registry read", async () => {
+  let completeRead!: (value: null) => void;
+  let readStarted!: () => void;
+  const started = new Promise<void>((resolve) => {
+    readStarted = resolve;
+  });
+  const pendingRead = new Promise<null>((resolve) => {
+    completeRead = resolve;
+  });
+  const messages: SessionOutboundMessage[] = [];
+  const source = {};
+  const session = createSessionForWireCompatTest({
+    messages,
+    clientCapabilities: { owned_subscriptions: true, workspace_setup_observation: true },
+    workspaceRegistry: {
+      get: () => {
+        readStarted();
+        return pendingRead;
+      },
+      list: () => [],
+    } as unknown as SessionOptions["workspaceRegistry"],
+  });
+  session.updateClientCapabilities(
+    { owned_subscriptions: true, workspace_setup_observation: true },
+    source,
+  );
+  try {
+    const request = session.handleMessage(
+      { type: "workspace.setup.subscribe.request", workspaceId: "setup", requestId: "observe" },
+      source,
+    );
+    await started;
+    session.publish({
+      type: "workspace_setup_progress",
+      payload: {
+        workspaceId: "setup",
+        status: "failed",
+        error: "bootstrap failure",
+        detail: {
+          type: "worktree_setup",
+          worktreePath: "/workspace",
+          branchName: "test",
+          log: "failure output",
+          commands: [],
+        },
+      },
+    });
+    completeRead(null);
+    await request;
+    expect(messages).toEqual([
+      {
+        type: "workspace.setup.subscribe.response",
+        payload: {
+          requestId: "observe",
+          workspaceId: "setup",
+          subscriptionId: expect.any(String),
+          snapshot: {
+            status: "failed",
+            error: "bootstrap failure",
+            detail: {
+              type: "worktree_setup",
+              worktreePath: "/workspace",
+              branchName: "test",
+              log: "failure output",
+              commands: [],
+            },
+          },
+        },
+      },
+    ]);
+  } finally {
+    await session.cleanup();
+  }
 });

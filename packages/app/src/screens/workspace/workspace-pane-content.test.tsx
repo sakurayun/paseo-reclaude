@@ -11,18 +11,7 @@ import {
 } from "@/screens/workspace/workspace-pane-content";
 import type { WorkspaceTabDescriptor } from "@/screens/workspace/workspace-tabs-types";
 import { usePaneContext, usePaneFocus, type PaneContextValue } from "@/panels/pane-context";
-
-vi.mock("@/panels/register-panels", () => ({
-  ensurePanelsRegistered: vi.fn(),
-}));
-
-vi.mock("@/panels/panel-registry", () => ({
-  getPanelRegistration: () => ({
-    kind: "agent",
-    component: ProbePanel,
-    useDescriptor: vi.fn(),
-  }),
-}));
+import { definePanel, registerPanel } from "@/panels/panel-registry";
 
 interface ProbeSnapshot {
   paneContextValue: PaneContextValue;
@@ -48,6 +37,18 @@ function ProbePanel() {
   return null;
 }
 
+// The workspace screen registers the real panels; this probe stands in for each kind the tests open.
+for (const kind of ["agent", "draft"] as const) {
+  registerPanel(
+    definePanel(kind, {
+      component: ProbePanel,
+      useDescriptor: () => {
+        throw new Error("The probe panel has no descriptor");
+      },
+    }),
+  );
+}
+
 const agentTab: WorkspaceTabDescriptor = {
   key: "agent_agent-a",
   tabId: "agent_agent-a",
@@ -55,14 +56,18 @@ const agentTab: WorkspaceTabDescriptor = {
   target: { kind: "agent", agentId: "agent-a" },
 };
 
-function buildContent(tab: WorkspaceTabDescriptor = agentTab) {
+function buildContent(tab: WorkspaceTabDescriptor = agentTab, host: "main" | "explorer" = "main") {
   return buildWorkspacePaneContentModel({
     tab,
     normalizedServerId: "server-a",
     normalizedWorkspaceId: "workspace-a",
+    host,
     onOpenTab: vi.fn(),
+    onOpenPreferredTarget: vi.fn(),
+    onOpenTargetToSide: vi.fn(),
     onCloseCurrentTab: vi.fn(),
     onRetargetCurrentTab: vi.fn(),
+    onSetCurrentTabState: vi.fn(),
     onOpenWorkspaceFile: vi.fn(),
     onOpenImportSheet: vi.fn(),
   });
@@ -120,6 +125,24 @@ describe("WorkspacePaneContent", () => {
       isInteractive: true,
       focusPane: expect.any(Function),
     });
+  });
+
+  it("exposes the pane host to its content", () => {
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+
+    act(() => {
+      root?.render(
+        <WorkspacePaneContent
+          content={buildContent(agentTab, "explorer")}
+          isPaneFocused
+          isWorkspaceFocused
+        />,
+      );
+    });
+
+    expect(snapshots[0]?.paneContextValue.host).toBe("explorer");
   });
 
   it("keeps pane content mounted when a draft tab is retargeted in place", () => {

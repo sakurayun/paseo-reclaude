@@ -1,6 +1,7 @@
+import { PressHighlight } from "@/components/ui/press-highlight";
 import { useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { Pressable, Text, View } from "react-native";
+import { Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import {
   AdaptiveModalSheet,
@@ -103,7 +104,7 @@ export function SshUploadDropSheet({
   return (
     <AdaptiveModalSheet header={header} visible onClose={onClose} testID="ssh-upload-drop-sheet">
       {pasteText !== null ? (
-        <Pressable
+        <PressHighlight
           style={styles.option}
           onPress={onPaste}
           accessibilityRole="button"
@@ -116,9 +117,9 @@ export function SshUploadDropSheet({
               {t("ssh.uploads.dropSheet.pastePathsDescription")}
             </Text>
           </View>
-        </Pressable>
+        </PressHighlight>
       ) : null}
-      <Pressable
+      <PressHighlight
         style={uploadOptionStyle}
         onPress={handleUpload}
         disabled={!uploadReady}
@@ -132,7 +133,7 @@ export function SshUploadDropSheet({
             {uploadDescription}
           </Text>
         </View>
-      </Pressable>
+      </PressHighlight>
       {canUpload ? (
         <View style={styles.destSection}>
           <Text style={styles.destLabel}>{t("ssh.uploads.dropSheet.destDirLabel")}</Text>

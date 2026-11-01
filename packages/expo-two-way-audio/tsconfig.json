@@ -7,7 +7,7 @@
     "moduleResolution": "bundler",
     "types": [],
     "typeRoots": [
-      "./node_modules/expo-module-scripts/ts-declarations",
+      "../../node_modules/expo-module-scripts/ts-declarations",
       "./node_modules/@types",
       "../../node_modules/@types"
     ]

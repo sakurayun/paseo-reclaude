@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   applyTerminalRendererReadyChange,
-  shouldReplayTerminalSnapshotForRenderer,
+  resolveTerminalStreamTarget,
   shouldShowTerminalLoadingOverlay,
 } from "./terminal-renderer-readiness";
 
@@ -73,24 +73,41 @@ describe("terminal-renderer-readiness", () => {
     expect(current).toBeNull();
   });
 
-  it("replays snapshots only for ready events from the current renderer", () => {
+  it("does not attach the stream before the matching renderer is ready", () => {
     expect(
-      shouldReplayTerminalSnapshotForRenderer({
-        change: { streamKey: "scope:terminal-1", isReady: true },
+      resolveTerminalStreamTarget({
+        terminalId: "terminal-1",
         terminalStreamKey: "scope:terminal-1",
+        rendererReadyStreamKey: null,
+        isWorkspaceFocused: true,
       }),
-    ).toBe(true);
+    ).toBeNull();
+  });
+
+  it("attaches the stream after the matching renderer is ready", () => {
     expect(
-      shouldReplayTerminalSnapshotForRenderer({
-        change: { streamKey: "scope:terminal-1", isReady: false },
+      resolveTerminalStreamTarget({
+        terminalId: "terminal-1",
         terminalStreamKey: "scope:terminal-1",
+        rendererReadyStreamKey: "scope:terminal-1",
+        isWorkspaceFocused: true,
       }),
-    ).toBe(false);
-    expect(
-      shouldReplayTerminalSnapshotForRenderer({
-        change: { streamKey: "scope:terminal-1", isReady: true },
-        terminalStreamKey: "scope:terminal-2",
-      }),
-    ).toBe(false);
+    ).toBe("terminal-1");
+  });
+
+  it("detaches and restores the same stream across renderer replacement", () => {
+    const targetForRenderer = (rendererReadyStreamKey: string | null) =>
+      resolveTerminalStreamTarget({
+        terminalId: "terminal-1",
+        terminalStreamKey: "scope:terminal-1",
+        rendererReadyStreamKey,
+        isWorkspaceFocused: true,
+      });
+
+    expect([
+      targetForRenderer("scope:terminal-1"),
+      targetForRenderer(null),
+      targetForRenderer("scope:terminal-1"),
+    ]).toEqual(["terminal-1", null, "terminal-1"]);
   });
 });

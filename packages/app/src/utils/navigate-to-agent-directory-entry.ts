@@ -13,6 +13,7 @@ function buildDirectoryAgentDetail(entry: AgentDirectoryEntry): Agent {
     id: entry.id,
     provider: entry.provider,
     status: entry.status,
+    turn: entry.turn,
     createdAt: entry.createdAt,
     updatedAt: entry.lastActivityAt,
     lastUserMessageAt: null,

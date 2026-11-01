@@ -1,8 +1,9 @@
+import { definePanel } from "@/panels/panel-registry";
 import { Text, View } from "react-native";
 import { GitCompareArrows } from "lucide-react-native";
 import invariant from "tiny-invariant";
 import { useTranslation } from "react-i18next";
-import { GitDiffPane } from "@/git/diff-pane";
+import { ChangesSurface } from "@/git/diff-pane";
 import { usePaneContext } from "@/panels/pane-context";
 import type { PanelRegistration } from "@/panels/panel-registry";
 import { useWorkspaceDirectory } from "@/stores/session-store-hooks";
@@ -40,18 +41,17 @@ function FileDiffPanel() {
     );
   }
   return (
-    <GitDiffPane
+    <ChangesSurface
       serverId={serverId}
       workspaceId={workspaceId}
       cwd={workspaceDirectory}
-      hideHeaderRow
-      focusFile={target.path}
+      presentation="diff"
+      focusPath={target.path}
     />
   );
 }
 
-export const fileDiffPanelRegistration: PanelRegistration<"file-diff"> = {
-  kind: "file-diff",
+export const fileDiffPanelRegistration: PanelRegistration<"file-diff"> = definePanel("file-diff", {
   component: FileDiffPanel,
   useDescriptor: useFileDiffPanelDescriptor,
-};
+});

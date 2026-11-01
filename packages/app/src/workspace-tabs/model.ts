@@ -1,4 +1,5 @@
 import type { AgentProvider } from "@getpaseo/protocol/agent-types";
+import type { JsonValue } from "@getpaseo/protocol/agent-types";
 import type { WorkspaceFileTabTarget } from "@/workspace/file-open";
 
 export interface WorkspaceDraftTabSetup {
@@ -16,7 +17,23 @@ export interface WorkspaceWorkingDiffTabTarget {
   focusRequestId?: number;
 }
 
+export type PluginWorkspaceTabTarget =
+  | {
+      kind: "plugin";
+      pluginId: string;
+      panelId: string;
+      context: "workspace";
+    }
+  | {
+      kind: "plugin";
+      pluginId: string;
+      panelId: string;
+      context: "agent";
+      agentId: string;
+    };
+
 export type WorkspaceTabTarget =
+  | { kind: "new_tab" }
   | { kind: "draft"; draftId: string; setup?: WorkspaceDraftTabSetup }
   | { kind: "agent"; agentId: string }
   | { kind: "provider_subagent"; parentAgentId: string; subagentId: string }
@@ -26,10 +43,14 @@ export type WorkspaceTabTarget =
   // lives in ssh-connect-store keyed by connectId; never persisted or synced.
   | { kind: "ssh-connecting"; connectId: string }
   | { kind: "browser"; browserId: string }
+  | { kind: "changes_tree" }
+  | { kind: "files" }
+  | { kind: "pull_request" }
   | WorkspaceFileTabTarget
   | WorkspaceWorkingDiffTabTarget
   | { kind: "file-diff"; path: string }
   | { kind: "commit_diff"; sha: string }
+  | PluginWorkspaceTabTarget
   | { kind: "setup"; workspaceId: string }
   | { kind: "sessions"; workspaceId: string }
   | { kind: "port-forwards" };
@@ -38,6 +59,7 @@ export interface WorkspaceTab {
   tabId: string;
   target: WorkspaceTabTarget;
   createdAt: number;
+  state?: JsonValue;
 }
 
 export function buildWorkspaceTabPersistenceKey(input: {

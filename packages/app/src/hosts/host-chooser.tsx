@@ -1,13 +1,11 @@
+import { Modal } from "@/components/ui/modal";
+import { usePanelStore } from "@/stores/panel-store";
 import { createElement, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Pressable, ScrollView, Text, View, type PressableStateCallbackType } from "react-native";
 import {
-  Modal,
-  Pressable,
-  ScrollView,
-  Text,
-  TextInput,
-  View,
-  type PressableStateCallbackType,
-} from "react-native";
+  EditingTextInput as TextInput,
+  type EditingTextInputHandle,
+} from "@/components/ui/text-input";
 import { router } from "expo-router";
 import { Server } from "lucide-react-native";
 import { create } from "zustand";
@@ -78,7 +76,13 @@ export function useHostChooser() {
       );
 
       if (availableHosts.length === 0) {
-        (input.onNoHosts ?? (() => router.push(buildSettingsAddHostRoute(Date.now()))))();
+        (
+          input.onNoHosts ??
+          (() => {
+            usePanelStore.getState().showMobileAgent();
+            router.push(buildSettingsAddHostRoute(Date.now()));
+          })
+        )();
         return false;
       }
 
@@ -145,7 +149,7 @@ export function HostChooserModal() {
   const hosts = useHosts();
   const request = useHostChooserStore((state) => state.request);
   const close = useHostChooserStore((state) => state.close);
-  const inputRef = useRef<TextInput>(null);
+  const inputRef = useRef<EditingTextInputHandle>(null);
   const [query, setQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
   const modalLayer = useGlobalWebOverlayLayer("modal", isWeb && request != null);
@@ -167,6 +171,7 @@ export function HostChooserModal() {
 
   useEffect(() => {
     if (!request) return;
+    inputRef.current?.replaceText("");
     setQuery("");
     setActiveIndex(0);
     const id = setTimeout(() => inputRef.current?.focus(), 0);
@@ -246,7 +251,7 @@ export function HostChooserModal() {
             <Text style={styles.title}>{request.title}</Text>
             <TextInput
               ref={inputRef}
-              value={query}
+              initialValue={query}
               onChangeText={handleQueryChange}
               placeholder="Search hosts..."
               placeholderTextColor={theme.colors.foregroundMuted}
@@ -288,7 +293,7 @@ const styles = StyleSheet.create((theme) => ({
     paddingTop: theme.spacing[12],
   },
   backdrop: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: "rgba(0, 0, 0, 0.5)",
   },
   panel: {
@@ -316,7 +321,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   input: {
     color: theme.colors.foreground,
-    fontSize: theme.fontSize.lg,
+    fontSize: theme.fontSize.base,
     padding: 0,
     outlineStyle: "none",
   } as object,
@@ -353,11 +358,11 @@ const styles = StyleSheet.create((theme) => ({
   },
   rowSubtitle: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
   },
   emptyText: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.sm,
+    fontSize: theme.fontSize.base,
     paddingHorizontal: theme.spacing[4],
     paddingVertical: theme.spacing[3],
   },

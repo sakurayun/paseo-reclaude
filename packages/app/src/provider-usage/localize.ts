@@ -107,11 +107,17 @@ function localizeWindowLabel(t: TFunction, window: ProviderUsageWindow): string 
   // MiniMax style: "ModelName · Interval" / "ModelName · Weekly"
   if (window.label.endsWith(" · Interval")) {
     const model = window.label.slice(0, -" · Interval".length);
-    return t("providerUsage.windows.modelInterval", { model, defaultValue: window.label });
+    return t("providerUsage.windows.modelInterval", {
+      model,
+      defaultValue: window.label,
+    });
   }
   if (window.label.endsWith(" · Weekly")) {
     const model = window.label.slice(0, -" · Weekly".length);
-    return t("providerUsage.windows.modelWeekly", { model, defaultValue: window.label });
+    return t("providerUsage.windows.modelWeekly", {
+      model,
+      defaultValue: window.label,
+    });
   }
   return window.label;
 }
