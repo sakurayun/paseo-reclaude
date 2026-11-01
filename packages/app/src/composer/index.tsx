@@ -2612,7 +2612,7 @@ const animatedStaticStyles = RNStyleSheet.create({
 
 const styles = StyleSheet.create((theme: Theme) => ({
   borderSeparator: {
-    height: theme.borderWidth[1],
+    height: theme.shell.chromeDivider,
     backgroundColor: theme.colors.border,
   },
   inputAreaContainer: {
@@ -2720,7 +2720,7 @@ const styles = StyleSheet.create((theme: Theme) => ({
     paddingVertical: theme.spacing[2],
     backgroundColor: theme.colors.surface1,
     borderRadius: theme.borderRadius.lg,
-    borderWidth: theme.borderWidth[1],
+    borderWidth: theme.shell.controlBorder,
     borderColor: theme.colors.border,
     gap: theme.spacing[2],
   },

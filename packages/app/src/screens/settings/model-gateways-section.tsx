@@ -558,7 +558,7 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     justifyContent: "space-between",
     gap: theme.spacing[2],
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: theme.shell.controlBorder,
     borderColor: theme.colors.border,
     borderRadius: theme.borderRadius.md,
     paddingHorizontal: theme.spacing[3],
@@ -582,7 +582,7 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.xs,
   },
   readOnlyField: {
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: theme.shell.controlBorder,
     borderColor: theme.colors.border,
     borderRadius: theme.borderRadius.md,
     paddingHorizontal: theme.spacing[3],

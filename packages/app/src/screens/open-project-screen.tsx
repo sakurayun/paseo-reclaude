@@ -243,8 +243,8 @@ const styles = StyleSheet.create((theme) => ({
   },
   tileDescription: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.base,
-    lineHeight: 18,
+    fontSize: theme.fontSize.sm,
+    lineHeight: Math.round(theme.fontSize.sm * 1.3),
   },
   communityRow: {
     flexShrink: 0,

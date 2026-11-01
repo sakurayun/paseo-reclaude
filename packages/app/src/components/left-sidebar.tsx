@@ -46,7 +46,6 @@ import {
   type SidebarProjectEntry,
   type SidebarWorkspaceEntry,
 } from "@/hooks/use-sidebar-workspaces-list";
-import { density } from "@/styles/density";
 import { useSidebarModel } from "@/components/sidebar/sidebar-model";
 import type { PinnedSidebarGroups } from "@/hooks/use-sidebar-pins";
 import { RetainedPanelActivity } from "@/components/retained-panel";
@@ -426,13 +425,11 @@ function SidebarFooter({
         <SidebarFooterRows onBeforeNavigate={onBeforeNavigate} />
         <View style={styles.sidebarFooter} testID="sidebar-footer-bottom-line">
           <SidebarUsageIcon label={labels.usage} />
-          <SidebarThemeMenu />
           <SidebarHostPicker
             label={labels.hosts}
             onAddHost={handleAddHost}
             onOpenHostSettings={handleOpenHostSettings}
           />
-          <View style={styles.footerSpacer} />
           <SidebarHelpMenu />
           <FooterIconButton
             onPress={handleSettings}
@@ -441,6 +438,8 @@ function SidebarFooter({
             icon={Settings}
             shortcutKeys={settingsKeys}
           />
+          <View style={styles.footerSpacer} />
+          <SidebarThemeMenu />
         </View>
       </View>
     </UsageSidebarRoot>
@@ -724,7 +723,7 @@ const styles = StyleSheet.create((theme) => ({
     paddingTop: theme.spacing[2],
     gap: 2,
     paddingBottom: theme.spacing[1.5],
-    borderBottomWidth: 1,
+    borderBottomWidth: theme.shell.chromeDivider,
     borderBottomColor: theme.colors.border,
   },
   sidebarHeaderGroupBelowChrome: {
@@ -738,7 +737,7 @@ const styles = StyleSheet.create((theme) => ({
     marginRight: theme.spacing[2],
   },
   desktopSidebarBorder: {
-    borderRightWidth: 1,
+    borderRightWidth: theme.shell.chromeDivider,
     borderRightColor: theme.colors.border,
     backgroundColor: theme.colors.surfaceSidebar,
   },
@@ -773,15 +772,16 @@ const styles = StyleSheet.create((theme) => ({
     fontWeight: theme.fontWeight.medium,
   },
   footerContainer: {
-    borderTopWidth: 1,
+    borderTopWidth: theme.shell.chromeDivider,
     borderTopColor: theme.colors.border,
   },
   // Buttons sit edge to edge; their own inset spaces the glyphs.
   sidebarFooter: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: theme.spacing[2],
-    paddingVertical: theme.spacing[1.5],
+    gap: theme.spacing[2],
+    paddingHorizontal: theme.spacing[4],
+    paddingVertical: theme.spacing[3],
   },
   // Pushes Help and Settings to the end of the icon line.
   footerSpacer: {
@@ -794,8 +794,8 @@ const styles = StyleSheet.create((theme) => ({
     gap: 2,
   },
   footerIconButton: {
-    width: density.iconButton,
-    height: density.iconButton,
+    width: 28,
+    height: 28,
     alignItems: "center",
     justifyContent: "center",
     paddingVertical: theme.spacing[1],

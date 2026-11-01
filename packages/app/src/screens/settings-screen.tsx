@@ -75,6 +75,9 @@ import { WindowChromeRegion, WindowChromeSafeArea } from "@/utils/desktop-window
 import { confirmDialog } from "@/utils/confirm-dialog";
 import { BackHeader } from "@/components/headers/back-header";
 import { PageLayout } from "@/components/page-layout";
+import { ScreenHeader } from "@/components/headers/screen-header";
+import { ScreenTitle } from "@/components/headers/screen-title";
+import { NEW_THEME_HEADER_HEIGHT_DESKTOP } from "@/constants/layout";
 import { AddHostMethodModal } from "@/components/add-host-method-modal";
 import { AddHostModal } from "@/components/add-host-modal";
 import { AddRemoteSshHostModal } from "@/components/add-remote-ssh-host-modal";
@@ -1371,6 +1374,11 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
     return undefined;
   })();
 
+  const desktopDetailTitle = useMemo(
+    () => <ScreenTitle testID="settings-detail-header-title">{detailTitle}</ScreenTitle>,
+    [detailTitle],
+  );
+
   const content: ReactNode = (() => {
     if (view.kind === "plugin")
       return (
@@ -1526,13 +1534,21 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
             WindowChromeRegion so window controls stay correct at half-screen. */}
         <WindowChromeRegion corners="top-right">
           <View style={desktopStyles.centerColumn} testID="settings-detail-pane">
-            <PageLayout
-              title={detailTitle}
-              titleTestID="settings-detail-header-title"
-              testID="settings-detail-scroll-body"
-            >
-              {content}
-            </PageLayout>
+            <ScreenHeader
+              borderless
+              surfaceStyle={desktopStyles.detailHeaderSurface}
+              rowStyle={desktopStyles.detailHeaderRow}
+              left={desktopDetailTitle}
+            />
+            <View style={desktopStyles.centerCard}>
+              <ScrollView
+                style={styles.scrollView}
+                contentContainerStyle={insetBottomStyle}
+                testID="settings-detail-scroll-body"
+              >
+                <View style={desktopStyles.content}>{content}</View>
+              </ScrollView>
+            </View>
           </View>
         </WindowChromeRegion>
       </View>
@@ -1595,7 +1611,7 @@ const styles = StyleSheet.create((theme) => ({
   },
 }));
 
-const desktopStyles = StyleSheet.create({
+const desktopStyles = StyleSheet.create((theme) => ({
   row: {
     flex: 1,
     flexDirection: "row",
@@ -1607,8 +1623,34 @@ const desktopStyles = StyleSheet.create({
   centerColumn: {
     flex: 1,
     minWidth: SETTINGS_DESKTOP_DETAIL_MIN_WIDTH,
+    minHeight: 0,
+    backgroundColor: theme.colors.surfaceShell,
   },
-});
+  detailHeaderSurface: {
+    backgroundColor: theme.colors.surfaceShell,
+  },
+  detailHeaderRow: {
+    height: NEW_THEME_HEADER_HEIGHT_DESKTOP,
+    borderBottomWidth: theme.shell.chromeDivider,
+  },
+  // 标题留在背景上，设置内容保持原主题的浮动圆角面板。
+  centerCard: {
+    flex: 1,
+    minHeight: 0,
+    backgroundColor: theme.colors.surfaceWorkspace,
+    marginHorizontal: theme.shell.contentMargin,
+    marginBottom: theme.shell.contentMargin,
+    borderRadius: theme.shell.contentRadius,
+    overflow: theme.shell.contentOverflow,
+  },
+  content: {
+    padding: theme.spacing[4],
+    paddingTop: theme.spacing[6],
+    width: "100%",
+    maxWidth: 720,
+    alignSelf: "center",
+  },
+}));
 
 const sidebarStyles = StyleSheet.create((theme) => ({
   desktopContainer: {

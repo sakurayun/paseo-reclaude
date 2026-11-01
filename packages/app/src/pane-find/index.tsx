@@ -331,7 +331,7 @@ const styles = StyleSheet.create((theme) => {
       padding: theme.spacing[1.5],
       gap: theme.spacing[1],
       backgroundColor: theme.colors.surface1,
-      borderWidth: theme.borderWidth[1],
+      borderWidth: theme.shell.controlBorder,
       borderColor: theme.colors.border,
       borderRadius: theme.borderRadius.lg,
       ...theme.shadow.md,

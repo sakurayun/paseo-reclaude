@@ -997,7 +997,7 @@ const styles = StyleSheet.create((theme) => ({
     justifyContent: "space-between",
     paddingVertical: theme.spacing[4],
     paddingHorizontal: theme.spacing[4],
-    borderTopWidth: theme.borderWidth[1],
+    borderTopWidth: theme.shell.chromeDivider,
     borderTopColor: theme.colors.border,
   },
   swatch: {
@@ -1042,7 +1042,7 @@ const styles = StyleSheet.create((theme) => ({
     paddingVertical: theme.spacing[2],
     paddingHorizontal: theme.spacing[3],
     borderRadius: theme.borderRadius.md,
-    borderWidth: theme.borderWidth[1],
+    borderWidth: theme.shell.controlBorder,
     borderColor: theme.colors.border,
     backgroundColor: theme.colors.surface2,
     color: theme.colors.foreground,

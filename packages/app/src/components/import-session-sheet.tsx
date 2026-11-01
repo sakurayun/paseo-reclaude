@@ -1065,7 +1065,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   errorBanner: {
     marginBottom: theme.spacing[2],
-    borderWidth: theme.borderWidth[1],
+    borderWidth: theme.shell.controlBorder,
     borderColor: theme.colors.border,
     borderRadius: theme.borderRadius.lg,
     paddingVertical: theme.spacing[1],

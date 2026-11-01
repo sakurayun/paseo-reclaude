@@ -364,7 +364,7 @@ const styles = StyleSheet.create((theme) => ({
   documentContainer: {
     height: 30,
     backgroundColor: theme.colors.surface0,
-    borderBottomWidth: theme.borderWidth[1],
+    borderBottomWidth: theme.shell.chromeDivider,
     borderBottomColor: theme.colors.borderAccent,
   },
   header: {

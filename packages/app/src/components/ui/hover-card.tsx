@@ -415,7 +415,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   surface: {
     backgroundColor: theme.colors.popover,
-    borderWidth: theme.borderWidth[1],
+    borderWidth: theme.shell.controlBorder,
     borderColor: theme.colors.borderAccent,
     borderRadius: theme.borderRadius.xl,
     ...theme.shadow.md,

@@ -255,51 +255,53 @@ export function SplitContainer({
           <View style={mainColumnStyle}>
             {renderMainHeader?.()}
             {splitRoot.usesFallbackStrip && <WindowChromeSafeArea placement="below" />}
-            {renderRoot ? (
-              <SplitNodeView
-                node={renderRoot}
-                workspaceKey={workspaceKey}
-                uiTabs={uiTabs}
-                focusedPaneId={layout.focusedPaneId}
-                normalizedServerId={normalizedServerId}
-                normalizedWorkspaceId={normalizedWorkspaceId}
-                isWorkspaceFocused={isWorkspaceFocused}
-                hoveredCloseTabKey={hoveredCloseTabKey}
-                setHoveredCloseTabKey={setHoveredCloseTabKey}
-                closingTabIds={closingTabIds}
-                onNavigateTab={onNavigateTab}
-                onCloseTab={onCloseTab}
-                onCopyResumeCommand={onCopyResumeCommand}
-                onCopyAgentId={onCopyAgentId}
-                onCopyTerminalId={onCopyTerminalId}
-                onCopyFilePath={onCopyFilePath}
-                onReloadAgent={onReloadAgent}
-                onRenameTab={onRenameTab}
-                onCloseTabsToLeft={onCloseTabsToLeft}
-                onCloseTabsToRight={onCloseTabsToRight}
-                onCloseOtherTabs={onCloseOtherTabs}
-                onGroupTabs={onGroupTabs}
-                onUpdateTabGroup={onUpdateTabGroup}
-                onUngroupTabGroup={onUngroupTabGroup}
-                onCreateNewTab={onCreateNewTab}
-                buildPaneContentModel={buildPaneContentModel}
-                onFocusPane={onFocusPane}
-                onSplitPane={onSplitPane}
-                onSplitPaneEmpty={onSplitPaneEmpty}
-                onResizeSplit={onResizeSplit}
-                onReorderTabsInPane={onReorderTabsInPane}
-                activeDragTabId={activeDragTabId}
-                showDropZones={activeDragTabId !== null}
-                dropPreview={dropPreview}
-                tabDropPreview={tabDropPreview}
-                windowChromeCorners={splitRoot.usesFallbackStrip ? "none" : windowChromeCorners}
-                maximizedPaneId={maximizedPaneId}
-                workspaceHasMultiplePanes={workspaceHasMultiplePanes}
-                onTogglePaneMaximized={handleTogglePaneMaximized}
-                focusModeEnabled={focusModeEnabled}
-                onExitFocusMode={onExitFocusMode}
-              />
-            ) : null}
+            <View style={styles.floatingContent} testID="workspace-floating-content">
+              {renderRoot ? (
+                <SplitNodeView
+                  node={renderRoot}
+                  workspaceKey={workspaceKey}
+                  uiTabs={uiTabs}
+                  focusedPaneId={layout.focusedPaneId}
+                  normalizedServerId={normalizedServerId}
+                  normalizedWorkspaceId={normalizedWorkspaceId}
+                  isWorkspaceFocused={isWorkspaceFocused}
+                  hoveredCloseTabKey={hoveredCloseTabKey}
+                  setHoveredCloseTabKey={setHoveredCloseTabKey}
+                  closingTabIds={closingTabIds}
+                  onNavigateTab={onNavigateTab}
+                  onCloseTab={onCloseTab}
+                  onCopyResumeCommand={onCopyResumeCommand}
+                  onCopyAgentId={onCopyAgentId}
+                  onCopyTerminalId={onCopyTerminalId}
+                  onCopyFilePath={onCopyFilePath}
+                  onReloadAgent={onReloadAgent}
+                  onRenameTab={onRenameTab}
+                  onCloseTabsToLeft={onCloseTabsToLeft}
+                  onCloseTabsToRight={onCloseTabsToRight}
+                  onCloseOtherTabs={onCloseOtherTabs}
+                  onGroupTabs={onGroupTabs}
+                  onUpdateTabGroup={onUpdateTabGroup}
+                  onUngroupTabGroup={onUngroupTabGroup}
+                  onCreateNewTab={onCreateNewTab}
+                  buildPaneContentModel={buildPaneContentModel}
+                  onFocusPane={onFocusPane}
+                  onSplitPane={onSplitPane}
+                  onSplitPaneEmpty={onSplitPaneEmpty}
+                  onResizeSplit={onResizeSplit}
+                  onReorderTabsInPane={onReorderTabsInPane}
+                  activeDragTabId={activeDragTabId}
+                  showDropZones={activeDragTabId !== null}
+                  dropPreview={dropPreview}
+                  tabDropPreview={tabDropPreview}
+                  windowChromeCorners={splitRoot.usesFallbackStrip ? "none" : windowChromeCorners}
+                  maximizedPaneId={maximizedPaneId}
+                  workspaceHasMultiplePanes={workspaceHasMultiplePanes}
+                  onTogglePaneMaximized={handleTogglePaneMaximized}
+                  focusModeEnabled={focusModeEnabled}
+                  onExitFocusMode={onExitFocusMode}
+                />
+              ) : null}
+            </View>
           </View>
         </WindowChromeRegion>
       </View>
@@ -952,6 +954,18 @@ const styles = StyleSheet.create((theme) => ({
     flexShrink: 1,
     minWidth: 0,
     minHeight: 0,
+    backgroundColor: theme.colors.surfaceShell,
+  },
+  // 分屏树保留在同一浮卡内，标题留在背景上；切换标签和拆分不改变宿主层级。
+  floatingContent: {
+    flex: 1,
+    minWidth: 0,
+    minHeight: 0,
+    backgroundColor: theme.colors.surfaceWorkspace,
+    marginHorizontal: theme.shell.contentMargin,
+    marginBottom: theme.shell.contentMargin,
+    borderRadius: theme.shell.contentRadius,
+    overflow: theme.shell.contentOverflow,
   },
   group: {
     flex: 1,

@@ -1166,7 +1166,7 @@ const styles = StyleSheet.create((theme) => ({
   errorText: {
     paddingHorizontal: theme.spacing[4],
     paddingVertical: theme.spacing[3],
-    borderBottomWidth: 1,
+    borderBottomWidth: theme.shell.chromeDivider,
     borderBottomColor: theme.colors.border,
     color: theme.colors.statusDanger,
     fontSize: theme.fontSize.base,

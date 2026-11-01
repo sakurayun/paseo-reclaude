@@ -206,7 +206,7 @@ const styles = StyleSheet.create((theme) => ({
     right: 0,
     bottom: 0,
     left: 0,
-    height: theme.borderWidth[1],
+    height: theme.shell.chromeDivider,
     backgroundColor: theme.colors.border,
   },
   content: {

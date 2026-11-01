@@ -802,7 +802,7 @@ const styles = StyleSheet.create((theme) => {
       gap: theme.spacing[3],
       paddingHorizontal: theme.spacing[4],
       paddingVertical: theme.spacing[4],
-      borderBottomWidth: theme.borderWidth[1],
+      borderBottomWidth: theme.shell.chromeDivider,
       borderBottomColor: theme.colors.border,
     },
     paseoSectionTitle: {

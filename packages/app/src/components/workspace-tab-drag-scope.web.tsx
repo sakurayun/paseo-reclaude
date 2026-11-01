@@ -508,8 +508,8 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[2],
     paddingHorizontal: theme.spacing[3],
     paddingVertical: theme.spacing[1],
-    borderRadius: theme.borderRadius.md,
-    borderWidth: 1,
+    borderRadius: theme.shell.floating ? theme.borderRadius.lg : theme.borderRadius.md,
+    borderWidth: theme.shell.controlBorder,
     maxWidth: 200,
   },
   dragOverlayLabel: {

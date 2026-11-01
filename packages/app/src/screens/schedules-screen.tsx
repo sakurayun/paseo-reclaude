@@ -11,6 +11,7 @@ import { useIsFocused } from "expo-router/react-navigation";
 import { CalendarClock, Plus } from "lucide-react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { MenuHeader } from "@/components/headers/menu-header";
+import { NEW_THEME_HEADER_HEIGHT_DESKTOP } from "@/constants/layout";
 import { ExternalLink } from "@/components/ui/external-link";
 import { HostFilter } from "@/components/hosts/host-filter";
 import { ALL_HOSTS_OPTION_ID } from "@/components/hosts/host-picker";
@@ -165,22 +166,28 @@ function SchedulesScreenContent(): ReactElement {
 
   return (
     <View style={styles.container}>
-      <MenuHeader title="Schedules" />
-      <SchedulesScreenBody
-        rows={visibleRows}
-        loadState={loadState}
-        hostErrors={hostErrors}
-        showLoadError={showLoadError}
-        statusFilter={statusFilter}
-        onStatusFilterChange={setStatusFilter}
-        showHostFilter={showHostFilter}
-        hosts={hosts}
-        selectedHost={selectedHost}
-        onSelectHost={setSelectedHost}
-        onRetry={refetch}
-        onCreate={openCreate}
-        onEdit={openEdit}
+      <MenuHeader
+        title="Schedules"
+        surfaceStyle={styles.headerSurface}
+        rowStyle={styles.headerRow}
       />
+      <View style={styles.floatingContent} testID="schedules-floating-content">
+        <SchedulesScreenBody
+          rows={visibleRows}
+          loadState={loadState}
+          hostErrors={hostErrors}
+          showLoadError={showLoadError}
+          statusFilter={statusFilter}
+          onStatusFilterChange={setStatusFilter}
+          showHostFilter={showHostFilter}
+          hosts={hosts}
+          selectedHost={selectedHost}
+          onSelectHost={setSelectedHost}
+          onRetry={refetch}
+          onCreate={openCreate}
+          onEdit={openEdit}
+        />
+      </View>
       <ScheduleFormSheet
         serverId={form.mode === "edit" ? form.serverId : undefined}
         visible={form.mode === "create" || form.mode === "edit"}
@@ -358,7 +365,23 @@ function ScheduleHostErrorsBanner({ errors }: { errors: ScheduleHostError[] }): 
 const styles = StyleSheet.create((theme) => ({
   container: {
     flex: 1,
-    backgroundColor: theme.colors.surface0,
+    backgroundColor: { xs: theme.colors.surface0, md: theme.colors.surfaceShell },
+  },
+  headerSurface: {
+    backgroundColor: { xs: theme.colors.surface0, md: theme.colors.surfaceShell },
+  },
+  headerRow: {
+    height: { md: NEW_THEME_HEADER_HEIGHT_DESKTOP },
+  },
+  // 所有加载、空状态和任务列表共用同一浮动面板，避免状态切换改变外壳。
+  floatingContent: {
+    flex: 1,
+    minHeight: 0,
+    backgroundColor: theme.colors.surfaceWorkspace,
+    marginHorizontal: { xs: 0, md: theme.shell.contentMargin },
+    marginBottom: { xs: 0, md: theme.shell.contentMargin },
+    borderRadius: { xs: 0, md: theme.shell.contentRadius },
+    overflow: { xs: "visible", md: theme.shell.contentOverflow },
   },
   body: {
     flex: 1,

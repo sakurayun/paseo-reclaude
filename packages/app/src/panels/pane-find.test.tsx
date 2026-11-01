@@ -33,6 +33,7 @@ import type { WorkspaceTabDescriptor } from "@/screens/workspace/workspace-tabs-
 
 const { theme } = vi.hoisted(() => ({
   theme: {
+    shell: { chromeDivider: 0, controlBorder: 0 },
     colors: {
       border: "#333",
       foreground: "#fff",

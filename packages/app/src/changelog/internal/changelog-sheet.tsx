@@ -211,7 +211,7 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     gap: theme.spacing[2],
     paddingBottom: theme.spacing[2],
-    borderBottomWidth: theme.borderWidth[1],
+    borderBottomWidth: theme.shell.chromeDivider,
     borderBottomColor: theme.colors.border,
   },
   headingSpacer: {

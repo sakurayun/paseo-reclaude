@@ -542,7 +542,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   commentBlock: {
     backgroundColor: theme.colors.surface2,
-    borderWidth: theme.borderWidth[1],
+    borderWidth: theme.shell.controlBorder,
     borderColor: theme.colors.borderAccent,
     borderRadius: theme.borderRadius.lg,
     paddingHorizontal: theme.spacing[3],
@@ -587,7 +587,7 @@ const styles = StyleSheet.create((theme) => ({
   editorBlock: {
     minHeight: INLINE_REVIEW_EDITOR_HEIGHT,
     backgroundColor: theme.colors.surface2,
-    borderWidth: theme.borderWidth[1],
+    borderWidth: theme.shell.controlBorder,
     borderColor: theme.colors.borderAccent,
     borderRadius: theme.borderRadius.lg,
     paddingHorizontal: theme.spacing[3],
@@ -599,7 +599,7 @@ const styles = StyleSheet.create((theme) => ({
     minHeight: 0,
     color: theme.colors.foreground,
     backgroundColor: theme.colors.surface1,
-    borderWidth: theme.borderWidth[1],
+    borderWidth: theme.shell.controlBorder,
     borderColor: theme.colors.border,
     borderRadius: theme.borderRadius.md,
     paddingHorizontal: theme.spacing[3],

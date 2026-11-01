@@ -84,7 +84,7 @@ const styles = StyleSheet.create((theme) => ({
     paddingHorizontal: theme.spacing[2],
   },
   frontMatterTable: {
-    borderWidth: theme.borderWidth[1],
+    borderWidth: theme.shell.chromeDivider,
     borderColor: theme.colors.border,
     borderRadius: theme.borderRadius.lg,
     overflow: "hidden",
@@ -95,7 +95,7 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "stretch",
   },
   frontMatterRowBorder: {
-    borderTopWidth: theme.borderWidth[1],
+    borderTopWidth: theme.shell.chromeDivider,
     borderTopColor: theme.colors.border,
   },
   frontMatterKeyCell: {

@@ -445,7 +445,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   mobileRootContent: {
     backgroundColor: theme.colors.surfaceSidebar,
-    borderTopWidth: 1,
+    borderTopWidth: theme.shell.chromeDivider,
     borderTopColor: theme.colors.border,
   },
   controlsContent: {

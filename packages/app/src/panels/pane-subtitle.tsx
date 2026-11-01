@@ -20,7 +20,7 @@ const styles = StyleSheet.create((theme) => ({
   header: {
     paddingHorizontal: theme.spacing[3],
     paddingVertical: theme.spacing[1],
-    borderBottomWidth: theme.borderWidth[1],
+    borderBottomWidth: theme.shell.chromeDivider,
     borderBottomColor: theme.colors.border,
   },
   text: {

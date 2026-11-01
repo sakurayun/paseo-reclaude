@@ -311,7 +311,7 @@ const styles = StyleSheet.create((theme) => {
       flexWrap: "wrap",
       gap: CELL_GAP,
       paddingBottom: theme.spacing[3],
-      borderBottomWidth: theme.borderWidth[1],
+      borderBottomWidth: theme.shell.chromeDivider,
       borderBottomColor: theme.colors.border,
     },
     colorCell: {

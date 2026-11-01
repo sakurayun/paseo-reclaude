@@ -511,7 +511,7 @@ const styles = StyleSheet.create((theme) => ({
   featureCard: {
     backgroundColor: theme.colors.surface2,
     borderRadius: theme.borderRadius.md,
-    borderWidth: 1,
+    borderWidth: theme.shell.controlBorder,
     borderColor: theme.colors.border,
     paddingHorizontal: theme.spacing[3],
   },
@@ -523,7 +523,7 @@ const styles = StyleSheet.create((theme) => ({
     paddingVertical: theme.spacing[3],
   },
   featureRowBorder: {
-    borderTopWidth: 1,
+    borderTopWidth: theme.shell.chromeDivider,
     borderTopColor: theme.colors.border,
   },
   featureMeta: {

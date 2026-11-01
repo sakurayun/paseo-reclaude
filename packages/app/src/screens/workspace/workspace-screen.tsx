@@ -3508,6 +3508,8 @@ function WorkspaceScreenContent({
     () =>
       showScreenHeader ? (
         <ScreenHeader
+          surfaceStyle={styles.workspaceHeaderSurface}
+          rowStyle={styles.workspaceHeaderRow}
           left={
             <>
               <SidebarMenuToggle />
@@ -3744,6 +3746,10 @@ function WorkspaceScreenContent({
   ]);
   const desktopContent = desktopSplitContent ?? content;
   const rendersDesktopSplitContent = !isMobile && desktopSplitContent !== null;
+  const desktopContentFrameStyle = useMemo(
+    () => (rendersDesktopSplitContent ? styles.content : styles.centerCard),
+    [rendersDesktopSplitContent],
+  );
 
   const workspacePanelTabIds = useMemo(
     () => [...uiTabs.map((tab) => tab.tabId), ...sheets.map((sheet) => sheet.tab.tabId)],
@@ -3774,38 +3780,39 @@ function WorkspaceScreenContent({
   ) : (
     <View style={styles.centerColumn}>
       {rendersDesktopSplitContent ? null : renderWorkspaceScreenHeader()}
+      <View style={desktopContentFrameStyle}>
+        {shouldRenderDesktopPaneFallback ? (
+          <NewTabLauncherProvider value={newTabLauncher}>
+            <WorkspaceDesktopTabsRow
+              paneId={focusedPaneIdOrUndefined}
+              isFocused={isRouteFocused}
+              tabs={desktopTabRowItems}
+              normalizedServerId={normalizedServerId}
+              normalizedWorkspaceId={normalizedWorkspaceId}
+              setHoveredCloseTabKey={setHoveredCloseTabKey}
+              onNavigateTab={navigateToTabId}
+              onCloseTab={handleCloseTabById}
+              onCopyResumeCommand={handleCopyResumeCommand}
+              onCopyAgentId={handleCopyAgentId}
+              onCopyTerminalId={handleCopyTerminalId}
+              onCopyFilePath={handleCopyFilePath}
+              onReloadAgent={handleReloadAgent}
+              onRenameTab={handleRenameTab}
+              onCloseTabsToLeft={handleCloseTabsToLeft}
+              onCloseTabsToRight={handleCloseTabsToRight}
+              onCloseOtherTabs={handleCloseOtherTabs}
+              onCreateNewTab={handleCreateNewTab}
+              onReorderTabs={handleReorderTabsInFocusedPane}
+              showPaneSplitActions={false}
+              focusModeEnabled={desktopFocusModeEnabled}
+              onExitFocusMode={toggleFocusMode}
+            />
+          </NewTabLauncherProvider>
+        ) : null}
 
-      {shouldRenderDesktopPaneFallback ? (
-        <NewTabLauncherProvider value={newTabLauncher}>
-          <WorkspaceDesktopTabsRow
-            paneId={focusedPaneIdOrUndefined}
-            isFocused={isRouteFocused}
-            tabs={desktopTabRowItems}
-            normalizedServerId={normalizedServerId}
-            normalizedWorkspaceId={normalizedWorkspaceId}
-            setHoveredCloseTabKey={setHoveredCloseTabKey}
-            onNavigateTab={navigateToTabId}
-            onCloseTab={handleCloseTabById}
-            onCopyResumeCommand={handleCopyResumeCommand}
-            onCopyAgentId={handleCopyAgentId}
-            onCopyTerminalId={handleCopyTerminalId}
-            onCopyFilePath={handleCopyFilePath}
-            onReloadAgent={handleReloadAgent}
-            onRenameTab={handleRenameTab}
-            onCloseTabsToLeft={handleCloseTabsToLeft}
-            onCloseTabsToRight={handleCloseTabsToRight}
-            onCloseOtherTabs={handleCloseOtherTabs}
-            onCreateNewTab={handleCreateNewTab}
-            onReorderTabs={handleReorderTabsInFocusedPane}
-            showPaneSplitActions={false}
-            focusModeEnabled={desktopFocusModeEnabled}
-            onExitFocusMode={toggleFocusMode}
-          />
-        </NewTabLauncherProvider>
-      ) : null}
-
-      <View style={styles.centerContent}>
-        <View style={styles.content}>{desktopContent}</View>
+        <View style={styles.centerContent}>
+          <View style={styles.content}>{desktopContent}</View>
+        </View>
       </View>
     </View>
   );
